@@ -52,7 +52,7 @@ expensive or irreversible work. Otherwise, an equation-level test is often
 the clearer home for the invariant.
 
 Make established contracts visible in types
-------------------------------------------
+-------------------------------------------
 
 Use a named contract at a handoff where an ordinary ``xr.DataArray``,
 ``xr.Dataset`` or ``xr.DataTree`` annotation leaves important guarantees
@@ -61,8 +61,8 @@ dimensions, indexed coordinates, units, relationships and numerical properties
 that consumers can assume, including precise tolerance policies. Keep its
 validation colocated. Producer and input-boundary docstrings explain how their
 operations establish these guarantees from their own preconditions.
-Every promised guarantee must be established by validation or trusted
-construction before code relies on it.
+The validator checks structure only; numerical properties are established by
+the producer, as described below.
 
 The :download:`explicit data contracts proposal
 <../../openspec/changes/explicit-data-contracts/specs/explicit-data-contracts/spec.md>`
@@ -124,11 +124,8 @@ record may hold contracted fields without repeating their validation.
 Declare contracts through the proposed package decorator in ``contracts.py``
 modules within their owning packages. Shared tests discover those files and
 import their modules without a hand-maintained import list. Each contract's
-tests supply valid examples, validation callables, required arguments and
-execution requirements. Structural validators accept lazy examples without
-compute; full validators requiring concrete values use eager success examples
-and reject unsupported lazy inputs without compute. A numerical contract need
-not also expose a separate structural-validation API.
+tests supply valid examples, including lazy ones, and required validator
+arguments. Validation leaves lazy examples uncomputed.
 
 A family-specific contract can extend a shared contract by subtyping. Its
 validator establishes both shared and additional guarantees; the shared schema
@@ -150,31 +147,28 @@ Use this pattern where it clarifies a real handoff, rather than introducing a
 special type for every intermediate. Keep normalization, alignment and unit
 conversion explicit, following the guidance below.
 
-Contracts own numerical requirements; execution boundaries determine when and
-how to establish them. For example, a covariance contract can promise matching
-row and column labels, symmetry and positive semidefiniteness within a declared
-tolerance. Indexed-coordinate checks can be eager while payloads remain lazy.
-Arbitrary supplied values need numerical validation after their owner explicitly
-materializes related arrays together. Trusted construction can instead establish
-the same guarantees without computing lazy outputs merely to check them again.
-A full validator requiring concrete payloads documents that precondition and
-rejects lazy inputs it would need to inspect without computing them.
+A contract's docstring can document numerical properties, but its validator
+never checks them. For example, a covariance contract can document matching row
+and column labels, symmetry and positive semidefiniteness within a declared
+tolerance. Its validator checks the labels, using eager indexed coordinates, and
+leaves payloads lazy. The producer of each value establishes the numerical
+properties in one of three ways:
 
-A structure-only check must not return a type promising unestablished numerical
-properties. Introduce a weaker type only when a real handoff needs one; avoid a
-``check_values=False`` option that still returns the full contract type. Reuse
-numerical work already required by the algorithm to enforce its policy: a
-preparation function that needs eigenvectors can check PSD using the eigenvalues
-from that same decomposition. Calling a full covariance validator beforehand
-would repeat expensive work. The preparation function returns its trusted
-product directly; the standalone validator remains useful for independently
-supplied values and producer conformance tests.
+* By construction from the producer's own input preconditions, such as PSD from
+  ``A @ A.T``. Tests check outputs numerically, but example outputs alone do not
+  prove the construction argument, so review checks the reasoning. Loading data
+  does not establish finiteness.
+* By numerical work the algorithm already requires. A preparation function
+  that needs eigenvectors checks PSD using the eigenvalues from that same
+  decomposition, rather than first calling a separate check that repeats it.
+* By an explicit eager check at the boundary accepting independently supplied
+  data. That boundary materializes related arrays together, runs the check
+  alongside the validator, and only then returns the contract type.
 
-Do not introduce a fully validated intermediate or force earlier materialization
-merely to obtain a contract annotation. At each adopted handoff, review which
-scans and decompositions run and which repeated checks disappear. Tests support
-the construction argument; example outputs alone do not prove it. Loading data
-does not establish finiteness.
+Consumers do not check these properties again. Do not introduce an intermediate
+or force earlier materialization merely to obtain a contract annotation. At
+each adopted handoff, review which scans and decompositions run and which
+repeated checks disappear.
 
 Positive semidefiniteness permits singular covariance matrices: a solve requiring
 positive definiteness owns that stronger requirement. Reusing numerical work as

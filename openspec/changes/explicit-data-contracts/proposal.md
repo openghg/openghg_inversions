@@ -10,9 +10,10 @@ so consumers need not repeat checks of established guarantees.
 ## What Changes
 
 - Specify named static contracts with colocated, identity-preserving validation.
-- Describe structural and numerical guarantees together, established by
-  validation or trusted construction, with concrete-value checks at an explicit
-  execution boundary and no full claim from partial validation.
+- Document structural and numerical guarantees together. Validators check
+  structure only and never compute; producers establish numerical guarantees
+  by construction, required algorithmic work, or an explicit eager check where
+  supplied data enters.
 - Keep ordinary xarray containers and the existing borrowed-data trust model.
 - Make type docstrings the canonical guarantee description and document how
   producers establish those guarantees without duplicate numerical computation.

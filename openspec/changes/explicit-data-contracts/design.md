@@ -64,12 +64,11 @@ not imports of every package module. Importing a discovered module still runs
 parent-package initialization, so contract modules and their parents must be
 considered when assessing import cost and optional dependencies.
 
-Fail on missing examples. Each example supplies the validation callable, its
-arguments and execution requirements: full validation checks identity on valid
-supported inputs; structural validators accept lazy examples without compute;
-validators requiring concrete values reject unsupported lazy inputs without
-compute. There is no requirement for every numerical contract to expose a
-separate structural validator. Concrete checker probes verify base-value
+Fail on missing examples. Each example supplies its validator arguments; the
+shared tests check identity on valid inputs and that validation leaves lazy
+examples unexecuted. Numerical guarantees are tested with the producers and
+eager checks that establish them, not by the shared conformance tests. Concrete
+checker probes verify base-value
 rejection, validator and producer return acceptance, and compatibility with the
 base container type.
 
@@ -86,7 +85,7 @@ including numerical tolerance policies. Producers and accepting boundaries
 document how they establish those guarantees from their input preconditions.
 Tests provide examples and review checks the reasoning; merely loading data or
 passing example tests does not establish a numerical property for all valid
-inputs. A standalone validator is an executable check, not a compulsory step in
+inputs. A standalone validator is a structural check, not a compulsory step in
 production construction.
 
 Validation arguments are not retained by a cast. A configurable observation
@@ -115,29 +114,29 @@ these extra variables. A trusted producer that adds them with `assign` casts
 the constructed result to the extended type, since the inherited return type
 does not establish the stronger claim.
 
-### Contracts own numerical properties; boundaries own execution
+### Validators check structure; producers establish numerical properties
 
-Describe both structural and numerical guarantees on the contract. Validation
-of arbitrary supplied numerical values happens after the owner explicitly
-materializes related arrays together. Validation returns that same supplied
-object; it does not hide compute or replacement. Trusted construction can
-establish numerical guarantees even for lazy results. Laziness alone says
-nothing about whether a guarantee has been established. A full validator that
-requires concrete payloads documents that input precondition and rejects lazy
-payloads it needs to inspect without computing them.
+The contract docstring describes numerical properties alongside structure, but
+`validate` checks only structure. It never computes, so it behaves the same on
+eager and lazy data and the shared conformance tests need no execution modes.
+Numerical properties are established by whatever produces the value, in one of
+three ways:
 
-A structure-only check cannot return a type promising unestablished numerical
-properties. It can return no narrowed type, or a weaker type if a real handoff
-needs one. Avoid a flag such as `check_values=False` that retains a full-contract
-return annotation. Reuse required numerical work to enforce the scientific
-policy rather than adding a redundant preliminary decomposition. For example,
-preparation needing an eigenbasis accepts structurally prepared input, checks
-PSD using its required eigenvalues and returns a trusted result. It must not
-first call a standalone PSD validator that repeats the decomposition.
+- By construction, where the property follows from the producer's input
+  preconditions, such as PSD from `A Aᵀ`. Tests check outputs numerically and
+  review checks the reasoning: example outputs cannot show that the property
+  holds for every valid input, and loading data does not establish finiteness.
+- By numerical work the algorithm already requires. Preparation needing an
+  eigenbasis checks PSD with its required eigenvalues and returns a trusted
+  result; it does not first call a separate PSD check repeating the
+  decomposition.
+- By an explicit eager check at the boundary accepting independently supplied
+  data. That boundary materializes related arrays together, runs its check
+  alongside `validate`, and only then returns the contract type.
 
-Introduce a numerical contract only at a useful handoff after its guarantees
-are naturally established. Do not force earlier materialization or add a fully
-validated intermediate just to obtain an annotation. For concrete applications,
+A consumer of a value established in any of these ways does not check it again.
+Do not force earlier materialization or add an intermediate just to obtain an
+annotation. For concrete applications,
 review which scans and decompositions run before and after adoption, and use
 focused execution tests to catch duplicated work. Required new numerical work
 on changed values is distinct from rechecking an established input.
@@ -146,15 +145,16 @@ Concrete covariance cases illustrate the distinction:
 
 | Guarantee | Owner and establishment |
 | --- | --- |
-| Square layout with matching row/companion-coordinate labels in order | Covariance contract; structural checks of eager indexes |
-| Symmetry and positive semidefiniteness within a declared tolerance | Covariance contract; numerical validation or trusted construction |
+| Square layout with matching row/companion-coordinate labels in order | Covariance contract `validate`; structural checks of eager indexes |
+| Symmetry and positive semidefiniteness within a declared tolerance | Documented on the covariance contract; established by the producer's construction, its required decomposition, or the eager check at the supplied-data boundary |
 | Compatibility with this model's observation labels | Composition boundary; exact alignment |
 | Positive definiteness required for a solve | Stronger contract or numerical operation; required factorization |
 
 PSD permits singular matrices; it must not silently become a positive-definite
 requirement. A factorization is usable as a check only when its failure behavior
 establishes the actual policy: Cholesky success alone is not a rank-tolerance or
-symmetry check. Finite-value policy likewise belongs to the specific contract.
+symmetry check. Finite-value policy likewise belongs to the specific contract
+and is established in the same ways.
 Concrete coordinate conventions and covariance application examples are tracked
 in [#1036](https://github.com/openghg/openghg_inversions/issues/1036).
 
@@ -182,9 +182,11 @@ Independently supplied data is checked at the existing boundary accepting it.
 - DataTree child indexing returns a general `DataTree | DataArray`. A parent
   contract can describe child relationships but does not automatically narrow
   the static types of indexed children.
-- Partial validation can overstate numerical guarantees: keep weaker checks
-  explicit and reserve the full type for validation or trusted construction
-  that establishes every promise.
+- `validate` returns the full contract type after checking only structure. An
+  input boundary that calls it but omits its eager numerical check overstates
+  the documented guarantees. The producer-establishment requirement makes that
+  check the boundary's responsibility, and review of input boundaries enforces
+  it.
 
 ## Delivery
 
