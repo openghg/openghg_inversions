@@ -548,19 +548,26 @@ restack is implemented; review and delivery evidence stays in the
 Current explanations: <a class="reference internal" href="observation_uncertainty.html"><span class="doc">Missing observation uncertainty: behavior and decisions</span></a>,
 <a class="reference internal" href="numerical_array_ownership.html"><span class="doc">Numerical array ownership and execution</span></a> and <a class="reference internal" href="../usage/rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a>.</p></td>
 </tr>
-<tr class="row-even"><td><p>External resources and basis exports</p></td>
+<tr class="row-even"><td><p>Explicit labelled-data contracts</p></td>
+<td><p><a class="reference download internal" download="" href="../_downloads/e9c3412ce3d6c770482560ceadf93fda/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">Explicit</span> <span class="pre">data</span> <span class="pre">contracts</span> <span class="pre">proposal</span></code></a></p></td>
+<td><p>Proposed named static contracts, identity-preserving validation and
+trusted producer/consumer handoffs. No runtime contract types are
+delivered by this proposal. Recommended pattern and pseudocode:
+<a class="reference internal" href="validation_and_xarray.html"><span class="doc">Validation and labelled-array patterns</span></a>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>External resources and basis exports</p></td>
 <td><p><a class="reference download internal" download="" href="../_downloads/c23f3e251e80eaeb7631265c50ed7dd4/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">RHIME</span> <span class="pre">resource</span> <span class="pre">I/O</span></code></a></p></td>
 <td><p>Delivered runner-owned path resolution, selected-resource checks, BC
 loading and optional basis exports, preserving exact destinations.
 Delivery history: <a class="reference download internal" download="" href="../_downloads/94412af9803623ced2d59221b022469d/tasks.md"><code class="xref download docutils literal notranslate"><span class="pre">resource-I/O</span> <span class="pre">archive</span></code></a>.
 Manifest references and checkpoint completion stay with the handoff specs.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Retained-state scientific reconstruction</p></td>
+<tr class="row-even"><td><p>Retained-state scientific reconstruction</p></td>
 <td><p><a class="reference download internal" download="" href="../_downloads/afb4eced312ab891f80bb9edc1215594/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">Retained-state</span> <span class="pre">reconstruction</span></code></a></p></td>
 <td><p>Delivered scientific capability; implemented routes and limitations in
 <a class="reference internal" href="../usage/retained_state_reconstruction.html"><span class="doc">Linear retained-state reconstruction</span></a>.</p></td>
 </tr>
-<tr class="row-even"><td><p>HBMCMC dependency direction and retirement</p></td>
+<tr class="row-odd"><td><p>HBMCMC dependency direction and retirement</p></td>
 <td><p><a class="reference download internal" download="" href="../_downloads/2b40e8f781ee62206dd844c68db3e2e7/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">HBMCMC</span> <span class="pre">isolation</span> <span class="pre">contract</span></code></a></p></td>
 <td><p>PR 869 delivered isolation; the current #719 branch removes the transitional
 namespace and translation. The positive contract requires normal execution
@@ -573,26 +580,26 @@ records the pinned comparison, per-PR work, owners and delivery order;
 these implementation instructions are separate from the durable evidence guarantees.
 Path conversion and resource loading stay with resource I/O.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Saved CO2 affine reconstruction</p></td>
+<tr class="row-even"><td><p>Saved CO2 affine reconstruction</p></td>
 <td><p><a class="reference download internal" download="" href="../_downloads/525d7a9c43da31f3dadebe4556ff140f/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">CO2</span> <span class="pre">affine</span> <span class="pre">output</span> <span class="pre">reconstruction</span></code></a></p></td>
 <td><p>Delivered scientific capability retaining its owner-consent requirement;
 <a class="reference internal" href="../usage/affine_flux_map.html"><span class="doc">Affine native-flux reconstruction</span></a> and <a class="reference internal" href="../usage/co2_model_family.html"><span class="doc">CO₂ model family</span></a> describe
 current support and conditional uncertainty.</p></td>
 </tr>
-<tr class="row-even"><td><p>Scientific execution across routes</p></td>
+<tr class="row-odd"><td><p>Scientific execution across routes</p></td>
 <td><p><a class="reference download internal" download="" href="../_downloads/45326df2fa97564c34cf4978f3e08d4b/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">Recipe</span> <span class="pre">execution</span></code></a></p></td>
 <td><p>Owns supported-route parity and execution behavior, consuming the
 configuration, scientific-input and handoff contracts. Family routes are
 implemented; remaining programme acceptance stays in the active change.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Saved preparation and compatible reuse</p></td>
+<tr class="row-even"><td><p>Saved preparation and compatible reuse</p></td>
 <td><p><a class="reference download internal" download="" href="../_downloads/45da628f09c6419ede485f3c0a1755f3/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">Prepared</span> <span class="pre">recipe</span> <span class="pre">handoff</span></code></a></p></td>
 <td><p>Owns prepared formats, authoritative saved facts, raw-input reuse and
 incompatible baked-preparation rejection. Standard/multisector routes
 are implemented; CO2 retains coherent prior-dependent reuse constraints.
 The #876 restack is implemented; the capability remains active.</p></td>
 </tr>
-<tr class="row-even"><td><p>Saved inference and fitted-operand replay</p></td>
+<tr class="row-odd"><td><p>Saved inference and fitted-operand replay</p></td>
 <td><p><a class="reference download internal" download="" href="../_downloads/1db47ccb1272e3c17c2a3d7af3432fba/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">Sampled</span> <span class="pre">recipe</span> <span class="pre">handoff</span></code></a></p></td>
 <td><p>Owns sample formats, exact fitted BC/floor persistence and graph-free
 replay without recalculation. Standard/multisector replay is implemented;

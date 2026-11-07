@@ -488,6 +488,120 @@ the calculation’s meaning, or gives a materially clearer failure before
 expensive or irreversible work. Otherwise, an equation-level test is often
 the clearer home for the invariant.</p>
 </section>
+<section id="make-established-contracts-visible-in-types">
+<h2>Make established contracts visible in types<a class="headerlink" href="#make-established-contracts-visible-in-types" title="Link to this heading">#</a></h2>
+<p>Use a named contract at a handoff where an ordinary <code class="docutils literal notranslate"><span class="pre">xr.DataArray</span></code>,
+<code class="docutils literal notranslate"><span class="pre">xr.Dataset</span></code> or <code class="docutils literal notranslate"><span class="pre">xr.DataTree</span></code> annotation leaves important guarantees
+implicit. The type’s docstring is the canonical description of the variables,
+dimensions, indexed coordinates, units, relationships and numerical properties
+that consumers can assume, including precise tolerance policies. Keep its
+validation colocated. Producer and input-boundary docstrings explain how their
+operations establish these guarantees from their own preconditions.
+The validator checks structure only; numerical properties are established by
+the producer, as described below.</p>
+<p>The <a class="reference download internal" download="" href="../_downloads/e9c3412ce3d6c770482560ceadf93fda/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">explicit</span> <span class="pre">data</span> <span class="pre">contracts</span> <span class="pre">proposal</span></code></a>
+captures this pattern; it does not indicate that contract types have already
+been implemented. The following pseudocode illustrates the recommended static
+marker for a structural contract. <code class="docutils literal notranslate"><span class="pre">xr_contract</span></code> denotes the proposed
+declaration decorator; <code class="docutils literal notranslate"><span class="pre">check_bound_layout</span></code> and
+<code class="docutils literal notranslate"><span class="pre">select_and_expand_transport</span></code> stand for domain-specific validation and
+preparation. These are not existing package functions.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">cast</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+
+<span class="nd">@xr_contract</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">BoundTransport</span><span class="p">(</span><span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Observation-aligned transport with ordinary Dataset runtime values.</span>
+
+<span class="sd">    The first dimension of H_bc_anomaly is the observation dimension.</span>
+<span class="sd">    H_bc_mass shares its ordered dimensions and indexed coordinates.</span>
+<span class="sd">    """</span>
+
+    <span class="vm">__slots__</span> <span class="o">=</span> <span class="p">()</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate</span><span class="p">(</span>
+        <span class="n">data</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">observation_dim</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"BoundTransport"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Check the layout and return the same borrowed dataset."""</span>
+        <span class="n">check_bound_layout</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">observation_dim</span><span class="o">=</span><span class="n">observation_dim</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">cast</span><span class="p">(</span><span class="s2">"BoundTransport"</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">bind_transport</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="n">observations</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BoundTransport</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Construct observation-aligned transport in canonical order."""</span>
+    <span class="n">bound</span> <span class="o">=</span> <span class="n">select_and_expand_transport</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="n">observations</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cast</span><span class="p">(</span><span class="n">BoundTransport</span><span class="p">,</span> <span class="n">bound</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Where an existing input boundary needs a standalone check, call the validator
+and use its typed return value. A trusted producer instead establishes
+the contract through its preparation operations. <code class="docutils literal notranslate"><span class="pre">cast</span></code> only records that
+claim for the type checker; it performs no validation. In this example, a
+consumer recovers the observation dimension from <code class="docutils literal notranslate"><span class="pre">data.H_bc_anomaly.dims[0]</span></code>.
+<code class="docutils literal notranslate"><span class="pre">check_bound_layout</span></code> checks that convention against <code class="docutils literal notranslate"><span class="pre">observation_dim</span></code>;
+the cast does not retain validator arguments. Other contracts may record roles
+in metadata during preparation. Validation checks existing information rather
+than adding it. A validator returning <code class="docutils literal notranslate"><span class="pre">None</span></code> does not by itself narrow the
+caller’s variable.</p>
+<p>Keep ordinary xarray representations when their shared coordinates,
+alignment and joint selection are useful. A static marker requires no runtime
+wrapper or special constructor. Its runtime object has no new instance methods
+or properties: adding these to a phantom subtype would allow calls that
+type-check but fail at runtime. Use class-level helpers for additional behavior,
+and do not use <code class="docutils literal notranslate"><span class="pre">isinstance</span></code> to decide whether the contract holds. An ordinary
+record may hold contracted fields without repeating their validation.</p>
+<p>Declare contracts through the proposed package decorator in <code class="docutils literal notranslate"><span class="pre">contracts.py</span></code>
+modules within their owning packages. Shared tests discover those files and
+import their modules without a hand-maintained import list. Each contract’s
+tests supply valid examples, including lazy ones, and required validator
+arguments. Validation leaves lazy examples uncomputed.</p>
+<p>A family-specific contract can extend a shared contract by subtyping. Its
+validator establishes both shared and additional guarantees; the shared schema
+must permit the extension’s extra data. A trusted producer adding that data
+casts its constructed result to the stronger type. DataTree parent contracts
+can describe child relationships, but indexing a child does not automatically
+give it a narrower static contract type.</p>
+<p>Package-owned transformations must preserve or establish the contract they
+return. Inherited xarray <code class="docutils literal notranslate"><span class="pre">Self</span></code> annotations do not prove that a selection,
+rename or reduction preserves the schema; these operations may retain a stale
+contract annotation. Validate independently supplied results or use known
+construction covered by tests that pass its outputs to the validator. Do not
+add complete validation in every <code class="docutils literal notranslate"><span class="pre">__post_init__</span></code> or dataclass reconstruction.
+Mutating an object so that its declared contract no longer holds is caller
+error; interception or mutation warnings are not required.</p>
+<p>Use this pattern where it clarifies a real handoff, rather than introducing a
+special type for every intermediate. Keep normalization, alignment and unit
+conversion explicit, following the guidance below.</p>
+<p>A contract’s docstring can document numerical properties, but its validator
+never checks them. For example, a covariance contract can document matching row
+and column labels, symmetry and positive semidefiniteness within a declared
+tolerance. Its validator checks the labels, using eager indexed coordinates, and
+leaves payloads lazy. The producer of each value establishes the numerical
+properties in one of three ways:</p>
+<ul class="simple">
+<li><p>By construction from the producer’s own input preconditions, such as PSD from
+<code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">&#64;</span> <span class="pre">A.T</span></code>. Tests check outputs numerically, but example outputs alone do not
+prove the construction argument, so review checks the reasoning. Loading data
+does not establish finiteness.</p></li>
+<li><p>By numerical work the algorithm already requires. A preparation function
+that needs eigenvectors checks PSD using the eigenvalues from that same
+decomposition, rather than first calling a separate check that repeats it.</p></li>
+<li><p>By an explicit eager check at the boundary accepting independently supplied
+data. That boundary materializes related arrays together, runs the check
+alongside the validator, and only then returns the contract type.</p></li>
+</ul>
+<p>Consumers do not check these properties again. Do not introduce an intermediate
+or force earlier materialization merely to obtain a contract annotation. At
+each adopted handoff, review which scans and decompositions run and which
+repeated checks disappear.</p>
+<p>Positive semidefiniteness permits singular covariance matrices: a solve requiring
+positive definiteness owns that stronger requirement. Reusing numerical work as
+a check requires reliable failure behavior for the stated policy; Cholesky
+success alone does not establish symmetry or a specified rank tolerance.
+Compatibility with a particular model’s observation labels belongs to the
+composition boundary combining them.</p>
+</section>
 <section id="transpose-align-compute">
 <h2>Transpose, align, compute<a class="headerlink" href="#transpose-align-compute" title="Link to this heading">#</a></h2>
 <p>For independently prepared labelled arrays, the usual strict pattern is:</p>
@@ -613,6 +727,7 @@ the requirement directly?</p></li>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#choose-the-validation-boundary">Choose the validation boundary</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#make-established-contracts-visible-in-types">Make established contracts visible in types</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#transpose-align-compute">Transpose, align, compute</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#units">Units</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#tests-rather-than-production-assertions">Tests rather than production assertions</a></li>
