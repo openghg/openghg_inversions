@@ -217,10 +217,14 @@ equations. Offsets remain separate components; the offset-confounding warning
 inspects every affine block for a constant unit response, so it needs no
 knowledge of boundary families.
 
+The additive recipe composes its mean shift, anomalies and complete boundary
+concentration in that order. Factor construction and sampling share the same
+selection of contrast basis or direct state sampling.
+
 The scalar ``bc_anomaly_scale`` saved in model data records the resolved prior
 width for trace reconstruction; the distributions use the resolved choice
-value directly. Updating the saved scalar does not update the distributions'
-widths.
+value directly. Likewise ``bc_scale_sd`` records anomaly-scaling provenance.
+Updating these saved scalars does not update the distributions' widths.
 
 Validation is not repeated along this path. Preparation and artifact loading
 own units, labels and layout; ``bind`` owns calendar and row alignment and the

@@ -2,13 +2,14 @@
 
 A boundary family is two small records in its own module:
 
-* a *choice* (:class:`MultiplicativeChoice`, :class:`AdditiveChoice`): the
-  prior specification before binding, holding the resolved scientific
-  options (priors, activity, anomaly scale and the boundary period calendar)
-  without bound observations or transport arrays. Configuration adapters
-  produce choices; recipes bind them to observations and transport.
-* a *bound boundary* (:class:`MultiplicativeBoundary`, :class:`AdditiveBoundary`)
-  returned by ``choice.bind(observations, transport)``. It pairs the choice
+* a *choice* (:class:`MultiplicativeChoice`, :class:`AdditiveChoice`,
+  :class:`AnomalyScalingChoice`): the prior specification before binding,
+  holding the resolved scientific options (priors, activity, anomaly
+  structure and scale, reference and the boundary period calendar) without
+  bound observations or transport arrays. Configuration adapters produce
+  choices; recipes bind them to observations and transport.
+* a *bound boundary* (:class:`MultiplicativeBoundary`, :class:`AdditiveBoundary`,
+  :class:`AnomalyScalingBoundary`) returned by ``choice.bind(observations, transport)``. It pairs the choice
   with borrowed labelled transport aligned to one fit's observation rows and
   expanded to its boundary periods.
 
@@ -52,6 +53,7 @@ import xarray as xr
 
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models.boundary.additive import AdditiveBoundary, AdditiveChoice
+from openghg_inversions.models.boundary.anomaly_scaling import AnomalyScalingBoundary, AnomalyScalingChoice
 from openghg_inversions.models.boundary.multiplicative import MultiplicativeBoundary, MultiplicativeChoice
 from openghg_inversions.models.boundary.operands import (
     CenteredOperands,
@@ -109,6 +111,8 @@ class BoundaryChoice(Protocol[TransportT_contra]):
 __all__ = [
     "AdditiveBoundary",
     "AdditiveChoice",
+    "AnomalyScalingBoundary",
+    "AnomalyScalingChoice",
     "Boundary",
     "BoundaryChoice",
     "BoundaryOutputs",

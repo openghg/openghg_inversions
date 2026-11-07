@@ -241,11 +241,13 @@ and fixes every anomaly to zero, without sampling contrast variables.
 Independent priors on the :math:`K` corrections :math:`d_j` are a valid
 alternative scientific formulation. We use the mean-and-anomaly formulation
 to specify uncertainty in the common boundary correction separately from
-uncertainty in departures from it. The current implementation gives
+uncertainty in departures from it. The weighted structure gives
 :math:`\delta` its scalar prior and makes it independent of the constrained
 Gaussian anomalies. Decomposing independent corrections into their mean and
 departures would generally give a different joint prior. See :doc:`co2_models`
-for its covariance, scale interpretation and supported configuration.
+for its covariance, scale interpretation and supported configuration, and
+:doc:`boundary_correction_structures` for per-period contrasts, independent
+state anomalies, per-period mean shifts and anomaly scaling.
 
 A constant observation offset represents persistent bias in observations;
 the boundary correction describes bias in the supplied BC product. They enter
