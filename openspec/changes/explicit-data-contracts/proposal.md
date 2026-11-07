@@ -14,8 +14,11 @@ so consumers need not repeat checks of established guarantees.
   validation or trusted construction, with concrete-value checks at an explicit
   execution boundary and no full claim from partial validation.
 - Keep ordinary xarray containers and the existing borrowed-data trust model.
-- Specify explicit contract declaration, shared conformance coverage and
-  extension of shared contracts.
+- Make type docstrings the canonical guarantee description and document how
+  producers establish those guarantees without duplicate numerical computation.
+- Make parameter-dependent roles recoverable by consumers, and specify
+  mechanical contract discovery, shared conformance coverage and extension of
+  shared contracts.
 - Describe the recommended static-marker pattern in developer guidance; leave
   validator-library selection and concrete scientific schemas to application
   work.

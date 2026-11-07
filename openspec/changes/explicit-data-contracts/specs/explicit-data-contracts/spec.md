@@ -21,17 +21,30 @@ An xarray data contract SHALL have a named static subtype of `DataArray`,
 
 ### Requirement: Contracts own structural and numerical guarantees
 
-A contract SHALL describe the structural and numerical guarantees consumers
-may assume, including applicable variables, dimensions, coordinates, units,
-relationships and numerical tolerances. Each promised guarantee SHALL be
-established by validation or trusted construction before code relies on it.
-Partial validation SHALL NOT claim guarantees it has not established.
+The contract type's docstring SHALL be the canonical description of the
+structural and numerical guarantees consumers may assume, including applicable
+variables, dimensions, coordinates, units, relationships and numerical tolerance
+policies. Producer and input-boundary documentation SHALL explain how their
+operations establish those guarantees from their own preconditions. Each
+promised guarantee SHALL be established before code relies on it; partial
+validation SHALL NOT claim guarantees it has not established.
+
+Consumers SHALL be able to interpret the guarantees from the contract and the
+value without access to historical validator arguments. Parameter-dependent
+roles SHALL be recoverable through a fixed convention or information already
+carried by the value.
 
 #### Scenario: Check structure before numerical values
 
 - **WHEN** supplied data passes structural checks but a promised numerical property remains unestablished
 - **THEN** those checks do not return a type promising the numerical property
 - **AND** the full contract is claimed only after validation or trusted construction establishes it
+
+#### Scenario: Interpret a parameterized validation result
+
+- **WHEN** validation accepts a configurable observation-dimension name
+- **THEN** the contract specifies how a consumer identifies that dimension from the value or a fixed convention
+- **AND** the consumer does not need the earlier validation call's arguments to recover its meaning
 
 ### Requirement: Contract values retain ordinary runtime representations
 
@@ -49,8 +62,9 @@ instance methods or properties absent from the ordinary runtime container.
 
 ### Requirement: Validation preserves the supplied object
 
-A contract validator SHALL check independently supplied data and either return
-the identical object with the contract's static annotation or report the
+Within its documented execution preconditions, a contract validator SHALL check
+independently supplied data and either return the identical object with the
+contract's static annotation or report the
 violated requirement, identifying the affected variable, dimension, coordinate
 or scientific relationship.
 
@@ -59,7 +73,7 @@ normalization SHALL be an explicit preparation operation.
 
 #### Scenario: Validate independently supplied data
 
-- **WHEN** supplied data satisfies the contract
+- **WHEN** supplied data satisfies the contract and the validator's execution preconditions
 - **THEN** validation returns the identical object with a narrowed static type
 - **AND** its values, coordinates, attributes and array backing are unchanged
 
@@ -112,7 +126,15 @@ materialize numerical or auxiliary-coordinate payloads.
 Validation requiring concrete values SHALL occur at an explicit execution
 boundary, with materialization owned by that boundary rather than hidden in
 validation. Trusted construction MAY establish numerical guarantees for lazy
-data without executing it merely to repeat their validation.
+data without executing it merely to repeat their validation. A validator
+requiring concrete payloads SHALL document that precondition and reject lazy
+payloads requiring inspection without executing them.
+
+Producers SHALL reuse necessary preparation or algorithmic work to establish
+numerical guarantees where possible. Introducing a contract SHALL NOT add a
+separate computation repeating that work or force earlier materialization merely
+to obtain the annotation. Calling the standalone validator SHALL NOT be a
+required step in trusted production construction.
 
 #### Scenario: Validate lazy structure
 
@@ -126,6 +148,18 @@ data without executing it merely to repeat their validation.
 - **AND** its owner explicitly materializes it for numerical validation
 - **THEN** validation fails at that boundary with the violated scientific requirement
 - **AND** no full contract type is returned
+
+#### Scenario: Reuse a required numerical decomposition
+
+- **WHEN** preparation already performs a decomposition that can establish a required numerical property
+- **THEN** it uses that result to enforce the property's policy and returns its trusted product
+- **AND** introducing the contract adds no preliminary or subsequent decomposition solely to validate the same property
+
+#### Scenario: Reject unsupported lazy numerical validation
+
+- **WHEN** a full validator requires concrete values and receives lazy payloads it must inspect
+- **THEN** it reports the execution precondition without running the payload graph
+- **AND** it returns no full contract type
 
 ### Requirement: Extensions preserve shared guarantees
 
@@ -142,18 +176,22 @@ additional data required by its supported extensions.
 ### Requirement: Declared contracts have shared conformance coverage
 
 The package SHALL provide one explicit declaration mechanism for xarray
-contracts and enumerate declared contracts for shared conformance tests.
+contracts and mechanically discover contract modules for shared conformance
+tests, without maintaining a per-module import list.
 Declarations SHALL reject types outside the three supported xarray container
 families or without their own class-level validator. Records holding contracted
 fields SHALL remain ordinary records outside this declaration mechanism.
 
-Each declared contract SHALL supply valid examples for shared identity and
-validation coverage. Structural validation examples SHALL include lazy payloads;
-full numerical validation examples SHALL respect the explicit execution boundary.
+Each declared contract's tests SHALL supply valid examples and any required
+validator arguments for shared identity and validation coverage. Examples SHALL
+identify the validation operation and its execution requirements. Structural
+validation examples SHALL include lazy payloads; validators requiring concrete
+payloads SHALL have eager success examples and lazy rejection examples.
 
 #### Scenario: Check declaration coverage
 
-- **WHEN** the intended contract modules have been loaded for shared conformance tests
-- **THEN** every declared contract is checked for its validator and identity-preserving validation
+- **WHEN** a new contract module is added in the designated location and shared conformance tests run
+- **THEN** the module is discovered without adding it to an import list
+- **AND** every declared contract is checked for its validator and identity-preserving validation
 - **AND** structural validation leaves lazy example payloads unexecuted
 - **AND** a declared contract missing its required examples fails the suite

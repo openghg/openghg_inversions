@@ -56,9 +56,11 @@ Make established contracts visible in types
 
 Use a named contract at a handoff where an ordinary ``xr.DataArray``,
 ``xr.Dataset`` or ``xr.DataTree`` annotation leaves important guarantees
-implicit. Keep the contract description and validation together. Describe the
-variables, dimensions, indexed coordinates,
-units, relationships and numerical properties that consumers can assume.
+implicit. The type's docstring is the canonical description of the variables,
+dimensions, indexed coordinates, units, relationships and numerical properties
+that consumers can assume, including precise tolerance policies. Keep its
+validation colocated. Producer and input-boundary docstrings explain how their
+operations establish these guarantees from their own preconditions.
 Every promised guarantee must be established by validation or trusted
 construction before code relies on it.
 
@@ -79,7 +81,11 @@ preparation. These are not existing package functions.
 
    @xr_contract
    class BoundTransport(xr.Dataset):
-       """Static contract; runtime values remain ordinary Datasets."""
+       """Observation-aligned transport with ordinary Dataset runtime values.
+
+       The first dimension of H_bc_anomaly is the observation dimension.
+       H_bc_mass shares its ordered dimensions and indexed coordinates.
+       """
 
        __slots__ = ()
 
@@ -96,11 +102,16 @@ preparation. These are not existing package functions.
        bound = select_and_expand_transport(raw, observations)
        return cast(BoundTransport, bound)
 
-At an existing boundary accepting independently supplied data, call the
-validator and use its typed return value. A trusted producer instead establishes
+Where an existing input boundary needs a standalone check, call the validator
+and use its typed return value. A trusted producer instead establishes
 the contract through its preparation operations. ``cast`` only records that
-claim for the type checker; it performs no validation. A validator returning
-``None`` does not by itself narrow the caller's variable.
+claim for the type checker; it performs no validation. In this example, a
+consumer recovers the observation dimension from ``data.H_bc_anomaly.dims[0]``.
+``check_bound_layout`` checks that convention against ``observation_dim``;
+the cast does not retain validator arguments. Other contracts may record roles
+in metadata during preparation. Validation checks existing information rather
+than adding it. A validator returning ``None`` does not by itself narrow the
+caller's variable.
 
 Keep ordinary xarray representations when their shared coordinates,
 alignment and joint selection are useful. A static marker requires no runtime
@@ -110,11 +121,14 @@ type-check but fail at runtime. Use class-level helpers for additional behavior,
 and do not use ``isinstance`` to decide whether the contract holds. An ordinary
 record may hold contracted fields without repeating their validation.
 
-Declare contracts through the proposed package decorator, with schemas beside
-their producers. Shared tests enumerate declarations and require valid examples
-for each. Test modules must load the intended contract modules before checking
-registry coverage. Check structural-validation laziness separately from full
-validation requiring eager numerical examples.
+Declare contracts through the proposed package decorator in ``contracts.py``
+modules within their owning packages. Shared tests discover those files and
+import their modules without a hand-maintained import list. Each contract's
+tests supply valid examples, validation callables, required arguments and
+execution requirements. Structural validators accept lazy examples without
+compute; full validators requiring concrete values use eager success examples
+and reject unsupported lazy inputs without compute. A numerical contract need
+not also expose a separate structural-validation API.
 
 A family-specific contract can extend a shared contract by subtyping. Its
 validator establishes both shared and additional guarantees; the shared schema
@@ -129,8 +143,8 @@ rename or reduction preserves the schema; these operations may retain a stale
 contract annotation. Validate independently supplied results or use known
 construction covered by tests that pass its outputs to the validator. Do not
 add complete validation in every ``__post_init__`` or dataclass reconstruction.
-Mutating an object so that its declared contract no
-longer holds is caller error; interception or mutation warnings are not required.
+Mutating an object so that its declared contract no longer holds is caller
+error; interception or mutation warnings are not required.
 
 Use this pattern where it clarifies a real handoff, rather than introducing a
 special type for every intermediate. Keep normalization, alignment and unit
@@ -143,14 +157,31 @@ tolerance. Indexed-coordinate checks can be eager while payloads remain lazy.
 Arbitrary supplied values need numerical validation after their owner explicitly
 materializes related arrays together. Trusted construction can instead establish
 the same guarantees without computing lazy outputs merely to check them again.
+A full validator requiring concrete payloads documents that precondition and
+rejects lazy inputs it would need to inspect without computing them.
 
 A structure-only check must not return a type promising unestablished numerical
 properties. Introduce a weaker type only when a real handoff needs one; avoid a
 ``check_values=False`` option that still returns the full contract type. Reuse
-numerical work already required by the algorithm to enforce its policy. Positive
-semidefiniteness permits singular covariance matrices: a solve requiring positive
-definiteness owns that stronger requirement. Compatibility with a particular
-model's observation labels belongs to the composition boundary combining them.
+numerical work already required by the algorithm to enforce its policy: a
+preparation function that needs eigenvectors can check PSD using the eigenvalues
+from that same decomposition. Calling a full covariance validator beforehand
+would repeat expensive work. The preparation function returns its trusted
+product directly; the standalone validator remains useful for independently
+supplied values and producer conformance tests.
+
+Do not introduce a fully validated intermediate or force earlier materialization
+merely to obtain a contract annotation. At each adopted handoff, review which
+scans and decompositions run and which repeated checks disappear. Tests support
+the construction argument; example outputs alone do not prove it. Loading data
+does not establish finiteness.
+
+Positive semidefiniteness permits singular covariance matrices: a solve requiring
+positive definiteness owns that stronger requirement. Reusing numerical work as
+a check requires reliable failure behavior for the stated policy; Cholesky
+success alone does not establish symmetry or a specified rank tolerance.
+Compatibility with a particular model's observation labels belongs to the
+composition boundary combining them.
 
 Transpose, align, compute
 -------------------------

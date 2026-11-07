@@ -43,8 +43,10 @@ it does not prohibit explicit conversions between xarray container kinds.
 Use one package-defined `@xr_contract` decorator and registry in a small
 top-level module containing only declaration machinery. The decorator checks
 at declaration time that the class subclasses a supported xarray container and
-has its own staticmethod or classmethod `validate`. Concrete schemas stay beside
-their producers. A structural Protocol matching a method named `validate` would
+has its own staticmethod or classmethod `validate`. Concrete schemas live in
+`contracts.py` modules within their owning packages, beside their producers.
+The decorator rejects declarations whose defining module is not a `contracts`
+module. A structural Protocol matching a method named `validate` would
 also match unrelated classes and does not provide explicit discovery.
 
 Preserve the exact decorated subtype with a union-bound type parameter,
@@ -55,14 +57,45 @@ Python 3.12+ signature:
 def xr_contract[T: xr.DataArray | xr.Dataset | xr.DataTree](cls: type[T]) -> type[T]: ...
 ```
 
-The registry is the sole declaration inventory. Shared tests explicitly import
-the intended contract modules before comparing that inventory with examples
-supplied by each contract's tests; a registry alone cannot discover modules
-that were never imported. Fail on missing examples. Check identity for full
-validation and preservation of laziness for structural checks. A numerical
-contract's valid eager example must not be confused with a structure-only lazy
-example. Concrete checker probes verify base-value rejection, validator and
-producer return acceptance, and compatibility with the base container type.
+The registry is the sole declaration inventory. Shared tests discover
+`contracts.py` files under the package and import those modules before comparing
+the registry with examples from each contract's tests. Discovery walks filenames,
+not imports of every package module. Importing a discovered module still runs
+parent-package initialization, so contract modules and their parents must be
+considered when assessing import cost and optional dependencies.
+
+Fail on missing examples. Each example supplies the validation callable, its
+arguments and execution requirements: full validation checks identity on valid
+supported inputs; structural validators accept lazy examples without compute;
+validators requiring concrete values reject unsupported lazy inputs without
+compute. There is no requirement for every numerical contract to expose a
+separate structural validator. Concrete checker probes verify base-value
+rejection, validator and producer return acceptance, and compatibility with the
+base container type.
+
+A misplaced declaration is rejected when its module is imported. This cannot
+detect a misplaced declaration in a module that is never imported; universal
+placement enforcement would require an additional source-level check. The
+current design makes discovery automatic for the designated module convention,
+without claiming that stronger enforcement.
+
+### Document guarantees and recover parameter-dependent roles
+
+The type's docstring is the canonical statement of what consumers may assume,
+including numerical tolerance policies. Producers and accepting boundaries
+document how they establish those guarantees from their input preconditions.
+Tests provide examples and review checks the reasoning; merely loading data or
+passing example tests does not establish a numerical property for all valid
+inputs. A standalone validator is an executable check, not a compulsory step in
+production construction.
+
+Validation arguments are not retained by a cast. A configurable observation
+dimension must therefore be identifiable from the value or a fixed convention,
+such as a role recorded during preparation or the first dimension of a named
+variable. The validator checks that convention without adding metadata. The
+guide's pseudocode uses the first dimension of the anomaly variable. Passing
+additional context onward is allowed, but the static type does not encode an
+arbitrary earlier argument's value or its relationship to that context.
 
 ### Keep related arrays together and extend shared contracts
 
@@ -89,13 +122,25 @@ of arbitrary supplied numerical values happens after the owner explicitly
 materializes related arrays together. Validation returns that same supplied
 object; it does not hide compute or replacement. Trusted construction can
 establish numerical guarantees even for lazy results. Laziness alone says
-nothing about whether a guarantee has been established.
+nothing about whether a guarantee has been established. A full validator that
+requires concrete payloads documents that input precondition and rejects lazy
+payloads it needs to inspect without computing them.
 
 A structure-only check cannot return a type promising unestablished numerical
 properties. It can return no narrowed type, or a weaker type if a real handoff
 needs one. Avoid a flag such as `check_values=False` that retains a full-contract
 return annotation. Reuse required numerical work to enforce the scientific
-policy rather than adding a redundant preliminary decomposition.
+policy rather than adding a redundant preliminary decomposition. For example,
+preparation needing an eigenbasis accepts structurally prepared input, checks
+PSD using its required eigenvalues and returns a trusted result. It must not
+first call a standalone PSD validator that repeats the decomposition.
+
+Introduce a numerical contract only at a useful handoff after its guarantees
+are naturally established. Do not force earlier materialization or add a fully
+validated intermediate just to obtain an annotation. For concrete applications,
+review which scans and decompositions run before and after adoption, and use
+focused execution tests to catch duplicated work. Required new numerical work
+on changed values is distinct from rechecking an established input.
 
 Concrete covariance cases illustrate the distinction:
 
@@ -106,16 +151,12 @@ Concrete covariance cases illustrate the distinction:
 | Compatibility with this model's observation labels | Composition boundary; exact alignment |
 | Positive definiteness required for a solve | Stronger contract or numerical operation; required factorization |
 
-A companion dimension might use `_2`; the existing covariance-coordinate helper
-uses a configurable name with `_cov` as its default. The concrete contract must
-settle that convention. PSD permits singular matrices; it must not silently
-become a positive-definite requirement. Finite-value policy likewise belongs to
-the specific contract. Existing `NativeCovarianceAction` semantics illustrate
-trusting PSD construction without globally certifying a matrix-free operator;
-they do not require registering that Protocol as an xarray contract. Existing
-spectral preparation in `observation_error.py` and `models/scalar_sigma.py`
-provides opportunities to reuse eigenvalues already needed by the algorithm.
-These cases are tracked in [#1036](https://github.com/openghg/openghg_inversions/issues/1036).
+PSD permits singular matrices; it must not silently become a positive-definite
+requirement. A factorization is usable as a check only when its failure behavior
+establishes the actual policy: Cholesky success alone is not a rank-tolerance or
+symmetry check. Finite-value policy likewise belongs to the specific contract.
+Concrete coordinate conventions and covariance application examples are tracked
+in [#1036](https://github.com/openghg/openghg_inversions/issues/1036).
 
 ### Separate validation from preparation and trust construction
 
