@@ -10,7 +10,7 @@ from typing import Any, cast
 
 import pytest
 
-from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeChoice
+from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice, MultiplicativeChoice
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likelihood
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
@@ -510,10 +510,34 @@ def test_boundary_mean_shift_hyperprior_configuration(cached: bool, anomaly_scal
         Co2ModelConfig.from_params(config)
 
 
+@pytest.mark.parametrize("boundary, expected", [
+    ({"anomaly_scale": 0.3, "anomalies": "period_contrasts", "frequency": "monthly"},
+     AdditiveChoice(None, 0.3, anomalies="period_contrasts", frequency="monthly")),
+    ({"anomaly_scale": 0.3, "anomalies": "independent"}, AdditiveChoice(None, 0.3, anomalies="independent")),
+    ({"anomaly_scale": 0.0, "anomalies": "period_contrasts", "mean_by_period": True, "frequency": "monthly",
+      "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.5}},
+     AdditiveChoice({"pdf": "normal", "mu": 0.0, "sigma": 0.5}, 0.0, anomalies="period_contrasts",
+                    mean_by_period=True, frequency="monthly")),
+    ({"scale_sd": 0.8, "reference": "whole_window_transport_mean"},
+     AnomalyScalingChoice(None, 0.8, reference="whole_window_transport_mean")),
+    ({"scale_sd": 0.8, "reference": 401.5, "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.5}},
+     AnomalyScalingChoice({"pdf": "normal", "mu": 0.0, "sigma": 0.5}, 0.8, reference=401.5)),
+])
+def test_boundary_structure_keys_select_choices(boundary, expected) -> None:
+    config = _ordinary()
+    config["model"] = {"boundary": boundary}
+    assert Co2ModelConfig.from_params(config).model_arguments()["boundary"] == expected
+
+
 @pytest.mark.parametrize("boundary, message", [
-    ({"mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.5}}, "together"),
-    ({"anomaly_scale": 0.3}, "together"),
-    ({"anomaly_scale": 0.0}, "together"),
+    ({"mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.5}}, "require anomaly_scale or scale_sd"),
+    ({"anomaly_scale": 0.3}, "may omit the mean shift prior"),
+    ({"anomaly_scale": 0.0, "anomalies": "independent"}, "may omit the mean shift prior"),
+    ({"anomaly_scale": 0.3, "anomalies": "curtains"}, "Unknown boundary anomaly structure"),
+    ({"anomaly_scale": 0.3, "reference": 400.0}, "only to anomaly scaling"),
+    ({"scale_sd": 0.3, "anomaly_scale": 0.3}, "selects anomaly scaling"),
+    ({"scale_sd": 0.3, "mean_by_period": True}, "requires a mean shift prior and a boundary frequency"),
+    ({"scale_sd": 0.3, "reference": "rolling"}, "bc_reference must be"),
     ({"anomaly_scale": -0.1, "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.5}}, "non-negative"),
     ({"anomaly_scale": float("nan")}, "finite"),
     ({"anomaly_scale": float("inf")}, "finite"),
