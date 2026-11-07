@@ -111,6 +111,13 @@ remains active with its separate programme acceptance still open.
        <../../openspec/changes/move-alignments-to-model-boundary/tasks.md>`.
        Current explanations: :doc:`observation_uncertainty`,
        :doc:`numerical_array_ownership` and :doc:`/usage/rhime_configuration`.
+   * - Explicit labelled-data contracts
+     - :download:`Explicit data contracts proposal
+       <../../openspec/changes/explicit-data-contracts/specs/explicit-data-contracts/spec.md>`
+     - Proposed named static contracts, identity-preserving validation and
+       trusted producer/consumer handoffs. No runtime contract types are
+       delivered by this proposal. Recommended pattern and pseudocode:
+       :doc:`validation_and_xarray`.
    * - External resources and basis exports
      - :download:`RHIME resource I/O
        <../../openspec/specs/rhime-resource-io/spec.md>`
