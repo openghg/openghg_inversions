@@ -234,10 +234,10 @@ def bind_boundary_sensitivity(
 def validate_boundary_operands(operands: xr.Dataset) -> bool:
     """Detect raw centered operands and check their structure before period expansion.
 
-    Centered transport is present when any of ``H_bc_anomaly``, ``H_bc_mass``
+    Centered sensitivity is present when any of ``H_bc_anomaly``, ``H_bc_mass``
     or ``bc_reference`` exists or ``boundary_representation`` is
     ``'centered-v1'``. Present operands must then satisfy
-    :class:`~openghg_inversions.models.boundary.contracts.RawCenteredTransport`,
+    :class:`~openghg_inversions.models.boundary.contracts.RawCenteredSensitivity`,
     whose docstring lists the structural guarantees.
 
     Args:
@@ -251,16 +251,16 @@ def validate_boundary_operands(operands: xr.Dataset) -> bool:
 
     Raises:
         ValueError: If ``boundary_representation`` is unsupported, or centered
-            operands violate the raw centered transport contract.
+            operands violate the raw centered sensitivity contract.
     """
-    from openghg_inversions.models.boundary.contracts import CENTERED_NAMES, RawCenteredTransport
+    from openghg_inversions.models.boundary.contracts import CENTERED_NAMES, RawCenteredSensitivity
 
     representation = operands.attrs.get("boundary_representation")
     if representation is not None and representation != "centered-v1":
         raise ValueError(f"Unsupported boundary_representation {representation!r}.")
     if not set(CENTERED_NAMES).intersection(operands.variables) and representation is None:
         return False
-    RawCenteredTransport.validate(operands)
+    RawCenteredSensitivity.validate(operands)
     return True
 
 

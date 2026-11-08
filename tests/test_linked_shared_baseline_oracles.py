@@ -129,7 +129,7 @@ def review_case(mode="multiplicative", method="A", *, partition_size=None, bound
         choices = {channel: SharedBaselineChoice(boundary, sd, mode) for channel, sd in DELTA_SD.items()}
         inputs = dict(
             co2_sensitivity=raw["co2"], o2_sensitivity=raw["o2"], retained_prior=prior,
-            fixed_prior_contribution=fixed, boundary_transport=transports,
+            fixed_prior_contribution=fixed, boundary_sensitivity=transports,
             outer=outer, sampled_outer=sampled, calibrated_prior=calibration,
         )
         return bind_linked_shared_baseline(choices, natives, **{**inputs, **overrides})
@@ -485,7 +485,7 @@ def test_actual_restored_trace_preserves_pattern_identity_and_reconstruction(tmp
     backend.close()
     trace = pm.to_inference_data(trace=pm.backends.base.MultiTrace([backend]), model=model)
     trace = restore_inferencedata_coords(trace, get_coord_registry(model))
-    from openghg_inversions.rhime.co2.boundary_output import restore_absolute_predictives
+    from openghg_inversions.postprocessing.boundary_outputs import restore_absolute_predictives
     trace = restore_absolute_predictives(trace)
     np.testing.assert_allclose(trace.observed_data.y, kwargs["observations"])
     trace = annotate_linked_shared_baseline_trace(trace, prepared)

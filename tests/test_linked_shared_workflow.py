@@ -382,7 +382,7 @@ def test_loaded_row_subsets_keep_frozen_science_and_construct_one_selected_prior
 def test_nonunit_mass_absolute_predictives_and_snapshot_replay(native, tmp_path, cached):  # noqa: F811
     from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
     from openghg_inversions.rhime.co2.co2_o2_model import _gather_co2_o2_sensitivity
-    from openghg_inversions.rhime.co2.boundary_output import restore_absolute_predictives
+    from openghg_inversions.postprocessing.boundary_outputs import restore_absolute_predictives
     from openghg_inversions.serialization import load_trace, save_trace
 
     raw = {}

@@ -103,9 +103,9 @@ arbitrary earlier argument's value or its relationship to that context.
 Replace the motivating `CenteredOperands` record with a raw centered Dataset
 contract in the boundary application. Its binding already packs anomaly and
 mass into a Dataset for joint selection and expansion. The pilot owns binding
-on `BoundCenteredTransport.bind(raw, observations, ...)`, and weight alignment
-on `BoundAdditiveTransport.bind_weights(bound, weights)`. An ordinary component
-record such as `AdditiveBoundary(choice, data: BoundAdditiveTransport)` holds
+on `BoundCenteredSensitivity.bind(raw, observations, ...)`, and weight alignment
+on `BoundAdditiveSensitivity.bind_weights(bound, weights)`. An ordinary component
+record such as `AdditiveBoundary(choice, data: BoundAdditiveSensitivity)` holds
 the contracted value;
 it does not repeat its validation or join the xarray contract registry.
 A record with independent cross-field invariants can still own its composition
