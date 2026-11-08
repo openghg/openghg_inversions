@@ -27,7 +27,6 @@ from openghg_inversions.models.components import (
     AffineBlock,
     AffineConcentrationTerm,
     _add_prepared_correlated_lognormal_state_with_activity,
-    add_model_data,
     likelihood_representation,
     prepare_active_correlated_lognormal_prior,
 )
@@ -220,13 +219,11 @@ def build_co2_o2_cached_sigma_model(
             sum(term.output for term in terms),
             dims=output_dim,
         )
-        likelihood_mean, likelihood_observations, shift = likelihood_representation(
+        likelihood_mean, likelihood_observations = likelihood_representation(
             terms,
             observations,
             mean,
         )
-        if shift is not None:
-            add_model_data(shift.rename("boundary_reference_shift"))
         cached = _add_cached_likelihood(
             tuple(terms),
             covariance=covariance,

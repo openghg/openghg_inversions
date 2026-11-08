@@ -111,6 +111,14 @@ remains active with its separate programme acceptance still open.
        <../../openspec/changes/move-alignments-to-model-boundary/tasks.md>`.
        Current explanations: :doc:`observation_uncertainty`,
        :doc:`numerical_array_ownership` and :doc:`/usage/rhime_configuration`.
+   * - Explicit labelled-data contracts
+     - :download:`Explicit data contracts proposal
+       <../../openspec/changes/explicit-data-contracts/specs/explicit-data-contracts/spec.md>`
+     - Active proposal with an implemented centered-boundary pilot: named
+       raw/bound Dataset contracts, identity-preserving metadata validation,
+       class-level operations and shared conformance/checker coverage.
+       Covariance remains follow-up application work. Pattern and numerical
+       ownership: :doc:`validation_and_xarray`.
    * - External resources and basis exports
      - :download:`RHIME resource I/O
        <../../openspec/specs/rhime-resource-io/spec.md>`

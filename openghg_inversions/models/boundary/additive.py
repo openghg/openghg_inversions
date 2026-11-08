@@ -1,7 +1,7 @@
 """Additive boundary corrections in observation concentration units.
 
 With centered transport ``A``, ``M`` and ``c``
-(:class:`~.operands.CenteredOperands`; see
+(:class:`~.contracts.BoundCenteredTransport`; see
 :doc:`/usage/centered_boundary_conditions`) the absolute boundary
 contribution is ``A 1 + c M 1 + M d``. The corrections ``d`` live on the bound
 ``(bc_curtain, bc_period)`` states and are transported only by the
@@ -40,27 +40,22 @@ from dataclasses import dataclass
 from typing import Any, get_args
 
 import numpy as np
-import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
-from dask import is_dask_collection
-from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.boundary_sensitivity import validate_centered_boundary_periods
 from openghg_inversions.inversion_inputs import DatetimeLike
-from openghg_inversions.models.components import AffineBlock, AffineConcentrationTerm
-from openghg_inversions.models.coords import add_model_data, component_coords
+from openghg_inversions.models.components import AffineConcentrationTerm
 
 from .additive_anomalies import (
     AnomalyStructure,
     add_anomalies,
     anomaly_basis,
     anomaly_outputs,
-    normalized_centering_weights,
 )
-from .mean_shift import add_boundary_mean_shift, mean_shift_outputs
-from .operands import CenteredOperands, check_bound_transport, materialized_reference_shift
+from .centered import add_centered_transport, centered_outputs
+from .contracts import BoundAdditiveTransport, BoundCenteredTransport, RawCenteredTransport
 from .outputs import BoundaryOutputs
 
 
@@ -121,17 +116,17 @@ class AdditiveChoice:
         if self.mean_by_period and (self.mean_prior is None or self.frequency is None):
             raise ValueError("bc_mean_by_period requires a mean shift prior and a boundary frequency.")
 
-    def bind(self, observations: xr.DataArray, transport: CenteredOperands) -> AdditiveBoundary:
+    def bind(self, observations: xr.DataArray, transport: RawCenteredTransport) -> AdditiveBoundary:
         """Bind centered transport, and any centering weights, to one fit.
 
         Args:
             observations: One channel's observations with its observation axis
                 first. Its labels select and order the transport rows; its
                 ``time`` values assign rows to boundary periods.
-            transport: Prepared centered operands on their raw ``nmeasure``
-                or ``time`` axis. Weighted anomalies also need its
-                ``weights`` on ``(bc_curtain, bc_period)``; other structures
-                ignore them.
+            transport: Raw centered transport on its ``nmeasure`` or ``time``
+                axis. Weighted anomalies also need its
+                ``bc_centering_weights`` on ``(bc_curtain, bc_period)``; other
+                structures ignore them.
 
         Returns:
             The bound boundary. ``H_bc_anomaly`` and ``H_bc_mass`` lie on
@@ -147,20 +142,14 @@ class AdditiveChoice:
                 labels differ from the bound states (for example because they
                 were prepared with another calendar).
         """
-        data = transport.bind(observations, frequency=self.frequency, anchor_time=self.anchor_time)
+        data = BoundCenteredTransport.bind(
+            transport, observations, frequency=self.frequency, anchor_time=self.anchor_time,
+        )
         if self.anomalies != "weighted":
             return AdditiveBoundary(self, data)
-        if transport.weights is None:
+        if "bc_centering_weights" not in transport:
             raise ValueError("Weighted additive boundary anomalies require bc_centering_weights.")
-        weights = transport.weights
-        periods = weights.indexes["bc_period"]
-        if isinstance(periods, pd.DatetimeIndex):
-            # Period starts from the fit calendar are nanosecond timestamps.
-            weights = weights.assign_coords(bc_period=periods.as_unit("ns"))
-        weights = weights.stack(bc_region=("bc_curtain", "bc_period"))
-        xr.align(data.H_bc_anomaly, weights, join="exact", copy=False, exclude={str(observations.dims[0])})
-        # Labels match exactly, so the bound state index is reused for the weights.
-        return AdditiveBoundary(self, data.assign(bc_centering_weights=weights.variable))
+        return AdditiveBoundary(self, BoundAdditiveTransport.bind_weights(data, transport.bc_centering_weights))
 
 
 @dataclass(frozen=True)
@@ -169,34 +158,31 @@ class AdditiveBoundary:
 
     Attributes:
         choice: The resolved additive choice.
-        data: ``H_bc_anomaly`` (concentration units) and ``H_bc_mass``
-            (dimensionless) on ``(observation, bc_region)``, where
-            ``bc_region`` indexes ``(bc_curtain, bc_period)`` states; scalar
-            ``bc_reference`` in the anomaly's units; and, for weighted
-            anomalies, positive ``bc_centering_weights`` on ``bc_region``.
+        data: :class:`~.contracts.BoundCenteredTransport`: ``H_bc_anomaly``
+            (concentration units) and ``H_bc_mass`` (dimensionless) on
+            ``(observation, bc_region)``, where ``bc_region`` indexes
+            ``(bc_curtain, bc_period)`` states, and scalar ``bc_reference``
+            in the anomaly's units. Weighted anomalies hold the
+            :class:`~.contracts.BoundAdditiveTransport` extension, with
+            positive ``bc_centering_weights`` on ``bc_region``.
             The arrays are borrowed and may be Dask-backed. Materialize them
             jointly with the other model inputs before :meth:`add`; rows may
             be padded or subset with ``dataclasses.replace``, keeping that
             layout.
 
-    Raises:
-        ValueError: On construction, if ``data`` lacks a variable or does not
-            have that layout. Only dimensions are checked.
+    :meth:`AdditiveChoice.bind` establishes ``data`` by construction, so the
+    record trusts that contract rather than validating it again. Code
+    replacing ``data`` must preserve the contract; see
+    :class:`~.contracts.BoundCenteredTransport`.
     """
 
     choice: AdditiveChoice
-    data: xr.Dataset
-
-    def __post_init__(self) -> None:
-        check_bound_transport(self.data, ("H_bc_anomaly", "H_bc_mass"), state_dim="bc_region")
-        weights = self.data.get("bc_centering_weights")
-        if self.choice.anomalies == "weighted" and (weights is None or weights.dims != ("bc_region",)):
-            raise ValueError("Bound weighted anomalies need bc_centering_weights on bc_region; bind the choice again.")
+    data: BoundCenteredTransport
 
     @property
     def observation_dim(self) -> str:
         """Observation dimension of the bound transport."""
-        return str(self.data.H_bc_anomaly.dims[0])
+        return BoundCenteredTransport.observation_dim(self.data)
 
     @property
     def has_anomalies(self) -> bool:
@@ -218,7 +204,7 @@ class AdditiveBoundary:
         """Normalized centering weights for weighted anomalies, else ``None``."""
         if self.choice.anomalies != "weighted":
             return None
-        return normalized_centering_weights(self.data.bc_centering_weights)
+        return BoundAdditiveTransport.normalized_weights(self.data.bc_centering_weights)
 
     def anomaly_factor(self) -> xr.DataArray | None:
         """Observation-space anomaly design scaled to standard-normal coordinates.
@@ -277,80 +263,38 @@ class AdditiveBoundary:
                 weights are invalid, or a whole-window mean prior is not scalar.
             RuntimeError: If the model lacks the coordinate registry.
         """
-        if output_dim != self.observation_dim:
-            raise ValueError(f"output_dim {output_dim!r} is not the bound observation dimension {self.observation_dim!r}.")
-        if any(is_dask_collection(value) for value in self.data.data_vars.values()):
-            raise ValueError("Materialize boundary data jointly with model inputs before add().")
-
-        # Values become checkable only after joint materialization.
         choice = self.choice
-        anomaly = self.data.H_bc_anomaly
-        mass = self.data.H_bc_mass
-        reference = self.data.bc_reference
-        reference_shift = materialized_reference_shift(anomaly, mass, reference).rename(f"{prefix}bc_reference_shift")
-        fixed = anomaly.sum("bc_region", skipna=False).assign_attrs(anomaly.attrs)
+        graph = add_centered_transport(self.data, output_dim=output_dim, prefix=prefix, owner=owner)
         weights = self._centering_weights()
-
-        # Owner-qualified coordinates plus model data, sharing the observation axis.
-        def register_boundary_data(array: xr.DataArray, name: str) -> TensorVariable:
-            """Register a boundary array with the recipe's coordinate ownership."""
-            return add_model_data(component_coords(array, owner, observation_dim=output_dim), f"{prefix}{name}")
-
-        a = register_boundary_data(anomaly, "H_bc_anomaly")
-        m = register_boundary_data(mass, "H_bc_mass")
-        register_boundary_data(reference, "bc_reference")
         # Save the resolved width for replay; the priors use the scalar directly.
-        register_boundary_data(xr.DataArray(choice.anomaly_scale), "bc_anomaly_scale")
+        graph.register(xr.DataArray(choice.anomaly_scale), "bc_anomaly_scale")
         if weights is not None:
-            register_boundary_data(weights, "bc_centering_weights")
-        state_dim = str(component_coords(mass, owner, observation_dim=output_dim).dims[1])
-        n_states, n_rows = mass.sizes["bc_region"], mass.sizes[output_dim]
-        latents: tuple[TensorVariable, ...] = ()
-        blocks: list[AffineBlock] = []
-
-        # Mean shift, transported through M.
-        mean_state, mean_signal = pt.zeros((n_states,)), pt.zeros((n_rows,))
-        if choice.mean_prior is not None:
-            mean = add_boundary_mean_shift(
-                choice.mean_prior, mass, m, by_period=choice.mean_by_period,
-                output_dim=output_dim, prefix=prefix, owner=owner,
-            )
-            mean_state, mean_signal = mean.state, mean.signal
-            latents += (mean.latent,)
-            blocks.append(mean.block)
+            graph.register(weights, "bc_centering_weights")
+        mass = self.data.H_bc_mass
+        corrections = graph.mean_shift(choice.mean_prior, by_period=choice.mean_by_period)
 
         # Anomalies on the selected basis; independent states need none.
-        anomaly_state, anomaly_signal = pt.zeros((n_states,)), pt.zeros((n_rows,))
         if self.has_anomalies:
             basis = anomaly_basis(choice.anomalies, mass.bc_region, weights)
-            anomalies = add_anomalies(
-                mass, m, basis, choice.anomaly_scale, output_dim=output_dim, prefix=prefix, owner=owner,
-            )
-            anomaly_state, anomaly_signal = anomalies.state, anomalies.signal
-            latents += (anomalies.latent,)
-            blocks.append(anomalies.block)
+            corrections.append(add_anomalies(
+                mass, graph.mass, basis, choice.anomaly_scale, output_dim=output_dim, prefix=prefix, owner=owner,
+            ))
+        else:
+            # Record the intentionally zero anomalies, so replay needs no policy.
+            pm.Deterministic(f"{prefix}bc_anomaly", pt.zeros((mass.sizes["bc_region"],)), dims=graph.state_dim)
+            pm.Deterministic(f"{prefix}mu_bc_anomaly", pt.zeros((mass.sizes[output_dim],)), dims=output_dim)
 
         # Complete boundary contribution A 1 + c M 1 + M d.
-        pm.Deterministic(f"{prefix}bc_correction", mean_state + anomaly_state, dims=state_dim)
-        absolute_reference = register_boundary_data(
-            (fixed + reference_shift).assign_attrs(anomaly.attrs), "mu_bc_reference",
-        )
-        output = pm.Deterministic(
-            f"{prefix}mu_bc", absolute_reference + mean_signal + anomaly_signal, dims=output_dim,
-        )
-        return AffineConcentrationTerm(
-            output, pt.sum(a, axis=1) + mean_signal + anomaly_signal, reference_shift,
-            fixed_contribution=fixed, blocks=tuple(blocks), sampled_rvs=latents,
-        )
+        correction = sum((item.state for item in corrections), start=pt.zeros((mass.sizes["bc_region"],)))
+        pm.Deterministic(f"{prefix}bc_correction", correction, dims=graph.state_dim)
+        return graph.term(corrections)
 
     def outputs(self, prefix: str = "") -> BoundaryOutputs:
         """Declare the roles, units and metadata of this boundary's graph.
 
         Declarations depend only on the choice and the bound data, so they
-        are available before :meth:`add` or sampling. Weighted anomalies with
-        a positive scale and several states always declare anomaly outputs,
-        so missing anomaly draws remain errors. Otherwise their zero
-        anomalies are reconstructed from the saved scale and weights.
+        are available before :meth:`add` or sampling. Anomaly outputs are
+        always declared; :meth:`add` records zeros when none are sampled.
 
         Args:
             prefix: Graph-name prefix used for :meth:`add`.
@@ -362,36 +306,14 @@ class AdditiveBoundary:
         """
         choice = self.choice
         concentration = self.data.bc_reference.attrs["units"]
-        roles = {
-            "boundary_concentration": "mu_bc",
-            "boundary_anomaly": "H_bc_anomaly",
-            "boundary_mass": "H_bc_mass",
-            "boundary_reference": "bc_reference",
-            "boundary_correction": "bc_correction",
-            "boundary_reference_concentration": "mu_bc_reference",
-        }
-        units = {name: concentration for name in (
-            "mu_bc", "H_bc_anomaly", "bc_reference", "bc_correction", "mu_bc_reference",
-        )}
-        units["H_bc_mass"] = "1"
-
-        mean = mean_shift_outputs(choice.mean_prior, by_period=choice.mean_by_period, concentration=concentration)
-        roles.update(mean.roles)
-        units.update(mean.units)
-
         anomalies = anomaly_outputs(choice.anomalies, sampled=self.has_anomalies, concentration=concentration)
-        roles.update(anomalies.roles)
-        units.update(anomalies.units)
-
-        metadata = {
-            "boundary_formulation": "additive",
-            "boundary_representation": "centered-v1",
-            "boundary_anomalies": choice.anomalies,
-            **mean.metadata,
-            "bc_frequency": choice.frequency,
-            "bc_anchor_time": None if choice.anchor_time is None else str(choice.anchor_time),
-        }
-        return BoundaryOutputs(roles, units, metadata).prefixed(prefix)
+        return centered_outputs(
+            self.data, "additive", mean_prior=choice.mean_prior, mean_by_period=choice.mean_by_period,
+            frequency=choice.frequency, anchor_time=choice.anchor_time,
+            roles={"boundary_correction": "bc_correction", **anomalies.roles},
+            units={"bc_correction": concentration, **anomalies.units},
+            metadata={"boundary_anomalies": choice.anomalies},
+        ).prefixed(prefix)
 
 
 __all__ = ["AdditiveBoundary", "AdditiveChoice", "AnomalyStructure"]

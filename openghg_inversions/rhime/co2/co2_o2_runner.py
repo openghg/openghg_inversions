@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import replace
 from typing import Any, Literal
 
 import numpy as np
@@ -17,13 +16,13 @@ from openghg_inversions.models.biosphere import annotate_biosphere_prior
 from openghg_inversions.array_ops import select_gathered_data_array, to_dense_tree
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
-from openghg_inversions.models.boundary import Boundary, BoundaryChoice, CenteredOperands, MultiplicativeChoice
+from openghg_inversions.models.boundary import Boundary, BoundaryChoice, MultiplicativeChoice
 from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
-from .boundary_output import restore_absolute_predictives
+from .boundary_output import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
 from .co2_o2_model import _validate_channel_offset_options, build_co2_o2_model
 from .co2_o2_preparation import Co2O2PreparedInputs
 
@@ -207,7 +206,7 @@ def _annotate_co2_o2_trace(
 
 
 def _bind_co2_o2_boundaries(
-    prepared: Co2O2PreparedInputs, boundary: Mapping[str, BoundaryChoice[CenteredOperands]] | None,
+    prepared: Co2O2PreparedInputs, boundary: Mapping[str, BoundaryChoice] | None,
 ) -> dict[str, Boundary]:
     """Bind each channel's boundary choice once to its native prepared transport."""
     if boundary is not None and (not isinstance(boundary, Mapping) or set(boundary) - {"co2", "o2"}):
@@ -222,9 +221,7 @@ def _bind_co2_o2_boundaries(
             stack_dim=str(prepared.observations.dims[0]),
         ).rename({str(prepared.observations.dims[0]): str(sensitivity.dims[0])})
         if channel in prepared.boundary_operands:
-            operands = CenteredOperands.from_dataset(prepared.boundary_operands[channel])
-            operands = replace(operands, weights=prepared.bc_centering_weights.get(channel))
-            result[channel] = choice.bind(native, operands)
+            result[channel] = choice.bind(native, prepared.boundary_operands[channel])
         elif channel not in prepared.boundary_sensitivity:
             raise ValueError(f"The {channel} boundary choice requires prepared {channel} boundary inputs.")
         elif isinstance(choice, MultiplicativeChoice):
@@ -256,7 +253,7 @@ def build_rhime_co2_o2(
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
-    boundary: Mapping[str, BoundaryChoice[CenteredOperands]] | None = None,
+    boundary: Mapping[str, BoundaryChoice] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     tau_hours: float | Mapping[str, float] | None = None,
@@ -342,7 +339,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
-    boundary: Mapping[str, BoundaryChoice[CenteredOperands]] | None = None,
+    boundary: Mapping[str, BoundaryChoice] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     sampler: RhimeSampler | Literal["default"] = "default",
@@ -490,7 +487,7 @@ def annotate_co2_o2_trace(
     species/site grouping and joint likelihood/predictive scope. The trace is
     updated and returned; no graph is constructed or inference performed.
     """
-    trace.attrs["rhime_boundary_format_version"] = 1
+    trace.attrs["rhime_boundary_format_version"] = BOUNDARY_FORMAT_VERSION
     restore_absolute_predictives(trace)
     trace = _annotate_co2_o2_trace(trace, built=built)
     if "log_likelihood" in trace.children and "y" in trace["log_likelihood"]:

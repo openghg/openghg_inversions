@@ -1,5 +1,6 @@
 """Dense two-tracer oracle and matched linked fixed-OU sampler contracts."""
 
+from openghg_inversions.models.boundary import BoundCenteredTransport
 from boundary_test_utils import bound_linked_model_arguments
 
 from dataclasses import replace
@@ -33,6 +34,7 @@ from openghg_inversions.serialization import save_trace, load_trace
 from test_rhime_co2_o2 import _inputs, _independent_error
 from test_cached_sigma_sampling import _nuts_stats
 from test_co2_cached_sigma import _assert_native_joint_outputs, _compound
+from boundary_test_utils import raw_transport
 
 
 def _prepared():
@@ -486,7 +488,6 @@ def test_linked_ou_rejects_missing_station_labels():
 def test_centered_linked_cache_matches_independent_dense_gaussian(mixed, o2_reference):
     """Direct centered arithmetic survives large O2 backgrounds and native labels."""
     import pymc as pm
-    from openghg_inversions.models.boundary import CenteredOperands
     from openghg_inversions.array_ops import select_gathered_data_array
 
     with pytensor.config.change_flags(floatX="float64"):
@@ -513,7 +514,7 @@ def test_centered_linked_cache_matches_independent_dense_gaussian(mixed, o2_refe
                 "H_bc_mass": xr.DataArray(mass, dims=("nmeasure","bc_region"), attrs={"units":"1"}),
                 "bc_reference": xr.DataArray(reference, attrs={"units":"ppm"}),
             },coords={"nmeasure":sensitivity[native_dim].values,"bc_region":labels},attrs={"boundary_representation":"centered-v1"})
-            aligned = CenteredOperands.from_dataset(raw).bind(native)
+            aligned = BoundCenteredTransport.bind(raw_transport(raw), native)
             active = [True, True] if channel == "co2" else [True, False, False]
             fixed = [1.,1.] if channel == "co2" else [1.,1.+2e-13,.7]
             policies[channel] = StateActivity(

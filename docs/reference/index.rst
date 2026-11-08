@@ -317,7 +317,16 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.boundary.AdditiveBoundary
    openghg_inversions.models.boundary.AnomalyScalingChoice
    openghg_inversions.models.boundary.AnomalyScalingBoundary
-   openghg_inversions.models.boundary.CenteredOperands
+   openghg_inversions.models.boundary.RawCenteredTransport
+   openghg_inversions.models.boundary.BoundCenteredTransport
+   openghg_inversions.models.boundary.BoundAdditiveTransport
+   openghg_inversions.models.boundary.RawCenteredTransport.validate_weights
+   openghg_inversions.models.boundary.RawCenteredTransport.with_centering_weights
+   openghg_inversions.models.boundary.BoundCenteredTransport.bind
+   openghg_inversions.models.boundary.BoundCenteredTransport.reference_shift
+   openghg_inversions.models.boundary.BoundAdditiveTransport.bind_weights
+   openghg_inversions.models.boundary.BoundAdditiveTransport.normalized_weights
+   openghg_inversions.xr_contracts.xr_contract
    openghg_inversions.models.boundary.BoundaryOutputs
    openghg_inversions.array_ops.to_dense_tree
    openghg_inversions.models.add_linked_linear_component
