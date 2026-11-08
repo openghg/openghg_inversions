@@ -35,6 +35,7 @@ dependencies = [
     "arviz>=1.1,<2",
     "numpyro[cpu]",
     "xarray>=2025.08.0",
+    "xarray-validate==0.0.5",
     "pandas<3.0",
     "matplotlib",
     "scipy",

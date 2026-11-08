@@ -14,14 +14,16 @@ from openghg_inversions.boundary_sensitivity import BoundaryAlignment, validate_
 from openghg_inversions.filters import pblh_min
 from openghg_inversions.inversion_data import PreparedInputs, prepare_rhime_inputs_from_xarray
 from openghg_inversions.inversion_inputs import make_inv_inputs
-from openghg_inversions.models.boundary import CenteredOperands, MultiplicativeChoice
+from openghg_inversions.models.boundary import MultiplicativeChoice
 from tests.test_xarray_input_adapter import _basis_functions, _site_dataset
+from openghg_inversions.models.boundary import BoundCenteredTransport
+from boundary_test_utils import raw_transport
 
 
 def _bind(operands, observations, **periods):
     """Bind raw centered operands to one fit's observation rows and periods."""
     with pytensor.config.change_flags(floatX="float64"):
-        return CenteredOperands.from_dataset(operands).bind(observations, **periods)
+        return BoundCenteredTransport.bind(raw_transport(operands), observations, **periods)
 
 
 def _rows(labels):

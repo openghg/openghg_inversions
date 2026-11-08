@@ -13,8 +13,9 @@ import xarray as xr
 
 from openghg_inversions.biosphere_prior import calibrate_biosphere_prior
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice, CenteredOperands
+from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice
 from openghg_inversions.models.shared_baseline import SharedBaselineChoice
+from boundary_test_utils import centered_transport
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.co2.shared_baseline_model import (
@@ -36,7 +37,7 @@ def operands(obs, c=400.0):
     )
     mass = (mass / mass.sum("bc_region")).assign_attrs(units="1")
     anomaly = mass.copy(data=np.arange(2 * n).reshape(n, 2) * 0.01 - 0.025).assign_attrs(units="ppm")
-    return CenteredOperands(anomaly, mass, xr.DataArray(c, attrs={"units": "ppm"}))
+    return centered_transport(anomaly, mass, xr.DataArray(c, attrs={"units": "ppm"}))
 
 
 def bind(obs, h, prior, fixed, *, mode="multiplicative", boundary=SCALING, transport=None, **inputs):
@@ -132,8 +133,9 @@ def case(mode="multiplicative", cross=0.0, lazy_payload_calls=None):
 
         h = borrowed(h)
         fixed = borrowed(fixed)
-        transport = CenteredOperands(
-            borrowed(transport.anomaly.rename("anomaly")), borrowed(transport.mass.rename("mass")), transport.reference,
+        transport = centered_transport(
+            borrowed(transport.H_bc_anomaly.rename("anomaly")), borrowed(transport.H_bc_mass.rename("mass")),
+            transport.bc_reference,
         )
     baseline = bind(obs, h, prior, fixed, mode=mode, transport=transport, **kwargs)
     return obs, h, prior, baseline
@@ -691,7 +693,7 @@ def test_single_shared_nonunit_mass_restores_absolute_predictives(cached):
     obs, h, prior, _ = case()
     transport = operands(obs)
     scale = xr.DataArray([.5, 2., 1.5, .75], dims="nmeasure", coords={"nmeasure": obs.nmeasure})
-    transport = replace(transport, mass=(transport.mass * scale).assign_attrs(units="1"))
+    transport = transport.assign(H_bc_mass=(transport.H_bc_mass * scale).assign_attrs(units="1"))
     bound = bind(obs, h, prior, xr.full_like(obs, .2).assign_attrs(units="ppm"), transport=transport)
     builder = build_shared_co2_cached_sigma_model if cached else build_shared_co2_model
     model = builder(bound, **errors(obs), **(NOISE if cached else {}))
@@ -701,7 +703,7 @@ def test_single_shared_nonunit_mass_restores_absolute_predictives(cached):
     trace = restore_inferencedata_coords(trace, get_coord_registry(model))
     raw = trace.prior_predictive.y.copy(deep=True)
     mean = trace.prior.modelled_concentration.copy(deep=True)
-    shift = transport.reference * transport.mass.sum("bc_region")
+    shift = transport.bc_reference * transport.H_bc_mass.sum("bc_region")
     trace = restore_absolute_predictives(trace)
     trace = annotate_shared_baseline_trace(trace, bound)
     np.testing.assert_allclose(trace.observed_data.y, obs)

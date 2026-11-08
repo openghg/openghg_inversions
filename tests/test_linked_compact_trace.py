@@ -119,8 +119,8 @@ def test_compact_recording_restores_all_deterministics_at_identical_states(
             assert (f"{channel}_bc_anomaly_latent" in trace.posterior) == (scale > 0)
             assert f"{channel}_bc_mean_shift" in trace.posterior
             if scale == 0:
-                assert f"{channel}_bc_anomaly" not in trace.posterior
-                assert f"{channel}_mu_bc_anomaly" not in trace.posterior
+                # Unsampled anomalies are restored as recorded zeros.
+                np.testing.assert_array_equal(trace.posterior[f"{channel}_mu_bc_anomaly"], 0.0)
     if offsets == ("o2",):
         np.testing.assert_array_equal(trace.posterior.o2_offset, trace.posterior.offset_concentration)
     if baseline == "none":
@@ -222,8 +222,8 @@ def test_compact_sampler_preserves_normalized_likelihood_and_absolute_products(t
             assert (f"{channel}_bc_anomaly_latent" in values) == (scale > 0)
             assert f"{channel}_bc_mean_shift" in values
             if scale == 0:
-                assert f"{channel}_bc_anomaly" not in values
-                assert f"{channel}_mu_bc_anomaly" not in values
+                # Unsampled anomalies are restored as recorded zeros.
+                np.testing.assert_array_equal(values[f"{channel}_mu_bc_anomaly"], 0.0)
         np.testing.assert_array_equal(values.o2_offset, values.offset_concentration)
         np.testing.assert_allclose(
             values.modelled_concentration,
