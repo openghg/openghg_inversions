@@ -1,6 +1,6 @@
-"""Static contracts for centered boundary transport before and after binding.
+"""Static contracts for centered boundary sensitivity before and after binding.
 
-Centered transport represents the absolute boundary design as ``A + c M``:
+Centered sensitivity represents the absolute boundary design as ``A + c M``:
 the concentration anomaly ``A`` (``H_bc_anomaly``), the dimensionless mass
 ``M`` (``H_bc_mass``) and a scalar reference ``c`` (``bc_reference``). Values
 annotated with these contracts are ordinary :class:`xarray.Dataset` objects;
@@ -8,17 +8,17 @@ see :doc:`/development/validation_and_xarray`.
 
 Stages and owners:
 
-* :class:`RawCenteredTransport` is prepared or loaded transport on its raw
+* :class:`RawCenteredSensitivity` is prepared or loaded sensitivity on its raw
   spatial states. Preparation and artifact loading establish it with
-  :meth:`RawCenteredTransport.validate`.
-* :class:`BoundCenteredTransport` is one fit's transport after
-  :meth:`BoundCenteredTransport.bind`
+  :meth:`RawCenteredSensitivity.validate`.
+* :class:`BoundCenteredSensitivity` is one fit's sensitivity after
+  :meth:`BoundCenteredSensitivity.bind`
   has selected observation rows and expanded spatial states by period. Every
   centered family consumes it; binding establishes it by construction.
-* :class:`BoundAdditiveTransport` extends it with centering weights aligned to
+* :class:`BoundAdditiveSensitivity` extends it with centering weights aligned to
   the bound states. Only weighted additive anomalies require it.
 
-Absolute ``H_bc`` transport, used only by the multiplicative family, keeps its
+Absolute ``H_bc`` sensitivity, used only by the multiplicative family, keeps its
 own supported state layouts and has no contract in this pilot.
 
 Validators inspect names, dimensions, eager indexes and attributes only. They
@@ -126,9 +126,42 @@ def _weights_schema() -> DataArraySchema:
     return DataArraySchema(dtype=(np.integer, np.floating), dims=STATE_LEVELS, checks=[relationships])
 
 
+def validate_centering_weights(weights: xr.DataArray, *, label: str = "bc_centering_weights") -> None:
+    """Check raw centering weights against the :class:`RawCenteredSensitivity` layout, without reading values.
+
+    Args:
+        weights: Borrowed weights, possibly Dask-backed.
+        label: Name used in error messages.
+
+    Raises:
+        ValueError: If the weights violate that layout.
+    """
+    _validate_schema(_weights_schema(), weights, label=label)
+
+
+def normalize_centering_weights(weights: xr.DataArray) -> xr.DataArray:
+    """Check materialized weights once and normalize their sum to one.
+
+    Args:
+        weights: Weights on the bound ``bc_region`` states.
+
+    Returns:
+        Dimensionless normalized weights; scaling by the maximum first avoids overflow.
+
+    Raises:
+        ValueError: If weights are lazy, empty, non-finite or not positive.
+    """
+    if is_dask_collection(weights.data):
+        raise ValueError("Materialize bc_centering_weights before forming a weighted anomaly design.")
+    if not weights.size or not np.isfinite(weights.values).all() or not (weights.values > 0).all():
+        raise ValueError("bc_centering_weights must be finite and strictly positive.")
+    scaled = weights / weights.max()
+    return (scaled / scaled.sum()).assign_attrs(units="1")
+
+
 @xr_contract
-class RawCenteredTransport(xr.Dataset):
-    """Prepared centered boundary transport on raw spatial boundary states.
+class RawCenteredSensitivity(xr.Dataset):
+    """Prepared centered boundary sensitivity on raw spatial boundary states.
 
     Structural guarantees, checked by :meth:`validate`:
 
@@ -160,19 +193,6 @@ class RawCenteredTransport(xr.Dataset):
     __slots__ = ()
 
     @staticmethod
-    def validate_weights(weights: xr.DataArray, *, label: str = "bc_centering_weights") -> None:
-        """Check raw centering weights against the layout above, without reading values.
-
-        Args:
-            weights: Borrowed weights, possibly Dask-backed.
-            label: Name used in error messages.
-
-        Raises:
-            ValueError: If the weights violate that layout.
-        """
-        _validate_schema(_weights_schema(), weights, label=label)
-
-    @staticmethod
     def schema(*, observation_dim: str = "time") -> DatasetSchema:
         """Describe raw centered metadata, allowing either operand axis order.
 
@@ -196,8 +216,8 @@ class RawCenteredTransport(xr.Dataset):
             ):
                 raise ValueError("require unexpanded spatial operands; align only at model binding.")
             for dim in ("bc_region", observation_dim):
-                _require_unique_index(data, dim, label="Raw centered transport")
-            _check_units(data, label="Raw centered transport")
+                _require_unique_index(data, dim, label="Raw centered sensitivity")
+            _check_units(data, label="Raw centered sensitivity")
             if "mf" in data and data.mf.attrs.get("units") != data.H_bc_anomaly.attrs.get("units"):
                 raise ValueError("concentration units must match mf units.")
 
@@ -210,15 +230,15 @@ class RawCenteredTransport(xr.Dataset):
         )
 
     @staticmethod
-    def validate(data: xr.Dataset, *, label: str = "Centered boundaries") -> RawCenteredTransport:
-        """Check raw centered transport structure and return the same dataset.
+    def validate(data: xr.Dataset, *, label: str = "Centered boundaries") -> RawCenteredSensitivity:
+        """Check raw centered sensitivity structure and return the same dataset.
 
         Args:
             data: Borrowed dataset, possibly Dask-backed.
             label: Prefix for error messages, such as a channel name.
 
         Returns:
-            ``data`` itself, annotated as raw centered transport.
+            ``data`` itself, annotated as raw centered sensitivity.
 
         Raises:
             ValueError: If a required variable, attribute, dimension, index or
@@ -226,18 +246,18 @@ class RawCenteredTransport(xr.Dataset):
         """
         anomaly = data.get("H_bc_anomaly")
         observation_dim = "time" if anomaly is None or "time" in anomaly.dims else "nmeasure"
-        _validate_schema(RawCenteredTransport.schema(observation_dim=observation_dim), data, label=label)
-        return cast(RawCenteredTransport, data)
+        _validate_schema(RawCenteredSensitivity.schema(observation_dim=observation_dim), data, label=label)
+        return cast(RawCenteredSensitivity, data)
 
     @staticmethod
-    def with_centering_weights(data: RawCenteredTransport, weights: xr.DataArray) -> RawCenteredTransport:
+    def with_centering_weights(data: RawCenteredSensitivity, weights: xr.DataArray) -> RawCenteredSensitivity:
         """Replace raw weights without aligning them to an obsolete weight calendar.
 
         Only axes owned exclusively by the old weights are removed, so the
         supplied labels survive until binding checks them exactly.
 
         Args:
-            data: Borrowed raw transport, optionally with existing weights.
+            data: Borrowed raw sensitivity, optionally with existing weights.
             weights: Structurally valid replacement on curtain and period axes.
 
         Returns:
@@ -255,13 +275,13 @@ class RawCenteredTransport(xr.Dataset):
             ]
             if consumers:
                 raise ValueError(f"Boundary weight dimension {dim!r} is shared by {consumers!r}.")
-        transport = data.drop_dims(STATE_LEVELS, errors="ignore")
-        return cast(RawCenteredTransport, transport.assign(bc_centering_weights=weights))
+        sensitivity = data.drop_dims(STATE_LEVELS, errors="ignore")
+        return cast(RawCenteredSensitivity, sensitivity.assign(bc_centering_weights=weights))
 
 
 @xr_contract
-class BoundCenteredTransport(xr.Dataset):
-    """Centered boundary transport bound to one fit's rows and periods.
+class BoundCenteredSensitivity(xr.Dataset):
+    """Centered boundary sensitivity bound to one fit's rows and periods.
 
     Structural guarantees, checked by :meth:`validate`:
 
@@ -280,7 +300,7 @@ class BoundCenteredTransport(xr.Dataset):
       ``bc_centering_weights``.
 
     This contract establishes structure only. Numerical requirements remain
-    with the explicit later numerical operation, as for raw transport. Binding
+    with the explicit later numerical operation, as for raw sensitivity. Binding
     selects and masks rows, so even nonzero raw mass may become all zero.
     """
 
@@ -300,8 +320,8 @@ class BoundCenteredTransport(xr.Dataset):
             """Require complete, unique states without reading numerical payloads."""
             if not set(CENTERED_NAMES).issubset(data.data_vars):
                 return
-            _require_unique_index(data, observation_dim, label="Bound centered transport")
-            states = _require_unique_index(data, "bc_region", label="Bound centered transport")
+            _require_unique_index(data, observation_dim, label="Bound centered sensitivity")
+            states = _require_unique_index(data, "bc_region", label="Bound centered sensitivity")
             if not isinstance(states, pd.MultiIndex) or tuple(states.names) != STATE_LEVELS:
                 raise ValueError(f"requires a bc_region MultiIndex with levels {STATE_LEVELS}.")
             # MultiIndex.hasnans is unsupported; missing level codes are -1.
@@ -309,19 +329,19 @@ class BoundCenteredTransport(xr.Dataset):
                 len(states.get_level_values(0).unique()) * len(states.get_level_values(1).unique())
             ):
                 raise ValueError("bc_region must contain every curtain-period Cartesian combination without missing labels.")
-            _check_units(data, label="Bound centered transport")
+            _check_units(data, label="Bound centered sensitivity")
 
         return DatasetSchema(data_vars=_centered_variables(observation_dim, ordered=True), checks=[relationships])
 
     @staticmethod
-    def validate(data: xr.Dataset) -> BoundCenteredTransport:
-        """Check bound centered transport structure and return the same dataset.
+    def validate(data: xr.Dataset) -> BoundCenteredSensitivity:
+        """Check bound centered sensitivity structure and return the same dataset.
 
         Args:
             data: Borrowed dataset, possibly Dask-backed.
 
         Returns:
-            ``data`` itself, annotated as bound centered transport.
+            ``data`` itself, annotated as bound centered sensitivity.
 
         Raises:
             ValueError: If a variable is missing, the operands do not share
@@ -332,16 +352,16 @@ class BoundCenteredTransport(xr.Dataset):
         anomaly = data.get("H_bc_anomaly")
         observation_dim = str(anomaly.dims[0]) if anomaly is not None and anomaly.ndim else "nmeasure"
         _validate_schema(
-            BoundCenteredTransport.schema(observation_dim=observation_dim), data, label="Bound centered boundary transport",
+            BoundCenteredSensitivity.schema(observation_dim=observation_dim), data, label="Bound centered boundary sensitivity",
         )
-        return cast(BoundCenteredTransport, data)
+        return cast(BoundCenteredSensitivity, data)
 
     @staticmethod
-    def observation_dim(data: BoundCenteredTransport) -> str:
+    def observation_dim(data: BoundCenteredSensitivity) -> str:
         """Return the observation dimension, the first dimension of ``H_bc_anomaly``.
 
         Args:
-            data: Bound centered transport.
+            data: Bound centered sensitivity.
 
         Returns:
             The observation dimension name.
@@ -350,28 +370,28 @@ class BoundCenteredTransport(xr.Dataset):
 
     @staticmethod
     def bind(
-        transport: RawCenteredTransport,
+        sensitivity: RawCenteredSensitivity,
         observations: xr.DataArray,
         *,
         frequency: str | None = None,
         anchor_time: DatetimeLike | None = None,
-    ) -> BoundCenteredTransport:
+    ) -> BoundCenteredSensitivity:
         """Select one fit's observation rows and expand spatial states by period.
 
         Rows and periods follow
         :func:`~openghg_inversions.boundary_sensitivity.bind_period_states`.
         The contract holds by construction. Weights are not included; see
-        :meth:`BoundAdditiveTransport.bind_weights`.
+        :meth:`BoundAdditiveSensitivity.bind_weights`.
 
         Args:
-            transport: Raw centered transport on its ``time`` or ``nmeasure`` axis.
+            sensitivity: Raw centered sensitivity on its ``time`` or ``nmeasure`` axis.
             observations: One native channel with its uniquely indexed observation
                 axis first, as established by observation preparation.
             frequency: Optional frequency expanding spatial states by period.
             anchor_time: Optional origin for fixed-duration periods.
 
         Returns:
-            Bound transport.
+            Bound sensitivity.
 
         Raises:
             ValueError: If PyTensor is not configured for float64, or periods or
@@ -379,19 +399,19 @@ class BoundCenteredTransport(xr.Dataset):
         """
         require_centered_precision()
         bound = bind_period_states(
-            transport[["H_bc_anomaly", "H_bc_mass"]], observations, frequency=frequency, anchor_time=anchor_time,
+            sensitivity[["H_bc_anomaly", "H_bc_mass"]], observations, frequency=frequency, anchor_time=anchor_time,
         )
-        return cast(BoundCenteredTransport, bound.assign(bc_reference=transport.bc_reference))
+        return cast(BoundCenteredSensitivity, bound.assign(bc_reference=sensitivity.bc_reference))
 
     @staticmethod
-    def reference_shift(data: BoundCenteredTransport) -> xr.DataArray:
+    def reference_shift(data: BoundCenteredSensitivity) -> xr.DataArray:
         """Check eager centered values once and calculate the fixed shift ``c M 1``.
 
         Every centered family calls this once at the start of ``add``, after the
         recipe's joint materialization, and reuses the shift.
 
         Args:
-            data: Bound transport materialized jointly with the model inputs.
+            data: Bound sensitivity materialized jointly with the model inputs.
 
         Returns:
             ``c M 1`` on the observation axis, with the reference's attributes.
@@ -414,10 +434,10 @@ class BoundCenteredTransport(xr.Dataset):
 
 
 @xr_contract
-class BoundAdditiveTransport(BoundCenteredTransport):
-    """Bound centered transport with additive centering weights.
+class BoundAdditiveSensitivity(BoundCenteredSensitivity):
+    """Bound centered sensitivity with additive centering weights.
 
-    In addition to every :class:`BoundCenteredTransport` guarantee,
+    In addition to every :class:`BoundCenteredSensitivity` guarantee,
     ``bc_centering_weights`` lies on ``("bc_region",)``, sharing the bound
     state index, and has units equivalent to ``'1'``. Finite, strictly positive
     weights remain a requirement of the explicit later numerical operation.
@@ -436,7 +456,7 @@ class BoundAdditiveTransport(BoundCenteredTransport):
         Returns:
             Shared schema extended with real, dimensionless state weights.
         """
-        schema = BoundCenteredTransport.schema(observation_dim=observation_dim)
+        schema = BoundCenteredSensitivity.schema(observation_dim=observation_dim)
         schema.data_vars["bc_centering_weights"] = DataArraySchema(
             dtype=(np.integer, np.floating), dims=("bc_region",),
             checks=[lambda weights: _require_dimensionless(weights, label="Bound bc_centering_weights")],
@@ -444,14 +464,14 @@ class BoundAdditiveTransport(BoundCenteredTransport):
         return schema
 
     @staticmethod
-    def validate(data: xr.Dataset) -> BoundAdditiveTransport:
-        """Check bound additive transport structure and return the same dataset.
+    def validate(data: xr.Dataset) -> BoundAdditiveSensitivity:
+        """Check bound additive sensitivity structure and return the same dataset.
 
         Args:
             data: Borrowed dataset, possibly Dask-backed.
 
         Returns:
-            ``data`` itself, annotated as bound additive transport.
+            ``data`` itself, annotated as bound additive sensitivity.
 
         Raises:
             ValueError: If the shared bound structure is violated, or the
@@ -460,16 +480,16 @@ class BoundAdditiveTransport(BoundCenteredTransport):
         anomaly = data.get("H_bc_anomaly")
         observation_dim = str(anomaly.dims[0]) if anomaly is not None and anomaly.ndim else "nmeasure"
         _validate_schema(
-            BoundAdditiveTransport.schema(observation_dim=observation_dim), data, label="Bound additive transport",
+            BoundAdditiveSensitivity.schema(observation_dim=observation_dim), data, label="Bound additive sensitivity",
         )
-        return cast(BoundAdditiveTransport, data)
+        return cast(BoundAdditiveSensitivity, data)
 
     @staticmethod
-    def bind_weights(bound: BoundCenteredTransport, weights: xr.DataArray) -> BoundAdditiveTransport:
+    def bind_weights(bound: BoundCenteredSensitivity, weights: xr.DataArray) -> BoundAdditiveSensitivity:
         """Align raw centering weights exactly to bound states, giving the additive extension.
 
         Args:
-            bound: Bound centered transport.
+            bound: Bound centered sensitivity.
             weights: Structurally valid raw weights on ``(bc_curtain, bc_period)``.
 
         Returns:
@@ -484,35 +504,17 @@ class BoundAdditiveTransport(BoundCenteredTransport):
             # Period starts from the fit calendar are nanosecond timestamps.
             weights = weights.assign_coords(bc_period=periods.as_unit("ns"))
         stacked = weights.stack(bc_region=STATE_LEVELS)
-        observation_dim = BoundCenteredTransport.observation_dim(bound)
+        observation_dim = BoundCenteredSensitivity.observation_dim(bound)
         xr.align(bound.H_bc_anomaly, stacked, join="exact", copy=False, exclude={observation_dim})
         # Labels match exactly, so the bound state index is reused for the weights.
-        return cast(BoundAdditiveTransport, bound.assign(bc_centering_weights=stacked.variable))
-
-    @staticmethod
-    def normalized_weights(weights: xr.DataArray) -> xr.DataArray:
-        """Check materialized weights once and normalize their sum to one.
-
-        Args:
-            weights: Weights on the bound ``bc_region`` states.
-
-        Returns:
-            Dimensionless normalized weights; scaling by the maximum first avoids overflow.
-
-        Raises:
-            ValueError: If weights are lazy, empty, non-finite or not positive.
-        """
-        if is_dask_collection(weights.data):
-            raise ValueError("Materialize bc_centering_weights before forming a weighted anomaly design.")
-        if not weights.size or not np.isfinite(weights.values).all() or not (weights.values > 0).all():
-            raise ValueError("bc_centering_weights must be finite and strictly positive.")
-        scaled = weights / weights.max()
-        return (scaled / scaled.sum()).assign_attrs(units="1")
+        return cast(BoundAdditiveSensitivity, bound.assign(bc_centering_weights=stacked.variable))
 
 
 __all__ = [
-    "BoundAdditiveTransport",
-    "BoundCenteredTransport",
-    "RawCenteredTransport",
+    "BoundAdditiveSensitivity",
+    "BoundCenteredSensitivity",
+    "RawCenteredSensitivity",
+    "normalize_centering_weights",
     "require_centered_precision",
+    "validate_centering_weights",
 ]

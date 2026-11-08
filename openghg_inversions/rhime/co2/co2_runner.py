@@ -24,7 +24,7 @@ from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions.array_ops import to_dense_tree
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import PreparedInputs
-from openghg_inversions.models.boundary import Boundary, BoundaryChoice, MultiplicativeChoice, RawCenteredTransport
+from openghg_inversions.models.boundary import Bound, Choice, MultiplicativeChoice, RawCenteredSensitivity
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.models.scalar_sigma import (
@@ -52,7 +52,7 @@ from openghg_inversions.rhime.materialization import (
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.sigma import SigmaAlignment
 
-from .boundary_output import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
+from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
 from .co2_model import _normalise_offset_args, build_co2_model
 from .co2_preparation import Co2PreparedInputs
 
@@ -308,19 +308,19 @@ def describe_co2_likelihood_kwargs(value: Any) -> Any:
 
 
 def _bind_co2_boundary(
-    inputs: xr.Dataset, boundary: BoundaryChoice | None,
-) -> Boundary | None:
+    inputs: xr.Dataset, boundary: Choice | None,
+) -> Bound | None:
     """Bind a boundary choice once to the prepared absolute or centered transport.
 
     The prepared dataset identifies its representation here; absolute ``H_bc``
     is bound only by choices that accept it. CO2 prepared inputs establish
-    :class:`RawCenteredTransport` for centered inputs when constructed or
+    :class:`RawCenteredSensitivity` for centered inputs when constructed or
     loaded, so the dataset is annotated here without validating it again.
     """
     if boundary is None:
         return None
     if "H_bc_anomaly" in inputs:
-        return boundary.bind(inputs["mf"], cast(RawCenteredTransport, inputs))
+        return boundary.bind(inputs["mf"], cast(RawCenteredSensitivity, inputs))
     if "H_bc" not in inputs:
         raise ValueError("A boundary choice requires prepared H_bc or centered boundary operands.")
     if not isinstance(boundary, MultiplicativeChoice):
@@ -330,8 +330,8 @@ def _bind_co2_boundary(
 
 def _materialize_co2_inputs(
     prepared: PreparedInputs, names: Collection[str], priors: Mapping[str, PriorArgs],
-    boundary: Boundary | None,
-) -> tuple[xr.Dataset, dict[str, PriorArgs], Boundary | None]:
+    boundary: Bound | None,
+) -> tuple[xr.Dataset, dict[str, PriorArgs], Bound | None]:
     """Compute selected arrays, the bound boundary and prior parameters together."""
     selected = prepared.inv_inputs[list(names)]
     data, eager_priors, boundary = dask_compute(*to_dense_tree((selected, dict(priors), boundary)))
@@ -349,10 +349,10 @@ def materialize_co2_inputs(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     no_model_error: bool = False,
-    boundary: BoundaryChoice | None = None,
+    boundary: Choice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
-) -> tuple[xr.Dataset, dict[str, PriorArgs], Boundary | None]:
+) -> tuple[xr.Dataset, dict[str, PriorArgs], Bound | None]:
     """Jointly materialize selected CO2 inputs, enabled priors and fixed mismatch.
 
     Nonboundary prior parameters are keyed by graph variables: ``sigma``,
@@ -449,7 +449,7 @@ def build_co2_from_materialized(
     prepared_inputs: Co2PreparedInputs,
     biosphere_prior: BiospherePrior | None = None,
     priors: Mapping[str, PriorArgs],
-    boundary: Boundary | None = None,
+    boundary: Bound | None = None,
     sigma_alignment: SigmaAlignment | None = None,
     sigma_prior: PriorArgs | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,

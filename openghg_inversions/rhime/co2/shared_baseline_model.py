@@ -31,7 +31,7 @@ from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import prepare_linear_sensitivity, resolve_state_activity
 from openghg_inversions.observation_error import AggregationError, aggregation_error_as_low_rank, validate_observation_error_arrays
 from openghg_inversions.rhime._model_building import _call_custom_likelihood
-from openghg_inversions.rhime.co2.boundary_output import BOUNDARY_FORMAT_VERSION
+from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION
 from openghg_inversions.rhime.builders import RhimeLikelihoodBuilder
 from openghg_inversions.sigma import SigmaAlignment
 from openghg_inversions.rhime.co2.co2_model import _fixed_mismatch_array

@@ -24,7 +24,7 @@ from openghg_inversions.models.boundary import (
     AnomalyScalingChoice,
     MultiplicativeChoice,
 )
-from openghg_inversions.models.boundary import BoundCenteredTransport
+from openghg_inversions.models.boundary import BoundCenteredSensitivity
 from boundary_test_utils import bound_model_arguments, boundary_transport
 from boundary_test_utils import raw_transport, centered_transport
 
@@ -426,7 +426,7 @@ def test_nonseparable_region_period_weights_preserve_whole_window_prior():
     observations = mass.sum("bc_region").assign_coords(
         time=("nmeasure", pd.to_datetime(["2020-01-01", "2020-01-20", "2020-02-01", "2020-02-20"]))
     )
-    periods = BoundCenteredTransport.bind(raw_transport(raw), observations, frequency="monthly")
+    periods = BoundCenteredSensitivity.bind(raw_transport(raw), observations, frequency="monthly")
     weights = xr.DataArray(
         [1.0, 2.0, 3.0, 7.0], dims="bc_region", coords=periods.bc_region.coords, attrs={"units": "1"}
     )
@@ -526,16 +526,16 @@ def test_bound_additive_affine_result_equals_likelihood_and_keeps_resolved_scale
 def test_bound_records_trust_the_contract_binding_establishes(choice):
     """Binding establishes the bound contract; the contract, not the record, rejects broken layouts."""
     from openghg_inversions.models import registered_model
-    from openghg_inversions.models.boundary import BoundCenteredTransport
+    from openghg_inversions.models.boundary import BoundCenteredSensitivity
 
     inputs = _inputs()
     boundary = choice.bind(inputs.mf, boundary_transport(_kwargs(inputs)))
     assert boundary.observation_dim == "nmeasure"
-    assert BoundCenteredTransport.validate(boundary.data) is boundary.data
+    assert BoundCenteredSensitivity.validate(boundary.data) is boundary.data
     with pytest.raises(ValueError, match="H_bc_mass.*dims"):
-        BoundCenteredTransport.validate(boundary.data.assign(H_bc_mass=boundary.data.H_bc_mass.T))
+        BoundCenteredSensitivity.validate(boundary.data.assign(H_bc_mass=boundary.data.H_bc_mass.T))
     with pytest.raises(ValueError, match="H_bc_mass"):
-        BoundCenteredTransport.validate(boundary.data.drop_vars("H_bc_mass"))
+        BoundCenteredSensitivity.validate(boundary.data.drop_vars("H_bc_mass"))
     with registered_model(), pytest.raises(ValueError, match="bound observation dimension"):
         replace(boundary, data=boundary.data.compute()).add(output_dim="time")
 
