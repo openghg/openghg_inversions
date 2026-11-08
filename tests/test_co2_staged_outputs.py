@@ -71,7 +71,7 @@ def _components_fixture():
     datasets["/"] = xr.Dataset(
         attrs={
             "rhime_variable_roles": json.dumps(roles),
-            "rhime_boundary_format_version": 1,
+            "rhime_boundary_format_version": 2,
             "rhime_model_metadata": json.dumps({"recipe": "co2"}),
         }
     )
@@ -350,7 +350,7 @@ def test_centered_anomaly_transport_role_is_not_a_sampled_correction():
     np.testing.assert_allclose(components.boundary_posterior, trace.posterior.bc_custom)
 
 
-@pytest.mark.parametrize("version", [None, 0, 2, True])
+@pytest.mark.parametrize("version", [None, 1, 3, True])
 def test_boundary_reconstruction_rejects_old_saved_format_with_repreparation_message(version):
     prepared, trace = _components_fixture()
     if version is None:

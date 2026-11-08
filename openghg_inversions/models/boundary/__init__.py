@@ -26,45 +26,49 @@ protocols, so adding a centered boundary family means adding one module with
 a choice and a bound record, plus its configuration adapter and tests;
 nothing here enumerates the families.
 
-Transport is either absolute ``H_bc`` or :class:`CenteredOperands`
-``A``, ``M`` and ``c`` with ``H = A + c M``. :class:`BoundaryChoice` is
-generic in the transport its ``bind`` accepts: every family accepts centered
-operands, and only :class:`MultiplicativeChoice` also accepts absolute
-``H_bc``, so a ``BoundaryChoice[CenteredOperands]`` is any family. The
-transport parameter is erased at runtime, so the recipe input helpers that
-identify a prepared dataset's representation admit absolute transport only
-for :class:`MultiplicativeChoice`; a new family that accepts absolute
-transport must also be admitted there. Centered transport keeps small
+Transport is either absolute ``H_bc`` or centered ``A``, ``M`` and ``c``
+with ``H = A + c M``. Centered transport has static Dataset contracts
+(``openghg_inversions.models.boundary.contracts``): preparation and
+loading establish :class:`RawCenteredTransport`;
+:meth:`BoundCenteredTransport.bind` produces :class:`BoundCenteredTransport`,
+which every centered family consumes; and weighted additive anomalies extend
+it to :class:`BoundAdditiveTransport`. Every :class:`BoundaryChoice` binds raw
+centered transport; only :class:`MultiplicativeChoice` also accepts absolute
+``H_bc``, so the recipe input helpers that identify a prepared dataset's
+representation admit absolute transport only for that family. Centered transport keeps small
 anomalies after cancellation: likelihoods use observations shifted by the
 fixed ``c M 1``, while absolute outputs add it back. Centered graphs need a
 float64 PyTensor process (:func:`require_centered_precision`), checked once
 when centered transport is bound.
 
-Validation happens where data enters: preparation and artifact loading own
-units, labels and layout; binding owns calendar and row alignment; ``add``
+Validation happens where data enters: preparation and artifact loading
+establish the raw contract's units, labels and layout; binding owns calendar
+and row alignment and establishes the bound contract by construction; ``add``
 checks values that only become available once lazy payloads are materialized.
 """
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, Protocol, TypeVar, runtime_checkable
+from typing import Any, ClassVar, Protocol, runtime_checkable
 
 import xarray as xr
 
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models.boundary.additive import AdditiveBoundary, AdditiveChoice
 from openghg_inversions.models.boundary.anomaly_scaling import AnomalyScalingBoundary, AnomalyScalingChoice
-from openghg_inversions.models.boundary.multiplicative import MultiplicativeBoundary, MultiplicativeChoice
-from openghg_inversions.models.boundary.operands import (
-    CenteredOperands,
+from openghg_inversions.models.boundary.multiplicative import (
+    MultiplicativeBoundary,
+    MultiplicativeChoice,
     centered_boundary_expression,
+)
+from openghg_inversions.models.boundary.contracts import (
+    BoundAdditiveTransport,
+    BoundCenteredTransport,
+    RawCenteredTransport,
     require_centered_precision,
 )
 from openghg_inversions.models.boundary.outputs import BoundaryOutputs
 from openghg_inversions.models.components import AffineConcentrationTerm
-
-
-TransportT_contra = TypeVar("TransportT_contra", contravariant=True)
 
 
 @runtime_checkable
@@ -73,13 +77,22 @@ class Boundary(Protocol):
 
     Implementations are frozen dataclasses whose ``data`` holds every
     observation-aligned array, so recipes can pad or subset rows with
-    ``dataclasses.replace`` without knowing the family.
+    ``dataclasses.replace`` without knowing the family. Shared guarantees:
+    every observation-aligned variable has :attr:`observation_dim` as its
+    first dimension, ordered by the bound observation labels; variables
+    without it describe states or scalars and must not be treated as rows.
+    Centered families hold :class:`BoundCenteredTransport`; absolute
+    multiplicative transport has no contract. Binding establishes the data;
+    records and recipes trust it and preserve it when replacing rows.
     """
 
     __dataclass_fields__: ClassVar[dict[str, Any]]
 
     @property
     def data(self) -> xr.Dataset: ...
+
+    @property
+    def observation_dim(self) -> str: ...
 
     def add(
         self, *, output_dim: str = ..., prefix: str = ..., owner: str | None = ...,
@@ -89,13 +102,8 @@ class Boundary(Protocol):
 
 
 @runtime_checkable
-class BoundaryChoice(Protocol[TransportT_contra]):
-    """Prior specification for one boundary family, before binding.
-
-    The type parameter is the transport representation ``bind`` accepts.
-    It is contravariant, so a choice accepting ``xr.DataArray |
-    CenteredOperands`` is also a ``BoundaryChoice[CenteredOperands]``.
-    """
+class BoundaryChoice(Protocol):
+    """Prior specification for one boundary family, before binding."""
 
     __dataclass_fields__: ClassVar[dict[str, Any]]
 
@@ -105,7 +113,7 @@ class BoundaryChoice(Protocol[TransportT_contra]):
     @property
     def anchor_time(self) -> DatetimeLike | None: ...
 
-    def bind(self, observations: xr.DataArray, transport: TransportT_contra) -> Boundary: ...
+    def bind(self, observations: xr.DataArray, transport: RawCenteredTransport) -> Boundary: ...
 
 
 __all__ = [
@@ -113,12 +121,14 @@ __all__ = [
     "AdditiveChoice",
     "AnomalyScalingBoundary",
     "AnomalyScalingChoice",
+    "BoundAdditiveTransport",
+    "BoundCenteredTransport",
     "Boundary",
     "BoundaryChoice",
     "BoundaryOutputs",
-    "CenteredOperands",
     "MultiplicativeBoundary",
     "MultiplicativeChoice",
+    "RawCenteredTransport",
     "centered_boundary_expression",
     "require_centered_precision",
 ]

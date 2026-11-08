@@ -10,13 +10,14 @@ import pytensor
 import pytest
 import xarray as xr
 
-from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands, MultiplicativeChoice
+from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeChoice
 from openghg_inversions.serialization import (
     decode_cf_multiindexes,
     encode_cf_multiindexes,
     open_datatree_loaded,
     save_datatree,
 )
+from boundary_test_utils import raw_transport
 
 
 @pytest.fixture(autouse=True)
@@ -56,13 +57,13 @@ def weights(bound):
 def prepare(raw, weight, observations, frequency=None, anchor=None):
     return AdditiveChoice(
         {"pdf": "uniform", "lower": -0.5, "upper": 0.5}, 0.04, frequency=frequency, anchor_time=anchor,
-    ).bind(observations, replace(CenteredOperands.from_dataset(raw), weights=weight))
+    ).bind(observations, raw_transport(raw, weights=weight))
 
 
 def calendar(raw, observations, frequency, anchor=None):
     return MultiplicativeChoice(
         {"pdf": "normal", "mu": 1.0, "sigma": 0.1}, frequency=frequency, anchor_time=anchor,
-    ).bind(observations, CenteredOperands.from_dataset(raw)).data
+    ).bind(observations, raw_transport(raw)).data
 
 
 def never_compute(array):
@@ -134,7 +135,7 @@ def test_first_class_calendar_labels_roundtrip_without_identity_metadata(tmp_pat
 @pytest.mark.parametrize("extension", ["nc", "zarr"])
 def test_linked_prepared_weights_preserve_period_identity(tmp_path, extension):
     from test_co2_o2_fixed_ou import _prepared
-    from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
+    from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs, _raw_centered_channels
 
     initial = _prepared()
     operands, selected_weights, observations = {}, {}, {}
@@ -156,18 +157,17 @@ def test_linked_prepared_weights_preserve_period_identity(tmp_path, extension):
         )
         assert np.linalg.matrix_rank(values) == 2
 
-    prepared = replace(initial, boundary_operands=operands, bc_centering_weights=selected_weights)
+    prepared = replace(initial, boundary_operands=_raw_centered_channels(operands, selected_weights))
     path = tmp_path / f"linked.{extension}"
     prepared.save(path)
     loaded = Co2O2PreparedInputs.load(path)
-    assert set(loaded.bc_centering_weights) == {"co2", "o2"}
     for channel in ("co2", "o2"):
-        actual = loaded.bc_centering_weights[channel]
+        actual = loaded.boundary_operands[channel].bc_centering_weights
         expected = selected_weights[channel]
         xr.testing.assert_identical(actual, expected)
         assert isinstance(actual.indexes["bc_period"], pd.DatetimeIndex)
         np.testing.assert_array_equal(actual.sel(bc_curtain="unused"), expected.sel(bc_curtain="unused"))
-        bound = prepare(loaded.boundary_operands[channel], actual, observations[channel], "2h")
+        bound = prepare(loaded.boundary_operands[channel], None, observations[channel], "2h")
         xr.testing.assert_identical(bound.data.bc_centering_weights.unstack("bc_region"), expected)
         np.testing.assert_array_equal(
             bound.data.H_bc_mass.unstack("bc_region").sel(bc_curtain="unused"), 0.0

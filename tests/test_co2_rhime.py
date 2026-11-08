@@ -18,7 +18,7 @@ from scipy.stats import multivariate_normal
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands, MultiplicativeChoice
+from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeChoice
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.scalar_sigma import (
@@ -37,7 +37,9 @@ from openghg_inversions.rhime.co2 import co2_runner
 from openghg_inversions.rhime import sampling
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.serialization import load_trace, save_trace
+from openghg_inversions.models.boundary import BoundCenteredTransport
 from boundary_test_utils import bound_model_arguments
+from boundary_test_utils import raw_transport
 
 
 FIXTURE = Path(__file__).parent / "data" / "co2_only_golden.json"
@@ -1296,7 +1298,7 @@ def test_centered_additive_boundary_preserves_small_concentration_corrections(re
         "H_bc_mass": (("nmeasure", "bc_region"), mass, {"units": "1"}),
         "bc_reference": ((), reference, {"units": "ppm"}),
     }, coords={"nmeasure": inputs.nmeasure, "bc_region": ["north", "south"]}, attrs={"boundary_representation": "centered-v1"})
-    bound = CenteredOperands.from_dataset(operands).bind(inputs.mf)
+    bound = BoundCenteredTransport.bind(raw_transport(operands), inputs.mf)
     weights = xr.DataArray([1., 3.], dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"})
     model = _build_model(inputs, boundary_operands=operands,
         bc_mean_shift_prior={"pdf": "normal", "mu": 0.1, "sigma": 0.2},
@@ -1328,7 +1330,7 @@ def test_centered_additive_boundary_rejects_nonfinite_reference(operand, value):
     }, coords={"nmeasure": inputs.nmeasure, "bc_region": ["north"]},
         attrs={"boundary_representation": "centered-v1"})
     operands[operand] = xr.full_like(operands[operand], value)
-    bound = CenteredOperands.from_dataset(operands).bind(inputs.mf)
+    bound = BoundCenteredTransport.bind(raw_transport(operands), inputs.mf)
     weights = xr.DataArray([1.], dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"})
     with pytest.raises(ValueError, match="reference.*finite" if operand == "bc_reference" else "H_bc_mass.*finite"):
         _build_model(inputs, boundary_operands=operands,

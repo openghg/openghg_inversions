@@ -16,6 +16,7 @@ from openghg_inversions.array_ops import select_gathered_data_array, to_dense, t
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.additive_sigma import add_additive_sigma_likelihood
 from openghg_inversions.models.boundary import BoundaryOutputs, require_centered_precision
+from openghg_inversions.rhime.co2.boundary_output import BOUNDARY_FORMAT_VERSION
 from openghg_inversions.models.components import (
     AffineBlock, AffineConcentrationTerm, ConcentrationTerm,
     _add_prepared_correlated_lognormal_state_with_activity,
@@ -228,9 +229,7 @@ def build_shared_co2_o2_model(
         absolute = pm.Deterministic(
             "modelled_concentration", sum((term.output for term in terms[1:]), start=terms[0].output), dims=output_dim,
         )
-        mean, observed, shift = likelihood_representation(terms, observations, absolute)
-        assert shift is not None
-        add_model_data(shift.rename("boundary_reference_shift"), "boundary_reference_shift")
+        mean, observed = likelihood_representation(terms, observations, absolute)
         if priors["tau"] is None:
             if priors["fixed"] is not None or priors["amplitude"] is not None:
                 raise ValueError("Fixed-OU amplitudes require tau_hours.")
@@ -354,9 +353,7 @@ def build_shared_co2_o2_cached_sigma_model(
             "modelled_concentration", sum((term.output for term in terms[1:]), start=terms[0].output),
             dims=output_dim,
         )
-        mean, observed, shift = likelihood_representation(tuple(terms), observations, absolute)
-        assert shift is not None
-        add_model_data(shift.rename("boundary_reference_shift"), "boundary_reference_shift")
+        mean, observed = likelihood_representation(tuple(terms), observations, absolute)
         cached = _add_cached_likelihood(
             tuple(terms), covariance=covariance, modelled_mean=mean, observations=observed,
             observation_error=independent_error_sd, site_coord=site_coord, site_index=site_index,
@@ -393,7 +390,7 @@ def annotate_linked_shared_baseline_trace(
                 group[f"{channel}_bc_mean_shift"].attrs["interpretation"] = "unattributed atmospheric concentration level"
             if f"{channel}_bc_pattern_standardized" in group:
                 group[f"{channel}_bc_pattern_standardized"].attrs["prior"] = "independent standard normal"
-    trace.attrs.update(rhime_boundary_format_version=1,
+    trace.attrs.update(rhime_boundary_format_version=BOUNDARY_FORMAT_VERSION,
                        rhime_variable_roles=json.dumps(roles, sort_keys=True),
                        rhime_model_metadata=json.dumps(metadata, sort_keys=True))
     return trace

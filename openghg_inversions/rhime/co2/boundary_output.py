@@ -12,6 +12,9 @@ import xarray as xr
 from openghg_inversions.postprocessing.inversion_output import trace_group
 
 
+BOUNDARY_FORMAT_VERSION = 2
+"""Saved boundary trace format: version 2 records zero anomalies explicitly."""
+
 _QUANTITY_ROLES = {
     "concentration": "boundary_concentration",
     "scale": "boundary_scale",
@@ -51,12 +54,10 @@ def restore_absolute_predictives(trace: xr.DataTree) -> xr.DataTree:
 
 @dataclass(frozen=True)
 class BoundaryOutputFacts:
-    """Validated current fitted names and optional additive zero-anomaly policy."""
+    """Validated current fitted boundary names and the saved constants."""
 
     roles: Mapping[str, str]
     constants: xr.Dataset
-    weights: xr.DataArray | None = None
-    zero_anomaly: bool = False
 
 
 def decode_boundary_facts(
@@ -65,9 +66,9 @@ def decode_boundary_facts(
 ) -> dict[str, BoundaryOutputFacts]:
     """Validate saved boundary facts once at the scientific replay boundary.
 
-    Small fitted scale/weight facts are materialized here. Draws stay borrowed;
-    no preparation, model construction or calendar calculation is performed.
-    Earlier internal posterior formats require preparation and sampling again.
+    Draws stay borrowed; no preparation, model construction or calendar
+    calculation is performed. Earlier internal posterior formats require
+    preparation and sampling again.
     """
     if roles is None:
         roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
@@ -79,44 +80,19 @@ def decode_boundary_facts(
         prefix = f"{channel}_" if channel else ""
         selected = {quantity: roles[prefix + role] for quantity, role in _QUANTITY_ROLES.items()
                     if prefix + role in roles}
-        scale_role = prefix + "boundary_anomaly_scale"
-        weights_role = prefix + "boundary_centering_weights"
-        weighted_policy = scale_role in roles or weights_role in roles
-        if not selected and not weighted_policy:
+        if not selected:
             continue
         version = trace.attrs.get("rhime_boundary_format_version")
-        if isinstance(version, bool) or not isinstance(version, (int, np.integer)) or version != 1:
+        if isinstance(version, bool) or not isinstance(version, (int, np.integer)) or version != BOUNDARY_FORMAT_VERSION:
             raise ValueError("Unsupported saved boundary format; prepare again and repeat sampling.")
-        weights = None
-        zero_anomaly = False
-        if weighted_policy:
-            if scale_role not in roles or weights_role not in roles:
-                raise ValueError("Weighted boundary anomalies require both scale and centering-weight roles.")
-            if "correction" not in selected:
-                raise ValueError("Weighted boundary anomalies require the boundary_correction role.")
-            scale_name, weights_name = roles[scale_role], roles[weights_role]
-            if scale_name not in constants or weights_name not in constants:
-                raise ValueError("Boundary anomalies require saved scale and weights; prepare again.")
-            facts = constants[[scale_name, weights_name]].compute()
-            scale, weights = facts[scale_name], facts[weights_name]
-            if (scale.ndim != 0 or not np.isfinite(scale.item()) or scale.item() < 0
-                    or weights.ndim != 1 or weights.size == 0
-                    or not np.isfinite(weights.values).all() or not (weights.values > 0).all()):
-                raise ValueError("Saved zero boundary anomaly policy conflicts with its scale or weights.")
-            zero_anomaly = scale.item() == 0 or weights.size == 1
-            anomaly_roles = {"anomaly", "anomaly_contribution"} & selected.keys()
-            if zero_anomaly and anomaly_roles:
-                raise ValueError("Saved zero boundary anomaly policy conflicts with declared anomaly roles.")
-            if not zero_anomaly and len(anomaly_roles) != 2:
-                raise ValueError("Active boundary anomalies require saved sampled state and concentration contributions.")
-        result[channel] = BoundaryOutputFacts(selected, constants, weights, zero_anomaly)
+        result[channel] = BoundaryOutputFacts(selected, constants)
     return result
 
 
 def reconstruct_boundary(
     facts: BoundaryOutputFacts, draws: xr.Dataset,
 ) -> dict[str, xr.DataArray]:
-    """Return stable scientific quantities, including omitted zero anomalies.
+    """Return stable scientific quantities from saved draws and constants.
 
     The supplied draw group determines sample labels and sizes independently
     for prior and posterior. Constants broadcast only over this group's draws.
@@ -129,16 +105,6 @@ def reconstruct_boundary(
             result[quantity] = facts.constants[name]
         else:
             raise ValueError(f"Boundary scientific outputs require role {_QUANTITY_ROLES[quantity]!r} in saved draws.")
-    if facts.weights is not None:
-        correction = result["correction"]
-        xr.align(correction, facts.weights, join="exact", copy=False)
-        if facts.zero_anomaly:
-            result.setdefault("anomaly", xr.zeros_like(correction))
-            if "mean_contribution" not in result:
-                raise ValueError("Zero boundary anomaly reconstruction requires the saved mean contribution.")
-            result.setdefault("anomaly_contribution", xr.zeros_like(result["mean_contribution"]))
-        elif "anomaly" not in result or "anomaly_contribution" not in result:
-            raise ValueError("Active boundary anomalies require saved sampled state and concentration contributions.")
     if "reference" in result and "concentration" in result:
         result["reference"] = result["reference"].broadcast_like(result["concentration"])
     return result

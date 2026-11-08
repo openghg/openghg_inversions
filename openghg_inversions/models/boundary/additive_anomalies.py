@@ -16,7 +16,6 @@ import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
-from dask import is_dask_collection
 from pytensor.tensor.variable import TensorVariable
 from scipy.linalg import helmert
 
@@ -26,27 +25,6 @@ from openghg_inversions.models.coords import add_model_data, component_coords
 from .outputs import BoundaryCorrection, BoundaryOutputs
 
 AnomalyStructure = Literal["weighted", "period_contrasts", "independent"]
-
-
-def normalized_centering_weights(weights: xr.DataArray) -> xr.DataArray:
-    """Validate materialized centering weights and normalize their sum to one.
-
-    Args:
-        weights: Borrowed positive weights on the bound ``bc_region`` states.
-
-    Returns:
-        Dimensionless weights with the same state coordinates. Scaling by the
-        maximum first avoids overflow when summing large finite weights.
-
-    Raises:
-        ValueError: If weights are lazy, empty, non-finite or not positive.
-    """
-    if is_dask_collection(weights.data):
-        raise ValueError("Materialize bc_centering_weights before forming a weighted anomaly design.")
-    if not weights.size or not np.isfinite(weights.values).all() or not (weights.values > 0).all():
-        raise ValueError("bc_centering_weights must be finite and strictly positive.")
-    scaled = weights / weights.max()
-    return (scaled / scaled.sum()).assign_attrs(units="1")
 
 
 def weighted_anomaly_basis(weights: xr.DataArray) -> xr.DataArray:
@@ -102,7 +80,7 @@ def anomaly_basis(
         structure: Selected additive anomaly formulation.
         states: Bound ``bc_region`` coordinate with a ``bc_period`` level.
         weights: Normalized centering weights from
-            :func:`normalized_centering_weights`; required for ``"weighted"``
+            :meth:`~.contracts.BoundAdditiveTransport.normalized_weights`; required for ``"weighted"``
             and ignored otherwise.
 
     Returns:
@@ -173,18 +151,13 @@ def anomaly_outputs(structure: AnomalyStructure, *, sampled: bool, concentration
         concentration: Observation concentration units.
 
     Returns:
-        Unprefixed roles and units for the selected formulation. Weighted
-        anomalies retain scale/weight roles even when unsampled so trace
-        reconstruction can identify intentionally zero anomalies.
+        Unprefixed roles and units. The anomaly state and contribution are
+        always declared, as sampled values or recorded zeros.
     """
-    roles: dict[str, str] = {}
-    units = {"bc_anomaly_scale": concentration}
+    roles = {"boundary_correction_anomaly": "bc_anomaly", "boundary_anomaly_concentration": "mu_bc_anomaly"}
+    units = {"bc_anomaly_scale": concentration, "bc_anomaly": concentration, "mu_bc_anomaly": concentration}
     if structure == "weighted":
-        roles.update(boundary_anomaly_scale="bc_anomaly_scale", boundary_centering_weights="bc_centering_weights")
         units["bc_centering_weights"] = "1"
-    if sampled:
-        roles.update(boundary_correction_anomaly="bc_anomaly", boundary_anomaly_concentration="mu_bc_anomaly")
-        units.update(bc_anomaly=concentration, mu_bc_anomaly=concentration)
-        if structure != "independent":
-            units.update(bc_anomaly_latent=concentration, bc_anomaly_basis="1")
+    if sampled and structure != "independent":
+        units.update(bc_anomaly_latent=concentration, bc_anomaly_basis="1")
     return BoundaryOutputs(roles, units)

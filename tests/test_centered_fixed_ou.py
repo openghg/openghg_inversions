@@ -11,11 +11,13 @@ from openghg_inversions.models import StateActivity
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.co2 import build_co2_model, build_co2_cached_sigma_model
-from openghg_inversions.models.boundary import CenteredOperands, MultiplicativeChoice
+from openghg_inversions.models.boundary import MultiplicativeChoice
 from test_co2_cached_sigma import _inputs
 from test_co2_o2_fixed_ou import _prepared, _kwargs
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
+from openghg_inversions.models.boundary import BoundCenteredTransport
 from boundary_test_utils import bound_model_arguments, bound_linked_model_arguments
+from boundary_test_utils import raw_transport
 
 
 @pytest.fixture(autouse=True)
@@ -74,7 +76,7 @@ def _assert_equivalent(stock, centered, cached):
 def test_single_centered_fixed_ou_preserves_full_density_and_gradient(reference, fixed_boundary):
     inputs = _inputs()
     operands = _operands(inputs.mf, reference)
-    bound = CenteredOperands.from_dataset(operands).bind(inputs.mf)
+    bound = BoundCenteredTransport.bind(raw_transport(operands), inputs.mf)
     options = dict(
         retained_prior=CorrelatedLognormalPrior(
             inputs.alpha_prior_mean, inputs.alpha_prior_covariance, covariance_dim="region_cov"
@@ -125,7 +127,7 @@ def test_linked_centered_fixed_ou_preserves_joint_density_and_full_gradient(fixe
         rows = kwargs["observations"].sel(species=channel)
         rows = rows.rename({rows.dims[0]: kwargs[f"{channel}_sensitivity"].dims[0]})
         operands[channel] = _operands(rows, reference)
-        bound = CenteredOperands.from_dataset(operands[channel]).bind(rows)
+        bound = BoundCenteredTransport.bind(raw_transport(operands[channel]), rows)
         absolute[channel] = bound.H_bc_anomaly + reference * bound.H_bc_mass
     shift = xr.where(kwargs["observations"].species == "co2", 400.0, 209300.0)
     kwargs["observations"] = kwargs["observations"] + shift
@@ -165,7 +167,7 @@ def test_direct_custom_likelihood_receives_centered_observations_and_mean():
         observation_error=inputs.mf_error,
         aggregation_error=resolve_aggregation_error(inputs, "dense"),
         likelihood_builder=likelihood,
-        boundary=MultiplicativeChoice(dict(DEFAULT_BC_PRIOR)).bind(inputs.mf, CenteredOperands.from_dataset(operands)),
+        boundary=MultiplicativeChoice(dict(DEFAULT_BC_PRIOR)).bind(inputs.mf, raw_transport(operands)),
     )
     xr.testing.assert_allclose(seen["observations"], inputs.mf - 209300.0)
     mean, absolute = model.compile_fn(
@@ -181,7 +183,7 @@ def test_fixed_amplitude_absolute_and_centered_density_full_gradient(reference):
     """Fixed amplitudes need an ordinary oracle, with non-unit fixed states."""
     inputs = _inputs()
     operands = _operands(inputs.mf, reference)
-    bound = CenteredOperands.from_dataset(operands).bind(inputs.mf)
+    bound = BoundCenteredTransport.bind(raw_transport(operands), inputs.mf)
     options = dict(
         retained_prior=CorrelatedLognormalPrior(
             inputs.alpha_prior_mean, inputs.alpha_prior_covariance, covariance_dim="region_cov"
