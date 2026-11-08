@@ -19,9 +19,9 @@ from openghg_inversions.models import StateActivity, registered_model
 from openghg_inversions.models.boundary import (
     AdditiveChoice,
     AnomalyScalingChoice,
-    CenteredOperands,
     MultiplicativeChoice,
 )
+from boundary_test_utils import centered_transport
 
 TIMES = pd.to_datetime(["2020-01-03", "2020-01-20", "2020-02-03", "2020-02-05"])
 ROWS = [10, 20, 30, 40]
@@ -52,7 +52,7 @@ def _spatial(values, units):
 
 def _operands(weights=None):
     rng = np.random.default_rng(3)
-    return CenteredOperands(
+    return centered_transport(
         _spatial(rng.normal(0.0, 2.0, (4, 3)), "ppm"),
         _spatial(rng.uniform(0.1, 0.5, (4, 3)), "1"),
         xr.DataArray(400.0, attrs={"units": "ppm"}),

@@ -14,12 +14,7 @@ from typing import Any
 import tomllib
 
 
-from openghg_inversions.models.boundary import (
-    AdditiveChoice,
-    AnomalyScalingChoice,
-    BoundaryChoice,
-    MultiplicativeChoice,
-)
+from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice, BoundaryChoice, MultiplicativeChoice
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.priors import positive_prior_args
 from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likelihood
@@ -585,7 +580,7 @@ class Co2ModelConfig:
     Construction through :meth:`from_params` validates only model and likelihood
     sections. Ordinary containers are owned; opaque numerical values are borrowed.
     Defaults omitted here remain owned by the concrete scientific recipe.
-    The boundary choice is data-free; inference binds it to the preparation.
+    The boundary choice is a prior specification; inference binds it to the preparation.
     """
 
     boundary: BoundaryChoice | None = None

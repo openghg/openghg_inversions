@@ -12,7 +12,7 @@ import xarray as xr
 
 from openghg_inversions.biosphere_prior import calibrate_biosphere_prior
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.boundary import AnomalyScalingChoice, CenteredOperands
+from openghg_inversions.models.boundary import AnomalyScalingChoice, RawCenteredTransport
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
@@ -181,7 +181,7 @@ def test_configured_co2_inference_uses_same_bc_calibration_and_nonzero_target(tm
             observations=inv.mf,
             observation_error=inv.mf_error,
             aggregation_error=resolve_aggregation_error(inv, prepared.aggregation_error_mode),
-            boundary=boundary.bind(inv.mf, CenteredOperands.from_dataset(inv)),
+            boundary=boundary.bind(inv.mf, RawCenteredTransport.validate(inv)),
             likelihood_builder=add_fixed_ou_gaussian_likelihood,
             likelihood_kwargs={k: v for k, v in likelihood.items() if k != "kind"},
         )
@@ -229,7 +229,7 @@ def test_linked_config_independent_species_corrections_and_one_calibration(tmp_p
         native_dim = str(kwargs[f"{channel}_sensitivity"].dims[0])
         expected_boundary[channel] = AnomalyScalingChoice(mean_shift_prior, 0.3).bind(
             _native(prepared, channel).rename(observation=native_dim),
-            CenteredOperands.from_dataset(prepared.boundary_operands[channel]),
+            prepared.boundary_operands[channel],
         )
         channels[channel] = {
             "units": "ppm",

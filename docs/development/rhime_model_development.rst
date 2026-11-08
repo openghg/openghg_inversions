@@ -178,19 +178,34 @@ it protects a scientific policy or gives a materially better boundary failure.
 Boundary component extension check
 ----------------------------------
 
-A boundary family is a data-free *choice* and a *bound* record, both small
-frozen dataclasses in one module under ``models/boundary/``. The configuration
+A boundary family is a *choice*, the prior specification before binding, and a
+*bound* record, both small frozen dataclasses in one module under
+``models/boundary/``. The configuration
 adapter resolves user options into a choice (``MultiplicativeChoice`` or
 ``AdditiveChoice``); it never touches arrays. Runners take that one choice (a
 channel mapping for linked recipes) and call ``choice.bind(observations,
 transport)`` once per channel and fit, where transport is the prepared absolute
-``H_bc`` or ``CenteredOperands``. The bound record pairs the choice with
+``H_bc`` or a ``RawCenteredTransport`` Dataset. The bound record pairs the choice with
 borrowed labelled transport on the fit's rows and boundary periods. Reusable raw
 transport keeps its spatial meaning independently of fit periods.
 
 Recipes materialize the bound record with their other inputs in one
 ``dask.compute`` over :func:`~openghg_inversions.array_ops.to_dense_tree`, which
-traverses dataclasses, so no family needs payload accessors. Inside the
+traverses dataclasses, including prior parameters in the choice. For example,
+after binding the boundary and selecting the model inputs:
+
+.. code-block:: python
+
+   from dask import compute
+   from openghg_inversions.array_ops import to_dense_tree
+
+   inputs, boundary, priors = compute(
+       *to_dense_tree((inputs, boundary, priors))
+   )
+
+Keep this computation joint: a boundary-only materialization method could
+execute transport graphs again when the other model inputs use them. The eager
+check in ``boundary.add`` enforces the materialized-data precondition. Inside the
 registered model, ``boundary.add(...)`` returns an ``AffineConcentrationTerm``,
 a ``ConcentrationTerm`` subclass: ordinary recipes use it as a term, and cached
 recipes lower its labelled ``AffineBlock`` designs and physical coefficients
@@ -201,6 +216,15 @@ native rows and namespaces coordinates without recovering boundary-family
 equations. Offsets remain separate components; the offset-confounding warning
 inspects every affine block for a constant unit response, so it needs no
 knowledge of boundary families.
+
+The additive recipe composes its mean shift, anomalies and complete boundary
+concentration in that order. Factor construction and sampling share the same
+selection of contrast basis or direct state sampling.
+
+The scalar ``bc_anomaly_scale`` saved in model data records the resolved prior
+width for trace reconstruction; the distributions use the resolved choice
+value directly. Likewise ``bc_scale_sd`` records anomaly-scaling provenance.
+Updating these saved scalars does not update the distributions' widths.
 
 Validation is not repeated along this path. Preparation and artifact loading
 own units, labels and layout; ``bind`` owns calendar and row alignment and the
@@ -261,9 +285,8 @@ reject reversed observation rows before reading lazy cache payloads, and accept
 independent coefficient blocks with different labels on identically named axes.
 The cached conversion aligns only observation rows; it does not align separate
 coefficient axes. Independent curtain corrections replay through the same
-scientific correction role without declaring a weighted anomaly policy.
-Only explicit ``boundary_anomaly_scale`` and ``boundary_centering_weights``
-roles select that policy, and either declaration requires both.
+scientific correction role. Unsampled additive anomalies are recorded as zero
+deterministics, so replay reads every declared role from the saved draws.
 
 For a new family, scientific tests belong with its component in
 ``tests/models/test_boundary_components.py`` and its configuration in
@@ -283,9 +306,9 @@ This probe does not add Student-t to the released configuration choices.
 The review check is that this module list does not grow to include likelihood,
 cache, sampler or output modules. Those consumers operate on the shared affine
 result and the component's declarations through the existing ``OutputContract``.
-The pure saved-boundary decoder/reconstructor consumes fitted scientific facts,
-including explicit zero anomalies for mean-only fits. Saved traces can omit
-those zero matrices. Prior and posterior groups retain independent sample sizes;
+The pure saved-boundary decoder/reconstructor reads fitted scientific facts,
+including the zero anomalies recorded for mean-only fits, from saved draws and
+constants. Prior and posterior groups retain independent sample sizes;
 replay neither builds a graph nor chooses a new period calendar.
 
 Keep configuration with its scientific owner

@@ -82,15 +82,10 @@ def test_additive_public_build_save_reload_and_reconstruction(tmp_path, cached, 
     assert replay.constant_data.bc_anomaly_scale.attrs["units"] == "ppm"
     if anomaly_scale == 0:
         for group in ("prior", "posterior"):
-            assert "bc_anomaly" not in replay[group]
-            assert "mu_bc_anomaly" not in replay[group]
+            np.testing.assert_array_equal(replay[group]["bc_anomaly"], 0.0)
+            np.testing.assert_array_equal(replay[group]["mu_bc_anomaly"], 0.0)
             np.testing.assert_array_equal(components[f"boundary_anomaly_{group}"], 0.0)
             np.testing.assert_array_equal(components[f"boundary_anomaly_contribution_{group}"], 0.0)
-        assert "boundary_correction_anomaly" not in roles
-        corrupt = replay.copy(deep=True)
-        corrupt.constant_data["bc_anomaly_scale"] = xr.DataArray(0.1)
-        with pytest.raises(ValueError, match="Active boundary anomalies require saved"):
-            reconstruct_co2_concentrations(corrupt, restored_prepared)
     assert np.abs(replay.prior_predictive.y - replay.prior.modelled_concentration).max() < 5.0
     for when in ("prior", "posterior"):
         np.testing.assert_allclose(

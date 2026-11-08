@@ -19,8 +19,14 @@ from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.co2 import build_co2_cached_sigma_model, build_co2_model
 from openghg_inversions.boundary_sensitivity import validate_boundary_operands
-from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands
+from openghg_inversions.models.boundary import (
+    AdditiveChoice,
+    AnomalyScalingChoice,
+    MultiplicativeChoice,
+)
+from openghg_inversions.models.boundary import BoundCenteredTransport
 from boundary_test_utils import bound_model_arguments, boundary_transport
+from boundary_test_utils import raw_transport, centered_transport
 
 
 @pytest.fixture(autouse=True)
@@ -187,8 +193,8 @@ def test_forward_equations_and_cached_likelihood_gradient(n_boundary: int, anoma
             assert not any("anomaly" in rv.name for rv in model.free_RVs)
             assert "bc_anomaly_latent" not in model.named_vars
             assert "bc_anomaly_basis" not in model.named_vars
-            assert "bc_anomaly" not in model.named_vars
-            assert "mu_bc_anomaly" not in model.named_vars
+            np.testing.assert_array_equal(model["bc_anomaly"].eval(), 0.0)
+            np.testing.assert_array_equal(model["mu_bc_anomaly"].eval(), 0.0)
         point = model.initial_point()
         if model is cached.model:
             point["ou_site_amplitude_log__"] = np.log(np.full(2, 0.4))
@@ -262,15 +268,12 @@ def test_forward_equations_and_cached_likelihood_gradient(n_boundary: int, anoma
         {"bc_anomaly_scale": np.inf},
         {"bc_anomaly_scale": -np.inf},
         {"bc_centering_weights": None},
-        {"boundary_operands": None, "boundary_sensitivity": "absolute"},
     ],
 )
 def test_centered_boundary_rejects_incomplete_options(override: dict[str, Any]) -> None:
     inputs = _inputs()
     kwargs = _kwargs(inputs)
     kwargs.update(override)
-    if kwargs.get("boundary_sensitivity") == "absolute":
-        kwargs["boundary_sensitivity"] = inputs.H_bc
     with pytest.raises((ValueError, TypeError)):
         build_co2_model(inputs.H, **bound_model_arguments(kwargs))
 
@@ -308,7 +311,7 @@ def test_centered_boundary_validates_scientific_inputs(invalid: str) -> None:
             # Units are owned by preparation and artifact loading, not by binding.
             response.attrs["units"] = "m"
             kwargs["boundary_operands"]["H_bc_mass"] = response
-            with pytest.raises(ValueError, match="mass units must be '1'"):
+            with pytest.raises(ValueError, match="H_bc_mass.*units"):
                 validate_boundary_operands(kwargs["boundary_operands"])
             return
         kwargs["boundary_operands"]["H_bc_mass"] = response
@@ -329,7 +332,7 @@ def test_additive_term_keeps_sampled_boundary_and_observation_offsets_in_mean() 
         }
     )
     prior = {"pdf": "normal", "mu": 0.0, "sigma": 0.2}
-    transport = CenteredOperands(
+    transport = centered_transport(
         operands.H_bc_anomaly, operands.H_bc_mass, operands.bc_reference, weights=_whole_window_weights(inputs)
     )
     prepared = AdditiveChoice(prior, 0.3).bind(inputs.mf, transport)
@@ -338,13 +341,13 @@ def test_additive_term_keeps_sampled_boundary_and_observation_offsets_in_mean() 
         observation_offset = pm.Normal("observation_offset", mu=0.0, sigma=0.1)
         offset = pt.ones(inputs.sizes["nmeasure"]) * observation_offset
         absolute = result.output + offset
-        mean, observations, shift = likelihood_representation(
+        mean, observations = likelihood_representation(
             [result, ConcentrationTerm.absolute(offset)],
             inputs.mf,
             absolute,
         )
     expected_shift = 200000.0 * mass.sum("bc_region")
-    xr.testing.assert_allclose(shift, expected_shift)
+    np.testing.assert_allclose(model["boundary_reference_shift"].eval(), expected_shift.values)
     xr.testing.assert_allclose(observations, inputs.mf - expected_shift)
     evaluate = model.compile_fn(
         model.replace_rvs_by_values([absolute, mean, model["bc_correction"]]),
@@ -362,7 +365,6 @@ def test_additive_term_keeps_sampled_boundary_and_observation_offsets_in_mean() 
         )
         np.testing.assert_allclose(centered_values, expected, atol=1e-12)
         np.testing.assert_allclose(absolute_values, centered_values + expected_shift, atol=1e-10)
-        xr.testing.assert_allclose(shift, expected_shift)
 
 
 @pytest.mark.parametrize("cached", [False, True])
@@ -424,12 +426,12 @@ def test_nonseparable_region_period_weights_preserve_whole_window_prior():
     observations = mass.sum("bc_region").assign_coords(
         time=("nmeasure", pd.to_datetime(["2020-01-01", "2020-01-20", "2020-02-01", "2020-02-20"]))
     )
-    periods = CenteredOperands.from_dataset(raw).bind(observations, frequency="monthly")
+    periods = BoundCenteredTransport.bind(raw_transport(raw), observations, frequency="monthly")
     weights = xr.DataArray(
         [1.0, 2.0, 3.0, 7.0], dims="bc_region", coords=periods.bc_region.coords, attrs={"units": "1"}
     )
     prior = {"pdf": "uniform", "lower": -1.0, "upper": 2.0}
-    transport = replace(CenteredOperands.from_dataset(raw), weights=weights.unstack("bc_region"))
+    transport = raw_transport(raw, weights=weights.unstack("bc_region"))
     prepared = AdditiveChoice(prior, 0.3, frequency="monthly").bind(observations, transport)
     w = weights.values / weights.sum().item()
     projection = np.eye(4) - np.ones((4, 1)) * w
@@ -465,12 +467,13 @@ def test_additive_boundary_materializes_shared_operands_at_explicit_model_bounda
             "H_bc_mass": mass,
             "H_bc_anomaly": (mass * 0.001).assign_attrs(units="ppm"),
             "bc_reference": (mass.sum() * 200.0).assign_attrs(units="ppm"),
-        }
+        },
+        attrs={"boundary_representation": "centered-v1"},
     )
     weights = _period_weights([1.0, 2.0], mass.bc_region.values, ["whole_window"])
     observations = xr.DataArray([400.0, 400.0], dims="nmeasure", coords={"nmeasure": [0, 1]})
     prior = {"pdf": "normal", "mu": 0.0, "sigma": 0.2}
-    transport = replace(CenteredOperands.from_dataset(operands), weights=weights)
+    transport = raw_transport(operands, weights=weights)
     prepared = AdditiveChoice(prior, 0.3).bind(observations, transport)
     assert calls == []
     assert isinstance(prepared.data.H_bc_mass.data, da.Array)
@@ -505,7 +508,7 @@ def test_bound_additive_affine_result_equals_likelihood_and_keeps_resolved_scale
     assert len(result.blocks) == (2 if anomaly_scale else 1)
     assert len(result.sampled_rvs) == (2 if anomaly_scale else 1)
     assert "bc_mean_shift_interval__" in model.initial_point()
-    assert ("bc_anomaly" in model) == bool(anomaly_scale)
+    assert ("bc_anomaly_latent" in model) == bool(anomaly_scale)
     for transformed_mean in (-1.2, 0.0, 1.1):
         point = model.initial_point()
         point["bc_mean_shift_interval__"] = np.asarray(transformed_mean)
@@ -513,6 +516,28 @@ def test_bound_additive_affine_result_equals_likelihood_and_keeps_resolved_scale
             point["bc_anomaly_latent"] = np.array([0.1, -0.2])
         direct, lowered = evaluate(point)
         np.testing.assert_allclose(direct, lowered, rtol=1e-13, atol=1e-13)
+
+
+@pytest.mark.parametrize("choice", [
+    AdditiveChoice({"pdf": "normal", "mu": 0.0, "sigma": 0.2}, 0.3),
+    MultiplicativeChoice({"pdf": "lognormal", "mu": 0.0, "sigma": 0.1}),
+    AnomalyScalingChoice({"pdf": "normal", "mu": 0.0, "sigma": 0.2}, 0.5),
+])
+def test_bound_records_trust_the_contract_binding_establishes(choice):
+    """Binding establishes the bound contract; the contract, not the record, rejects broken layouts."""
+    from openghg_inversions.models import registered_model
+    from openghg_inversions.models.boundary import BoundCenteredTransport
+
+    inputs = _inputs()
+    boundary = choice.bind(inputs.mf, boundary_transport(_kwargs(inputs)))
+    assert boundary.observation_dim == "nmeasure"
+    assert BoundCenteredTransport.validate(boundary.data) is boundary.data
+    with pytest.raises(ValueError, match="H_bc_mass.*dims"):
+        BoundCenteredTransport.validate(boundary.data.assign(H_bc_mass=boundary.data.H_bc_mass.T))
+    with pytest.raises(ValueError, match="H_bc_mass"):
+        BoundCenteredTransport.validate(boundary.data.drop_vars("H_bc_mass"))
+    with registered_model(), pytest.raises(ValueError, match="bound observation dimension"):
+        replace(boundary, data=boundary.data.compute()).add(output_dim="time")
 
 
 def test_boundary_calendar_mismatch_rejected_before_lazy_payload_computation():
@@ -544,7 +569,7 @@ def test_boundary_calendar_mismatch_rejected_before_lazy_payload_computation():
                 "bc_period": np.array(["2021-01-01", "2021-01-02"], dtype="datetime64[ns]")},
         attrs={"units": "1"},
     )
-    transport = replace(CenteredOperands.from_dataset(operands), weights=weights)
+    transport = raw_transport(operands, weights=weights)
 
     def choice(anchor_time):
         return AdditiveChoice(options["bc_mean_shift_prior"], .3, frequency="1D", anchor_time=anchor_time)

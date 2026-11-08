@@ -16,7 +16,7 @@ import xarray as xr
 from openghg_inversions.array_ops import select_gathered_data_array, to_dense, to_dense_tree
 from openghg_inversions.biosphere_prior import BiospherePrior
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice, CenteredOperands
+from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice
 from openghg_inversions.models.linked_shared_baseline import bind_linked_shared_baseline
 from openghg_inversions.models.shared_baseline import SharedBaseline, SharedBaselineChoice
 from .co2_o2_preparation import Co2O2PreparedInputs
@@ -140,7 +140,7 @@ def prepare_linked_shared_inputs(
         choices, observations,
         co2_sensitivity=sensitivities["co2"], o2_sensitivity=sensitivities["o2"],
         retained_prior=prepared.retained_prior, fixed_prior_contribution=fixed,
-        boundary_transport={channel: CenteredOperands.from_dataset(raw) for channel, raw in prepared.boundary_operands.items()},
+        boundary_transport=prepared.boundary_operands,
         outer=outer, sampled_outer=sampled_outer, calibrated_prior=calibrated_prior,
     )
     def original_selector(selector: xr.DataArray) -> xr.DataArray:
@@ -430,12 +430,11 @@ def materialize_linked_shared_inputs(
     for value in errors:
         _validate_independent_error_labels(prepared.observations, value)
     native_rows = (str(prepared.co2_sensitivity.dims[0]), str(prepared.o2_sensitivity.dims[0]))
-    arrays, frozen, raw, weights, ratio, aggregation, dense_errors, resolved_likelihood = compute(
+    arrays, frozen, raw, ratio, aggregation, dense_errors, resolved_likelihood = compute(
         {name: _dense_consumed(getattr(prepared, name), native_rows=native_rows) for name in (
             "observations", "fixed_prior_contribution", "co2_sensitivity", "o2_sensitivity")},
         {name: _dense_consumed(value.data, native_rows=native_rows) for name, value in prepared.shared_baseline.items()},
         {name: _dense_consumed(value, native_rows=native_rows) for name, value in prepared.boundary_operands.items()},
-        {name: _dense_consumed(value, native_rows=native_rows) for name, value in prepared.bc_centering_weights.items()},
         None if prepared.o2_co2_flux_ratio is None else _dense_consumed(prepared.o2_co2_flux_ratio),
         {name: (None if getattr(prepared.aggregation_error, name) is None
                 else _dense_consumed(getattr(prepared.aggregation_error, name), native_rows=native_rows))
@@ -453,7 +452,7 @@ def materialize_linked_shared_inputs(
     materialized = replace(
         prepared, **arrays, shared_baseline={name: replace(prepared.shared_baseline[name], data=value)
                                           for name, value in frozen.items()}, boundary_operands=raw,
-        bc_centering_weights=weights, o2_co2_flux_ratio=ratio,
+        o2_co2_flux_ratio=ratio,
         aggregation_error=replace(prepared.aggregation_error, **aggregation),
         independent_error_sd=dense_errors[-1],
     )

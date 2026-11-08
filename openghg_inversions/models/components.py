@@ -411,13 +411,15 @@ def likelihood_representation(
     terms: Sequence[ConcentrationTerm],
     observations: xr.DataArray,
     modelled_mean: TensorVariable,
-) -> tuple[TensorVariable, xr.DataArray, xr.DataArray | None]:
+) -> tuple[TensorVariable, xr.DataArray]:
     """Choose the likelihood mean and observations for concentration terms.
 
     Without observation shifts this returns ``modelled_mean`` and the
     observations unchanged. Otherwise it sums the likelihood contributions
     directly, rather than subtracting a large shift from ``modelled_mean``,
-    which would lose small centered anomalies.
+    which would lose small centered anomalies, and registers the total shift
+    as model data ``boundary_reference_shift`` so replay can restore absolute
+    predictions. Call it inside the active model.
 
     Args:
         terms: Complete ordered decomposition of ``modelled_mean``. Tensor
@@ -429,8 +431,7 @@ def likelihood_representation(
             retaining the recipe's summation grouping and deterministic name.
 
     Returns:
-        The likelihood mean, the translated observations and the total
-        observation shift (``None`` when no term is shifted).
+        The likelihood mean and the translated observations.
 
     Raises:
         ValueError: If indexed observation labels differ between observations
@@ -438,11 +439,12 @@ def likelihood_representation(
     """
     shifts = [term.observation_shift for term in terms if term.observation_shift is not None]
     if not shifts:
-        return modelled_mean, observations, None
+        return modelled_mean, observations
     observations, *shifts = xr.align(observations, *shifts, join="exact", copy=False)
     shift = sum(shifts[1:], start=shifts[0])
+    add_model_data(shift.rename("boundary_reference_shift"), "boundary_reference_shift")
     mean = sum((term.likelihood_contribution for term in terms[1:]), start=terms[0].likelihood_contribution)
-    return mean, observations - shift, shift
+    return mean, observations - shift
 
 
 def _active_state_coords(

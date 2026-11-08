@@ -51,6 +51,148 @@ the calculation's meaning, or gives a materially clearer failure before
 expensive or irreversible work. Otherwise, an equation-level test is often
 the clearer home for the invariant.
 
+Make established contracts visible in types
+-------------------------------------------
+
+Use a named contract at a handoff where an ordinary ``xr.DataArray``,
+``xr.Dataset`` or ``xr.DataTree`` annotation leaves important guarantees
+implicit. The type's docstring is the canonical description of the variables,
+dimensions, indexed coordinates, units, relationships and numerical properties
+that consumers can assume, including precise tolerance policies. Keep its
+validation colocated. Producer and input-boundary docstrings explain how their
+operations establish these guarantees from their own preconditions.
+The validator checks structure only; numerical properties are established by
+the producer, as described below.
+
+The :download:`explicit data contracts proposal
+<../../openspec/changes/explicit-data-contracts/specs/explicit-data-contracts/spec.md>`
+captures this pattern. :func:`openghg_inversions.xr_contracts.xr_contract` is
+the declaration decorator, and
+``openghg_inversions.models.boundary.contracts`` holds the centered boundary
+transport contracts, the first application. The following pseudocode
+illustrates the recommended static marker for a structural contract;
+``check_bound_layout`` and ``select_and_expand_transport`` stand for
+domain-specific validation and preparation.
+
+.. code-block:: python
+
+   from typing import cast
+
+   import xarray as xr
+
+   @xr_contract
+   class BoundTransport(xr.Dataset):
+       """Observation-aligned transport with ordinary Dataset runtime values.
+
+       The first dimension of H_bc_anomaly is the observation dimension.
+       H_bc_mass shares its ordered dimensions and indexed coordinates.
+       """
+
+       __slots__ = ()
+
+       @staticmethod
+       def validate(
+           data: xr.Dataset, *, observation_dim: str
+       ) -> "BoundTransport":
+           """Check the layout and return the same borrowed dataset."""
+           check_bound_layout(data, observation_dim=observation_dim)
+           return cast("BoundTransport", data)
+
+   def bind_transport(raw, observations) -> BoundTransport:
+       """Construct observation-aligned transport in canonical order."""
+       bound = select_and_expand_transport(raw, observations)
+       return cast(BoundTransport, bound)
+
+Where an existing input boundary needs a standalone check, call the validator
+and use its typed return value. A trusted producer instead establishes
+the contract through its preparation operations. ``cast`` only records that
+claim for the type checker; it performs no validation. In this example, a
+consumer recovers the observation dimension from ``data.H_bc_anomaly.dims[0]``.
+``check_bound_layout`` checks that convention against ``observation_dim``;
+the cast does not retain validator arguments. Other contracts may record roles
+in metadata during preparation. Validation checks existing information rather
+than adding it. A validator returning ``None`` does not by itself narrow the
+caller's variable.
+
+Keep ordinary xarray representations when their shared coordinates,
+alignment and joint selection are useful. A static marker requires no runtime
+wrapper or special constructor. Its runtime object has no new instance methods
+or properties: adding these to a phantom subtype would allow calls that
+type-check but fail at runtime. Use class-level helpers for additional behavior,
+and do not use ``isinstance`` to decide whether the contract holds. An ordinary
+record may hold contracted fields without repeating their validation.
+
+Declare contracts through the package decorator in ``contracts.py``
+modules within their owning packages. Shared tests discover those files and
+import their modules without a hand-maintained import list. Each contract's
+tests supply valid examples, including lazy ones, and required validator
+arguments. Validation leaves lazy examples uncomputed.
+
+A family-specific contract can extend a shared contract by subtyping. Its
+validator establishes both shared and additional guarantees; the shared schema
+must permit the extension's extra data. A trusted producer adding that data
+casts its constructed result to the stronger type. DataTree parent contracts
+can describe child relationships, but indexing a child does not automatically
+give it a narrower static contract type.
+
+Package-owned transformations must preserve or establish the contract they
+return. Inherited xarray ``Self`` annotations do not prove that a selection,
+rename or reduction preserves the schema; these operations may retain a stale
+contract annotation. Validate independently supplied results or use known
+construction covered by tests that pass its outputs to the validator. Do not
+add complete validation in every ``__post_init__`` or dataclass reconstruction.
+Mutating an object so that its declared contract no longer holds is caller
+error; interception or mutation warnings are not required.
+
+Use this pattern where it clarifies a real handoff, rather than introducing a
+special type for every intermediate. Keep normalization, alignment and unit
+conversion explicit, following the guidance below.
+
+A contract's docstring can document numerical properties, but its validator
+never checks them. For example, a covariance contract can document matching row
+and column labels, symmetry and positive semidefiniteness within a declared
+tolerance. Its validator checks the labels, using eager indexed coordinates, and
+leaves payloads lazy. The producer of each value establishes the numerical
+properties in one of three ways:
+
+* By construction from the producer's own input preconditions, such as PSD from
+  ``A @ A.T``. Tests check outputs numerically, but example outputs alone do not
+  prove the construction argument, so review checks the reasoning. Loading data
+  does not establish finiteness.
+* By numerical work the algorithm already requires. A preparation function
+  that needs eigenvectors checks PSD using the eigenvalues from that same
+  decomposition, rather than first calling a separate check that repeats it.
+* By an explicit eager check at the boundary accepting independently supplied
+  data. That boundary materializes related arrays together, runs the check
+  alongside the validator, and only then returns the contract type.
+
+Consumers do not check these properties again. Do not introduce an intermediate
+or force earlier materialization merely to obtain a contract annotation. At
+each adopted handoff, review which scans and decompositions run and which
+repeated checks disappear.
+
+Positive semidefiniteness permits singular covariance matrices: a solve requiring
+positive definiteness owns that stronger requirement. Reusing numerical work as
+a check requires reliable failure behavior for the stated policy; Cholesky
+success alone does not establish symmetry or a specified rank tolerance.
+Compatibility with a particular model's observation labels belongs to the
+composition boundary combining them.
+
+Centered-boundary application
+-----------------------------
+
+The first application is
+:class:`~openghg_inversions.models.boundary.RawCenteredTransport`,
+:class:`~openghg_inversions.models.boundary.BoundCenteredTransport` and its
+:class:`~openghg_inversions.models.boundary.BoundAdditiveTransport` extension.
+Their schemas use ``xarray_validate`` for declarative variables, dtypes,
+dimensions and attributes, with callbacks for unit and index relationships;
+the library choice belongs to this application, not to every contract. The
+contracts are structural: each centered family's ``add`` performs the one
+numerical check of the jointly materialized values. The class docstrings list
+the guarantees and operations; see :doc:`/usage/centered_boundary_conditions`
+for the scientific model.
+
 Transpose, align, compute
 -------------------------
 

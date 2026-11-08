@@ -1,9 +1,32 @@
-"""Declared scientific outputs of one bound boundary."""
+"""Graph pieces and declared scientific outputs of one bound boundary."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+
+from pytensor.tensor.variable import TensorVariable
+
+from openghg_inversions.models.components import AffineBlock
+
+
+@dataclass(frozen=True)
+class BoundaryCorrection:
+    """Graph pieces of one sampled boundary correction, such as a mean shift or anomalies.
+
+    Attributes:
+        state: Correction on every bound boundary state, in concentration units.
+        signal: Observation response ``M state``.
+        block: Affine block: the response of ``M`` to each sampled coefficient,
+            with those physical coefficients.
+        latent: Sampled variable behind the correction, after any
+            reparameterization.
+    """
+
+    state: TensorVariable
+    signal: TensorVariable
+    block: AffineBlock
+    latent: TensorVariable
 
 
 @dataclass(frozen=True)
@@ -34,4 +57,4 @@ class BoundaryOutputs:
         )
 
 
-__all__ = ["BoundaryOutputs"]
+__all__ = ["BoundaryCorrection", "BoundaryOutputs"]
