@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.rhime.co2.boundary_output import decode_boundary_facts, reconstruct_boundary
+from openghg_inversions.postprocessing.boundary_outputs import decode_saved_boundaries, reconstruct_boundary
 
 
 def _trace() -> xr.DataTree:
@@ -41,7 +41,7 @@ def _trace() -> xr.DataTree:
 def test_mean_only_replay_reads_recorded_zero_anomalies_for_unequal_sample_sizes() -> None:
     trace = _trace()
     original = trace.copy(deep=True)
-    facts = decode_boundary_facts(trace)[""]
+    facts = decode_saved_boundaries(trace)[""]
     for group, count in (("prior", 7), ("posterior", 3)):
         result = reconstruct_boundary(facts, trace[group].to_dataset())
         assert result["anomaly"].sizes == {"bc_region": 2, "chain": 1, "draw": count}
@@ -59,7 +59,7 @@ def test_old_boundary_posterior_fails_with_prepare_again(version) -> None:
     else:
         trace.attrs["rhime_boundary_format_version"] = version
     with pytest.raises(ValueError, match="prepare again"):
-        decode_boundary_facts(trace)
+        decode_saved_boundaries(trace)
 
 
 @pytest.mark.parametrize("missing", ["bc_anomaly", "mu_bc_anomaly"])
@@ -67,7 +67,7 @@ def test_declared_anomalies_require_saved_draws(missing: str) -> None:
     trace = _trace()
     del trace["posterior"][missing]
     with pytest.raises(ValueError, match="require role 'boundary_.*' in saved draws"):
-        reconstruct_boundary(decode_boundary_facts(trace)[""], trace.posterior.to_dataset())
+        reconstruct_boundary(decode_saved_boundaries(trace)[""], trace.posterior.to_dataset())
 
 
 @pytest.mark.parametrize("units", ["ppm", "1"])

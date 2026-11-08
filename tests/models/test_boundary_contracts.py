@@ -13,10 +13,11 @@ from xarray_validate import DatasetSchema
 
 from openghg_inversions.models.boundary import (
     AdditiveChoice,
-    BoundAdditiveTransport,
-    BoundCenteredTransport,
+    BoundAdditiveSensitivity,
+    BoundCenteredSensitivity,
     MultiplicativeChoice,
-    RawCenteredTransport,
+    RawCenteredSensitivity,
+    validate_centering_weights,
 )
 
 
@@ -89,9 +90,9 @@ def _raw_on_nmeasure(**kwargs) -> xr.Dataset:
 
 # Examples for the shared conformance tests in tests/test_xr_contracts.py.
 CONTRACT_EXAMPLES = {
-    RawCenteredTransport: lambda lazy: (raw_example(lazy=lazy), {}),
-    BoundCenteredTransport: lambda lazy: (bound_example(lazy=lazy), {}),
-    BoundAdditiveTransport: lambda lazy: (bound_example(lazy=lazy, weights=True), {}),
+    RawCenteredSensitivity: lambda lazy: (raw_example(lazy=lazy), {}),
+    BoundCenteredSensitivity: lambda lazy: (bound_example(lazy=lazy), {}),
+    BoundAdditiveSensitivity: lambda lazy: (bound_example(lazy=lazy, weights=True), {}),
 }
 
 
@@ -100,13 +101,13 @@ CONTRACT_EXAMPLES = {
 def test_raw_contract_accepts_supported_layouts_unchanged(transposed, weights):
     """Either operand order and optional weights pass, returning the same object."""
     data = raw_example(transposed=transposed, weights=weights)
-    assert RawCenteredTransport.validate(data) is data
+    assert RawCenteredSensitivity.validate(data) is data
 
 
 def test_raw_contract_permits_extra_variables_and_nmeasure_rows():
     """Prepared inputs carry other variables and store rows on nmeasure."""
     data = _raw_on_nmeasure().assign(mf=lambda ds: xr.full_like(ds.time, 410.0, float).assign_attrs(units="ppm"))
-    assert RawCenteredTransport.validate(data) is data
+    assert RawCenteredSensitivity.validate(data) is data
 
 
 def _drop(name):
@@ -162,7 +163,7 @@ def test_raw_contract_reports_the_violated_requirement(case):
     """Malformed supplied structure is rejected with the affected element named."""
     modify, message = RAW_FAILURES[case]
     with pytest.raises(ValueError, match=message):
-        RawCenteredTransport.validate(modify(raw_example()), label="co2 centered boundaries")
+        RawCenteredSensitivity.validate(modify(raw_example()), label="co2 centered boundaries")
 
 
 def test_weight_check_accepts_whole_window_and_equivalent_units():
@@ -171,7 +172,7 @@ def test_weight_check_accepts_whole_window_and_equivalent_units():
         [[1.0], [2.0]], dims=("bc_curtain", "bc_period"),
         coords={"bc_curtain": ["N", "S"], "bc_period": ["whole_window"]}, attrs={"units": "dimensionless"},
     )
-    RawCenteredTransport.validate_weights(weights)
+    validate_centering_weights(weights)
 
 
 BOUND_FAILURES = {
@@ -193,22 +194,22 @@ def test_bound_contract_reports_the_violated_requirement(case):
     """Bound structure that consumers rely on is checked by the bound validator."""
     modify, message = BOUND_FAILURES[case]
     with pytest.raises(ValueError, match=message):
-        BoundCenteredTransport.validate(modify(bound_example()))
+        BoundCenteredSensitivity.validate(modify(bound_example()))
 
 
 def test_additive_extension_requires_weights_on_the_bound_state_axis():
     """The extension adds its weight guarantee to the shared bound guarantees."""
     shared = bound_example()
-    assert BoundCenteredTransport.validate(shared) is shared
+    assert BoundCenteredSensitivity.validate(shared) is shared
     with pytest.raises(ValueError, match="missing keys.*bc_centering_weights"):
-        BoundAdditiveTransport.validate(shared)
+        BoundAdditiveSensitivity.validate(shared)
     with pytest.raises(ValueError, match="equivalent to '1'"):
-        BoundAdditiveTransport.validate(shared.assign(
+        BoundAdditiveSensitivity.validate(shared.assign(
             bc_centering_weights=xr.DataArray(np.ones(6), dims="bc_region", attrs={"units": "ppm"}),
         ))
     extended = bound_example(weights=True)
-    assert BoundAdditiveTransport.validate(extended) is extended
-    assert BoundCenteredTransport.observation_dim(extended) == "nmeasure"
+    assert BoundAdditiveSensitivity.validate(extended) is extended
+    assert BoundCenteredSensitivity.observation_dim(extended) == "nmeasure"
 
 
 @pytest.fixture
@@ -221,10 +222,10 @@ def float64():
 @pytest.mark.usefixtures("float64")
 def test_binding_constructs_the_bound_contract_lazily():
     """Binding produces validator-conforming output without computing payloads."""
-    raw = RawCenteredTransport.validate(_raw_on_nmeasure(lazy=True))
+    raw = RawCenteredSensitivity.validate(_raw_on_nmeasure(lazy=True))
     with dask.config.set(scheduler=_forbid_compute):
-        bound = BoundCenteredTransport.bind(raw, _observations(), frequency="monthly")
-        assert BoundCenteredTransport.validate(bound) is bound
+        bound = BoundCenteredSensitivity.bind(raw, _observations(), frequency="monthly")
+        assert BoundCenteredSensitivity.validate(bound) is bound
     assert dask.is_dask_collection(bound.H_bc_mass)
     assert list(bound.indexes["bc_region"].names) == ["bc_curtain", "bc_period"]
     assert len(bound.indexes["bc_region"]) == len(CURTAINS) * 2  # Every curtain in every month.
@@ -234,21 +235,21 @@ def test_binding_constructs_the_bound_contract_lazily():
 @pytest.mark.usefixtures("float64")
 def test_weighted_additive_binding_establishes_the_extension():
     """Weighted additive binding aligns the weights to the bound states."""
-    raw = RawCenteredTransport.validate(_raw_on_nmeasure(lazy=True))
+    raw = RawCenteredSensitivity.validate(_raw_on_nmeasure(lazy=True))
     with dask.config.set(scheduler=_forbid_compute):
         bound = AdditiveChoice({"pdf": "normal", "mu": 0.0, "sigma": 1.0}, 0.3).bind(_observations(), raw)
-        assert BoundAdditiveTransport.validate(bound.data) is bound.data
+        assert BoundAdditiveSensitivity.validate(bound.data) is bound.data
     np.testing.assert_array_equal(bound.data.bc_centering_weights.compute(), np.ones(len(CURTAINS)))
 
 
 @pytest.mark.usefixtures("float64")
 def test_unweighted_families_share_the_centered_contract_without_weights():
     """Multiplicative and period-contrast additive bindings need no weights."""
-    raw = RawCenteredTransport.validate(_raw_on_nmeasure(weights=False))
+    raw = RawCenteredSensitivity.validate(_raw_on_nmeasure(weights=False))
     contrasts = AdditiveChoice(None, 0.3, anomalies="period_contrasts").bind(_observations(), raw)
     multiplicative = MultiplicativeChoice({"pdf": "lognormal", "mu": 0.0, "sigma": 0.1}).bind(_observations(), raw)
     for data in (contrasts.data, multiplicative.data):
-        assert BoundCenteredTransport.validate(data) is data
+        assert BoundCenteredSensitivity.validate(data) is data
         assert "bc_centering_weights" not in data
     with pytest.raises(ValueError, match="require bc_centering_weights"):
         AdditiveChoice({"pdf": "normal", "mu": 0.0, "sigma": 1.0}, 0.3).bind(_observations(), raw)
@@ -261,10 +262,10 @@ def test_absolute_multiplicative_route_keeps_its_own_layout():
     assert set(bound.data.data_vars) == {"H_bc"}
     assert not bound.centered
     with pytest.raises(ValueError, match="missing keys.*H_bc_anomaly"):
-        BoundCenteredTransport.validate(bound.data)
+        BoundCenteredSensitivity.validate(bound.data)
 
 
-@pytest.mark.parametrize("contract", [RawCenteredTransport, BoundCenteredTransport, BoundAdditiveTransport])
+@pytest.mark.parametrize("contract", [RawCenteredSensitivity, BoundCenteredSensitivity, BoundAdditiveSensitivity])
 def test_contract_schemas_expose_metadata_requirements(contract):
     """Class operations expose variable, dtype and dimensional schemas."""
     schema = contract.schema(observation_dim="row")
@@ -274,13 +275,13 @@ def test_contract_schemas_expose_metadata_requirements(contract):
     assert schema.data_vars["bc_reference"].dims.dims == ()
     assert schema.data_vars["H_bc_mass"].dtype is not None
     assert schema.data_vars["H_bc_mass"].attrs.attrs["units"].value == "1"
-    assert ("bc_centering_weights" in schema.data_vars) == (contract is BoundAdditiveTransport)
+    assert ("bc_centering_weights" in schema.data_vars) == (contract is BoundAdditiveSensitivity)
 
 
 @pytest.mark.parametrize("contract,example", [
-    (RawCenteredTransport, raw_example),
-    (BoundCenteredTransport, bound_example),
-    (BoundAdditiveTransport, lambda **kwargs: bound_example(weights=True, **kwargs)),
+    (RawCenteredSensitivity, raw_example),
+    (BoundCenteredSensitivity, bound_example),
+    (BoundAdditiveSensitivity, lambda **kwargs: bound_example(weights=True, **kwargs)),
 ])
 def test_schema_validation_preserves_lazy_payloads_and_auxiliary_coordinates(contract, example):
     """Metadata validation preserves borrowed graphs, lazy auxiliaries and identity."""
@@ -296,15 +297,15 @@ def test_bound_contract_rejects_incomplete_curtain_period_grid(selection):
     """Unique pairs alone do not establish every curtain in every period."""
     data = bound_example(lazy=True).isel(bc_region=selection)
     with dask.config.set(scheduler=_forbid_compute), pytest.raises(ValueError, match="Cartesian combination"):
-        BoundCenteredTransport.validate(data)
+        BoundCenteredSensitivity.validate(data)
 
 
 def test_bound_contract_accepts_reordered_complete_grid_and_unused_levels():
     """Cartesian coverage depends on represented labels rather than cached levels."""
     data = bound_example(lazy=True).isel(bc_region=[5, 4, 3, 2, 1, 0])
-    assert BoundCenteredTransport.validate(data) is data
+    assert BoundCenteredSensitivity.validate(data) is data
     one_period = data.isel(bc_region=[0, 2, 4])
-    assert BoundCenteredTransport.validate(one_period) is one_period
+    assert BoundCenteredSensitivity.validate(one_period) is one_period
 
 
 def test_bound_contract_rejects_missing_multiindex_labels():
@@ -313,7 +314,7 @@ def test_bound_contract_rejects_missing_multiindex_labels():
     data = bound_example(lazy=True).isel(bc_region=[0, 1]).drop_vars(["bc_region", "bc_curtain", "bc_period"])
     data = data.assign_coords(xr.Coordinates.from_pandas_multiindex(states, "bc_region"))
     with dask.config.set(scheduler=_forbid_compute), pytest.raises(ValueError, match="without missing labels"):
-        BoundCenteredTransport.validate(data)
+        BoundCenteredSensitivity.validate(data)
 
 
 @pytest.mark.parametrize("name", ["H_bc_anomaly", "H_bc_mass", "bc_reference"])
@@ -322,12 +323,12 @@ def test_transport_contract_rejects_nonreal_dtype_without_computing(name):
     data = raw_example(lazy=True)
     data[name] = data[name].astype(complex)
     with dask.config.set(scheduler=_forbid_compute), pytest.raises(ValueError, match=f"data_vars.{name}.dtype"):
-        RawCenteredTransport.validate(data)
+        RawCenteredSensitivity.validate(data)
 
 
 @pytest.mark.parametrize("contract,example", [
-    (RawCenteredTransport, raw_example),
-    (BoundCenteredTransport, bound_example),
+    (RawCenteredSensitivity, raw_example),
+    (BoundCenteredSensitivity, bound_example),
 ])
 def test_lazy_stage_contract_does_not_establish_nonzero_mass(contract, example):
     """Row selection can leave zero mass; its numerical consumer owns that check."""
@@ -340,4 +341,4 @@ def test_lazy_stage_contract_does_not_establish_nonzero_mass(contract, example):
 def test_raw_schema_failures_include_the_supplied_channel_label():
     """Library schema failures retain application context."""
     with pytest.raises(ValueError, match="co2 channel.*Validation failed"):
-        RawCenteredTransport.validate(raw_example().drop_vars("bc_reference"), label="co2 channel")
+        RawCenteredSensitivity.validate(raw_example().drop_vars("bc_reference"), label="co2 channel")

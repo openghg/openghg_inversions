@@ -283,7 +283,7 @@ def test_saved_centered_periods_support_fixed_ou(tmp_path, linked):
 
 
 def test_saved_centered_cached_ou_prior_predictions_remain_absolute(tmp_path):
-    from openghg_inversions.rhime.co2.boundary_output import restore_absolute_predictives
+    from openghg_inversions.postprocessing.boundary_outputs import restore_absolute_predictives
     from openghg_inversions.serialization import save_trace
 
     prepared = _ordinary()

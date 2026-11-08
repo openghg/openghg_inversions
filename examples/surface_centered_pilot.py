@@ -25,7 +25,7 @@ from openghg_inversions.models import get_coord_registry, restore_inferencedata_
 from openghg_inversions.native_covariance import SeparableExponentialCovariance
 from openghg_inversions.rhime.co2 import Co2PreparedInputs, prepare_co2_inputs
 from openghg_inversions.models.boundary import MultiplicativeChoice
-from openghg_inversions.rhime.co2.boundary_output import restore_absolute_predictives
+from openghg_inversions.postprocessing.boundary_outputs import restore_absolute_predictives
 from openghg_inversions.rhime.co2.co2_runner import (
     annotate_co2_trace,
     build_co2_from_materialized,

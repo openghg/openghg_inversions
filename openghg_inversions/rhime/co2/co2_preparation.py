@@ -708,10 +708,10 @@ def prepare_co2_inputs(
         if "H_bc_mass" not in inputs:
             raise ValueError("Additive boundary weights require native centered boundary operands.")
         weights = bc_centering_weights.transpose("bc_curtain", "bc_period")
-        from openghg_inversions.models.boundary import RawCenteredTransport
+        from openghg_inversions.models.boundary import RawCenteredSensitivity
 
         # Mapping preserves the already prepared raw transport structure.
-        mapped = RawCenteredTransport.with_centering_weights(cast(RawCenteredTransport, mapped), weights)
+        mapped = RawCenteredSensitivity.with_centering_weights(cast(RawCenteredSensitivity, mapped), weights)
 
 
     approximation = None
