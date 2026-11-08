@@ -12,7 +12,7 @@ import xarray as xr
 
 from openghg_inversions.biosphere_prior import calibrate_biosphere_prior
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.boundary import AnomalyScalingChoice, RawCenteredTransport
+from openghg_inversions.models.boundary import AnomalyScalingChoice, RawCenteredSensitivity
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
@@ -181,7 +181,7 @@ def test_configured_co2_inference_uses_same_bc_calibration_and_nonzero_target(tm
             observations=inv.mf,
             observation_error=inv.mf_error,
             aggregation_error=resolve_aggregation_error(inv, prepared.aggregation_error_mode),
-            boundary=boundary.bind(inv.mf, RawCenteredTransport.validate(inv)),
+            boundary=boundary.bind(inv.mf, RawCenteredSensitivity.validate(inv)),
             likelihood_builder=add_fixed_ou_gaussian_likelihood,
             likelihood_kwargs={k: v for k, v in likelihood.items() if k != "kind"},
         )
@@ -294,7 +294,7 @@ def test_shared_configured_graph_matches_python_and_saves_absolute_trace(tmp_pat
         flux_sensitivity=h,
         retained_prior=prior,
         fixed_prior_contribution=xr.full_like(obs, 0.2),
-        boundary_transport=shared_operands(obs),
+        boundary_sensitivity=shared_operands(obs),
         outer=prior.mean.copy(data=[False, True, True, True]),
         sampled_outer=sampled,
         calibrated_prior=calibrate_biosphere_prior(
@@ -317,7 +317,7 @@ def test_shared_configured_graph_matches_python_and_saves_absolute_trace(tmp_pat
         likelihood_kwargs={k: v for k, v in likelihood.items() if k != "kind"},
     )
     _parity(model, expected)
-    from openghg_inversions.rhime.co2.boundary_output import restore_absolute_predictives
+    from openghg_inversions.postprocessing.boundary_outputs import restore_absolute_predictives
 
     with model:
         trace = pm.sample_prior_predictive(2, random_seed=57)

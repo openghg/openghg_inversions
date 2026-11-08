@@ -37,7 +37,7 @@ from openghg_inversions.observation_error import (
 )
 
 if TYPE_CHECKING:
-    from openghg_inversions.models.boundary.contracts import RawCenteredTransport
+    from openghg_inversions.models.boundary.contracts import RawCenteredSensitivity
 
 from openghg_inversions.serialization import (
     decode_cf_multiindexes,
@@ -94,7 +94,7 @@ class Co2O2PreparedInputs:
         boundary_sensitivity: Optional mapping keyed by co2 and o2, containing
             native-channel H_bc arrays (observation, boundary state).
         boundary_operands: Raw centered transport per channel
-            (:class:`~openghg_inversions.models.boundary.contracts.RawCenteredTransport`),
+            (:class:`~openghg_inversions.models.boundary.contracts.RawCenteredSensitivity`),
             including any ``bc_centering_weights``, retained until model
             binding. Mutually exclusive with absolute boundary_sensitivity for
             the same channel.
@@ -114,7 +114,7 @@ class Co2O2PreparedInputs:
     provenance: Mapping[str, Any] = field(default_factory=dict)
     boundary_sensitivity: Mapping[str, xr.DataArray] = field(default_factory=dict)
     independent_error_sd: xr.DataArray | None = None
-    boundary_operands: Mapping[str, RawCenteredTransport] = field(default_factory=dict)
+    boundary_operands: Mapping[str, RawCenteredSensitivity] = field(default_factory=dict)
 
     def to_datatree(self) -> xr.DataTree:
         """Build a versioned tree without writing or materializing payloads.
@@ -1049,9 +1049,9 @@ def prepare_co2_o2_inputs(
 
 def _raw_centered_channels(
     operands: Mapping[str, xr.Dataset], weights: Mapping[str, xr.DataArray] | None = None,
-) -> dict[str, RawCenteredTransport]:
-    """Establish raw centered transport per channel, storing any supplied weights in it."""
-    from openghg_inversions.models.boundary.contracts import RawCenteredTransport
+) -> dict[str, RawCenteredSensitivity]:
+    """Establish raw centered sensitivity per channel, storing any supplied weights in it."""
+    from openghg_inversions.models.boundary.contracts import RawCenteredSensitivity, validate_centering_weights
 
     weights = weights or {}
     if set(operands) - {"co2", "o2"}:
@@ -1060,16 +1060,16 @@ def _raw_centered_channels(
         raise ValueError("Boundary centering weights require matching co2/o2 centered operands.")
     channels = {}
     for channel, values in operands.items():
-        transport = RawCenteredTransport.validate(values, label=f"{channel} centered boundaries")
+        sensitivity = RawCenteredSensitivity.validate(values, label=f"{channel} centered boundaries")
         if channel in weights:
-            RawCenteredTransport.validate_weights(weights[channel], label=f"{channel} bc_centering_weights")
-            transport = RawCenteredTransport.with_centering_weights(transport, weights[channel])
-        channels[channel] = transport
+            validate_centering_weights(weights[channel], label=f"{channel} bc_centering_weights")
+            sensitivity = RawCenteredSensitivity.with_centering_weights(sensitivity, weights[channel])
+        channels[channel] = sensitivity
     return channels
 
 
 def _validate_centered_channels(
-    operands: Mapping[str, RawCenteredTransport],
+    operands: Mapping[str, RawCenteredSensitivity],
     absolute: Mapping[str, xr.DataArray],
     co2: xr.DataArray,
     o2: xr.DataArray,

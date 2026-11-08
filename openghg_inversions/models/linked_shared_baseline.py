@@ -7,7 +7,7 @@ import xarray as xr
 
 from openghg_inversions.biosphere_prior import BiospherePrior
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.boundary import RawCenteredTransport
+from openghg_inversions.models.boundary import RawCenteredSensitivity
 
 from .shared_baseline import SharedBaseline, SharedBaselineChoice
 
@@ -20,7 +20,7 @@ def bind_linked_shared_baseline(
     o2_sensitivity: xr.DataArray,
     retained_prior: CorrelatedLognormalPrior,
     fixed_prior_contribution: Mapping[str, xr.DataArray],
-    boundary_transport: Mapping[str, RawCenteredTransport],
+    boundary_sensitivity: Mapping[str, RawCenteredSensitivity],
     outer: xr.DataArray,
     sampled_outer: xr.DataArray,
     calibrated_prior: BiospherePrior | None = None,
@@ -46,7 +46,7 @@ def bind_linked_shared_baseline(
         o2_sensitivity: Native signed O2 operator on the same joint state axis.
         retained_prior: Complete labelled positive joint physical prior.
         fixed_prior_contribution: Channel-keyed original affine row contributions.
-        boundary_transport: Channel-keyed prepared centered boundary operands
+        boundary_sensitivity: Channel-keyed prepared centered boundary operands
             on their raw ``nmeasure`` or ``time`` axis.
         outer: Boolean selector on the complete joint state axis.
         sampled_outer: Adjustable outer subset, excluding all outer ocean states.
@@ -56,7 +56,7 @@ def bind_linked_shared_baseline(
         Channel-keyed bound baselines whose data stay lazy.
     """
     channels = {"co2", "o2"}
-    if any(set(value) != channels for value in (choices, observations, fixed_prior_contribution, boundary_transport)):
+    if any(set(value) != channels for value in (choices, observations, fixed_prior_contribution, boundary_sensitivity)):
         raise ValueError("Supply co2 and o2 choices, observations, fixed contributions and boundary transport.")
     if len({choice.mode for choice in choices.values()}) != 1:
         raise ValueError("Both channels must use the same outer mode.")
@@ -75,7 +75,7 @@ def bind_linked_shared_baseline(
             observations[channel].rename(rename),
             flux_sensitivity=h.rename(rename), retained_prior=retained_prior,
             fixed_prior_contribution=fixed_prior_contribution[channel].rename(rename),
-            boundary_transport=boundary_transport[channel],
+            boundary_sensitivity=boundary_sensitivity[channel],
             outer=outer, sampled_outer=sampled_outer, calibrated_prior=calibrated_prior,
         )
         data = bound.data.rename({"nmeasure": row}) if rename else bound.data

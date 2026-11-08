@@ -1,10 +1,10 @@
 """Boundary corrections that scale the prescribed concentration anomaly.
 
-Centered transport (:class:`~.contracts.BoundCenteredTransport`; see
+Centered sensitivity (:class:`~.contracts.BoundCenteredSensitivity`; see
 :doc:`/usage/centered_boundary_conditions`) gives the prescribed boundary as
 ``A 1 + c M 1``. This
 family adds two corrections: a mean shift ``m`` in concentration units,
-transported through ``M`` as in the additive family, and dimensionless
+propagated through ``M`` as in the additive family, and dimensionless
 independent zero-mean Gaussian scalings ``v`` of the reference-adjusted
 anomaly ``A'`` on each ``(bc_curtain, bc_period)`` state:
 
@@ -32,9 +32,9 @@ from openghg_inversions.boundary_sensitivity import validate_centered_boundary_p
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models.components import AffineBlock, AffineConcentrationTerm
 
-from .centered import add_centered_transport, centered_outputs
-from .contracts import BoundCenteredTransport, RawCenteredTransport
-from .outputs import BoundaryCorrection, BoundaryOutputs
+from .centered import CenteredBoundary, Correction, MeanShift
+from .contracts import BoundCenteredSensitivity, RawCenteredSensitivity
+from .outputs import Outputs
 
 ReferencePolicy = float | Literal["stored", "whole_window_transport_mean"]
 
@@ -45,8 +45,8 @@ class AnomalyScalingChoice:
 
     A choice holds the scientific options (mean shift prior, scaling width,
     reference policy and boundary period calendar) without bound
-    observations or transport arrays.
-    :meth:`bind` pairs it with one fit's observations and centered transport.
+    observations or sensitivity arrays.
+    :meth:`bind` pairs it with one fit's observations and centered sensitivity.
 
     Attributes:
         mean_prior: Prior for the mean shift in observation concentration
@@ -94,14 +94,19 @@ class AnomalyScalingChoice:
         if self.mean_by_period and (self.mean_prior is None or self.frequency is None):
             raise ValueError("bc_mean_by_period requires a mean shift prior and a boundary frequency.")
 
-    def bind(self, observations: xr.DataArray, transport: RawCenteredTransport) -> AnomalyScalingBoundary:
-        """Bind centered transport to one fit and re-express it about the chosen reference.
+    @property
+    def mean_shift(self) -> MeanShift:
+        """The mean shift these options define; without a prior it adds nothing."""
+        return MeanShift(self.mean_prior, self.mean_by_period)
+
+    def bind(self, observations: xr.DataArray, sensitivity: RawCenteredSensitivity) -> AnomalyScalingBoundary:
+        """Bind centered sensitivity to one fit and re-express it about the chosen reference.
 
         Args:
             observations: One channel's observations with its observation axis
-                first. Its labels select and order the transport rows; its
+                first. Its labels select and order the sensitivity rows; its
                 ``time`` values assign rows to boundary periods.
-            transport: Raw centered transport on its ``nmeasure`` or ``time``
+            sensitivity: Raw centered sensitivity on its ``nmeasure`` or ``time``
                 axis. Centering weights are ignored.
 
         Returns:
@@ -116,8 +121,8 @@ class AnomalyScalingChoice:
             ValueError: If PyTensor is not configured for float64, or periods
                 or indexed timestamps conflict with the observations.
         """
-        data = BoundCenteredTransport.bind(
-            transport, observations, frequency=self.frequency, anchor_time=self.anchor_time,
+        data = BoundCenteredSensitivity.bind(
+            sensitivity, observations, frequency=self.frequency, anchor_time=self.anchor_time,
         )
         if self.reference == "stored":
             return AnomalyScalingBoundary(self, data)
@@ -131,11 +136,11 @@ class AnomalyScalingChoice:
             H_bc_anomaly=(anomaly - shift * mass).assign_attrs(anomaly.attrs),
             bc_reference=(stored + shift).assign_attrs(stored.attrs),
         )
-        return AnomalyScalingBoundary(self, cast(BoundCenteredTransport, recentred))
+        return AnomalyScalingBoundary(self, cast(BoundCenteredSensitivity, recentred))
 
 
 @dataclass(frozen=True)
-class AnomalyScalingBoundary:
+class AnomalyScalingBoundary(CenteredBoundary):
     """Anomaly-scaling choice bound to one fit's borrowed centered operands.
 
     Attributes:
@@ -154,17 +159,12 @@ class AnomalyScalingBoundary:
     """
 
     choice: AnomalyScalingChoice
-    data: BoundCenteredTransport
-
-    @property
-    def observation_dim(self) -> str:
-        """Observation dimension of the bound transport."""
-        return BoundCenteredTransport.observation_dim(self.data)
+    data: BoundCenteredSensitivity
 
     def anomaly_factor(self) -> xr.DataArray:
         """Observation-space anomaly design scaled to standard-normal coordinates.
 
-        The design stays lazy with the transport, so it can be combined with
+        The design stays lazy with the sensitivity, so it can be combined with
         other designs before joint materialization.
 
         Returns:
@@ -179,7 +179,7 @@ class AnomalyScalingBoundary:
 
         Must be called inside an active PyMC model that has the coordinate
         registry, after ``data`` has been materialized jointly with the other
-        model inputs. It registers the transport, reference, scale and any
+        model inputs. It registers the sensitivity, reference, scale and any
         period indicators as model data, plus the sampled variables and
         their deterministic responses.
 
@@ -205,20 +205,20 @@ class AnomalyScalingBoundary:
             RuntimeError: If the model lacks the coordinate registry.
         """
         choice = self.choice
-        graph = add_centered_transport(self.data, output_dim=output_dim, prefix=prefix, owner=owner)
+        registered = self._register_sensitivity(output_dim=output_dim, prefix=prefix, owner=owner)
         # Save the resolved width for provenance; the prior uses the scalar directly.
-        graph.register(xr.DataArray(choice.scale_sd), "bc_scale_sd")
-        corrections = graph.mean_shift(choice.mean_prior, by_period=choice.mean_by_period)
+        registered.register(xr.DataArray(choice.scale_sd), "bc_scale_sd")
+        corrections = choice.mean_shift.add(registered)
 
         # Scalings v of the recentred anomaly, contributing A' v.
-        scaling = pm.Normal(f"{prefix}bc_scaling", mu=0.0, sigma=choice.scale_sd, dims=graph.state_dim)
-        signal = pm.Deterministic(f"{prefix}mu_bc_scaling", pt.dot(graph.anomaly, scaling), dims=output_dim)
-        corrections.append(BoundaryCorrection(scaling, signal, AffineBlock(self.data.H_bc_anomaly, scaling), scaling))
+        scaling = pm.Normal(f"{prefix}bc_scaling", mu=0.0, sigma=choice.scale_sd, dims=registered.state_dim)
+        signal = pm.Deterministic(f"{prefix}mu_bc_scaling", pt.dot(registered.anomaly, scaling), dims=output_dim)
+        corrections.append(Correction(scaling, signal, AffineBlock(self.data.H_bc_anomaly, scaling), scaling))
 
         # Complete boundary contribution A' 1 + c' M 1 + m M 1 + A' v.
-        return graph.term(corrections)
+        return self._term(registered, corrections, pt.add(*(item.signal for item in corrections)))
 
-    def outputs(self, prefix: str = "") -> BoundaryOutputs:
+    def outputs(self, prefix: str = "") -> Outputs:
         """Declare the roles, units and metadata of this boundary's graph.
 
         Declarations depend only on the choice and the bound data, so they
@@ -232,18 +232,15 @@ class AnomalyScalingBoundary:
             units, and configuration and binding metadata. ``prefix`` is
             applied to both role keys and graph names; metadata is unprefixed.
         """
-        choice = self.choice
-        concentration = self.data.bc_reference.attrs["units"]
-        reference = choice.reference
-        return centered_outputs(
-            self.data, "anomaly_scaling", mean_prior=choice.mean_prior, mean_by_period=choice.mean_by_period,
-            frequency=choice.frequency, anchor_time=choice.anchor_time,
+        reference = self.choice.reference
+        return self._outputs(
+            "anomaly_scaling", prefix,
             # The shared anomaly roles carry the dimensionless scalings v and
             # their contribution A' v through boundary reconstruction.
             roles={"boundary_correction_anomaly": "bc_scaling", "boundary_anomaly_concentration": "mu_bc_scaling"},
-            units={"mu_bc_scaling": concentration, "bc_scaling": "1", "bc_scale_sd": "1"},
+            units={"mu_bc_scaling": self.concentration_units, "bc_scaling": "1", "bc_scale_sd": "1"},
             metadata={"bc_reference_policy": reference if isinstance(reference, str) else "explicit"},
-        ).prefixed(prefix)
+        )
 
 
 __all__ = ["AnomalyScalingBoundary", "AnomalyScalingChoice"]

@@ -129,7 +129,7 @@ def review_case(mode="multiplicative", method="A", *, partition_size=None, bound
         choices = {channel: SharedBaselineChoice(boundary, sd, mode) for channel, sd in DELTA_SD.items()}
         inputs = dict(
             co2_sensitivity=raw["co2"], o2_sensitivity=raw["o2"], retained_prior=prior,
-            fixed_prior_contribution=fixed, boundary_transport=transports,
+            fixed_prior_contribution=fixed, boundary_sensitivity=transports,
             outer=outer, sampled_outer=sampled, calibrated_prior=calibration,
         )
         return bind_linked_shared_baseline(choices, natives, **{**inputs, **overrides})

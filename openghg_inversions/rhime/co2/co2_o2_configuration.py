@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 
 from openghg_inversions.models import StateActivity
-from openghg_inversions.models.boundary import BoundaryChoice, MultiplicativeChoice
+from openghg_inversions.models.boundary import Choice, MultiplicativeChoice
 from openghg_inversions.inversion_inputs import normalise_frequency
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.rhime.sampling import RhimeSampler
@@ -198,7 +198,7 @@ class Co2O2ModelConfig:
     co2_units: str
     o2_units: str
     independent_error_sd: Mapping[str, float]
-    boundary: Mapping[str, BoundaryChoice | None] | None = None
+    boundary: Mapping[str, Choice | None] | None = None
     offset_prior: Mapping[str, Any] | None = None
     offset_args: Mapping[str, Any] | None = None
     tau_hours: float | Mapping[str, float] | None = None
@@ -293,7 +293,7 @@ class Co2O2ModelConfig:
         """Identify the calibrated prior file for write protection."""
         return () if self.biosphere_prior_path is None else (Path(self.biosphere_prior_path).resolve(),)
 
-    def _channel_boundaries(self, prepared: Co2O2PreparedInputs) -> dict[str, BoundaryChoice]:
+    def _channel_boundaries(self, prepared: Co2O2PreparedInputs) -> dict[str, Choice]:
         """Resolve configured choices and default prepared channels to choices."""
         configured = dict(self.boundary or {})
         enabled = [choice for choice in configured.values() if choice is not None]
@@ -312,8 +312,8 @@ class Co2O2ModelConfig:
 
 
 def _shared_boundary_periods(
-    choices: Mapping[str, BoundaryChoice | None],
-) -> dict[str, BoundaryChoice | None]:
+    choices: Mapping[str, Choice | None],
+) -> dict[str, Choice | None]:
     """Apply one boundary calendar to every enabled linked channel."""
     enabled = [choice for choice in choices.values() if choice is not None]
     frequencies = {normalise_frequency(choice.frequency) for choice in enabled if choice.frequency is not None}

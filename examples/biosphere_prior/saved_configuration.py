@@ -13,7 +13,7 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.boundary import RawCenteredTransport
+from openghg_inversions.models.boundary import RawCenteredSensitivity
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.co2.co2_runner import annotate_co2_trace
@@ -107,7 +107,7 @@ def main() -> None:
         fixed_site_amplitudes = 0.3
     """)
     model_options = Co2ModelConfig.from_params(request).model_arguments()
-    boundary = model_options.pop("boundary").bind(observations, RawCenteredTransport.validate(operands))
+    boundary = model_options.pop("boundary").bind(observations, RawCenteredSensitivity.validate(operands))
     model = build_co2_model(
         sensitivity,
         retained_prior=baseline,
