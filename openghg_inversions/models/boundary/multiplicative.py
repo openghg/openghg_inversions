@@ -27,10 +27,7 @@ from openghg_inversions.models.coords import add_model_data, component_coords
 from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity, resolve_state_activity
 
 from .contracts import BoundCenteredTransport, RawCenteredTransport
-from .operands import (
-    centered_boundary_expression,
-    check_bound_transport,
-)
+from .operands import centered_boundary_expression
 from .outputs import BoundaryOutputs
 
 
@@ -120,31 +117,24 @@ class MultiplicativeBoundary:
 
     Attributes:
         choice: The resolved multiplicative choice.
-        data: Absolute ``H_bc`` (concentration units) on
-            ``(observation, state)``, or
-            :class:`~.contracts.BoundCenteredTransport`. Absolute transport
-            keeps its own supported state layouts and has no contract. The arrays are borrowed and may be
-            Dask-backed. Materialize them jointly with the other model inputs
-            and the choice prior before :meth:`add`; rows may be padded or
-            subset with ``dataclasses.replace``, keeping that layout.
+        data: :class:`~.contracts.BoundCenteredTransport`, or absolute
+            ``H_bc`` (concentration units) on ``(observation, state)``.
+            Absolute transport keeps its own supported state layouts and has
+            no contract. The arrays are borrowed and may be Dask-backed.
+            Materialize them jointly with the other model inputs and the
+            choice prior before :meth:`add`; rows may be padded or subset
+            with ``dataclasses.replace``, keeping that layout.
 
-    Raises:
-        ValueError: On construction, if ``data`` lacks a variable or does not
-            have that layout. Only dimensions are checked.
+    :meth:`MultiplicativeChoice.bind` establishes either layout by
+    construction, so the record does not validate it again.
     """
 
     choice: MultiplicativeChoice
     data: BoundCenteredTransport | xr.Dataset
 
-    def __post_init__(self) -> None:
-        if self.centered:
-            check_bound_transport(self.data, ("H_bc_anomaly", "H_bc_mass"), state_dim="bc_region")
-        else:
-            check_bound_transport(self.data, ("H_bc",))
-
     @property
     def observation_dim(self) -> str:
-        """Observation dimension of the bound transport."""
+        """Observation dimension of the bound transport, the first transport dimension."""
         return str(self.data["H_bc_anomaly" if self.centered else "H_bc"].dims[0])
 
     @property

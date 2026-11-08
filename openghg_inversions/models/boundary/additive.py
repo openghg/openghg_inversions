@@ -59,9 +59,6 @@ from .additive_anomalies import (
 )
 from .mean_shift import add_boundary_mean_shift, mean_shift_outputs
 from .contracts import BoundAdditiveTransport, BoundCenteredTransport, RawCenteredTransport
-from .operands import (
-    check_bound_transport,
-)
 from .outputs import BoundaryOutputs
 
 
@@ -176,24 +173,19 @@ class AdditiveBoundary:
             be padded or subset with ``dataclasses.replace``, keeping that
             layout.
 
-    Raises:
-        ValueError: On construction, if ``data`` lacks a variable or does not
-            have that layout. Only dimensions are checked.
+    :meth:`AdditiveChoice.bind` establishes ``data`` by construction, so the
+    record trusts that contract rather than validating it again. Code
+    replacing ``data`` must preserve the contract; see
+    :class:`~.contracts.BoundCenteredTransport`.
     """
 
     choice: AdditiveChoice
     data: BoundCenteredTransport
 
-    def __post_init__(self) -> None:
-        check_bound_transport(self.data, ("H_bc_anomaly", "H_bc_mass"), state_dim="bc_region")
-        weights = self.data.get("bc_centering_weights")
-        if self.choice.anomalies == "weighted" and (weights is None or weights.dims != ("bc_region",)):
-            raise ValueError("Bound weighted anomalies need bc_centering_weights on bc_region; bind the choice again.")
-
     @property
     def observation_dim(self) -> str:
         """Observation dimension of the bound transport."""
-        return str(self.data.H_bc_anomaly.dims[0])
+        return BoundCenteredTransport.observation_dim(self.data)
 
     @property
     def has_anomalies(self) -> bool:

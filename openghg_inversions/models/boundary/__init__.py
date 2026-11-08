@@ -83,13 +83,22 @@ class Boundary(Protocol):
 
     Implementations are frozen dataclasses whose ``data`` holds every
     observation-aligned array, so recipes can pad or subset rows with
-    ``dataclasses.replace`` without knowing the family.
+    ``dataclasses.replace`` without knowing the family. Shared guarantees:
+    every observation-aligned variable has :attr:`observation_dim` as its
+    first dimension, ordered by the bound observation labels; variables
+    without it describe states or scalars and must not be treated as rows.
+    Centered families hold :class:`BoundCenteredTransport`; absolute
+    multiplicative transport has no contract. Binding establishes the data;
+    records and recipes trust it and preserve it when replacing rows.
     """
 
     __dataclass_fields__: ClassVar[dict[str, Any]]
 
     @property
     def data(self) -> xr.Dataset: ...
+
+    @property
+    def observation_dim(self) -> str: ...
 
     def add(
         self, *, output_dim: str = ..., prefix: str = ..., owner: str | None = ...,

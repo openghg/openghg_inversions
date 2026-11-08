@@ -423,3 +423,42 @@ The model then uses matrix--vector products of the observation/state
 operators, centers observations and model means for the likelihood, and
 restores absolute predictions through the supported trace annotation/replay
 path.
+
+Guarantees trusted by graph construction
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Centered transport carries static Dataset contracts from
+``openghg_inversions.models.boundary.contracts``; their docstrings are the
+canonical statement of each guarantee. Each guarantee has one owner, and later
+code trusts it rather than checking it again:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Guarantee
+     - Owner
+   * - Raw variables, dimensions, unique indexes, units and weight layout
+     - :meth:`~openghg_inversions.models.boundary.RawCenteredTransport.validate`
+       at preparation and artifact loading (metadata only, no computation)
+   * - Observation-first ``(observation, bc_region)`` layout, curtain/period
+       state index, scalar reference
+     - :meth:`~openghg_inversions.models.boundary.BoundCenteredTransport.bind`, by
+       construction
+   * - Weights aligned to the bound states
+     - :meth:`~openghg_inversions.models.boundary.BoundAdditiveTransport.bind_weights`,
+       by exact label alignment
+   * - Joint linked rows; state-only data and reference unchanged
+     - ``pad_linked_boundary`` in ``openghg_inversions.rhime.co2.co2_o2_model``,
+       by construction
+   * - Finite anomaly and reference; finite, non-negative, nonzero mass;
+       the fixed shift ``c M 1``
+     - :meth:`~openghg_inversions.models.boundary.BoundCenteredTransport.reference_shift`,
+       once at the start of ``add`` after the recipe's joint materialization
+   * - Finite, strictly positive weights
+     - :meth:`~openghg_inversions.models.boundary.BoundAdditiveTransport.normalized_weights`,
+       during graph construction after joint materialization; preparation,
+       loading and saving do not scan weight values
+
+Bound records do not validate their data on construction or on
+``dataclasses.replace``. Code replacing ``data`` must preserve the contract;
+the linked padding helper is the supported row transformation.

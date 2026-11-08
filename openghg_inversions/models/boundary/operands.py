@@ -7,7 +7,6 @@ classes in :mod:`.contracts`.
 from __future__ import annotations
 
 import pytensor
-import xarray as xr
 
 
 def require_centered_precision() -> None:
@@ -38,42 +37,7 @@ def centered_boundary_expression(anomaly, mass, reference, state):
     return anomaly @ state + reference * (mass @ (state - 1.0))
 
 
-def check_bound_transport(data: xr.Dataset, names: tuple[str, ...], *, state_dim: str | None = None) -> str:
-    """Check the layout of bound transport and return its observation dimension.
-
-    Bound records store transport on ``(observation, state)``, the order that
-    binding produces and row padding preserves, so ``add`` reads the arrays
-    as stored. Only dimensions are inspected; payloads stay borrowed and lazy.
-
-    Args:
-        data: The bound record's data.
-        names: Transport variables, which must share the same two dimensions.
-        state_dim: Required state dimension, or ``None`` to accept the bound
-            state labels.
-
-    Returns:
-        The shared observation dimension.
-
-    Raises:
-        ValueError: If a variable is missing or the variables do not share
-            one ``(observation, state)`` layout ending in ``state_dim``, or if
-            a centered ``bc_reference`` is present but not scalar.
-    """
-    missing = [name for name in names if name not in data]
-    if missing:
-        raise ValueError(f"Bound boundary data lacks {', '.join(missing)}; bind the choice again.")
-    dims = {data[name].dims for name in names}
-    layout = next(iter(dims))
-    if len(dims) != 1 or len(layout) != 2 or (state_dim is not None and layout[1] != state_dim):
-        expected = f"(observation, {state_dim or 'state'})"
-        raise ValueError(f"Bound boundary transport must share one {expected} layout; got {sorted(dims)}.")
-    if "bc_reference" in data and data["bc_reference"].ndim:
-        raise ValueError("Bound bc_reference must be scalar.")
-    return str(layout[0])
-
-
 __all__ = [
-    "check_bound_transport",
     "centered_boundary_expression",
     "require_centered_precision",
 ]

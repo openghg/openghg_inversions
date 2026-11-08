@@ -37,7 +37,6 @@ from openghg_inversions.models.coords import add_model_data, component_coords
 
 from .mean_shift import add_boundary_mean_shift, mean_shift_outputs
 from .contracts import BoundCenteredTransport, RawCenteredTransport
-from .operands import check_bound_transport
 from .outputs import BoundaryOutputs
 
 ReferencePolicy = float | Literal["stored", "whole_window_transport_mean"]
@@ -153,21 +152,17 @@ class AnomalyScalingBoundary:
             :meth:`add`; rows may be padded or subset with
             ``dataclasses.replace``, keeping that layout.
 
-    Raises:
-        ValueError: On construction, if ``data`` lacks a variable or does not
-            have that layout. Only dimensions are checked.
+    :meth:`AnomalyScalingChoice.bind` establishes ``data`` by construction,
+    so the record trusts that contract rather than validating it again.
     """
 
     choice: AnomalyScalingChoice
     data: BoundCenteredTransport
 
-    def __post_init__(self) -> None:
-        check_bound_transport(self.data, ("H_bc_anomaly", "H_bc_mass"), state_dim="bc_region")
-
     @property
     def observation_dim(self) -> str:
         """Observation dimension of the bound transport."""
-        return str(self.data.H_bc_anomaly.dims[0])
+        return BoundCenteredTransport.observation_dim(self.data)
 
     def anomaly_factor(self) -> xr.DataArray:
         """Observation-space anomaly design scaled to standard-normal coordinates.

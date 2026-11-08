@@ -524,17 +524,19 @@ def test_bound_additive_affine_result_equals_likelihood_and_keeps_resolved_scale
     MultiplicativeChoice({"pdf": "lognormal", "mu": 0.0, "sigma": 0.1}),
     AnomalyScalingChoice({"pdf": "normal", "mu": 0.0, "sigma": 0.2}, 0.5),
 ])
-def test_bound_records_own_their_transport_layout(choice):
-    """Bound records reject reordered or incomplete transport, and a foreign output dimension."""
+def test_bound_records_trust_the_contract_binding_establishes(choice):
+    """Binding establishes the bound contract; the contract, not the record, rejects broken layouts."""
     from openghg_inversions.models import registered_model
+    from openghg_inversions.models.boundary import BoundCenteredTransport
 
     inputs = _inputs()
     boundary = choice.bind(inputs.mf, boundary_transport(_kwargs(inputs)))
     assert boundary.observation_dim == "nmeasure"
-    with pytest.raises(ValueError, match="layout"):
-        replace(boundary, data=boundary.data.assign(H_bc_mass=boundary.data.H_bc_mass.T))
-    with pytest.raises(ValueError, match="lacks H_bc_mass"):
-        replace(boundary, data=boundary.data.drop_vars("H_bc_mass"))
+    assert BoundCenteredTransport.validate(boundary.data) is boundary.data
+    with pytest.raises(ValueError, match="H_bc_mass.*dims"):
+        BoundCenteredTransport.validate(boundary.data.assign(H_bc_mass=boundary.data.H_bc_mass.T))
+    with pytest.raises(ValueError, match="H_bc_mass"):
+        BoundCenteredTransport.validate(boundary.data.drop_vars("H_bc_mass"))
     with registered_model(), pytest.raises(ValueError, match="bound observation dimension"):
         replace(boundary, data=boundary.data.compute()).add(output_dim="time")
 
