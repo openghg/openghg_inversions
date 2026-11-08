@@ -49,7 +49,12 @@ Every :math:`z` and :math:`u` coordinate has standard deviation :math:`s`.
 A ``None`` mean prior omits :math:`\delta` from period contrasts or
 independent anomalies; weighted centering always keeps it.
 ``mean_by_period=True`` replaces :math:`\delta\mathbf1` with one independent
-shift per boundary period, drawn from the same ``mean`` prior. Weighted
+shift per boundary period, drawn from the same ``mean`` prior. ``frequency``
+and ``anchor_time`` follow ``bc_freq``: ``None`` gives one period,
+``"monthly"`` calendar months, and a fixed duration such as ``"7D"`` periods
+anchored at ``anchor_time`` or, when it is ``None``, at the fit's earliest
+observation (the RHIME parameter adapter defaults ``bc_freq_anchor`` to the
+configured start date). Weighted
 centering requires the prepared ``bc_centering_weights``; the other
 structures ignore them.
 
@@ -62,21 +67,29 @@ Temporal curtain contrasts and weighted centering are different priors.
 Contrasts leave each period's equal-weight curtain mean to the mean shift;
 weighted centering constrains only one weighted mean over all states and lets
 whole periods move together. Independent anomalies with scale :math:`s` give
-the same covariance as curtain contrasts with scale :math:`s` plus a mean
-shift with scale :math:`s/\sqrt K`, and no other widths.
+the same covariance as curtain contrasts with scale :math:`s` plus one mean
+shift per period (``mean_by_period=True``) with scale :math:`s/\sqrt K`, and
+no other widths. A single whole-window mean gives that covariance only with
+one period; with several it adds a cross-period covariance :math:`s^2/K`
+that independent anomalies do not have.
+
+Independent anomalies are sampled directly as one coordinate per state, so
+their design is :math:`M` itself and no basis is stored.
 
 Anomaly scaling
 ---------------
 
-For any reference :math:`c'`, the prescribed boundary is
-:math:`A'\mathbf1+c'M\mathbf1` with :math:`A'=A+(c-c')M`. The anomaly-scaling
-family adds :math:`\delta M\mathbf1+A'v` with dimensionless
-:math:`v_j\sim N(0,s^2)` for each state; a ``None`` mean prior omits
-:math:`\delta`. Gaussian :math:`v` permits negative
+The anomaly-scaling family adds :math:`\delta M\mathbf1+A'v`: a mean shift
+transported through :math:`M`, and dimensionless :math:`v_j\sim N(0,s^2)`
+scaling the reference-adjusted anomaly :math:`A'` on each state. A ``None``
+mean prior omits :math:`\delta`. Gaussian :math:`v` permits negative
 :math:`1+v`; no truncation is applied.
 
-The reference does not change the prescribed boundary, but it does change
-the covariance of :math:`A'v`, so it is part of the prior:
+:math:`A'` is the anomaly about a chosen reference :math:`c'`. Changing the
+reference leaves the prescribed concentration unchanged but changes
+:math:`A'`, and therefore the covariance of :math:`A'v`, so the reference is
+part of the prior. Explicitly, :math:`A'=A+(c-c')M` and
+:math:`A'\mathbf1+c'M\mathbf1=A\mathbf1+cM\mathbf1`. The options are:
 
 * ``reference="stored"`` keeps the prepared :math:`c`;
 * a number in observation concentration units sets :math:`c'` directly;
@@ -116,4 +129,7 @@ the correction is :math:`\sum_k s_k^2D_kD_k^\mathsf{T}`. A linear functional
 has standard deviation :math:`\sqrt{\sum_k s_k^2\|D_k^\mathsf{T}l\|^2}`. Use
 this when choosing widths; it is not applied automatically. Before model
 construction, ``anomaly_factor()`` of a bound boundary returns the anomaly
-design scaled to standard-normal coordinates.
+design scaled to standard-normal coordinates: :math:`sMB` on
+``bc_contrast`` for weighted anomalies and period contrasts, :math:`sM` on
+``bc_region`` for independent anomalies, and :math:`sA'` on ``bc_region`` for
+anomaly scaling.

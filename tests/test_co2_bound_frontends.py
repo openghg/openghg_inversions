@@ -18,7 +18,6 @@ from openghg_inversions.models import StateActivity, get_coord_registry, restore
 from openghg_inversions.models.boundary import (
     AdditiveChoice,
     BoundaryChoice,
-    CenteredOperands,
     MultiplicativeChoice,
 )
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
@@ -34,6 +33,8 @@ from openghg_inversions.rhime.sampling import RhimeSampler
 from test_co2_affine_output import _prepared as _single
 from test_rhime_co2_o2_baselines import _prepared as _linked
 from test_rhime_co2_o2 import _independent_error
+from openghg_inversions.rhime.co2.co2_o2_preparation import _raw_centered_channels
+from boundary_test_utils import raw_transport
 
 
 @pytest.fixture(autouse=True)
@@ -118,7 +119,7 @@ def _linked_with_operands(additive: bool, anomaly_factor: Any = 1.0, channels=("
         operands[channel] = raw.assign(H_bc_anomaly=_lazy(raw.H_bc_anomaly, anomaly_factor))
         if additive:
             weights[channel] = _weights(native)
-    return replace(prepared, boundary_operands=operands, bc_centering_weights=weights)
+    return replace(prepared, boundary_operands=_raw_centered_channels(operands, weights))
 
 
 def _record_binding(monkeypatch: Any) -> list[BoundaryChoice]:
@@ -196,7 +197,7 @@ def test_single_choice_frontends_compute_shared_payload_once_and_replay(
     assert prior["mu"].item() == (0.2 if additive else 1.1)
     assert not isinstance(eager.data.H_bc_anomaly.data, da.Array)
     assert isinstance(prepared.inv_inputs.H_bc_anomaly.data, da.Array)
-    lazy = choice.bind(prepared.inv_inputs.mf, CenteredOperands.from_dataset(prepared.inv_inputs))
+    lazy = choice.bind(prepared.inv_inputs.mf, raw_transport(prepared.inv_inputs))
     xr.testing.assert_identical(eager.data.bc_region, lazy.data.bc_region)
     if additive:
         assert eager.choice.anomaly_scale == choice.anomaly_scale == 0.17
@@ -277,8 +278,7 @@ def test_linked_choice_frontends_retain_channel_records_and_scientific_closure(
         native_dim = str(getattr(prepared, f"{channel}_sensitivity").dims[0])
         lazy = choice.bind(
             _native(prepared, channel).rename({"observation": native_dim}),
-            replace(CenteredOperands.from_dataset(prepared.boundary_operands[channel]),
-                    weights=prepared.bc_centering_weights.get(channel)),
+            prepared.boundary_operands[channel],
         )
         xr.testing.assert_identical(eager.data.bc_region, lazy.data.bc_region)
         if additive:

@@ -229,17 +229,6 @@ def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     if "bc_centering_weights" in inputs:
         if "H_bc_mass" not in inputs:
             raise ValueError("Additive boundary weights require native centered boundary operands.")
-        weights = inputs.bc_centering_weights
-        if weights.dims != ("bc_curtain", "bc_period"):
-            raise ValueError("bc_centering_weights must use dimensions ('bc_curtain', 'bc_period').")
-        for dim in weights.dims:
-            _require_axis(weights, str(dim), name="Boundary centering weights")
-        if not isinstance(weights.indexes["bc_period"], pd.DatetimeIndex):
-            raise ValueError("bc_centering_weights bc_period labels must be interval start times.")
-        _require_equivalent_units(weights.attrs.get("units"), "1", name="bc_centering_weights")
-        if not hasattr(weights.data, "__dask_graph__"):
-            if not np.isfinite(weights.data).all() or not (weights.data > 0).all():
-                raise ValueError("bc_centering_weights must be finite and strictly positive.")
 
     squared_units = f"({concentration_units})**2"
     if AGGREGATION_ERROR_COVARIANCE in inputs:
@@ -719,18 +708,11 @@ def prepare_co2_inputs(
         if "H_bc_mass" not in inputs:
             raise ValueError("Additive boundary weights require native centered boundary operands.")
         weights = bc_centering_weights.transpose("bc_curtain", "bc_period")
-        if "bc_centering_weights" in mapped:
-            # Remove the old weight-owned calendar to avoid alignment to stale periods; protect shared axes first.
-            for dim in ("bc_curtain", "bc_period"):
-                consumers = [
-                    name for name, array in mapped.variables.items()
-                    if dim in array.dims and name != "bc_centering_weights"
-                    and (name != dim or array.dims != (dim,))
-                ]
-                if consumers:
-                    raise ValueError(f"Boundary weight dimension {dim!r} is shared by {consumers!r}.")
-            mapped = mapped.drop_dims(("bc_curtain", "bc_period"))
-        mapped["bc_centering_weights"] = weights
+        from openghg_inversions.models.boundary import RawCenteredTransport
+
+        # Mapping preserves the already prepared raw transport structure.
+        mapped = RawCenteredTransport.with_centering_weights(cast(RawCenteredTransport, mapped), weights)
+
 
     approximation = None
     if aggregation_error_rank is None:

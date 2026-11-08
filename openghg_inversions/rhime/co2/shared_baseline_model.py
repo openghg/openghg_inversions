@@ -31,6 +31,7 @@ from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import prepare_linear_sensitivity, resolve_state_activity
 from openghg_inversions.observation_error import AggregationError, aggregation_error_as_low_rank, validate_observation_error_arrays
 from openghg_inversions.rhime._model_building import _call_custom_likelihood
+from openghg_inversions.rhime.co2.boundary_output import BOUNDARY_FORMAT_VERSION
 from openghg_inversions.rhime.builders import RhimeLikelihoodBuilder
 from openghg_inversions.sigma import SigmaAlignment
 from openghg_inversions.rhime.co2.co2_model import _fixed_mismatch_array
@@ -238,9 +239,7 @@ def build_shared_co2_model(
         absolute = pm.Deterministic(
             "modelled_concentration", sum((term.output for term in terms[1:]), start=terms[0].output), dims="nmeasure",
         )
-        mean, observed, shift = likelihood_representation(terms, observations, absolute)
-        assert shift is not None
-        add_model_data(shift.rename("boundary_reference_shift"), "boundary_reference_shift")
+        mean, observed = likelihood_representation(terms, observations, absolute)
         if likelihood_builder is None:
             add_additive_sigma_likelihood(
                 observations=observed, observation_error=observation_error, aggregation_error=aggregation_error,
@@ -352,9 +351,7 @@ def build_shared_co2_cached_sigma_model(
             "modelled_concentration", sum((term.output for term in terms[1:]), start=terms[0].output),
             dims="nmeasure",
         )
-        mean, observed, shift = likelihood_representation(tuple(terms), observations, absolute)
-        assert shift is not None
-        add_model_data(shift.rename("boundary_reference_shift"), "boundary_reference_shift")
+        mean, observed = likelihood_representation(tuple(terms), observations, absolute)
         cached = _add_cached_likelihood(
             tuple(terms), covariance=covariance, modelled_mean=mean, observations=observed,
             observation_error=observation_error, site_coord=site_coord, site_index=site_index,
@@ -380,7 +377,7 @@ def annotate_shared_baseline_trace(trace: xr.DataTree, baseline: SharedBaseline)
     """
     prepared = baseline.data
     trace["shared_baseline"] = xr.DataTree(prepared)
-    trace.attrs["rhime_boundary_format_version"] = 1
+    trace.attrs["rhime_boundary_format_version"] = BOUNDARY_FORMAT_VERSION
     outputs = baseline.outputs()
     roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
     roles.update(outputs.roles)

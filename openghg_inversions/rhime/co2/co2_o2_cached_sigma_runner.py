@@ -20,6 +20,7 @@ from .co2_cached_sigma_runner import (
     _sampler_for_cached_graph,
 )
 from .co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
+from .co2_o2_model import _validate_channel_offset_options
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .co2_o2_runner import (
     _CO2_O2_VARIABLE_ROLES,
@@ -27,7 +28,6 @@ from .co2_o2_runner import (
     _co2_o2_metadata,
     _linked_boundary_contract,
     _materialize_co2_o2_replay_inputs,
-    _validate_channel_offset_options,
     annotate_co2_o2_trace,
 )
 
