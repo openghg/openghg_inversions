@@ -20,7 +20,7 @@ from openghg_inversions.models import (
     registered_model,
     resolve_state_activity,
 )
-from openghg_inversions.models.boundary import Boundary
+from openghg_inversions.models.boundary import Bound
 from openghg_inversions.models.components import (
     AffineBlock,
     AffineConcentrationTerm,
@@ -62,7 +62,7 @@ def build_co2_o2_cached_sigma_model(
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
-    boundary: Mapping[str, Boundary] | None = None,
+    boundary: Mapping[str, Bound] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",

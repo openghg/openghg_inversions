@@ -14,13 +14,13 @@ from dask import compute as dask_compute
 from openghg_inversions.array_ops import select_gathered_data_array, to_dense_tree
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
-from openghg_inversions.models.boundary import Boundary, BoundaryChoice, MultiplicativeChoice
+from openghg_inversions.models.boundary import Bound, Choice, MultiplicativeChoice
 from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
-from .boundary_output import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
+from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
 from .co2_o2_model import _validate_channel_offset_options, build_co2_o2_model
 from .co2_o2_preparation import Co2O2PreparedInputs
 
@@ -73,8 +73,8 @@ def _validate_independent_error_values(array: xr.DataArray) -> None:
 
 def _materialize_co2_o2_replay_inputs(
     prepared: Co2O2PreparedInputs, independent_error_sd: xr.DataArray | None,
-    boundary: Mapping[str, Boundary], *, prior_parameters: Mapping[str, Any],
-) -> tuple[tuple[xr.DataArray, ...], dict[str, Boundary], dict[str, Any]]:
+    boundary: Mapping[str, Bound], *, prior_parameters: Mapping[str, Any],
+) -> tuple[tuple[xr.DataArray, ...], dict[str, Bound], dict[str, Any]]:
     """Compute core, bound boundary and selected priors together for PyMC."""
     saved_error = getattr(prepared, "independent_error_sd", None)
     if independent_error_sd is None:
@@ -87,7 +87,7 @@ def _materialize_co2_o2_replay_inputs(
     for error in errors:
         _validate_independent_error_labels(prepared.observations, error)
     materialized: tuple[xr.DataArray, ...]
-    bound: dict[str, Boundary]
+    bound: dict[str, Bound]
     priors: dict[str, Any]
     materialized, bound, priors = dask_compute(*to_dense_tree((
         (prepared.observations, prepared.fixed_prior_contribution,
@@ -204,8 +204,8 @@ def _annotate_co2_o2_trace(
 
 
 def _bind_co2_o2_boundaries(
-    prepared: Co2O2PreparedInputs, boundary: Mapping[str, BoundaryChoice] | None,
-) -> dict[str, Boundary]:
+    prepared: Co2O2PreparedInputs, boundary: Mapping[str, Choice] | None,
+) -> dict[str, Bound]:
     """Bind each channel's boundary choice once to its native prepared transport."""
     if boundary is not None and (not isinstance(boundary, Mapping) or set(boundary) - {"co2", "o2"}):
         raise ValueError("boundary must be a mapping keyed only by 'co2' and 'o2'.")
@@ -231,7 +231,7 @@ def _bind_co2_o2_boundaries(
     return result
 
 
-def _linked_boundary_contract(boundary: Mapping[str, Boundary]) -> tuple[dict[str, str], dict[str, Any]]:
+def _linked_boundary_contract(boundary: Mapping[str, Bound]) -> tuple[dict[str, str], dict[str, Any]]:
     """Collect channel-prefixed boundary roles, units and metadata."""
     roles: dict[str, str] = {}
     metadata: dict[str, Any] = {"boundary_units": {}, "boundary_metadata": {}}
@@ -250,7 +250,7 @@ def build_rhime_co2_o2(
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
-    boundary: Mapping[str, BoundaryChoice] | None = None,
+    boundary: Mapping[str, Choice] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     tau_hours: float | Mapping[str, float] | None = None,
@@ -332,7 +332,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
-    boundary: Mapping[str, BoundaryChoice] | None = None,
+    boundary: Mapping[str, Choice] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     sampler: RhimeSampler | Literal["default"] = "default",

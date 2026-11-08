@@ -12,6 +12,7 @@ from typing import Any
 
 import numpy as np
 import pymc as pm
+import pytensor.tensor as pt
 import xarray as xr
 from dask import compute as dask_compute
 
@@ -21,7 +22,7 @@ from openghg_inversions.models.additive_sigma import (
     DEFAULT_ADDITIVE_SIGMA_PRIOR,
     add_additive_sigma_likelihood,
 )
-from openghg_inversions.models.boundary import Boundary
+from openghg_inversions.models.boundary import Bound
 from openghg_inversions.models.components import (
     ConcentrationTerm,
     add_coherent_affine_component,
@@ -101,7 +102,7 @@ def build_co2_model(
     sigma_prior: PriorArgs | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
-    boundary: Boundary | None = None,
+    boundary: Bound | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> pm.Model:
@@ -143,7 +144,7 @@ def build_co2_model(
     fixed translation and any captured physical reference context explicitly.
     After restoring sample coordinates, direct callers must restore absolute
     ``y`` with
-    :func:`~openghg_inversions.rhime.co2.boundary_output.restore_absolute_predictives`
+    :func:`~openghg_inversions.postprocessing.boundary_outputs.restore_absolute_predictives`
     before serialization or postprocessing. Ordinary recipe runners do this
     through
     :func:`~openghg_inversions.rhime.co2.co2_runner.annotate_co2_trace`.
@@ -250,7 +251,7 @@ def build_co2_model(
 
         modelled_mean = pm.Deterministic(
             "modelled_concentration",
-            sum((term.output for term in terms[1:]), start=terms[0].output),
+            pt.add(*(term.output for term in terms)),
             dims="nmeasure",
         )
         likelihood_mean, likelihood_observations = likelihood_representation(

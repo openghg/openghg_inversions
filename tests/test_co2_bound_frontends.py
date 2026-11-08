@@ -17,7 +17,7 @@ from openghg_inversions.array_ops import select_gathered_data_array
 from openghg_inversions.models import StateActivity, get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.models.boundary import (
     AdditiveChoice,
-    BoundaryChoice,
+    Choice,
     MultiplicativeChoice,
 )
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
@@ -78,7 +78,7 @@ def _weights(observations: xr.DataArray) -> xr.DataArray:
     )
 
 
-def _choice(additive: bool, shared: Any = 1.0) -> BoundaryChoice:
+def _choice(additive: bool, shared: Any = 1.0) -> Choice:
     if additive:
         return AdditiveChoice({"pdf": "normal", "mu": 0.2 * shared, "sigma": 0.3}, 0.17)
     return MultiplicativeChoice(
@@ -121,8 +121,8 @@ def _linked_with_operands(additive: bool, anomaly_factor: Any = 1.0, channels=("
     return replace(prepared, boundary_operands=_raw_centered_channels(operands, weights))
 
 
-def _record_binding(monkeypatch: Any) -> list[BoundaryChoice]:
-    calls: list[BoundaryChoice] = []
+def _record_binding(monkeypatch: Any) -> list[Choice]:
+    calls: list[Choice] = []
     for family in (MultiplicativeChoice, AdditiveChoice):
         def record(self, *args, _bind=family.bind, **kwargs):
             calls.append(self)

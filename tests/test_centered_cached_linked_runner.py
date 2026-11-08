@@ -13,7 +13,7 @@ from openghg_inversions.array_ops import select_gathered_data_array
 from openghg_inversions.models import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime.co2 import co2_o2_cached_sigma_runner as runner
 from openghg_inversions.models.boundary import MultiplicativeChoice
-from openghg_inversions.rhime.co2.boundary_output import restore_absolute_predictives
+from openghg_inversions.postprocessing.boundary_outputs import restore_absolute_predictives
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.serialization import load_trace, save_trace

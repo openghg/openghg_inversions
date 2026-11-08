@@ -1,6 +1,6 @@
 """Dense two-tracer oracle and matched linked fixed-OU sampler contracts."""
 
-from openghg_inversions.models.boundary import BoundCenteredTransport
+from openghg_inversions.models.boundary import BoundCenteredSensitivity
 from boundary_test_utils import bound_linked_model_arguments
 
 from dataclasses import replace
@@ -514,7 +514,7 @@ def test_centered_linked_cache_matches_independent_dense_gaussian(mixed, o2_refe
                 "H_bc_mass": xr.DataArray(mass, dims=("nmeasure","bc_region"), attrs={"units":"1"}),
                 "bc_reference": xr.DataArray(reference, attrs={"units":"ppm"}),
             },coords={"nmeasure":sensitivity[native_dim].values,"bc_region":labels},attrs={"boundary_representation":"centered-v1"})
-            aligned = BoundCenteredTransport.bind(raw_transport(raw), native)
+            aligned = BoundCenteredSensitivity.bind(raw_transport(raw), native)
             active = [True, True] if channel == "co2" else [True, False, False]
             fixed = [1.,1.] if channel == "co2" else [1.,1.+2e-13,.7]
             policies[channel] = StateActivity(

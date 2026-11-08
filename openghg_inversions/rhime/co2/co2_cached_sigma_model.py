@@ -19,7 +19,7 @@ from pytensor.tensor.variable import TensorVariable
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inference.cached_sigma import PytensorMarginalQuadraticCache
 from openghg_inversions.array_ops import to_dense_tree
-from openghg_inversions.models.boundary import Boundary
+from openghg_inversions.models.boundary import Bound
 from openghg_inversions.models.cached_sigma import (
     FixedOuCachedSigmaTarget,
     MarginalQuadraticCache,
@@ -85,7 +85,7 @@ class Co2CachedSigmaModel:
     modelled_mean: TensorVariable
     cached_state_logp: TensorVariable
     initial_values: dict[str, Any]
-    boundary: Boundary | None = None
+    boundary: Bound | None = None
 
 
 def _materialize_cached_linear_projection(
@@ -300,7 +300,7 @@ def build_co2_cached_sigma_model(
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
-    boundary: Boundary | None = None,
+    boundary: Bound | None = None,
     offset_prior: PriorArgs | None = None,
     offset_freq: str | None = None,
     offset_drop_first: bool = False,
@@ -493,7 +493,7 @@ def build_co2_cached_sigma_model(
             )
         modelled_mean = pm.Deterministic(
             "modelled_concentration",
-            sum((term.output for term in terms[1:]), start=terms[0].output),
+            pt.add(*(term.output for term in terms)),
             dims=output_dim,
         )
         likelihood_mean, likelihood_observations = likelihood_representation(

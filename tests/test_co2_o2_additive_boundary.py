@@ -19,7 +19,7 @@ from openghg_inversions.rhime.co2.co2_o2_preparation import _raw_centered_channe
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from test_co2_o2_fixed_ou import _prepared, _kwargs
 from openghg_inversions.array_ops import select_gathered_data_array
-from openghg_inversions.models.boundary import BoundCenteredTransport
+from openghg_inversions.models.boundary import BoundCenteredSensitivity
 from boundary_test_utils import boundary_choice, bound_linked_model_arguments
 from boundary_test_utils import raw_transport
 
@@ -65,7 +65,7 @@ def _additive_inputs(prepared=None):
             ragged_dim="channel_observation",
             stack_dim="observation",
         ).rename({"observation": dim})
-        bound = BoundCenteredTransport.bind(raw_transport(operands[channel]), native_observations)
+        bound = BoundCenteredSensitivity.bind(raw_transport(operands[channel]), native_observations)
         channel_weights = xr.DataArray(
             weights.values, dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"}
         )
@@ -488,7 +488,7 @@ def test_mixed_centered_boundary_ou_density_gradients_and_absolute_closure(o2_an
             observations = xr.DataArray(
                 np.zeros(sensitivity.sizes[dim]), dims=dim, coords={dim: sensitivity[dim]}
             )
-            bound = BoundCenteredTransport.bind(raw_transport(operands), observations)
+            bound = BoundCenteredSensitivity.bind(raw_transport(operands), observations)
             if channel == "co2":
                 absolute_kwargs["boundary_sensitivity"][channel] = (
                     bound.H_bc_anomaly + bound.bc_reference * bound.H_bc_mass
