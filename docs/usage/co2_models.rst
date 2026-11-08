@@ -193,8 +193,15 @@ choice have no boundary term. The configuration adapters produce the same
 choices from ``[model.boundary]`` and ``[channels.<name>.boundary]``.
 
 The runner binds the choice once with ``choice.bind(observations,
-transport)``, where transport is the prepared ``H_bc`` or
-:class:`~openghg_inversions.models.boundary.CenteredOperands`. The bound record
+transport)``, where transport is the prepared ``H_bc`` or a
+:class:`~openghg_inversions.models.boundary.RawCenteredTransport` Dataset.
+Binding produces
+:class:`~openghg_inversions.models.boundary.BoundCenteredTransport` (extended
+to :class:`~openghg_inversions.models.boundary.BoundAdditiveTransport` for
+weighted additive anomalies); these are static annotations on ordinary
+Datasets carrying structural guarantees. Numerical requirements are checked
+once by the explicit reference-shift and weight-normalization operations after
+joint materialization. The bound record
 is materialized jointly with the selected core arrays and prior parameters and
 is then passed to the builder, which calls ``boundary.add(...)``. Fitted
 metadata, roles and physical coefficient units come from ``boundary.outputs()``;
@@ -227,10 +234,12 @@ only its observation rows. The full boundary-state support and resolved prior
 remain on that record::
 
     from dataclasses import replace
-    from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands
+    from openghg_inversions.models.boundary import AdditiveChoice, RawCenteredTransport
 
     choice = AdditiveChoice(mean_prior, anomaly_scale, frequency="monthly")
-    transport = replace(CenteredOperands.from_dataset(raw_operands), weights=weights)
+    transport = RawCenteredTransport.validate(raw_operands)
+    RawCenteredTransport.validate_weights(weights)
+    transport = RawCenteredTransport.with_centering_weights(transport, weights)
     bound = choice.bind(observations, transport)
     subset = replace(bound, data=bound.data.isel(nmeasure=selected_rows))
 
@@ -380,19 +389,18 @@ contribution included once in ``modelled_concentration`` and the likelihood.
 Public concentration products broadcast the fixed reference over requested
 draws. The additive model has no sampled boundary-scaling output.
 With zero anomaly scale or one boundary state, ``bc_anomaly`` and
-``mu_bc_anomaly`` are omitted from raw draws. Saved scale and weights allow
-public concentration products to identify and reconstruct these intentional
-zero components; the total correction remains the common mean in every state.
+``mu_bc_anomaly`` are recorded as zeros; the total correction remains the
+common mean in every state.
 
 Linked CO2/O2 concentration scales
 """"""""""""""""""""""""""""""""""
 
 The linked ordinary and cached fixed-OU recipes apply the same formulation
 independently to each enabled channel. Pass an ``AdditiveChoice`` per channel
-in ``boundary={"co2": ..., "o2": ...}``; the channel's averaging weights come
-from the preparation's ``bc_centering_weights`` mapping. Each channel has its
-own scalar mean, weighted anomalies and explicit averaging weights. Preparation retains native
-centered ``boundary_operands`` and ``bc_centering_weights`` in channel mappings.
+in ``boundary={"co2": ..., "o2": ...}``. Preparation stores each channel's
+``bc_centering_weights`` argument in that channel's native centered
+``boundary_operands``. Each channel has its own scalar mean, weighted
+anomalies and explicit averaging weights.
 No site or channel is an identifiability reference for the other.
 Each channel independently supports a zero anomaly scale, so one can use a
 common-level-only correction while the other retains sampled contrasts or a
