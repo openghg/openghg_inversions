@@ -317,17 +317,19 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.boundary.AdditiveBoundary
    openghg_inversions.models.boundary.AnomalyScalingChoice
    openghg_inversions.models.boundary.AnomalyScalingBoundary
-   openghg_inversions.models.boundary.RawCenteredTransport
-   openghg_inversions.models.boundary.BoundCenteredTransport
-   openghg_inversions.models.boundary.BoundAdditiveTransport
-   openghg_inversions.models.boundary.RawCenteredTransport.validate_weights
-   openghg_inversions.models.boundary.RawCenteredTransport.with_centering_weights
-   openghg_inversions.models.boundary.BoundCenteredTransport.bind
-   openghg_inversions.models.boundary.BoundCenteredTransport.reference_shift
-   openghg_inversions.models.boundary.BoundAdditiveTransport.bind_weights
-   openghg_inversions.models.boundary.BoundAdditiveTransport.normalized_weights
+   openghg_inversions.models.boundary.RawCenteredSensitivity
+   openghg_inversions.models.boundary.BoundCenteredSensitivity
+   openghg_inversions.models.boundary.BoundAdditiveSensitivity
+   openghg_inversions.models.boundary.validate_centering_weights
+   openghg_inversions.models.boundary.RawCenteredSensitivity.with_centering_weights
+   openghg_inversions.models.boundary.BoundCenteredSensitivity.bind
+   openghg_inversions.models.boundary.BoundCenteredSensitivity.reference_shift
+   openghg_inversions.models.boundary.BoundAdditiveSensitivity.bind_weights
+   openghg_inversions.models.boundary.normalize_centering_weights
    openghg_inversions.xr_contracts.xr_contract
-   openghg_inversions.models.boundary.BoundaryOutputs
+   openghg_inversions.models.boundary.Choice
+   openghg_inversions.models.boundary.Bound
+   openghg_inversions.models.boundary.Outputs
    openghg_inversions.array_ops.to_dense_tree
    openghg_inversions.models.shared_baseline.SharedBaselineChoice
    openghg_inversions.models.shared_baseline.SharedBaseline

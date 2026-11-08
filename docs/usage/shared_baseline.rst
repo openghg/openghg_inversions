@@ -3,7 +3,7 @@ Shared atmospheric level with boundary and outer corrections
 
 This opt-in Python recipe gives boundary-condition (BC) and exterior-flux
 corrections one shared atmospheric level. It starts from an existing coherent
-reduction, the prepared centered boundary transport and a :doc:`boundary
+reduction, the prepared centered boundary sensitivity and a :doc:`boundary
 correction structure <boundary_correction_structures>` that supplies the BC
 anomaly patterns. Existing model defaults are unchanged.
 
@@ -134,7 +134,7 @@ For example, with already prepared scientific inputs:
 
 .. code-block:: python
 
-   from openghg_inversions.models.boundary import AnomalyScalingChoice, RawCenteredTransport
+   from openghg_inversions.models.boundary import AnomalyScalingChoice, RawCenteredSensitivity
    from openghg_inversions.models.shared_baseline import SharedBaselineChoice
    from openghg_inversions.rhime.co2.shared_baseline_model import (
        build_shared_co2_cached_sigma_model,
@@ -146,7 +146,7 @@ For example, with already prepared scientific inputs:
    baseline = choice.bind(
        observations, flux_sensitivity=flux_sensitivity, retained_prior=retained_prior,
        fixed_prior_contribution=fixed_prior_contribution,
-       boundary_transport=RawCenteredTransport.validate(prepared_inputs),
+       boundary_sensitivity=RawCenteredSensitivity.validate(prepared_inputs),
        outer=outer, sampled_outer=sampled_outer,
    )
    cached = build_shared_co2_cached_sigma_model(

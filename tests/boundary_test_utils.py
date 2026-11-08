@@ -1,7 +1,7 @@
 """Assemble explicit scientific fixtures for the one-boundary API.
 
 Older fixtures describe a boundary with flat ``bc_*`` options. These helpers
-translate them once into a :class:`~openghg_inversions.models.boundary.BoundaryChoice`
+translate them once into a :class:`~openghg_inversions.models.boundary.Choice`
 and bind it, so builder tests exercise the same choice -> bind -> add route as
 the runners.
 """
@@ -9,7 +9,7 @@ the runners.
 import xarray as xr
 
 from openghg_inversions.array_ops import select_gathered_data_array
-from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeChoice, RawCenteredTransport
+from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeChoice, RawCenteredSensitivity
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 
 
@@ -29,7 +29,7 @@ BOUNDARY_OPTIONS = (
 def raw_transport(dataset, weights=None):
     """Validate prepared centered operands, optionally adding raw centering weights."""
     data = dataset if weights is None else dataset.assign(bc_centering_weights=weights)
-    return RawCenteredTransport.validate(data)
+    return RawCenteredSensitivity.validate(data)
 
 
 def centered_transport(anomaly, mass, reference, weights=None):

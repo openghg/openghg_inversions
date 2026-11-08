@@ -23,7 +23,7 @@ import xarray as xr
 from openghg_inversions.biosphere_prior import BiospherePrior
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.boundary import (
-    AdditiveChoice, AnomalyScalingChoice, BoundaryOutputs, BoundCenteredTransport, RawCenteredTransport,
+    AdditiveChoice, AnomalyScalingChoice, Outputs, BoundCenteredSensitivity, RawCenteredSensitivity,
 )
 
 OuterMode = Literal["fixed", "additive", "multiplicative", "multiplicative_shrunk"]
@@ -64,7 +64,7 @@ class SharedBaselineChoice:
         flux_sensitivity: xr.DataArray,
         retained_prior: CorrelatedLognormalPrior,
         fixed_prior_contribution: xr.DataArray,
-        boundary_transport: RawCenteredTransport,
+        boundary_sensitivity: RawCenteredSensitivity,
         outer: xr.DataArray,
         sampled_outer: xr.DataArray,
         additive_design: xr.DataArray | None = None,
@@ -85,7 +85,7 @@ class SharedBaselineChoice:
             flux_sensitivity: Borrowed observation-by-retained-state operator.
             retained_prior: Complete labelled joint physical arithmetic moments.
             fixed_prior_contribution: Original observation-aligned affine term.
-            boundary_transport: Prepared raw centered boundary transport.
+            boundary_sensitivity: Prepared raw centered boundary sensitivity.
             outer: Boolean outer-state selector on the complete retained axis.
             sampled_outer: Boolean adjustable-outer subset, excluding fixed ocean.
             additive_design: Additive mode only: width-scaled
@@ -120,9 +120,9 @@ class SharedBaselineChoice:
         if outer.dtype != bool or sampled_outer.dtype != bool or bool((sampled_outer & ~outer).any()):
             raise ValueError("sampled_outer must be a boolean subset of outer.")
         if self.boundary is None:
-            bc_data, bc_factor = BoundCenteredTransport.bind(boundary_transport, observations), None
+            bc_data, bc_factor = BoundCenteredSensitivity.bind(boundary_sensitivity, observations), None
         else:
-            bound = self.boundary.bind(observations, boundary_transport)
+            bound = self.boundary.bind(observations, boundary_sensitivity)
             bc_data, bc_factor = bound.data, bound.anomaly_factor()
         units = bc_data.bc_reference.attrs["units"]
         anomaly = bc_data.H_bc_anomaly.transpose(row, "bc_region")
@@ -277,7 +277,7 @@ class SharedBaseline:
     choice: SharedBaselineChoice
     data: xr.Dataset
 
-    def outputs(self) -> BoundaryOutputs:
+    def outputs(self) -> Outputs:
         """Declare the atmospheric level's roles and units and the bound choice's metadata."""
         boundary = self.choice.boundary
         units = self.data.attrs["units"]
@@ -293,7 +293,7 @@ class SharedBaseline:
             "bc_frequency": None if boundary is None else boundary.frequency,
             "bc_anchor_time": None if boundary is None or boundary.anchor_time is None else str(boundary.anchor_time),
         }
-        return BoundaryOutputs(roles, {"bc_mean_shift": units, "mu_bc_mean_shift": units}, metadata)
+        return Outputs(roles, {"bc_mean_shift": units, "mu_bc_mean_shift": units}, metadata)
 
 
 __all__ = ["OuterMode", "SharedBaseline", "SharedBaselineChoice"]

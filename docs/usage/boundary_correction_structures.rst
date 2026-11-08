@@ -1,7 +1,7 @@
 Boundary correction structures
 ==============================
 
-Centered boundary transport gives the prescribed boundary concentration as
+Centered boundary sensitivity gives the prescribed boundary concentration as
 :math:`A\mathbf1+cM\mathbf1` (see :doc:`centered_boundary_conditions`). Two
 boundary families correct it with independent zero-mean Gaussian
 coefficients whose widths are explicit scientific inputs; nothing is

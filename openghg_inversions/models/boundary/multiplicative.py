@@ -1,9 +1,9 @@
-"""Multiplicative boundary scaling, from absolute or centered transport.
+"""Multiplicative boundary scaling, from absolute or centered sensitivity.
 
 The boundary contribution is ``H b`` for dimensionless scaling states ``b``.
-With absolute transport ``H`` (``H_bc``) the graph evaluates that product
-directly. With centered transport ``H = A + c M``
-(:class:`~.contracts.RawCenteredTransport`; see
+With absolute sensitivity ``H`` (``H_bc``) the graph evaluates that product
+directly. With centered sensitivity ``H = A + c M``
+(:class:`~.contracts.RawCenteredSensitivity`; see
 :doc:`/usage/centered_boundary_conditions`) the likelihood instead uses
 ``A b + c M (b - 1)`` against observations shifted by ``c M 1``, which keeps
 small anomalies after cancellation; the absolute output still adds the shift.
@@ -23,11 +23,11 @@ from dask import is_dask_collection
 from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity, validate_centered_boundary_periods
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models.components import AffineBlock, AffineConcentrationTerm, add_state_vector
-from openghg_inversions.models.coords import add_model_data, component_coords
+from openghg_inversions.models.coords import add_component_data, add_model_data
 from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity, resolve_state_activity
 
-from .contracts import BoundCenteredTransport, RawCenteredTransport
-from .outputs import BoundaryOutputs
+from .contracts import BoundCenteredSensitivity, RawCenteredSensitivity
+from .outputs import Outputs
 
 
 def centered_boundary_expression(anomaly, mass, reference, state):
@@ -35,7 +35,7 @@ def centered_boundary_expression(anomaly, mass, reference, state):
 
     Args:
         anomaly: Concentration anomaly design A, on observations by states.
-        mass: Dimensionless transport M on the same axes.
+        mass: Dimensionless mass M on the same axes.
         reference: Scalar concentration reference c.
         state: Dimensionless physical boundary scaling vector b.
 
@@ -51,8 +51,8 @@ class MultiplicativeChoice:
     """Prior specification for multiplicative boundary scaling, before binding.
 
     A choice holds the scientific options (scaling prior, state activity and
-    boundary period calendar) without bound observations or transport arrays.
-    :meth:`bind` pairs it with one fit's observations and transport.
+    boundary period calendar) without bound observations or sensitivity arrays.
+    :meth:`bind` pairs it with one fit's observations and sensitivity.
 
     Attributes:
         prior: Prior for the dimensionless scaling states ``bc``, as passed to
@@ -85,56 +85,56 @@ class MultiplicativeChoice:
         validate_centered_boundary_periods(self.frequency, self.anchor_time)
 
     def bind(
-        self, observations: xr.DataArray, transport: xr.DataArray | RawCenteredTransport,
+        self, observations: xr.DataArray, sensitivity: xr.DataArray | RawCenteredSensitivity,
     ) -> MultiplicativeBoundary:
-        """Bind prepared absolute or centered transport to one fit's rows and periods.
+        """Bind prepared absolute or centered sensitivity to one fit's rows and periods.
 
         Args:
             observations: One channel's observations with its observation axis
-                first. Its labels select and order the transport rows; its
+                first. Its labels select and order the sensitivity rows; its
                 ``time`` values assign rows to boundary periods.
-            transport: Absolute ``H_bc`` in concentration units, or raw
-                centered transport, on the raw ``nmeasure`` or ``time`` axis.
-                A Dataset is centered transport; a DataArray is absolute. Absolute
-                transport already expanded to periods is accepted only without
+            sensitivity: Absolute ``H_bc`` in concentration units, or raw
+                centered sensitivity, on the raw ``nmeasure`` or ``time`` axis.
+                A Dataset is centered sensitivity; a DataArray is absolute. Absolute
+                sensitivity already expanded to periods is accepted only without
                 a ``frequency`` or ``anchor_time``.
 
         Returns:
             The bound boundary. ``data`` holds ``H_bc``, or ``H_bc_anomaly``,
             ``H_bc_mass`` and the scalar ``bc_reference``, on
-            ``(observation, state)``. Raw spatial transport and any explicit
+            ``(observation, state)``. Raw spatial sensitivity and any explicit
             calendar give a ``bc_region`` state index with
-            ``(bc_curtain, bc_period)`` levels; unmarked absolute transport
+            ``(bc_curtain, bc_period)`` levels; unmarked absolute sensitivity
             without a calendar keeps its own state labels. Numerical payloads
             stay borrowed and lazy.
 
         Raises:
-            ValueError: If centered transport is bound without float64
+            ValueError: If centered sensitivity is bound without float64
                 PyTensor, periods or indexed timestamps conflict with the
                 observations, or a calendar override is requested for
-                already-expanded absolute transport.
+                already-expanded absolute sensitivity.
         """
         data: xr.Dataset
-        if isinstance(transport, xr.Dataset):
-            data = BoundCenteredTransport.bind(
-                transport, observations, frequency=self.frequency, anchor_time=self.anchor_time,
+        if isinstance(sensitivity, xr.Dataset):
+            data = BoundCenteredSensitivity.bind(
+                sensitivity, observations, frequency=self.frequency, anchor_time=self.anchor_time,
             )
         else:
             data = bind_boundary_sensitivity(
-                transport, observations, frequency=self.frequency, anchor_time=self.anchor_time,
+                sensitivity, observations, frequency=self.frequency, anchor_time=self.anchor_time,
             ).rename("H_bc").to_dataset()
         return MultiplicativeBoundary(self, data)
 
 
 @dataclass(frozen=True)
 class MultiplicativeBoundary:
-    """Multiplicative choice bound to one fit's borrowed labelled transport.
+    """Multiplicative choice bound to one fit's borrowed labelled sensitivity.
 
     Attributes:
         choice: The resolved multiplicative choice.
-        data: :class:`~.contracts.BoundCenteredTransport`, or absolute
+        data: :class:`~.contracts.BoundCenteredSensitivity`, or absolute
             ``H_bc`` (concentration units) on ``(observation, state)``.
-            Absolute transport keeps its own supported state layouts and has
+            Absolute sensitivity keeps its own supported state layouts and has
             no contract. The arrays are borrowed and may be Dask-backed.
             Materialize them jointly with the other model inputs and the
             choice prior before :meth:`add`; rows may be padded or subset
@@ -145,16 +145,16 @@ class MultiplicativeBoundary:
     """
 
     choice: MultiplicativeChoice
-    data: BoundCenteredTransport | xr.Dataset
+    data: BoundCenteredSensitivity | xr.Dataset
 
     @property
     def observation_dim(self) -> str:
-        """Observation dimension of the bound transport, the first transport dimension."""
+        """Observation dimension of the bound sensitivity, the first sensitivity dimension."""
         return str(self.data["H_bc_anomaly" if self.centered else "H_bc"].dims[0])
 
     @property
     def centered(self) -> bool:
-        """Whether the bound transport uses the centered representation."""
+        """Whether the bound sensitivity uses the centered representation."""
         return "H_bc_anomaly" in self.data
 
     def add(self, *, output_dim: str = "nmeasure", prefix: str = "", owner: str | None = "bc") -> AffineConcentrationTerm:
@@ -162,13 +162,13 @@ class MultiplicativeBoundary:
 
         Must be called inside an active PyMC model that has the coordinate
         registry, after ``data`` has been materialized jointly with the other
-        model inputs. It registers the transport (``hbc``, or
+        model inputs. It registers the sensitivity (``hbc``, or
         ``H_bc_anomaly``, ``H_bc_mass`` and ``bc_reference``) as model data,
         plus the scaling state vector ``bc`` and the deterministic ``mu_bc``.
 
         The affine representation is ``fixed + D_active (b_active - k)``,
         where ``D`` is the absolute design (``A + cM`` when centered),
-        ``k = 1`` for centered and ``0`` for absolute transport, and the fixed
+        ``k = 1`` for centered and ``0`` for absolute sensitivity, and the fixed
         part retains inactive states and, when centered, ``A 1``.
 
         Args:
@@ -205,7 +205,7 @@ class MultiplicativeBoundary:
             anomaly = self.data.H_bc_anomaly
             mass = self.data.H_bc_mass
             reference = self.data.bc_reference
-            shift = BoundCenteredTransport.reference_shift(cast(BoundCenteredTransport, self.data)).rename(
+            shift = BoundCenteredSensitivity.reference_shift(cast(BoundCenteredSensitivity, self.data)).rename(
                 f"{prefix}bc_reference_shift",
             )
             design = (anomaly + reference * mass).assign_attrs(anomaly.attrs)
@@ -219,15 +219,15 @@ class MultiplicativeBoundary:
         inactive_design = design.isel({state_dim: inactive})
         inactive_values = activity.fixed_value.isel({state_dim: inactive})
         if shift is not None:
-            a = add_model_data(component_coords(anomaly, owner, observation_dim=output_dim), f"{prefix}H_bc_anomaly")
-            m = add_model_data(component_coords(mass, owner, observation_dim=output_dim), f"{prefix}H_bc_mass")
+            a = add_component_data(anomaly, f"{prefix}H_bc_anomaly", owner, observation_dim=output_dim)
+            m = add_component_data(mass, f"{prefix}H_bc_mass", owner, observation_dim=output_dim)
             c = add_model_data(reference, f"{prefix}bc_reference")
             likelihood = centered_boundary_expression(a, m, c, vector.state)
             output = pm.Deterministic(f"{prefix}mu_bc", likelihood + pt.as_tensor_variable(shift.values), dims=output_dim)
             fixed = anomaly.sum(state_dim, skipna=False) + xr.dot(inactive_design, inactive_values - 1, dim=state_dim)
             coefficients = vector.state[active] - 1
         else:
-            h = add_model_data(component_coords(design, owner, observation_dim=output_dim), f"{prefix}hbc")
+            h = add_component_data(design, f"{prefix}hbc", owner, observation_dim=output_dim)
             output = pm.Deterministic(f"{prefix}mu_bc", pt.dot(h, vector.state), dims=output_dim)
             likelihood = output
             fixed = xr.dot(inactive_design, inactive_values, dim=state_dim)
@@ -239,7 +239,7 @@ class MultiplicativeBoundary:
             sampled_rvs=(vector.latent,) if vector.latent is not None else (),
         )
 
-    def outputs(self, prefix: str = "") -> BoundaryOutputs:
+    def outputs(self, prefix: str = "") -> Outputs:
         """Declare the roles, units and metadata of this boundary's graph.
 
         Declarations depend only on the choice and the bound data, so they
@@ -261,19 +261,17 @@ class MultiplicativeBoundary:
             "bc_anchor_time": None if self.choice.anchor_time is None else str(self.choice.anchor_time),
         }
         if self.centered:
-            concentration = self.data.bc_reference.attrs["units"]
+            concentration_units = self.data.bc_reference.attrs["units"]
             roles.update(boundary_anomaly="H_bc_anomaly", boundary_mass="H_bc_mass", boundary_reference="bc_reference")
-            units.update({name: concentration for name in (
-                "mu_bc", "H_bc_anomaly", "bc_reference",
-            )})
+            units.update({name: concentration_units for name in ("mu_bc", "H_bc_anomaly", "bc_reference")})
             units["H_bc_mass"] = "1"
             metadata["boundary_representation"] = "centered-v1"
         else:
             roles["boundary_sensitivity"] = "hbc"
-            concentration = self.data.H_bc.attrs.get("units")
-            if concentration is not None:
-                units.update(mu_bc=concentration, hbc=concentration)
-        return BoundaryOutputs(roles, units, metadata).prefixed(prefix)
+            concentration_units = self.data.H_bc.attrs.get("units")
+            if concentration_units is not None:
+                units.update(mu_bc=concentration_units, hbc=concentration_units)
+        return Outputs(roles, units, metadata).prefixed(prefix)
 
 
 __all__ = ["MultiplicativeBoundary", "MultiplicativeChoice", "centered_boundary_expression"]

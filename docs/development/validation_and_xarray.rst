@@ -182,9 +182,9 @@ Centered-boundary application
 -----------------------------
 
 The first application is
-:class:`~openghg_inversions.models.boundary.RawCenteredTransport`,
-:class:`~openghg_inversions.models.boundary.BoundCenteredTransport` and its
-:class:`~openghg_inversions.models.boundary.BoundAdditiveTransport` extension.
+:class:`~openghg_inversions.models.boundary.RawCenteredSensitivity`,
+:class:`~openghg_inversions.models.boundary.BoundCenteredSensitivity` and its
+:class:`~openghg_inversions.models.boundary.BoundAdditiveSensitivity` extension.
 Their schemas use ``xarray_validate`` for declarative variables, dtypes,
 dimensions and attributes, with callbacks for unit and index relationships;
 the library choice belongs to this application, not to every contract. The
