@@ -193,8 +193,9 @@ Binding produces
 :class:`~openghg_inversions.models.boundary.BoundCenteredTransport` (extended
 to :class:`~openghg_inversions.models.boundary.BoundAdditiveTransport` for
 weighted additive anomalies); these are static annotations on ordinary
-Datasets, so their guarantees are checked where data enters rather than by
-each consumer. The bound record
+Datasets carrying structural guarantees. Numerical requirements are checked
+once by the explicit reference-shift and weight-normalization operations after
+joint materialization. The bound record
 is materialized jointly with the selected core arrays and prior parameters and
 is then passed to the builder, which calls ``boundary.add(...)``. Fitted
 metadata, roles and physical coefficient units come from ``boundary.outputs()``;
@@ -230,7 +231,9 @@ remain on that record::
     from openghg_inversions.models.boundary import AdditiveChoice, RawCenteredTransport
 
     choice = AdditiveChoice(mean_prior, anomaly_scale, frequency="monthly")
-    transport = RawCenteredTransport.validate(raw_operands.assign(bc_centering_weights=weights))
+    transport = RawCenteredTransport.validate(raw_operands)
+    RawCenteredTransport.validate_weights(weights)
+    transport = RawCenteredTransport.with_centering_weights(transport, weights)
     bound = choice.bind(observations, transport)
     subset = replace(bound, data=bound.data.isel(nmeasure=selected_rows))
 

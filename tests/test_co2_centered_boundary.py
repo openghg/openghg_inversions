@@ -24,7 +24,7 @@ from openghg_inversions.models.boundary import (
     AnomalyScalingChoice,
     MultiplicativeChoice,
 )
-from openghg_inversions.models.boundary import bind_centered_transport
+from openghg_inversions.models.boundary import BoundCenteredTransport
 from boundary_test_utils import bound_model_arguments, boundary_transport
 from boundary_test_utils import raw_transport, centered_transport
 
@@ -311,7 +311,7 @@ def test_centered_boundary_validates_scientific_inputs(invalid: str) -> None:
             # Units are owned by preparation and artifact loading, not by binding.
             response.attrs["units"] = "m"
             kwargs["boundary_operands"]["H_bc_mass"] = response
-            with pytest.raises(ValueError, match="mass units must be '1'"):
+            with pytest.raises(ValueError, match="H_bc_mass.*units"):
                 validate_boundary_operands(kwargs["boundary_operands"])
             return
         kwargs["boundary_operands"]["H_bc_mass"] = response
@@ -427,7 +427,7 @@ def test_nonseparable_region_period_weights_preserve_whole_window_prior():
     observations = mass.sum("bc_region").assign_coords(
         time=("nmeasure", pd.to_datetime(["2020-01-01", "2020-01-20", "2020-02-01", "2020-02-20"]))
     )
-    periods = bind_centered_transport(raw_transport(raw), observations, frequency="monthly")
+    periods = BoundCenteredTransport.bind(raw_transport(raw), observations, frequency="monthly")
     weights = xr.DataArray(
         [1.0, 2.0, 3.0, 7.0], dims="bc_region", coords=periods.bc_region.coords, attrs={"units": "1"}
     )

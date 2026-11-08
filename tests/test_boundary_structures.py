@@ -28,7 +28,7 @@ from test_co2_bound_frontends import _draws, _single_with_operands
 from test_co2_cached_sigma import _inputs
 from test_co2_o2_fixed_ou import _kwargs, _prepared
 from boundary_test_utils import centered_transport, raw_transport
-from openghg_inversions.models.boundary import bind_centered_transport
+from openghg_inversions.models.boundary import BoundCenteredTransport
 
 METHODS = ["level", "contrasts", "independent", "scaling"]
 OU = {"tau_hours": 5.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75}}
@@ -186,7 +186,7 @@ def test_weighted_factor_and_graph_share_the_centered_design(weight_scale):
     obs = _inputs().mf
     periods = {"frequency": "2h", "anchor_time": "2021-01-01"}
     transport = _operands(obs, normalised=False)
-    states = bind_centered_transport(transport, obs, **periods).indexes["bc_region"]
+    states = BoundCenteredTransport.bind(transport, obs, **periods).indexes["bc_region"]
     raw_weights = np.array([[1., 2., 3.], [4., 5., 6.]])
     weights = xr.DataArray(
         weight_scale * raw_weights, dims=("bc_curtain", "bc_period"),
@@ -216,7 +216,7 @@ def test_weighted_factor_rejects_invalid_or_lazy_weights(values, lazy, message):
     obs = _inputs().mf
     periods = {"frequency": "2h", "anchor_time": "2021-01-01"}
     transport = _operands(obs, normalised=False)
-    states = bind_centered_transport(transport, obs, **periods).indexes["bc_region"]
+    states = BoundCenteredTransport.bind(transport, obs, **periods).indexes["bc_region"]
     weights = xr.DataArray(
         np.array(values), dims=("bc_curtain", "bc_period"),
         coords={"bc_curtain": states.levels[0], "bc_period": states.levels[1]}, attrs={"units": "1"},

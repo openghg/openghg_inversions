@@ -26,7 +26,10 @@ guarantees consumers may assume: applicable variables, dimensions, coordinates,
 units and relationships, and any numerical properties with their tolerance
 policies. Producer and input-boundary documentation SHALL explain how their
 operations establish those guarantees from their own preconditions. Each
-documented guarantee SHALL be established before code relies on it.
+documented guarantee SHALL be established before code relies on it. A
+structural-only lazy-stage contract MAY document additional requirements of a
+later numerical operation, but SHALL identify them as requirements of that
+operation rather than established properties of the contracted value.
 
 Consumers SHALL be able to interpret the guarantees from the contract and the
 value without access to historical validator arguments. Parameter-dependent
@@ -198,9 +201,11 @@ weights SHALL lie on `(bc_curtain, bc_period)` with unique curtain labels,
 interval-start period labels (or the single `whole_window` label without
 timestamps) and dimensionless units. Other variables SHALL be permitted.
 
-The contract SHALL document finite anomaly and reference values, finite
-non-negative mass that is not all zero, and finite strictly positive weights;
-the boundary that first materializes those payloads SHALL establish them.
+The raw contract SHALL establish structural guarantees only. Its documentation
+SHALL distinguish those guarantees from the finite anomaly/reference,
+finite non-negative nonzero mass, and finite strictly positive weight
+requirements owned by later explicit numerical operations. Preparation,
+loading and saving SHALL NOT scan weight payloads to establish positivity.
 
 #### Scenario: Accept supplied centered transport
 
@@ -228,7 +233,33 @@ without computing numerical payloads.
 The additive extension SHALL additionally hold dimensionless centering weights
 on `bc_region`, aligned exactly to the bound states. Only weighted additive
 anomalies SHALL require it; other families SHALL consume the shared contract
-without weights.
+without weights. These bound contracts SHALL establish structure only;
+subsetting observations MAY leave all-zero mass even when raw mass was nonzero.
+
+Before graph construction relies on numerical values, its explicit operation
+SHALL reject lazy inputs, check finite anomaly/reference and finite non-negative
+nonzero bound mass, and calculate the fixed reference shift once for reuse.
+The weighted additive normalization operation SHALL reject lazy weights and
+check finite strictly positive weights once when forming its normalized design.
+Materialization SHALL remain with the recipe's joint input boundary, rather
+than being hidden in these operations or added solely for contract typing.
+
+#### Scenario: Reject an incomplete state grid
+
+- **WHEN** a supplied bound state index omits a combination of its represented curtain and period labels
+- **THEN** structural validation reports incomplete curtain-period coverage without computing payloads
+
+#### Scenario: Apply numerical requirements to selected values
+
+- **WHEN** structurally valid bound transport has all-zero mass after selecting fit rows
+- **THEN** its explicit reference-shift operation rejects that numerical input
+- **AND** the lazy-stage contract has made no nonzero-mass guarantee
+
+#### Scenario: Normalize supplied additive weights once
+
+- **WHEN** weighted additive graph construction receives materialized bound weights
+- **THEN** its normalization operation checks finite strictly positive values and returns weights summing to one
+- **AND** preparation, loading and saving have not repeated that scan
 
 #### Scenario: Bind raw transport
 

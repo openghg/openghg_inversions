@@ -15,7 +15,7 @@ from openghg_inversions.models.boundary import MultiplicativeChoice
 from test_co2_cached_sigma import _inputs
 from test_co2_o2_fixed_ou import _prepared, _kwargs
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
-from openghg_inversions.models.boundary import bind_centered_transport
+from openghg_inversions.models.boundary import BoundCenteredTransport
 from boundary_test_utils import bound_model_arguments, bound_linked_model_arguments
 from boundary_test_utils import raw_transport
 
@@ -76,7 +76,7 @@ def _assert_equivalent(stock, centered, cached):
 def test_single_centered_fixed_ou_preserves_full_density_and_gradient(reference, fixed_boundary):
     inputs = _inputs()
     operands = _operands(inputs.mf, reference)
-    bound = bind_centered_transport(raw_transport(operands), inputs.mf)
+    bound = BoundCenteredTransport.bind(raw_transport(operands), inputs.mf)
     options = dict(
         retained_prior=CorrelatedLognormalPrior(
             inputs.alpha_prior_mean, inputs.alpha_prior_covariance, covariance_dim="region_cov"
@@ -127,7 +127,7 @@ def test_linked_centered_fixed_ou_preserves_joint_density_and_full_gradient(fixe
         rows = kwargs["observations"].sel(species=channel)
         rows = rows.rename({rows.dims[0]: kwargs[f"{channel}_sensitivity"].dims[0]})
         operands[channel] = _operands(rows, reference)
-        bound = bind_centered_transport(raw_transport(operands[channel]), rows)
+        bound = BoundCenteredTransport.bind(raw_transport(operands[channel]), rows)
         absolute[channel] = bound.H_bc_anomaly + reference * bound.H_bc_mass
     shift = xr.where(kwargs["observations"].species == "co2", 400.0, 209300.0)
     kwargs["observations"] = kwargs["observations"] + shift
@@ -183,7 +183,7 @@ def test_fixed_amplitude_absolute_and_centered_density_full_gradient(reference):
     """Fixed amplitudes need an ordinary oracle, with non-unit fixed states."""
     inputs = _inputs()
     operands = _operands(inputs.mf, reference)
-    bound = bind_centered_transport(raw_transport(operands), inputs.mf)
+    bound = BoundCenteredTransport.bind(raw_transport(operands), inputs.mf)
     options = dict(
         retained_prior=CorrelatedLognormalPrior(
             inputs.alpha_prior_mean, inputs.alpha_prior_covariance, covariance_dim="region_cov"

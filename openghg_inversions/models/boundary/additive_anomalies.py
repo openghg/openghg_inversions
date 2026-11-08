@@ -16,7 +16,6 @@ import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
-from dask import is_dask_collection
 from pytensor.tensor.variable import TensorVariable
 from scipy.linalg import helmert
 
@@ -26,27 +25,6 @@ from openghg_inversions.models.coords import add_model_data, component_coords
 from .outputs import BoundaryCorrection, BoundaryOutputs
 
 AnomalyStructure = Literal["weighted", "period_contrasts", "independent"]
-
-
-def normalized_centering_weights(weights: xr.DataArray) -> xr.DataArray:
-    """Validate materialized centering weights and normalize their sum to one.
-
-    Args:
-        weights: Borrowed positive weights on the bound ``bc_region`` states.
-
-    Returns:
-        Dimensionless weights with the same state coordinates. Scaling by the
-        maximum first avoids overflow when summing large finite weights.
-
-    Raises:
-        ValueError: If weights are lazy, empty, non-finite or not positive.
-    """
-    if is_dask_collection(weights.data):
-        raise ValueError("Materialize bc_centering_weights before forming a weighted anomaly design.")
-    if not weights.size or not np.isfinite(weights.values).all() or not (weights.values > 0).all():
-        raise ValueError("bc_centering_weights must be finite and strictly positive.")
-    scaled = weights / weights.max()
-    return (scaled / scaled.sum()).assign_attrs(units="1")
 
 
 def weighted_anomaly_basis(weights: xr.DataArray) -> xr.DataArray:
@@ -102,7 +80,7 @@ def anomaly_basis(
         structure: Selected additive anomaly formulation.
         states: Bound ``bc_region`` coordinate with a ``bc_period`` level.
         weights: Normalized centering weights from
-            :func:`normalized_centering_weights`; required for ``"weighted"``
+            :meth:`~.contracts.BoundAdditiveTransport.normalized_weights`; required for ``"weighted"``
             and ignored otherwise.
 
     Returns:

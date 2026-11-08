@@ -26,7 +26,7 @@ from test_co2_rhime import _golden_inputs
 from test_co2_affine_output import _prepared
 from test_rhime_co2_o2_baselines import _prepared as _linked
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
-from openghg_inversions.models.boundary import bind_centered_transport
+from openghg_inversions.models.boundary import BoundCenteredTransport
 from boundary_test_utils import bound_model_arguments
 from boundary_test_utils import raw_transport
 
@@ -65,7 +65,7 @@ def _operands(observations, *, constant=False):
 def _single_models(constant, fixed, frequency=None, default_prior=False):
     inputs = _golden_inputs().assign_coords(time=("nmeasure", np.arange(2).astype("datetime64[D]")))
     operands = _operands(inputs.mf, constant=constant)
-    aligned = bind_centered_transport(raw_transport(operands), inputs.mf, frequency=frequency)
+    aligned = BoundCenteredTransport.bind(raw_transport(operands), inputs.mf, frequency=frequency)
     absolute = aligned.H_bc_anomaly + aligned.bc_reference * aligned.H_bc_mass
     options = dict(
         retained_prior=CorrelatedLognormalPrior(
@@ -143,9 +143,9 @@ def test_operand_validation_does_not_claim_empty_dataset():
 
 
 @pytest.mark.parametrize("malformed,message", [
-    ("missing_anomaly", "require H_bc_anomaly, H_bc_mass and bc_reference"),
+    ("missing_anomaly", "H_bc_anomaly"),
     ("representation", "Unsupported boundary_representation"),
-    ("reference", "bc_reference must be scalar"),
+    ("reference", "bc_reference.*dims"),
 ])
 def test_operand_validation_owner_errors(malformed, message):
     operands = _operands(_golden_inputs().mf)
@@ -412,7 +412,7 @@ def test_linked_logp_gradients_independent_channel_labels():
         )
         operands[channel] = _operands(native, constant=channel == "o2")
         sensitivity = prepared.co2_sensitivity if channel == "co2" else prepared.o2_sensitivity
-        aligned = bind_centered_transport(raw_transport(operands[channel]), native.rename(observation=sensitivity.dims[0])
+        aligned = BoundCenteredTransport.bind(raw_transport(operands[channel]), native.rename(observation=sensitivity.dims[0])
         )
         boundaries[channel] = (
             (aligned.H_bc_anomaly + aligned.bc_reference * aligned.H_bc_mass)

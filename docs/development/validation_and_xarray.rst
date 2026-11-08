@@ -178,6 +178,56 @@ success alone does not establish symmetry or a specified rank tolerance.
 Compatibility with a particular model's observation labels belongs to the
 composition boundary combining them.
 
+Centered-boundary application
+-----------------------------
+
+The first application implements
+:class:`~openghg_inversions.models.boundary.RawCenteredTransport`,
+:class:`~openghg_inversions.models.boundary.BoundCenteredTransport` and its
+:class:`~openghg_inversions.models.boundary.BoundAdditiveTransport` extension.
+Their ``schema(observation_dim=...)`` class operations return inspectable
+``xarray_validate`` 0.0.5 metadata schemas. Required variables, real dtypes,
+dimensions and attributes are declarative; callbacks check unit relationships
+and eager indexes, including every curtain-period Cartesian combination.
+Extra variables and lazy auxiliary coordinates are accepted. ``validate``
+returns the identical Dataset or raises ``ValueError`` with the affected
+metadata and caller context. Validation-library selection remains an
+application decision, not a requirement for every contract.
+
+These lazy-stage boundary contracts establish structure only. Finite anomaly
+and reference values, finite non-negative nonzero mass, and finite strictly
+positive weights are requirements of later numerical operations. In particular,
+selecting fit rows can turn nonzero raw mass into all-zero bound mass.
+Loading an artifact does not establish these numerical properties.
+
+The classes also own the operations that use their scientific structure:
+
+* ``BoundCenteredTransport.bind(raw, observations, frequency=...)`` selects
+  fit rows and expands every spatial state into each boundary period.
+* ``RawCenteredTransport.weights_schema()`` exposes the raw weight layout;
+  ``RawCenteredTransport.validate_weights(weights, label=...)`` checks its
+  metadata without computing values.
+* ``RawCenteredTransport.with_centering_weights(raw, weights)`` replaces optional
+  raw weights explicitly. It removes only axes owned exclusively by the old
+  weights and rejects conflicts with axes shared by other variables or
+  coordinates, preventing Dataset alignment from silently truncating supplied
+  weights.
+* ``BoundAdditiveTransport.bind_weights(bound, weights)`` aligns weights exactly
+  to the bound state labels and returns the additive extension.
+* ``BoundCenteredTransport.reference_shift(data)`` checks already materialized
+  anomaly, mass and reference values and calculates the fixed shift for reuse.
+* ``BoundAdditiveTransport.normalized_weights(weights)`` checks already
+  materialized weights for finite strictly positive values and returns weights
+  normalized to sum to one.
+
+Each centered family's ``add`` calls ``reference_shift`` once; weighted additive
+``add`` also normalizes its weights once. Both numerical operations reject lazy
+inputs instead of computing them. Recipes materialize related inputs together
+at the existing graph-construction boundary. Preparation and loading check weight metadata; saving preserves the prepared
+structure. None of these paths scan weight payloads for positivity. No extra eager-stage wrapper
+or contract type is needed. See :doc:`/usage/centered_boundary_conditions` for
+the scientific model and :doc:`/reference/index` for the API.
+
 Transpose, align, compute
 -------------------------
 

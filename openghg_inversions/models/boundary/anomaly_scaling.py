@@ -37,7 +37,7 @@ from openghg_inversions.models.coords import add_model_data, component_coords
 
 from .mean_shift import add_boundary_mean_shift, mean_shift_outputs
 from .contracts import BoundCenteredTransport, RawCenteredTransport
-from .operands import bind_centered_transport, check_bound_transport, materialized_reference_shift
+from .operands import check_bound_transport
 from .outputs import BoundaryOutputs
 
 ReferencePolicy = float | Literal["stored", "whole_window_transport_mean"]
@@ -120,7 +120,7 @@ class AnomalyScalingChoice:
             ValueError: If PyTensor is not configured for float64, or periods
                 or indexed timestamps conflict with the observations.
         """
-        data = bind_centered_transport(
+        data = BoundCenteredTransport.bind(
             transport, observations, frequency=self.frequency, anchor_time=self.anchor_time,
         )
         if self.reference == "stored":
@@ -222,7 +222,7 @@ class AnomalyScalingBoundary:
         anomaly = self.data.H_bc_anomaly
         mass = self.data.H_bc_mass
         reference = self.data.bc_reference
-        reference_shift = materialized_reference_shift(anomaly, mass, reference).rename(f"{prefix}bc_reference_shift")
+        reference_shift = BoundCenteredTransport.reference_shift(self.data).rename(f"{prefix}bc_reference_shift")
         fixed = anomaly.sum("bc_region", skipna=False).assign_attrs(anomaly.attrs)
 
         # Owner-qualified coordinates plus model data, sharing the observation axis.

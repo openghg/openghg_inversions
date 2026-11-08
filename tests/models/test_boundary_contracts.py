@@ -9,6 +9,7 @@ import pandas as pd
 import pytensor
 import pytest
 import xarray as xr
+from xarray_validate import DatasetSchema
 
 from openghg_inversions.models.boundary import (
     AdditiveChoice,
@@ -16,9 +17,7 @@ from openghg_inversions.models.boundary import (
     BoundCenteredTransport,
     MultiplicativeChoice,
     RawCenteredTransport,
-    bind_centered_transport,
 )
-from openghg_inversions.models.boundary.contracts import check_centering_weights
 
 
 TIMES = pd.date_range("2020-01-01", periods=4, freq="15D")
@@ -115,11 +114,17 @@ def _drop(name):
 
 
 def _set_attrs(name, **attrs):
-    return lambda data: data.assign({name: data[name].assign_attrs(attrs)})
+    """Return a nonmutating metadata change, preserving shared MultiIndexes."""
+    def modify(data):
+        """Replace attributes on an independent dataset view."""
+        result = data.copy(deep=False)
+        result[name].attrs = {**data[name].attrs, **attrs}
+        return result
+    return modify
 
 
 RAW_FAILURES = {
-    "missing mass": (_drop("H_bc_mass"), "missing H_bc_mass"),
+    "missing mass": (_drop("H_bc_mass"), "missing keys.*H_bc_mass"),
     "representation": (lambda data: data.assign_attrs(boundary_representation=None), "centered-v1"),
     "expanded marker": (
         _set_attrs("H_bc_mass", boundary_sensitivity_preparation="expanded"), "unexpanded spatial operands",
@@ -128,22 +133,22 @@ RAW_FAILURES = {
         lambda data: data.assign(H_bc=data.H_bc_anomaly.copy()), "expanded or unmarked absolute H_bc",
     ),
     "dimensions": (
-        lambda data: data.assign(H_bc_mass=data.H_bc_mass.rename(bc_region="site")), "on bc_region and time",
+        lambda data: data.assign(H_bc_mass=data.H_bc_mass.rename(bc_region="site")), "data_vars.H_bc_mass.dims",
     ),
     "duplicate states": (
         lambda data: data.assign_coords(bc_region=["N", "N", "S"]), "unique indexed bc_region",
     ),
     "reference shape": (
-        lambda data: data.assign(bc_reference=data.H_bc_anomaly.isel(bc_region=0)), "bc_reference must be scalar",
+        lambda data: data.assign(bc_reference=data.H_bc_anomaly.isel(bc_region=0)), "data_vars.bc_reference.dims",
     ),
     "units": (_set_attrs("bc_reference", units="ppb"), "share concentration units"),
-    "mass units": (_set_attrs("H_bc_mass", units="ppm"), "H_bc_mass units must be '1'"),
+    "mass units": (_set_attrs("H_bc_mass", units="ppm"), "data_vars.H_bc_mass.attrs.*units"),
     "mf units": (
         lambda data: data.assign(mf=xr.full_like(data.time, 1.0, float).assign_attrs(units="ppb")),
         "must match mf units",
     ),
     "weight dims": (
-        lambda data: data.assign(bc_centering_weights=data.bc_centering_weights.T), "must use dimensions",
+        lambda data: data.assign(bc_centering_weights=data.bc_centering_weights.T), "dims",
     ),
     "weight periods": (
         lambda data: data.assign_coords(bc_period=["first"]), "interval start times",
@@ -166,20 +171,20 @@ def test_weight_check_accepts_whole_window_and_equivalent_units():
         [[1.0], [2.0]], dims=("bc_curtain", "bc_period"),
         coords={"bc_curtain": ["N", "S"], "bc_period": ["whole_window"]}, attrs={"units": "dimensionless"},
     )
-    check_centering_weights(weights)
+    RawCenteredTransport.validate_weights(weights)
 
 
 BOUND_FAILURES = {
-    "missing reference": (_drop("bc_reference"), "lacks bc_reference"),
-    "order": (lambda data: data.transpose("bc_region", "nmeasure"), r"\(observation, 'bc_region'\)"),
+    "missing reference": (_drop("bc_reference"), "missing keys.*bc_reference"),
+    "order": (lambda data: data.transpose("bc_region", "nmeasure"), "data_vars.H_bc_mass.dims"),
     "mass layout": (
-        lambda data: data.assign(H_bc_mass=data.H_bc_mass.isel(bc_region=0)), r"\(observation, 'bc_region'\)",
+        lambda data: data.assign(H_bc_mass=data.H_bc_mass.isel(bc_region=0)), "data_vars.H_bc_mass.dims",
     ),
     "plain states": (
         lambda data: data.drop_vars(["bc_region", "bc_curtain", "bc_period"]).assign_coords(bc_region=np.arange(6)),
         "MultiIndex",
     ),
-    "units": (_set_attrs("H_bc_mass", units="ppm"), "H_bc_mass units must be '1'"),
+    "units": (_set_attrs("H_bc_mass", units="ppm"), "data_vars.H_bc_mass.attrs.*units"),
 }
 
 
@@ -195,7 +200,7 @@ def test_additive_extension_requires_weights_on_the_bound_state_axis():
     """The extension adds its weight guarantee to the shared bound guarantees."""
     shared = bound_example()
     assert BoundCenteredTransport.validate(shared) is shared
-    with pytest.raises(ValueError, match="bc_centering_weights on bc_region"):
+    with pytest.raises(ValueError, match="missing keys.*bc_centering_weights"):
         BoundAdditiveTransport.validate(shared)
     with pytest.raises(ValueError, match="equivalent to '1'"):
         BoundAdditiveTransport.validate(shared.assign(
@@ -218,7 +223,7 @@ def test_binding_constructs_the_bound_contract_lazily():
     """Binding produces validator-conforming output without computing payloads."""
     raw = RawCenteredTransport.validate(_raw_on_nmeasure(lazy=True))
     with dask.config.set(scheduler=_forbid_compute):
-        bound = bind_centered_transport(raw, _observations(), frequency="monthly")
+        bound = BoundCenteredTransport.bind(raw, _observations(), frequency="monthly")
         assert BoundCenteredTransport.validate(bound) is bound
     assert dask.is_dask_collection(bound.H_bc_mass)
     assert list(bound.indexes["bc_region"].names) == ["bc_curtain", "bc_period"]
@@ -255,5 +260,84 @@ def test_absolute_multiplicative_route_keeps_its_own_layout():
     bound = MultiplicativeChoice({"pdf": "lognormal", "mu": 0.0, "sigma": 0.1}).bind(_observations(), absolute)
     assert set(bound.data.data_vars) == {"H_bc"}
     assert not bound.centered
-    with pytest.raises(ValueError, match="lacks H_bc_anomaly"):
+    with pytest.raises(ValueError, match="missing keys.*H_bc_anomaly"):
         BoundCenteredTransport.validate(bound.data)
+
+
+@pytest.mark.parametrize("contract", [RawCenteredTransport, BoundCenteredTransport, BoundAdditiveTransport])
+def test_contract_schemas_expose_metadata_requirements(contract):
+    """Class operations expose variable, dtype and dimensional schemas."""
+    schema = contract.schema(observation_dim="row")
+    assert isinstance(schema, DatasetSchema)
+    assert schema.allow_extra_keys
+    assert schema.data_vars["H_bc_mass"].dims.dims == ("row", "bc_region")
+    assert schema.data_vars["bc_reference"].dims.dims == ()
+    assert schema.data_vars["H_bc_mass"].dtype is not None
+    assert schema.data_vars["H_bc_mass"].attrs.attrs["units"].value == "1"
+    assert ("bc_centering_weights" in schema.data_vars) == (contract is BoundAdditiveTransport)
+
+
+@pytest.mark.parametrize("contract,example", [
+    (RawCenteredTransport, raw_example),
+    (BoundCenteredTransport, bound_example),
+    (BoundAdditiveTransport, lambda **kwargs: bound_example(weights=True, **kwargs)),
+])
+def test_schema_validation_preserves_lazy_payloads_and_auxiliary_coordinates(contract, example):
+    """Metadata validation preserves borrowed graphs, lazy auxiliaries and identity."""
+    data = example(lazy=True)
+    payload = data.H_bc_mass.data
+    with dask.config.set(scheduler=_forbid_compute):
+        assert contract.validate(data) is data
+    assert data.H_bc_mass.data is payload
+
+
+@pytest.mark.parametrize("selection", [[0, 1, 2, 3, 4], [0, 3]])
+def test_bound_contract_rejects_incomplete_curtain_period_grid(selection):
+    """Unique pairs alone do not establish every curtain in every period."""
+    data = bound_example(lazy=True).isel(bc_region=selection)
+    with dask.config.set(scheduler=_forbid_compute), pytest.raises(ValueError, match="Cartesian combination"):
+        BoundCenteredTransport.validate(data)
+
+
+def test_bound_contract_accepts_reordered_complete_grid_and_unused_levels():
+    """Cartesian coverage depends on represented labels rather than cached levels."""
+    data = bound_example(lazy=True).isel(bc_region=[5, 4, 3, 2, 1, 0])
+    assert BoundCenteredTransport.validate(data) is data
+    one_period = data.isel(bc_region=[0, 2, 4])
+    assert BoundCenteredTransport.validate(one_period) is one_period
+
+
+def test_bound_contract_rejects_missing_multiindex_labels():
+    """Missing MultiIndex codes are rejected without calling unsupported hasnans."""
+    states = pd.MultiIndex.from_tuples([("N", TIMES[0]), (None, TIMES[0])], names=["bc_curtain", "bc_period"])
+    data = bound_example(lazy=True).isel(bc_region=[0, 1]).drop_vars(["bc_region", "bc_curtain", "bc_period"])
+    data = data.assign_coords(xr.Coordinates.from_pandas_multiindex(states, "bc_region"))
+    with dask.config.set(scheduler=_forbid_compute), pytest.raises(ValueError, match="without missing labels"):
+        BoundCenteredTransport.validate(data)
+
+
+@pytest.mark.parametrize("name", ["H_bc_anomaly", "H_bc_mass", "bc_reference"])
+def test_transport_contract_rejects_nonreal_dtype_without_computing(name):
+    """Real-valued operands are established by their dtype metadata."""
+    data = raw_example(lazy=True)
+    data[name] = data[name].astype(complex)
+    with dask.config.set(scheduler=_forbid_compute), pytest.raises(ValueError, match=f"data_vars.{name}.dtype"):
+        RawCenteredTransport.validate(data)
+
+
+@pytest.mark.parametrize("contract,example", [
+    (RawCenteredTransport, raw_example),
+    (BoundCenteredTransport, bound_example),
+])
+def test_lazy_stage_contract_does_not_establish_nonzero_mass(contract, example):
+    """Row selection can leave zero mass; its numerical consumer owns that check."""
+    data = example(lazy=True)
+    data["H_bc_mass"].data = da.zeros_like(data.H_bc_mass.data)
+    with dask.config.set(scheduler=_forbid_compute):
+        assert contract.validate(data) is data
+
+
+def test_raw_schema_failures_include_the_supplied_channel_label():
+    """Library schema failures retain application context."""
+    with pytest.raises(ValueError, match="co2 channel.*Validation failed"):
+        RawCenteredTransport.validate(raw_example().drop_vars("bc_reference"), label="co2 channel")

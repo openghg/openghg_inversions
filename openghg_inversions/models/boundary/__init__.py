@@ -30,7 +30,7 @@ Transport is either absolute ``H_bc`` or centered ``A``, ``M`` and ``c``
 with ``H = A + c M``. Centered transport has static Dataset contracts
 (``openghg_inversions.models.boundary.contracts``): preparation and
 loading establish :class:`RawCenteredTransport`;
-:func:`bind_centered_transport` produces :class:`BoundCenteredTransport`,
+:meth:`BoundCenteredTransport.bind` produces :class:`BoundCenteredTransport`,
 which every centered family consumes; and weighted additive anomalies extend
 it to :class:`BoundAdditiveTransport`. :class:`BoundaryChoice` is generic in
 the transport its ``bind`` accepts: every family accepts raw centered
@@ -67,7 +67,6 @@ from openghg_inversions.models.boundary.contracts import (
     RawCenteredTransport,
 )
 from openghg_inversions.models.boundary.operands import (
-    bind_centered_transport,
     centered_boundary_expression,
     require_centered_precision,
 )
@@ -132,7 +131,6 @@ __all__ = [
     "MultiplicativeBoundary",
     "MultiplicativeChoice",
     "RawCenteredTransport",
-    "bind_centered_transport",
     "centered_boundary_expression",
     "require_centered_precision",
 ]

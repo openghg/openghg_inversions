@@ -7,7 +7,6 @@ from openghg_inversions.models.boundary import (
     BoundAdditiveTransport,
     BoundCenteredTransport,
     RawCenteredTransport,
-    bind_centered_transport,
 )
 
 
@@ -24,5 +23,5 @@ raw = RawCenteredTransport.validate(supplied)
 needs_bound(supplied)  # expect-error: plain-dataset
 needs_bound(raw)  # expect-error: raw-as-bound
 needs_additive(BoundCenteredTransport.validate(supplied))  # expect-error: shared-as-extension
-bind_centered_transport(supplied, observations)  # expect-error: plain-dataset
+BoundCenteredTransport.bind(supplied, observations)  # expect-error: plain-dataset
 AdditiveChoice(None, 0.3, anomalies="independent").bind(observations, supplied)  # expect-error: plain-dataset

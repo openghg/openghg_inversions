@@ -19,7 +19,7 @@ from openghg_inversions.models.components import (
     AffineBlock, AffineConcentrationTerm, warn_constant_offset_confounding,
 )
 from openghg_inversions.rhime.co2 import co2_runner
-from openghg_inversions.models.boundary import bind_centered_transport
+from openghg_inversions.models.boundary import BoundCenteredTransport
 from boundary_test_utils import raw_transport
 
 
@@ -372,7 +372,7 @@ def test_multiplicative_output_declarations_match_registered_quantities(double_p
 
 def test_direct_additive_record_accepts_only_actual_resolved_inputs(double_precision):
     data, observations = _native_boundary()
-    operands = bind_centered_transport(raw_transport(data), observations)
+    operands = BoundCenteredTransport.bind(raw_transport(data), observations)
     weights = xr.ones_like(operands.bc_region, dtype=float).assign_attrs(units="1")
     bound = AdditiveBoundary(
         AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.),

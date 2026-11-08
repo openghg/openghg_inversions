@@ -56,15 +56,11 @@ from .additive_anomalies import (
     add_anomalies,
     anomaly_basis,
     anomaly_outputs,
-    normalized_centering_weights,
 )
 from .mean_shift import add_boundary_mean_shift, mean_shift_outputs
-from .contracts import BoundCenteredTransport, RawCenteredTransport
+from .contracts import BoundAdditiveTransport, BoundCenteredTransport, RawCenteredTransport
 from .operands import (
-    bind_centered_transport,
-    bind_centering_weights,
     check_bound_transport,
-    materialized_reference_shift,
 )
 from .outputs import BoundaryOutputs
 
@@ -152,14 +148,14 @@ class AdditiveChoice:
                 labels differ from the bound states (for example because they
                 were prepared with another calendar).
         """
-        data = bind_centered_transport(
+        data = BoundCenteredTransport.bind(
             transport, observations, frequency=self.frequency, anchor_time=self.anchor_time,
         )
         if self.anomalies != "weighted":
             return AdditiveBoundary(self, data)
         if "bc_centering_weights" not in transport:
             raise ValueError("Weighted additive boundary anomalies require bc_centering_weights.")
-        return AdditiveBoundary(self, bind_centering_weights(data, transport.bc_centering_weights))
+        return AdditiveBoundary(self, BoundAdditiveTransport.bind_weights(data, transport.bc_centering_weights))
 
 
 @dataclass(frozen=True)
@@ -219,7 +215,7 @@ class AdditiveBoundary:
         """Normalized centering weights for weighted anomalies, else ``None``."""
         if self.choice.anomalies != "weighted":
             return None
-        return normalized_centering_weights(self.data.bc_centering_weights)
+        return BoundAdditiveTransport.normalized_weights(self.data.bc_centering_weights)
 
     def anomaly_factor(self) -> xr.DataArray | None:
         """Observation-space anomaly design scaled to standard-normal coordinates.
@@ -288,7 +284,7 @@ class AdditiveBoundary:
         anomaly = self.data.H_bc_anomaly
         mass = self.data.H_bc_mass
         reference = self.data.bc_reference
-        reference_shift = materialized_reference_shift(anomaly, mass, reference).rename(f"{prefix}bc_reference_shift")
+        reference_shift = BoundCenteredTransport.reference_shift(self.data).rename(f"{prefix}bc_reference_shift")
         fixed = anomaly.sum("bc_region", skipna=False).assign_attrs(anomaly.attrs)
         weights = self._centering_weights()
 

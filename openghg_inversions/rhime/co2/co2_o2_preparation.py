@@ -131,9 +131,6 @@ class Co2O2PreparedInputs:
             ValueError: If dense aggregation covariance is absent, boundary
                 channels or operands are invalid, or metadata cannot be serialized.
         """
-        _validate_boundary_corrections(
-            self.bc_centering_weights, self.boundary_operands, materialize=False,
-        )
         covariance = self.aggregation_error.covariance
         if self.aggregation_error.mode != "dense" or covariance is None:
             raise ValueError("CO2/O2 prepared inputs require dense aggregation error.")
@@ -553,7 +550,7 @@ def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
         if boundary.dims[1] not in boundary.indexes or not boundary.indexes[boundary.dims[1]].is_unique:
             raise ValueError(f"{channel} boundary states require unique labels.")
     _validate_boundary_corrections(
-        prepared.bc_centering_weights, prepared.boundary_operands, materialize=True,
+        prepared.bc_centering_weights, prepared.boundary_operands,
     )
     _validate_independent_error(observations, prepared.independent_error_sd, materialize=True)
 
@@ -902,7 +899,7 @@ def prepare_co2_o2_inputs(
     boundary_sensitivity = dict(boundary_sensitivity or {})
     raw_operands = _raw_centered_channels(boundary_operands or {})
     bc_centering_weights = dict(bc_centering_weights or {})
-    _validate_boundary_corrections(bc_centering_weights, raw_operands, materialize=False)
+    _validate_boundary_corrections(bc_centering_weights, raw_operands)
     _validate_centered_channels(raw_operands, boundary_sensitivity, co2_observations, o2_observations, co2_units, o2_units)
     if set(boundary_sensitivity) - {"co2", "o2"}:
         raise ValueError("boundary_sensitivity must be keyed only by co2 and o2.")
@@ -1102,24 +1099,11 @@ def _validate_centered_channels(
 def _validate_boundary_corrections(
     weights: Mapping[str, xr.DataArray],
     operands: Mapping[str, xr.Dataset],
-    *,
-    materialize: bool,
 ) -> None:
-    """Validate explicit full-window weights without executing borrowed transport.
-
-    Model binding validates their labels against the resolved period-state axis.
-    Loading checks weight values jointly; saving keeps lazy payloads borrowed.
-    """
+    """Check weight structure; binding owns labels and normalization owns values."""
     if set(weights) - {"co2", "o2"} or set(weights) - set(operands):
         raise ValueError("Boundary centering weights require matching co2/o2 centered operands.")
-    from openghg_inversions.models.boundary.contracts import check_centering_weights
+    from openghg_inversions.models.boundary.contracts import RawCenteredTransport
 
     for channel, array in weights.items():
-        check_centering_weights(array, label=f"{channel} bc_centering_weights")
-    arrays = list(weights.values())
-    if materialize:
-        arrays = dask_compute(*(to_dense(array) for array in arrays))
-    for channel, array in zip(weights, arrays):
-        if not isinstance(array.data, DaskArray):
-            if not np.isfinite(array.data).all() or not (array.data > 0).all():
-                raise ValueError(f"{channel} boundary weights must be finite and strictly positive.")
+        RawCenteredTransport.validate_weights(array, label=f"{channel} bc_centering_weights")

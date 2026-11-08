@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
@@ -221,11 +221,9 @@ def _bind_co2_o2_boundaries(
         if channel in prepared.boundary_operands:
             operands = prepared.boundary_operands[channel]
             if channel in prepared.bc_centering_weights:
-                # Preparation checked these weights with the raw contract's
-                # weight structure, so adding them preserves the contract.
-                operands = cast(RawCenteredTransport, operands.assign(
-                    bc_centering_weights=prepared.bc_centering_weights[channel],
-                ))
+                operands = RawCenteredTransport.with_centering_weights(
+                    operands, prepared.bc_centering_weights[channel],
+                )
             result[channel] = choice.bind(native, operands)
         elif channel not in prepared.boundary_sensitivity:
             raise ValueError(f"The {channel} boundary choice requires prepared {channel} boundary inputs.")

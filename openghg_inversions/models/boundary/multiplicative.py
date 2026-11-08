@@ -28,10 +28,8 @@ from openghg_inversions.models.state_activity import StateActivity, prepare_line
 
 from .contracts import BoundCenteredTransport, RawCenteredTransport
 from .operands import (
-    bind_centered_transport,
     centered_boundary_expression,
     check_bound_transport,
-    materialized_reference_shift,
 )
 from .outputs import BoundaryOutputs
 
@@ -106,7 +104,7 @@ class MultiplicativeChoice:
         """
         data: xr.Dataset
         if isinstance(transport, xr.Dataset):
-            data = bind_centered_transport(
+            data = BoundCenteredTransport.bind(
                 transport, observations, frequency=self.frequency, anchor_time=self.anchor_time,
             )
         else:
@@ -202,7 +200,7 @@ class MultiplicativeBoundary:
             anomaly = self.data.H_bc_anomaly
             mass = self.data.H_bc_mass
             reference = self.data.bc_reference
-            shift = materialized_reference_shift(anomaly, mass, reference).rename(f"{prefix}bc_reference_shift")
+            shift = BoundCenteredTransport.reference_shift(self.data).rename(f"{prefix}bc_reference_shift")
             design = (anomaly + reference * mass).assign_attrs(anomaly.attrs)
         else:
             design = self.data.H_bc
