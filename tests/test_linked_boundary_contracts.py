@@ -7,7 +7,7 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.models import registered_model
-from openghg_inversions.models.boundary import BoundAdditiveTransport, BoundCenteredTransport, MultiplicativeChoice
+from openghg_inversions.models.boundary import BoundAdditiveSensitivity, BoundCenteredSensitivity, MultiplicativeChoice
 from openghg_inversions.rhime.co2.co2_o2_model import pad_linked_boundary
 from boundary_test_utils import bound_linked_model_arguments
 from test_co2_o2_additive_boundary import _additive_inputs
@@ -37,7 +37,7 @@ def test_padding_preserves_the_additive_extension(channel):
     bound = boundaries[channel]
     padded = pad_linked_boundary(bound, observations, channel)
 
-    assert BoundAdditiveTransport.validate(padded.data) is padded.data
+    assert BoundAdditiveSensitivity.validate(padded.data) is padded.data
     assert padded.observation_dim == observations.dims[0]
     assert padded.data.indexes[padded.observation_dim].equals(observations.indexes[observations.dims[0]])
     assert padded.data.indexes["bc_region"].equals(bound.data.indexes["bc_region"])
@@ -83,7 +83,7 @@ def test_padding_keeps_lazy_centered_multiplicative_transport_lazy():
     bound = arguments["boundary"]["co2"]
     with dask.config.set(scheduler=_forbid_compute):
         padded = pad_linked_boundary(bound, arguments["observations"], "co2")
-        assert BoundCenteredTransport.validate(padded.data) is padded.data
+        assert BoundCenteredSensitivity.validate(padded.data) is padded.data
     assert dask.is_dask_collection(padded.data.H_bc_anomaly)
 
 
@@ -108,7 +108,7 @@ def test_padding_supports_absolute_multiplicative_transport():
 
 def test_consumers_trust_contracts_and_compute_numerical_results_once(monkeypatch):
     """Consumers trust structure and compute each numerical result once per channel."""
-    from openghg_inversions.models.boundary import contracts
+    from openghg_inversions.models.boundary import additive_anomalies, contracts
 
     kwargs = _additive_inputs()
 
@@ -116,19 +116,19 @@ def test_consumers_trust_contracts_and_compute_numerical_results_once(monkeypatc
         raise AssertionError("A trusted consumer revalidated a contract.")
 
     arguments = bound_linked_model_arguments(kwargs)  # Tests validate the supplied raw fixtures here.
-    for contract in (contracts.RawCenteredTransport, contracts.BoundCenteredTransport, contracts.BoundAdditiveTransport):
+    for contract in (contracts.RawCenteredSensitivity, contracts.BoundCenteredSensitivity, contracts.BoundAdditiveSensitivity):
         monkeypatch.setattr(contract, "validate", staticmethod(forbidden))
     shift_calls = []
     weight_calls = []
-    shift = contracts.BoundCenteredTransport.reference_shift
-    normalize = contracts.BoundAdditiveTransport.normalized_weights
+    shift = contracts.BoundCenteredSensitivity.reference_shift
+    normalize = contracts.normalize_centering_weights
     monkeypatch.setattr(
-        contracts.BoundCenteredTransport, "reference_shift",
+        contracts.BoundCenteredSensitivity, "reference_shift",
         staticmethod(lambda data: shift_calls.append(1) or shift(data)),
     )
     monkeypatch.setattr(
-        contracts.BoundAdditiveTransport, "normalized_weights",
-        staticmethod(lambda weights: weight_calls.append(1) or normalize(weights)),
+        additive_anomalies, "normalize_centering_weights",
+        lambda weights: weight_calls.append(1) or normalize(weights),
     )
 
     observations = arguments["observations"]

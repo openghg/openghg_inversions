@@ -9,6 +9,7 @@ use it.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
@@ -16,13 +17,14 @@ import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
-from pytensor.tensor.variable import TensorVariable
 from scipy.linalg import helmert
 
 from openghg_inversions.models.components import AffineBlock
 from openghg_inversions.models.coords import add_model_data, component_coords
 
-from .outputs import BoundaryCorrection, BoundaryOutputs
+from .centered import Correction, RegisteredSensitivity
+from .contracts import normalize_centering_weights
+from .outputs import Outputs
 
 AnomalyStructure = Literal["weighted", "period_contrasts", "independent"]
 
@@ -80,7 +82,7 @@ def anomaly_basis(
         structure: Selected additive anomaly formulation.
         states: Bound ``bc_region`` coordinate with a ``bc_period`` level.
         weights: Normalized centering weights from
-            :meth:`~.contracts.BoundAdditiveTransport.normalized_weights`; required for ``"weighted"``
+            :func:`~.contracts.normalize_centering_weights`; required for ``"weighted"``
             and ignored otherwise.
 
     Returns:
@@ -99,65 +101,91 @@ def anomaly_basis(
     return weighted_anomaly_basis(weights)
 
 
-def add_anomalies(
-    mass: xr.DataArray, mass_data: TensorVariable, basis: xr.DataArray | None, scale: float,
-    *, output_dim: str, prefix: str, owner: str | None,
-) -> BoundaryCorrection:
-    """Sample zero-mean Gaussian anomalies and transport them through ``M``.
+@dataclass(frozen=True)
+class Anomalies:
+    """Zero-mean Gaussian anomalies of one bound additive boundary.
 
     With a basis, contrast coefficients ``z`` are sampled as
     ``bc_anomaly_latent``, the state anomalies are ``bc_anomaly = B z`` and
-    the block design is ``M B``. Without one, ``bc_anomaly`` is sampled
-    directly on the states and the block design is ``M``; no basis or extra
-    latent is registered. Must be called inside a registered model, with a
-    positive ``scale`` and at least one coefficient; :class:`~openghg_inversions.models.boundary.AdditiveBoundary`
-    calls it only when ``has_anomalies`` establishes both.
+    the block design is ``M B``. Independent anomalies are sampled directly
+    on the states, with block design ``M``. When nothing can be sampled, zero
+    anomalies are recorded instead, so replay needs no policy.
 
-    Args:
-        mass: Materialized dimensionless ``M`` on ``(output_dim, bc_region)``.
-        mass_data: The same ``M`` registered in the active model.
-        basis: Basis from :func:`anomaly_basis`, aligned with ``mass``.
-        scale: Gaussian width of each coefficient in observation
-            concentration units.
-        output_dim: Registered observation dimension.
-        prefix: Graph variable prefix.
-        owner: Namespace for boundary-state and contrast coordinates.
-
-    Returns:
-        State anomalies, their response ``mu_bc_anomaly``, the affine block
-        and the sampled coefficients.
-    """
-    if basis is None:
-        state_dim = str(component_coords(mass, owner, observation_dim=output_dim).dims[1])
-        state = pm.Normal(f"{prefix}bc_anomaly", mu=0.0, sigma=scale, dims=state_dim)
-        signal = pm.Deterministic(f"{prefix}mu_bc_anomaly", pt.dot(mass_data, state), dims=output_dim)
-        return BoundaryCorrection(state, signal, AffineBlock(mass.assign_attrs(units="1"), state), state)
-    owned_basis = component_coords(basis, owner)
-    basis_data = add_model_data(owned_basis, f"{prefix}bc_anomaly_basis")
-    state_dim, contrast_dim = map(str, owned_basis.dims)
-    coefficients = pm.Normal(f"{prefix}bc_anomaly_latent", mu=0.0, sigma=scale, dims=contrast_dim)
-    state = pm.Deterministic(f"{prefix}bc_anomaly", pt.dot(basis_data, coefficients), dims=state_dim)
-    signal = pm.Deterministic(f"{prefix}mu_bc_anomaly", pt.dot(mass_data, state), dims=output_dim)
-    response = xr.dot(mass, basis, dim="bc_region").transpose(output_dim, "bc_contrast").assign_attrs(units="1")
-    return BoundaryCorrection(state, signal, AffineBlock(response, coefficients), coefficients)
-
-
-def anomaly_outputs(structure: AnomalyStructure, *, sampled: bool, concentration: str) -> BoundaryOutputs:
-    """Declare additive anomaly outputs before constructing a graph.
-
-    Args:
+    Attributes:
         structure: Selected additive anomaly formulation.
-        sampled: Whether the scale and number of coordinates permit sampling.
-        concentration: Observation concentration units.
-
-    Returns:
-        Unprefixed roles and units. The anomaly state and contribution are
-        always declared, as sampled values or recorded zeros.
+        scale: Gaussian width of each coordinate in observation concentration
+            units.
+        sampled: Whether the scale is positive and the structure has at least
+            one coordinate on the bound states; see
+            :attr:`~openghg_inversions.models.boundary.AdditiveBoundary.has_anomalies`.
     """
-    roles = {"boundary_correction_anomaly": "bc_anomaly", "boundary_anomaly_concentration": "mu_bc_anomaly"}
-    units = {"bc_anomaly_scale": concentration, "bc_anomaly": concentration, "mu_bc_anomaly": concentration}
-    if structure == "weighted":
-        units["bc_centering_weights"] = "1"
-    if sampled and structure != "independent":
-        units.update(bc_anomaly_latent=concentration, bc_anomaly_basis="1")
-    return BoundaryOutputs(roles, units)
+
+    structure: AnomalyStructure
+    scale: float
+    sampled: bool
+
+    def weights(self, data: xr.Dataset) -> xr.DataArray | None:
+        """Normalized centering weights of materialized bound data for weighted anomalies, else ``None``."""
+        if self.structure != "weighted":
+            return None
+        return normalize_centering_weights(data.bc_centering_weights)
+
+    def add(self, registered: RegisteredSensitivity) -> list[Correction]:
+        """Register the width and any weights, then sample anomalies or record zeros.
+
+        Args:
+            registered: The family's registered sensitivity.
+
+        Returns:
+            No corrections when nothing is sampled. Otherwise one: the state
+            anomalies, their response ``mu_bc_anomaly``, the affine block and
+            the sampled coefficients.
+
+        Raises:
+            ValueError: If weighted-centering weights are invalid.
+        """
+        prefix, output_dim, state_dim = registered.prefix, registered.output_dim, registered.state_dim
+        data = registered.data
+        weights = self.weights(data)
+        # Save the resolved width for replay; the priors use the scalar directly.
+        registered.register(xr.DataArray(self.scale), "bc_anomaly_scale")
+        if weights is not None:
+            registered.register(weights, "bc_centering_weights")
+        mass = data.H_bc_mass
+        if not self.sampled:
+            pm.Deterministic(f"{prefix}bc_anomaly", pt.zeros((mass.sizes["bc_region"],)), dims=state_dim)
+            pm.Deterministic(f"{prefix}mu_bc_anomaly", pt.zeros((mass.sizes[output_dim],)), dims=output_dim)
+            return []
+        basis = anomaly_basis(self.structure, mass.bc_region, weights)
+        if basis is None:
+            state = pm.Normal(f"{prefix}bc_anomaly", mu=0.0, sigma=self.scale, dims=state_dim)
+            signal = pm.Deterministic(f"{prefix}mu_bc_anomaly", pt.dot(registered.mass, state), dims=output_dim)
+            return [Correction(state, signal, AffineBlock(mass.assign_attrs(units="1"), state), state)]
+        owned_basis = component_coords(basis, registered.owner)
+        basis_data = add_model_data(owned_basis, f"{prefix}bc_anomaly_basis")
+        coefficients = pm.Normal(f"{prefix}bc_anomaly_latent", mu=0.0, sigma=self.scale, dims=str(owned_basis.dims[1]))
+        state = pm.Deterministic(f"{prefix}bc_anomaly", pt.dot(basis_data, coefficients), dims=state_dim)
+        signal = pm.Deterministic(f"{prefix}mu_bc_anomaly", pt.dot(registered.mass, state), dims=output_dim)
+        response = xr.dot(mass, basis, dim="bc_region").transpose(output_dim, "bc_contrast").assign_attrs(units="1")
+        return [Correction(state, signal, AffineBlock(response, coefficients), coefficients)]
+
+    def outputs(self, concentration_units: str) -> Outputs:
+        """Declare anomaly outputs before constructing a graph.
+
+        Args:
+            concentration_units: Observation concentration units.
+
+        Returns:
+            Unprefixed roles and units. The anomaly state and contribution are
+            always declared, as sampled values or recorded zeros.
+        """
+        roles = {"boundary_correction_anomaly": "bc_anomaly", "boundary_anomaly_concentration": "mu_bc_anomaly"}
+        units = {name: concentration_units for name in ("bc_anomaly_scale", "bc_anomaly", "mu_bc_anomaly")}
+        if self.structure == "weighted":
+            units["bc_centering_weights"] = "1"
+        if self.sampled and self.structure != "independent":
+            units.update(bc_anomaly_latent=concentration_units, bc_anomaly_basis="1")
+        return Outputs(roles, units)
+
+
+__all__ = ["Anomalies", "AnomalyStructure", "anomaly_basis", "period_contrast_basis", "weighted_anomaly_basis"]

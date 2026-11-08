@@ -140,7 +140,7 @@ def prepare_linked_shared_inputs(
         choices, observations,
         co2_sensitivity=sensitivities["co2"], o2_sensitivity=sensitivities["o2"],
         retained_prior=prepared.retained_prior, fixed_prior_contribution=fixed,
-        boundary_transport=prepared.boundary_operands,
+        boundary_sensitivity=prepared.boundary_operands,
         outer=outer, sampled_outer=sampled_outer, calibrated_prior=calibrated_prior,
     )
     def original_selector(selector: xr.DataArray) -> xr.DataArray:
