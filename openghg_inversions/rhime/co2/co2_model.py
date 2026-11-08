@@ -33,7 +33,7 @@ from openghg_inversions.models.components import (
     likelihood_representation,
     warn_constant_offset_confounding,
 )
-from openghg_inversions.models.coords import add_model_data, registered_model
+from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import (
     StateActivity,
@@ -259,13 +259,11 @@ def build_co2_model(
             sum((term.output for term in terms[1:]), start=terms[0].output),
             dims="nmeasure",
         )
-        likelihood_mean, likelihood_observations, shift = likelihood_representation(
+        likelihood_mean, likelihood_observations = likelihood_representation(
             terms,
             observations,
             modelled_mean,
         )
-        if shift is not None:
-            add_model_data(shift.rename("boundary_reference_shift"), "boundary_reference_shift")
         if likelihood_builder is None:
             add_additive_sigma_likelihood(
                 observations=likelihood_observations,

@@ -1,5 +1,6 @@
 """Dense two-tracer oracle and matched linked fixed-OU sampler contracts."""
 
+from openghg_inversions.models.boundary import BoundCenteredTransport
 from boundary_test_utils import bound_linked_model_arguments
 
 from dataclasses import replace
@@ -33,6 +34,7 @@ from openghg_inversions.serialization import save_trace, load_trace
 from test_rhime_co2_o2 import _inputs, _independent_error
 from test_cached_sigma_sampling import _nuts_stats
 from test_co2_cached_sigma import _assert_native_joint_outputs, _compound
+from boundary_test_utils import raw_transport
 
 
 def _prepared():
@@ -486,7 +488,6 @@ def test_linked_ou_rejects_missing_station_labels():
 def test_centered_linked_cache_matches_independent_dense_gaussian(mixed, o2_reference):
     """Direct centered arithmetic survives large O2 backgrounds and native labels."""
     import pymc as pm
-    from openghg_inversions.models.boundary import CenteredOperands
     from openghg_inversions.array_ops import select_gathered_data_array
 
     with pytensor.config.change_flags(floatX="float64"):
@@ -513,7 +514,7 @@ def test_centered_linked_cache_matches_independent_dense_gaussian(mixed, o2_refe
                 "H_bc_mass": xr.DataArray(mass, dims=("nmeasure","bc_region"), attrs={"units":"1"}),
                 "bc_reference": xr.DataArray(reference, attrs={"units":"ppm"}),
             },coords={"nmeasure":sensitivity[native_dim].values,"bc_region":labels},attrs={"boundary_representation":"centered-v1"})
-            aligned = CenteredOperands.from_dataset(raw).bind(native)
+            aligned = BoundCenteredTransport.bind(raw_transport(raw), native)
             active = [True, True] if channel == "co2" else [True, False, False]
             fixed = [1.,1.] if channel == "co2" else [1.,1.+2e-13,.7]
             policies[channel] = StateActivity(
@@ -612,3 +613,20 @@ def test_centered_linked_all_fixed_boundary_cache(centered_precision):
     assert len(cached.states) == 1
     assert cached.target.design.shape[1] == kwargs["co2_sensitivity"].sizes[kwargs["co2_sensitivity"].dims[1]]
     np.testing.assert_allclose(cached.target.observations,kwargs["observations"].values-shift)
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize(
+    "options, message",
+    [
+        ({"offset_args": {"co2": {"offset_freq": "monthly"}}}, "co2 offset_args require offset_prior"),
+        ({"offset_prior": {"CO2": {"pdf": "normal", "mu": 0.0, "sigma": 1.0}}}, "offset_prior must be a mapping keyed only"),
+        ({"offset_args": {"o3": {}}, "offset_prior": {}}, "offset_args must be a mapping keyed only"),
+    ],
+)
+def test_direct_linked_builders_reject_offset_options_they_would_ignore(cached, options, message):
+    kwargs = {**_kwargs(_prepared()), "tau_hours": 6.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.8},
+              **options}
+    builder = build_co2_o2_cached_sigma_model if cached else build_co2_o2_model
+    with pytest.raises(ValueError, match=message):
+        builder(**kwargs)

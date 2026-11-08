@@ -12,6 +12,7 @@ openghg\_inversions.models.boundary
 
    openghg_inversions.models.boundary.additive
    openghg_inversions.models.boundary.anomaly_scaling
+   openghg_inversions.models.boundary.centered
+   openghg_inversions.models.boundary.contracts
    openghg_inversions.models.boundary.multiplicative
-   openghg_inversions.models.boundary.operands
    openghg_inversions.models.boundary.outputs

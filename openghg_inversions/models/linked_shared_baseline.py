@@ -7,7 +7,7 @@ import xarray as xr
 
 from openghg_inversions.biosphere_prior import BiospherePrior
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.boundary import CenteredOperands
+from openghg_inversions.models.boundary import RawCenteredTransport
 
 from .shared_baseline import SharedBaseline, SharedBaselineChoice
 
@@ -20,7 +20,7 @@ def bind_linked_shared_baseline(
     o2_sensitivity: xr.DataArray,
     retained_prior: CorrelatedLognormalPrior,
     fixed_prior_contribution: Mapping[str, xr.DataArray],
-    boundary_transport: Mapping[str, CenteredOperands],
+    boundary_transport: Mapping[str, RawCenteredTransport],
     outer: xr.DataArray,
     sampled_outer: xr.DataArray,
     calibrated_prior: BiospherePrior | None = None,

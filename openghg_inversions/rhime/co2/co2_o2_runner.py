@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import replace
 from typing import Any, Literal
 
 import numpy as np
@@ -17,15 +16,14 @@ from openghg_inversions.models.biosphere import annotate_biosphere_prior
 from openghg_inversions.array_ops import select_gathered_data_array, to_dense_tree
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
-from openghg_inversions.models.boundary import Boundary, BoundaryChoice, CenteredOperands
+from openghg_inversions.models.boundary import Boundary, BoundaryChoice, MultiplicativeChoice
 from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
-from .boundary_output import restore_absolute_predictives
-from .co2_model import _normalise_offset_args
-from .co2_o2_model import build_co2_o2_model
+from .boundary_output import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
+from .co2_o2_model import _validate_channel_offset_options, build_co2_o2_model
 from .co2_o2_preparation import Co2O2PreparedInputs
 
 _CO2_O2_VARIABLE_ROLES = {
@@ -205,18 +203,6 @@ def _annotate_co2_o2_trace(
     return trace
 
 
-def _validate_channel_offset_options(
-    offset_prior: Mapping[str, PriorArgs] | None,
-    offset_args: Mapping[str, Mapping[str, Any]] | None,
-) -> None:
-    """Reject malformed channel offset options before materializing inputs."""
-    for name, values in (("offset_prior", offset_prior), ("offset_args", offset_args)):
-        if values is not None and (not isinstance(values, Mapping) or set(values) - {"co2", "o2"}):
-            raise ValueError(f"{name} must be a mapping keyed only by 'co2' and 'o2'.")
-    for channel in ("co2", "o2"):
-        if channel in (offset_args or {}) and channel not in (offset_prior or {}):
-            raise ValueError(f"{channel} offset_args require offset_prior.")
-        _normalise_offset_args((offset_args or {}).get(channel))
 
 
 def _bind_co2_o2_boundaries(
@@ -230,19 +216,20 @@ def _bind_co2_o2_boundaries(
         choice = (boundary or {}).get(channel)
         if choice is None:
             continue
-        transport: xr.DataArray | CenteredOperands
-        if channel in prepared.boundary_operands:
-            transport = CenteredOperands.from_dataset(prepared.boundary_operands[channel])
-            transport = replace(transport, weights=prepared.bc_centering_weights.get(channel))
-        elif channel in prepared.boundary_sensitivity:
-            transport = prepared.boundary_sensitivity[channel]
-        else:
-            raise ValueError(f"The {channel} boundary choice requires prepared {channel} boundary inputs.")
         native = select_gathered_data_array(
             prepared.observations, key=channel, key_dim="species", ragged_dim="channel_observation",
             stack_dim=str(prepared.observations.dims[0]),
         ).rename({str(prepared.observations.dims[0]): str(sensitivity.dims[0])})
-        result[channel] = choice.bind(native, transport)
+        if channel in prepared.boundary_operands:
+            result[channel] = choice.bind(native, prepared.boundary_operands[channel])
+        elif channel not in prepared.boundary_sensitivity:
+            raise ValueError(f"The {channel} boundary choice requires prepared {channel} boundary inputs.")
+        elif isinstance(choice, MultiplicativeChoice):
+            result[channel] = choice.bind(native, prepared.boundary_sensitivity[channel])
+        else:
+            raise ValueError(
+                f"The {channel} {type(choice).__name__} requires centered boundary operands; prepare them again."
+            )
     return result
 
 
@@ -502,7 +489,7 @@ def annotate_co2_o2_trace(
     species/site grouping and joint likelihood/predictive scope. The trace is
     updated and returned; no graph is constructed or inference performed.
     """
-    trace.attrs["rhime_boundary_format_version"] = 1
+    trace.attrs["rhime_boundary_format_version"] = BOUNDARY_FORMAT_VERSION
     restore_absolute_predictives(trace)
     trace = _annotate_co2_o2_trace(trace, built=built)
     if "log_likelihood" in trace.children and "y" in trace["log_likelihood"]:
