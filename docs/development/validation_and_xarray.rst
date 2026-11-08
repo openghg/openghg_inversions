@@ -204,9 +204,8 @@ The classes also own the operations that use their scientific structure:
 
 * ``BoundCenteredTransport.bind(raw, observations, frequency=...)`` selects
   fit rows and expands every spatial state into each boundary period.
-* ``RawCenteredTransport.weights_schema()`` exposes the raw weight layout;
-  ``RawCenteredTransport.validate_weights(weights, label=...)`` checks its
-  metadata without computing values.
+* ``RawCenteredTransport.validate_weights(weights, label=...)`` checks separately
+  supplied raw weights against the same layout without computing values.
 * ``RawCenteredTransport.with_centering_weights(raw, weights)`` replaces optional
   raw weights explicitly. It removes only axes owned exclusively by the old
   weights and rejects conflicts with axes shared by other variables or

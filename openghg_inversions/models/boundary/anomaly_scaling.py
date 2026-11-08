@@ -27,7 +27,6 @@ import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
-from dask import is_dask_collection
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.boundary_sensitivity import validate_centered_boundary_periods
@@ -214,10 +213,7 @@ class AnomalyScalingBoundary:
         """
         if output_dim != self.observation_dim:
             raise ValueError(f"output_dim {output_dim!r} is not the bound observation dimension {self.observation_dim!r}.")
-        if any(is_dask_collection(value) for value in self.data.data_vars.values()):
-            raise ValueError("Materialize boundary data jointly with model inputs before add().")
-
-        # Values become checkable only after joint materialization.
+        # Class-owned numerical operations reject lazy values and check them once.
         choice = self.choice
         anomaly = self.data.H_bc_anomaly
         mass = self.data.H_bc_mass
