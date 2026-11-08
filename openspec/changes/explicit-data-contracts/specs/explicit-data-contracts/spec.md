@@ -184,3 +184,71 @@ validation coverage.
 - **AND** every declared contract is checked for its validator and identity-preserving validation
 - **AND** validation leaves lazy example payloads unexecuted
 - **AND** a declared contract missing its required examples fails the suite
+
+### Requirement: Raw centered boundary transport has a contract
+
+Prepared or loaded centered boundary transport SHALL be established as a raw
+centered transport contract before binding. The contract SHALL require
+`H_bc_anomaly` and `H_bc_mass` sharing the spatial `bc_region` dimension and
+one raw observation dimension, `time` or `nmeasure`, each with unique indexed
+labels and a plain (not period-expanded) state index; a scalar `bc_reference`;
+anomaly and reference in the same concentration units and dimensionless mass;
+and `boundary_representation='centered-v1'`. Optional additive centering
+weights SHALL lie on `(bc_curtain, bc_period)` with unique curtain labels,
+interval-start period labels (or the single `whole_window` label without
+timestamps) and dimensionless units. Other variables SHALL be permitted.
+
+The contract SHALL document finite anomaly and reference values, finite
+non-negative mass that is not all zero, and finite strictly positive weights;
+the boundary that first materializes those payloads SHALL establish them.
+
+#### Scenario: Accept supplied centered transport
+
+- **WHEN** independently supplied or loaded centered transport satisfies the raw layout in either operand dimension order
+- **THEN** the accepting preparation or loading boundary returns it unchanged with the raw contract type
+- **AND** no numerical payload or auxiliary coordinate is computed
+
+#### Scenario: Reject malformed centered transport
+
+- **WHEN** a required variable, attribute, dimension, index, unit or weight layout is missing or inconsistent
+- **THEN** the accepting boundary reports the affected element before binding
+
+### Requirement: Bound centered boundary transport has a shared contract
+
+Binding raw centered transport to one fit SHALL produce a bound centered
+transport contract consumed by every centered boundary family. It SHALL
+contain `H_bc_anomaly` and `H_bc_mass` on `(observation, bc_region)` in that
+order, where the observation dimension is the first dimension of
+`H_bc_anomaly` and has unique indexed labels in the fit's row order, and
+`bc_region` is a unique index with levels `(bc_curtain, bc_period)` covering
+every curtain in every boundary period. It SHALL retain the scalar reference
+and the raw units. Binding SHALL establish the contract by construction
+without computing numerical payloads.
+
+The additive extension SHALL additionally hold dimensionless centering weights
+on `bc_region`, aligned exactly to the bound states. Only weighted additive
+anomalies SHALL require it; other families SHALL consume the shared contract
+without weights.
+
+#### Scenario: Bind raw transport
+
+- **WHEN** a centered family binds raw transport to observations and a boundary calendar
+- **THEN** the result passes the bound contract validator
+- **AND** payloads that were lazy remain lazy
+
+#### Scenario: Bind weighted additive anomalies
+
+- **WHEN** weighted additive anomalies bind raw transport whose weights label exactly the bound curtains and periods
+- **THEN** the result passes the additive extension validator
+- **AND** weights prepared with a different calendar are rejected at binding
+
+### Requirement: Absolute multiplicative transport keeps its own layout
+
+Absolute `H_bc` transport, accepted only by the multiplicative family, SHALL
+keep its supported state layouts without centered curtain/period or reference
+assumptions. It SHALL NOT require a distinct contract in this pilot.
+
+#### Scenario: Bind absolute transport
+
+- **WHEN** a multiplicative choice binds absolute `H_bc`
+- **THEN** it binds without centered operands, reference or centering weights

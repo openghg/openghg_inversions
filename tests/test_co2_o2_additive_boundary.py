@@ -11,14 +11,16 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.models import get_coord_registry, restore_inferencedata_coords
-from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands, MultiplicativeChoice
+from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeChoice
 from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
 from openghg_inversions.rhime.co2.co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
 from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2, annotate_co2_o2_trace
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from test_co2_o2_fixed_ou import _prepared, _kwargs
 from openghg_inversions.array_ops import select_gathered_data_array
+from openghg_inversions.models.boundary import bind_centered_transport
 from boundary_test_utils import boundary_choice, bound_linked_model_arguments
+from boundary_test_utils import raw_transport
 
 
 @pytest.fixture(autouse=True)
@@ -62,7 +64,7 @@ def _additive_inputs(prepared=None):
             ragged_dim="channel_observation",
             stack_dim="observation",
         ).rename({"observation": dim})
-        bound = CenteredOperands.from_dataset(operands[channel]).bind(native_observations)
+        bound = bind_centered_transport(raw_transport(operands[channel]), native_observations)
         channel_weights = xr.DataArray(
             weights.values, dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"}
         )
@@ -284,9 +286,7 @@ def test_standalone_co2_matches_linked_co2_boundary_equation_and_marginal_densit
                 kwargs["bc_mean_shift_prior"]["co2"], kwargs["bc_anomaly_scale"]["co2"],
             ).bind(
                 observations,
-                replace(
-                    CenteredOperands.from_dataset(kwargs["boundary_operands"]["co2"]),
-                    weights=kwargs["bc_centering_weights"]["co2"],
+                raw_transport(kwargs["boundary_operands"]["co2"], weights=kwargs["bc_centering_weights"]["co2"],
                 ),
             ),
         )
@@ -494,7 +494,7 @@ def test_mixed_centered_boundary_ou_density_gradients_and_absolute_closure(o2_an
             observations = xr.DataArray(
                 np.zeros(sensitivity.sizes[dim]), dims=dim, coords={dim: sensitivity[dim]}
             )
-            bound = CenteredOperands.from_dataset(operands).bind(observations)
+            bound = bind_centered_transport(raw_transport(operands), observations)
             if channel == "co2":
                 absolute_kwargs["boundary_sensitivity"][channel] = (
                     bound.H_bc_anomaly + bound.bc_reference * bound.H_bc_mass

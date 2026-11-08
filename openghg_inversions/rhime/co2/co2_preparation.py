@@ -229,14 +229,8 @@ def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     if "bc_centering_weights" in inputs:
         if "H_bc_mass" not in inputs:
             raise ValueError("Additive boundary weights require native centered boundary operands.")
+        # The raw centered contract checked the weights' structure above.
         weights = inputs.bc_centering_weights
-        if weights.dims != ("bc_curtain", "bc_period"):
-            raise ValueError("bc_centering_weights must use dimensions ('bc_curtain', 'bc_period').")
-        for dim in weights.dims:
-            _require_axis(weights, str(dim), name="Boundary centering weights")
-        if not isinstance(weights.indexes["bc_period"], pd.DatetimeIndex):
-            raise ValueError("bc_centering_weights bc_period labels must be interval start times.")
-        _require_equivalent_units(weights.attrs.get("units"), "1", name="bc_centering_weights")
         if not hasattr(weights.data, "__dask_graph__"):
             if not np.isfinite(weights.data).all() or not (weights.data > 0).all():
                 raise ValueError("bc_centering_weights must be finite and strictly positive.")

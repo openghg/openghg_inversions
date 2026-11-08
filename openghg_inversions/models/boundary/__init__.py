@@ -26,11 +26,16 @@ protocols, so adding a centered boundary family means adding one module with
 a choice and a bound record, plus its configuration adapter and tests;
 nothing here enumerates the families.
 
-Transport is either absolute ``H_bc`` or :class:`CenteredOperands`
-``A``, ``M`` and ``c`` with ``H = A + c M``. :class:`BoundaryChoice` is
-generic in the transport its ``bind`` accepts: every family accepts centered
-operands, and only :class:`MultiplicativeChoice` also accepts absolute
-``H_bc``, so a ``BoundaryChoice[CenteredOperands]`` is any family. The
+Transport is either absolute ``H_bc`` or centered ``A``, ``M`` and ``c``
+with ``H = A + c M``. Centered transport has static Dataset contracts
+(:mod:`~openghg_inversions.models.boundary.contracts`): preparation and
+loading establish :class:`RawCenteredTransport`;
+:func:`bind_centered_transport` produces :class:`BoundCenteredTransport`,
+which every centered family consumes; and weighted additive anomalies extend
+it to :class:`BoundAdditiveTransport`. :class:`BoundaryChoice` is generic in
+the transport its ``bind`` accepts: every family accepts raw centered
+transport, and only :class:`MultiplicativeChoice` also accepts absolute
+``H_bc``, so a ``BoundaryChoice[RawCenteredTransport]`` is any family. The
 transport parameter is erased at runtime, so the recipe input helpers that
 identify a prepared dataset's representation admit absolute transport only
 for :class:`MultiplicativeChoice`; a new family that accepts absolute
@@ -40,8 +45,9 @@ fixed ``c M 1``, while absolute outputs add it back. Centered graphs need a
 float64 PyTensor process (:func:`require_centered_precision`), checked once
 when centered transport is bound.
 
-Validation happens where data enters: preparation and artifact loading own
-units, labels and layout; binding owns calendar and row alignment; ``add``
+Validation happens where data enters: preparation and artifact loading
+establish the raw contract's units, labels and layout; binding owns calendar
+and row alignment and establishes the bound contract by construction; ``add``
 checks values that only become available once lazy payloads are materialized.
 """
 
@@ -55,8 +61,13 @@ from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models.boundary.additive import AdditiveBoundary, AdditiveChoice
 from openghg_inversions.models.boundary.anomaly_scaling import AnomalyScalingBoundary, AnomalyScalingChoice
 from openghg_inversions.models.boundary.multiplicative import MultiplicativeBoundary, MultiplicativeChoice
+from openghg_inversions.models.boundary.contracts import (
+    BoundAdditiveTransport,
+    BoundCenteredTransport,
+    RawCenteredTransport,
+)
 from openghg_inversions.models.boundary.operands import (
-    CenteredOperands,
+    bind_centered_transport,
     centered_boundary_expression,
     require_centered_precision,
 )
@@ -94,7 +105,7 @@ class BoundaryChoice(Protocol[TransportT_contra]):
 
     The type parameter is the transport representation ``bind`` accepts.
     It is contravariant, so a choice accepting ``xr.DataArray |
-    CenteredOperands`` is also a ``BoundaryChoice[CenteredOperands]``.
+    RawCenteredTransport`` is also a ``BoundaryChoice[RawCenteredTransport]``.
     """
 
     __dataclass_fields__: ClassVar[dict[str, Any]]
@@ -113,12 +124,15 @@ __all__ = [
     "AdditiveChoice",
     "AnomalyScalingBoundary",
     "AnomalyScalingChoice",
+    "BoundAdditiveTransport",
+    "BoundCenteredTransport",
     "Boundary",
     "BoundaryChoice",
     "BoundaryOutputs",
-    "CenteredOperands",
     "MultiplicativeBoundary",
     "MultiplicativeChoice",
+    "RawCenteredTransport",
+    "bind_centered_transport",
     "centered_boundary_expression",
     "require_centered_precision",
 ]

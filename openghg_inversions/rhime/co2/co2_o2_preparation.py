@@ -19,7 +19,7 @@ from dataclasses import dataclass, field, replace
 import json
 from numbers import Integral
 from pathlib import Path
-from typing import Any, Literal, Self, cast
+from typing import TYPE_CHECKING, Any, Literal, Self, cast
 
 from dask import compute as dask_compute
 from dask.array import Array as DaskArray
@@ -35,6 +35,10 @@ from openghg_inversions.observation_error import (
     AggregationError,
     resolve_aggregation_error,
 )
+
+if TYPE_CHECKING:
+    from openghg_inversions.models.boundary.contracts import RawCenteredTransport
+
 from openghg_inversions.serialization import (
     decode_cf_multiindexes,
     encode_cf_multiindexes,
@@ -89,9 +93,10 @@ class Co2O2PreparedInputs:
         provenance: JSON-serializable preparation and data provenance.
         boundary_sensitivity: Optional mapping keyed by co2 and o2, containing
             native-channel H_bc arrays (observation, boundary state).
-        boundary_operands: Raw centered-v1 H_bc_anomaly/H_bc_mass and scalar
-            bc_reference, retained until model binding. Mutually exclusive with
-            absolute boundary_sensitivity for the same channel.
+        boundary_operands: Raw centered transport per channel
+            (:class:`~openghg_inversions.models.boundary.contracts.RawCenteredTransport`),
+            retained until model binding. Mutually exclusive with absolute
+            boundary_sensitivity for the same channel.
         bc_centering_weights: Matching channel mapping of positive dimensionless
             scientific averaging weights on the resolved boundary states.
         independent_error_sd: Optional positive independent-error standard
@@ -110,7 +115,7 @@ class Co2O2PreparedInputs:
     provenance: Mapping[str, Any] = field(default_factory=dict)
     boundary_sensitivity: Mapping[str, xr.DataArray] = field(default_factory=dict)
     independent_error_sd: xr.DataArray | None = None
-    boundary_operands: Mapping[str, xr.Dataset] = field(default_factory=dict)
+    boundary_operands: Mapping[str, RawCenteredTransport] = field(default_factory=dict)
     bc_centering_weights: Mapping[str, xr.DataArray] = field(default_factory=dict)
 
     def to_datatree(self) -> xr.DataTree:
@@ -134,10 +139,6 @@ class Co2O2PreparedInputs:
             raise ValueError("CO2/O2 prepared inputs require dense aggregation error.")
         if set(self.boundary_operands) - {"co2", "o2"} or set(self.boundary_operands) & set(self.boundary_sensitivity):
             raise ValueError("boundary_operands requires distinct co2/o2 channels from boundary_sensitivity.")
-        from openghg_inversions.boundary_sensitivity import validate_boundary_operands
-        for operands in self.boundary_operands.values():
-            if not validate_boundary_operands(operands):
-                raise ValueError("Expected centered boundary operands.")
         if set(self.boundary_sensitivity) - {"co2", "o2"}:
             raise ValueError("boundary_sensitivity must be keyed only by co2 and o2.")
         arrays = {
@@ -280,10 +281,10 @@ class Co2O2PreparedInputs:
                 for channel in ("co2", "o2")
                 if f"{channel}_boundary" in datasets
             },
-            boundary_operands={
+            boundary_operands=_raw_centered_channels({
                 channel: datasets[f"{channel}_boundary_operands"]
                 for channel in ("co2", "o2") if f"{channel}_boundary_operands" in datasets
-            },
+            }),
             bc_centering_weights={
                 channel: _stored_array(datasets[f"{channel}_boundary_weights"], "bc_centering_weights")
                 for channel in ("co2", "o2") if f"{channel}_boundary_weights" in datasets
@@ -899,10 +900,10 @@ def prepare_co2_o2_inputs(
     prepared_provenance = _copy_json_mapping(provenance or {}, "CO2/O2 provenance")
 
     boundary_sensitivity = dict(boundary_sensitivity or {})
-    boundary_operands = dict(boundary_operands or {})
+    raw_operands = _raw_centered_channels(boundary_operands or {})
     bc_centering_weights = dict(bc_centering_weights or {})
-    _validate_boundary_corrections(bc_centering_weights, boundary_operands, materialize=False)
-    _validate_centered_channels(boundary_operands, boundary_sensitivity, co2_observations, o2_observations, co2_units, o2_units)
+    _validate_boundary_corrections(bc_centering_weights, raw_operands, materialize=False)
+    _validate_centered_channels(raw_operands, boundary_sensitivity, co2_observations, o2_observations, co2_units, o2_units)
     if set(boundary_sensitivity) - {"co2", "o2"}:
         raise ValueError("boundary_sensitivity must be keyed only by co2 and o2.")
     if boundary_sensitivity and co2_units != o2_units:
@@ -1057,32 +1058,38 @@ def prepare_co2_o2_inputs(
         retained_prior=retained_prior,
         provenance=prepared_provenance,
         boundary_sensitivity=boundary_sensitivity,
-        boundary_operands=boundary_operands,
+        boundary_operands=raw_operands,
         bc_centering_weights=bc_centering_weights,
         independent_error_sd=independent_error_sd,
     )
 
 
+def _raw_centered_channels(operands: Mapping[str, xr.Dataset]) -> dict[str, RawCenteredTransport]:
+    """Establish the raw centered transport contract for supplied or loaded channels."""
+    from openghg_inversions.models.boundary.contracts import RawCenteredTransport
+
+    if set(operands) - {"co2", "o2"}:
+        raise ValueError("boundary_operands must be keyed only by co2 and o2.")
+    return {
+        channel: RawCenteredTransport.validate(values, label=f"{channel} centered boundaries")
+        for channel, values in operands.items()
+    }
+
+
 def _validate_centered_channels(
-    operands: Mapping[str, xr.Dataset],
+    operands: Mapping[str, RawCenteredTransport],
     absolute: Mapping[str, xr.DataArray],
     co2: xr.DataArray,
     o2: xr.DataArray,
     co2_units: str,
     o2_units: str,
 ) -> None:
-    """Validate raw channel operands without expanding their reusable spatial states."""
-    from openghg_inversions.boundary_sensitivity import validate_boundary_operands
-
-    if set(operands) - {"co2", "o2"}:
-        raise ValueError("boundary_operands must be keyed only by co2 and o2.")
+    """Check raw channel transport against the native channels it will be bound to."""
     if set(operands) & set(absolute):
         raise ValueError("Supply boundary_operands or boundary_sensitivity per channel, not both.")
     if operands and co2_units != o2_units:
         raise ValueError("Linked centered boundaries currently require identical channel units.")
     for channel, values in operands.items():
-        if not validate_boundary_operands(values):
-            raise ValueError("Expected centered boundary operands.")
         native = co2 if channel == "co2" else o2
         raw_dim = "time" if "time" in values.H_bc_anomaly.dims else "nmeasure"
         if not values.indexes[raw_dim].equals(native.indexes[native.dims[0]]):
@@ -1105,18 +1112,14 @@ def _validate_boundary_corrections(
     """
     if set(weights) - {"co2", "o2"} or set(weights) - set(operands):
         raise ValueError("Boundary centering weights require matching co2/o2 centered operands.")
+    from openghg_inversions.models.boundary.contracts import check_centering_weights
+
+    for channel, array in weights.items():
+        check_centering_weights(array, label=f"{channel} bc_centering_weights")
     arrays = list(weights.values())
     if materialize:
         arrays = dask_compute(*(to_dense(array) for array in arrays))
     for channel, array in zip(weights, arrays):
-        if array.dims != ("bc_curtain", "bc_period"):
-            raise ValueError(f"{channel} boundary weights require dimensions ('bc_curtain', 'bc_period').")
-        if any(dim not in array.indexes or not array.indexes[dim].is_unique for dim in array.dims):
-            raise ValueError(f"{channel} boundary weights require unique curtain and period labels.")
-        if not isinstance(array.indexes["bc_period"], pd.DatetimeIndex):
-            raise ValueError(f"{channel} boundary weight bc_period labels must be interval start times.")
-        if array.attrs.get("units") != "1":
-            raise ValueError(f"{channel} bc_centering_weights requires dimensionless units '1'.")
         if not isinstance(array.data, DaskArray):
             if not np.isfinite(array.data).all() or not (array.data > 0).all():
                 raise ValueError(f"{channel} boundary weights must be finite and strictly positive.")

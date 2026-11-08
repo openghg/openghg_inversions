@@ -22,10 +22,11 @@ from openghg_inversions.boundary_sensitivity import validate_boundary_operands
 from openghg_inversions.models.boundary import (
     AdditiveChoice,
     AnomalyScalingChoice,
-    CenteredOperands,
     MultiplicativeChoice,
 )
+from openghg_inversions.models.boundary import bind_centered_transport
 from boundary_test_utils import bound_model_arguments, boundary_transport
+from boundary_test_utils import raw_transport, centered_transport
 
 
 @pytest.fixture(autouse=True)
@@ -331,7 +332,7 @@ def test_additive_term_keeps_sampled_boundary_and_observation_offsets_in_mean() 
         }
     )
     prior = {"pdf": "normal", "mu": 0.0, "sigma": 0.2}
-    transport = CenteredOperands(
+    transport = centered_transport(
         operands.H_bc_anomaly, operands.H_bc_mass, operands.bc_reference, weights=_whole_window_weights(inputs)
     )
     prepared = AdditiveChoice(prior, 0.3).bind(inputs.mf, transport)
@@ -426,12 +427,12 @@ def test_nonseparable_region_period_weights_preserve_whole_window_prior():
     observations = mass.sum("bc_region").assign_coords(
         time=("nmeasure", pd.to_datetime(["2020-01-01", "2020-01-20", "2020-02-01", "2020-02-20"]))
     )
-    periods = CenteredOperands.from_dataset(raw).bind(observations, frequency="monthly")
+    periods = bind_centered_transport(raw_transport(raw), observations, frequency="monthly")
     weights = xr.DataArray(
         [1.0, 2.0, 3.0, 7.0], dims="bc_region", coords=periods.bc_region.coords, attrs={"units": "1"}
     )
     prior = {"pdf": "uniform", "lower": -1.0, "upper": 2.0}
-    transport = replace(CenteredOperands.from_dataset(raw), weights=weights.unstack("bc_region"))
+    transport = raw_transport(raw, weights=weights.unstack("bc_region"))
     prepared = AdditiveChoice(prior, 0.3, frequency="monthly").bind(observations, transport)
     w = weights.values / weights.sum().item()
     projection = np.eye(4) - np.ones((4, 1)) * w
@@ -467,12 +468,13 @@ def test_additive_boundary_materializes_shared_operands_at_explicit_model_bounda
             "H_bc_mass": mass,
             "H_bc_anomaly": (mass * 0.001).assign_attrs(units="ppm"),
             "bc_reference": (mass.sum() * 200.0).assign_attrs(units="ppm"),
-        }
+        },
+        attrs={"boundary_representation": "centered-v1"},
     )
     weights = _period_weights([1.0, 2.0], mass.bc_region.values, ["whole_window"])
     observations = xr.DataArray([400.0, 400.0], dims="nmeasure", coords={"nmeasure": [0, 1]})
     prior = {"pdf": "normal", "mu": 0.0, "sigma": 0.2}
-    transport = replace(CenteredOperands.from_dataset(operands), weights=weights)
+    transport = raw_transport(operands, weights=weights)
     prepared = AdditiveChoice(prior, 0.3).bind(observations, transport)
     assert calls == []
     assert isinstance(prepared.data.H_bc_mass.data, da.Array)
@@ -566,7 +568,7 @@ def test_boundary_calendar_mismatch_rejected_before_lazy_payload_computation():
                 "bc_period": np.array(["2021-01-01", "2021-01-02"], dtype="datetime64[ns]")},
         attrs={"units": "1"},
     )
-    transport = replace(CenteredOperands.from_dataset(operands), weights=weights)
+    transport = raw_transport(operands, weights=weights)
 
     def choice(anchor_time):
         return AdditiveChoice(options["bc_mean_shift_prior"], .3, frequency="1D", anchor_time=anchor_time)

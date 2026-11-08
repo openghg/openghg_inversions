@@ -10,13 +10,14 @@ import pytensor
 import pytest
 import xarray as xr
 
-from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands, MultiplicativeChoice
+from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeChoice
 from openghg_inversions.serialization import (
     decode_cf_multiindexes,
     encode_cf_multiindexes,
     open_datatree_loaded,
     save_datatree,
 )
+from boundary_test_utils import raw_transport
 
 
 @pytest.fixture(autouse=True)
@@ -56,13 +57,13 @@ def weights(bound):
 def prepare(raw, weight, observations, frequency=None, anchor=None):
     return AdditiveChoice(
         {"pdf": "uniform", "lower": -0.5, "upper": 0.5}, 0.04, frequency=frequency, anchor_time=anchor,
-    ).bind(observations, replace(CenteredOperands.from_dataset(raw), weights=weight))
+    ).bind(observations, raw_transport(raw, weights=weight))
 
 
 def calendar(raw, observations, frequency, anchor=None):
     return MultiplicativeChoice(
         {"pdf": "normal", "mu": 1.0, "sigma": 0.1}, frequency=frequency, anchor_time=anchor,
-    ).bind(observations, CenteredOperands.from_dataset(raw)).data
+    ).bind(observations, raw_transport(raw)).data
 
 
 def never_compute(array):

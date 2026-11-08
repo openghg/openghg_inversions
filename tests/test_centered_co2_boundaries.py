@@ -13,7 +13,7 @@ from openghg_inversions.models import StateActivity, get_coord_registry, restore
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.rhime.co2 import build_co2_model, Co2PreparedInputs, Co2O2PreparedInputs
-from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands, MultiplicativeBoundary, MultiplicativeChoice
+from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeBoundary, MultiplicativeChoice
 from openghg_inversions.rhime.co2.boundary_output import restore_absolute_predictives
 from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2, annotate_co2_o2_trace
 from openghg_inversions.rhime.co2.co2_runner import (
@@ -26,7 +26,9 @@ from test_co2_rhime import _golden_inputs
 from test_co2_affine_output import _prepared
 from test_rhime_co2_o2_baselines import _prepared as _linked
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
+from openghg_inversions.models.boundary import bind_centered_transport
 from boundary_test_utils import bound_model_arguments
+from boundary_test_utils import raw_transport
 
 
 @pytest.fixture(autouse=True)
@@ -63,7 +65,7 @@ def _operands(observations, *, constant=False):
 def _single_models(constant, fixed, frequency=None, default_prior=False):
     inputs = _golden_inputs().assign_coords(time=("nmeasure", np.arange(2).astype("datetime64[D]")))
     operands = _operands(inputs.mf, constant=constant)
-    aligned = CenteredOperands.from_dataset(operands).bind(inputs.mf, frequency=frequency)
+    aligned = bind_centered_transport(raw_transport(operands), inputs.mf, frequency=frequency)
     absolute = aligned.H_bc_anomaly + aligned.bc_reference * aligned.H_bc_mass
     options = dict(
         retained_prior=CorrelatedLognormalPrior(
@@ -410,8 +412,7 @@ def test_linked_logp_gradients_independent_channel_labels():
         )
         operands[channel] = _operands(native, constant=channel == "o2")
         sensitivity = prepared.co2_sensitivity if channel == "co2" else prepared.o2_sensitivity
-        aligned = CenteredOperands.from_dataset(operands[channel]).bind(
-            native.rename(observation=sensitivity.dims[0])
+        aligned = bind_centered_transport(raw_transport(operands[channel]), native.rename(observation=sensitivity.dims[0])
         )
         boundaries[channel] = (
             (aligned.H_bc_anomaly + aligned.bc_reference * aligned.H_bc_mass)

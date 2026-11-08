@@ -1,7 +1,7 @@
 """Additive boundary corrections in observation concentration units.
 
 With centered transport ``A``, ``M`` and ``c``
-(:class:`~.operands.CenteredOperands`; see
+(:class:`~.contracts.BoundCenteredTransport`; see
 :doc:`/usage/centered_boundary_conditions`) the absolute boundary
 contribution is ``A 1 + c M 1 + M d``. The corrections ``d`` live on the bound
 ``(bc_curtain, bc_period)`` states and are transported only by the
@@ -40,7 +40,6 @@ from dataclasses import dataclass
 from typing import Any, get_args
 
 import numpy as np
-import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
@@ -60,7 +59,13 @@ from .additive_anomalies import (
     normalized_centering_weights,
 )
 from .mean_shift import add_boundary_mean_shift, mean_shift_outputs
-from .operands import CenteredOperands, check_bound_transport, materialized_reference_shift
+from .contracts import BoundCenteredTransport, RawCenteredTransport
+from .operands import (
+    bind_centered_transport,
+    bind_centering_weights,
+    check_bound_transport,
+    materialized_reference_shift,
+)
 from .outputs import BoundaryOutputs
 
 
@@ -121,17 +126,17 @@ class AdditiveChoice:
         if self.mean_by_period and (self.mean_prior is None or self.frequency is None):
             raise ValueError("bc_mean_by_period requires a mean shift prior and a boundary frequency.")
 
-    def bind(self, observations: xr.DataArray, transport: CenteredOperands) -> AdditiveBoundary:
+    def bind(self, observations: xr.DataArray, transport: RawCenteredTransport) -> AdditiveBoundary:
         """Bind centered transport, and any centering weights, to one fit.
 
         Args:
             observations: One channel's observations with its observation axis
                 first. Its labels select and order the transport rows; its
                 ``time`` values assign rows to boundary periods.
-            transport: Prepared centered operands on their raw ``nmeasure``
-                or ``time`` axis. Weighted anomalies also need its
-                ``weights`` on ``(bc_curtain, bc_period)``; other structures
-                ignore them.
+            transport: Raw centered transport on its ``nmeasure`` or ``time``
+                axis. Weighted anomalies also need its
+                ``bc_centering_weights`` on ``(bc_curtain, bc_period)``; other
+                structures ignore them.
 
         Returns:
             The bound boundary. ``H_bc_anomaly`` and ``H_bc_mass`` lie on
@@ -147,20 +152,14 @@ class AdditiveChoice:
                 labels differ from the bound states (for example because they
                 were prepared with another calendar).
         """
-        data = transport.bind(observations, frequency=self.frequency, anchor_time=self.anchor_time)
+        data = bind_centered_transport(
+            transport, observations, frequency=self.frequency, anchor_time=self.anchor_time,
+        )
         if self.anomalies != "weighted":
             return AdditiveBoundary(self, data)
-        if transport.weights is None:
+        if "bc_centering_weights" not in transport:
             raise ValueError("Weighted additive boundary anomalies require bc_centering_weights.")
-        weights = transport.weights
-        periods = weights.indexes["bc_period"]
-        if isinstance(periods, pd.DatetimeIndex):
-            # Period starts from the fit calendar are nanosecond timestamps.
-            weights = weights.assign_coords(bc_period=periods.as_unit("ns"))
-        weights = weights.stack(bc_region=("bc_curtain", "bc_period"))
-        xr.align(data.H_bc_anomaly, weights, join="exact", copy=False, exclude={str(observations.dims[0])})
-        # Labels match exactly, so the bound state index is reused for the weights.
-        return AdditiveBoundary(self, data.assign(bc_centering_weights=weights.variable))
+        return AdditiveBoundary(self, bind_centering_weights(data, transport.bc_centering_weights))
 
 
 @dataclass(frozen=True)
@@ -169,11 +168,13 @@ class AdditiveBoundary:
 
     Attributes:
         choice: The resolved additive choice.
-        data: ``H_bc_anomaly`` (concentration units) and ``H_bc_mass``
-            (dimensionless) on ``(observation, bc_region)``, where
-            ``bc_region`` indexes ``(bc_curtain, bc_period)`` states; scalar
-            ``bc_reference`` in the anomaly's units; and, for weighted
-            anomalies, positive ``bc_centering_weights`` on ``bc_region``.
+        data: :class:`~.contracts.BoundCenteredTransport`: ``H_bc_anomaly``
+            (concentration units) and ``H_bc_mass`` (dimensionless) on
+            ``(observation, bc_region)``, where ``bc_region`` indexes
+            ``(bc_curtain, bc_period)`` states, and scalar ``bc_reference``
+            in the anomaly's units. Weighted anomalies hold the
+            :class:`~.contracts.BoundAdditiveTransport` extension, with
+            positive ``bc_centering_weights`` on ``bc_region``.
             The arrays are borrowed and may be Dask-backed. Materialize them
             jointly with the other model inputs before :meth:`add`; rows may
             be padded or subset with ``dataclasses.replace``, keeping that
@@ -185,7 +186,7 @@ class AdditiveBoundary:
     """
 
     choice: AdditiveChoice
-    data: xr.Dataset
+    data: BoundCenteredTransport
 
     def __post_init__(self) -> None:
         check_bound_transport(self.data, ("H_bc_anomaly", "H_bc_mass"), state_dim="bc_region")

@@ -9,7 +9,7 @@ import xarray as xr
 
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
-from openghg_inversions.models.boundary import BoundaryChoice, CenteredOperands
+from openghg_inversions.models.boundary import BoundaryChoice, RawCenteredTransport
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
@@ -39,7 +39,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
-    boundary: Mapping[str, BoundaryChoice[CenteredOperands]] | None = None,
+    boundary: Mapping[str, BoundaryChoice[RawCenteredTransport]] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     sampler: RhimeSampler | Literal["default"] = "default",

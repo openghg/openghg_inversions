@@ -34,9 +34,11 @@ from openghg_inversions.rhime.co2 import co2_cached_sigma_runner
 from openghg_inversions.rhime.co2 import co2_cached_sigma_model
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.serialization import load_trace, save_trace
-from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands, MultiplicativeChoice
+from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeChoice
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
+from openghg_inversions.models.boundary import bind_centered_transport
 from boundary_test_utils import bound_model_arguments
+from boundary_test_utils import raw_transport
 
 
 @pytest.fixture(autouse=True)
@@ -1410,7 +1412,7 @@ def test_centered_cache_full_operands_dense_density_and_gradients(all_fixed):
     shift = reference * mass.sum(axis=1)
     inputs["mf"] = inputs.mf + shift
     inputs.mf.attrs["units"] = "ppm"
-    bound = CenteredOperands.from_dataset(operands).bind(inputs.mf)
+    bound = bind_centered_transport(raw_transport(operands), inputs.mf)
     active = xr.DataArray([not all_fixed, not all_fixed, False], dims="bc_region", coords={"bc_region": bound.bc_region})
     fixed = xr.DataArray([.9, 1.2, .7], dims="bc_region", coords=active.coords)
     cached = _build(inputs=inputs, boundary_operands=operands,
@@ -1501,7 +1503,7 @@ def test_centered_stock_and_cached_boundary_match_dense_likelihood(reference, an
         coords={"nmeasure": inputs.nmeasure, "bc_region": ["north", "south"]},
         attrs={"boundary_representation": "centered-v1"},
     )
-    bound = CenteredOperands.from_dataset(operands).bind(inputs.mf)
+    bound = bind_centered_transport(raw_transport(operands), inputs.mf)
     weights = xr.DataArray(
         [1.0, 3.0], dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"}
     ).unstack("bc_region")

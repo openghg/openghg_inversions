@@ -187,8 +187,14 @@ choice have no boundary term. The configuration adapters produce the same
 choices from ``[model.boundary]`` and ``[channels.<name>.boundary]``.
 
 The runner binds the choice once with ``choice.bind(observations,
-transport)``, where transport is the prepared ``H_bc`` or
-:class:`~openghg_inversions.models.boundary.CenteredOperands`. The bound record
+transport)``, where transport is the prepared ``H_bc`` or a
+:class:`~openghg_inversions.models.boundary.RawCenteredTransport` Dataset.
+Binding produces
+:class:`~openghg_inversions.models.boundary.BoundCenteredTransport` (extended
+to :class:`~openghg_inversions.models.boundary.BoundAdditiveTransport` for
+weighted additive anomalies); these are static annotations on ordinary
+Datasets, so their guarantees are checked where data enters rather than by
+each consumer. The bound record
 is materialized jointly with the selected core arrays and prior parameters and
 is then passed to the builder, which calls ``boundary.add(...)``. Fitted
 metadata, roles and physical coefficient units come from ``boundary.outputs()``;
@@ -221,10 +227,10 @@ only its observation rows. The full boundary-state support and resolved prior
 remain on that record::
 
     from dataclasses import replace
-    from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands
+    from openghg_inversions.models.boundary import AdditiveChoice, RawCenteredTransport
 
     choice = AdditiveChoice(mean_prior, anomaly_scale, frequency="monthly")
-    transport = replace(CenteredOperands.from_dataset(raw_operands), weights=weights)
+    transport = RawCenteredTransport.validate(raw_operands.assign(bc_centering_weights=weights))
     bound = choice.bind(observations, transport)
     subset = replace(bound, data=bound.data.isel(nmeasure=selected_rows))
 

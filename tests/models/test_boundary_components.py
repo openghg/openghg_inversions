@@ -12,13 +12,15 @@ import pytensor.tensor as pt
 import xarray as xr
 
 from openghg_inversions.models import (
-    AdditiveBoundary, AdditiveChoice, AnomalyScalingChoice, CenteredOperands, MultiplicativeBoundary, MultiplicativeChoice,
+    AdditiveBoundary, AdditiveChoice, AnomalyScalingChoice, MultiplicativeBoundary, MultiplicativeChoice,
     StateActivity, registered_model,
 )
 from openghg_inversions.models.components import (
     AffineBlock, AffineConcentrationTerm, warn_constant_offset_confounding,
 )
 from openghg_inversions.rhime.co2 import co2_runner
+from openghg_inversions.models.boundary import bind_centered_transport
+from boundary_test_utils import raw_transport
 
 
 def _mean_response_term(mean_response):
@@ -84,7 +86,7 @@ def _whole_window(weights, observations):
 
 
 def _centered(data, weights=None):
-    return replace(CenteredOperands.from_dataset(data), weights=weights)
+    return raw_transport(data, weights=weights)
 
 
 def _affine_expression(result):
@@ -98,7 +100,7 @@ def test_centered_affine_keeps_fixed_activity_and_physical_coefficients(double_p
     data, observations = _native_boundary()
     bound = MultiplicativeChoice(
         {"pdf": "normal", "mu": 1., "sigma": .1}, StateActivity(active=np.array(active), fixed_value=2.),
-    ).bind(observations, CenteredOperands.from_dataset(data))
+    ).bind(observations, raw_transport(data))
     assert isinstance(bound, MultiplicativeBoundary)
     with registered_model():
         result = bound.add(owner="boundary")
@@ -217,7 +219,7 @@ def test_weighted_additive_binding_requires_centering_weights():
     data, observations = _native_boundary()
     with pytest.raises(ValueError, match="require bc_centering_weights"):
         AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.).bind(
-            observations, CenteredOperands.from_dataset(data),
+            observations, raw_transport(data),
         )
 
 
@@ -263,7 +265,7 @@ def test_centered_rejects_nonfinite_reference_shift(double_precision):
     data["H_bc_mass"] = xr.ones_like(data.H_bc_mass).assign_attrs(units="1")
     data["bc_reference"] = xr.DataArray(1e308, attrs={"units": "ppm"})
     bound = MultiplicativeChoice({"pdf": "normal", "mu": 1., "sigma": .1}).bind(
-        observations, CenteredOperands.from_dataset(data),
+        observations, raw_transport(data),
     )
     with registered_model(), np.errstate(over="ignore"), pytest.raises(ValueError, match="reference shift must be finite"):
         bound.add()
@@ -350,7 +352,7 @@ def test_output_roles_and_units_declare_resolved_anomaly_state(double_precision,
 @pytest.mark.parametrize("centered", [False, True])
 def test_multiplicative_output_declarations_match_registered_quantities(double_precision, centered):
     data, observations = _native_boundary()
-    transport = CenteredOperands.from_dataset(data) if centered else data.H_bc_anomaly
+    transport = raw_transport(data) if centered else data.H_bc_anomaly
     bound = MultiplicativeChoice({"pdf": "normal", "mu": 1., "sigma": .1}).bind(observations, transport)
     outputs = bound.outputs(prefix="o2_")
     roles, units = outputs.roles, outputs.units
@@ -370,7 +372,7 @@ def test_multiplicative_output_declarations_match_registered_quantities(double_p
 
 def test_direct_additive_record_accepts_only_actual_resolved_inputs(double_precision):
     data, observations = _native_boundary()
-    operands = CenteredOperands.from_dataset(data).bind(observations)
+    operands = bind_centered_transport(raw_transport(data), observations)
     weights = xr.ones_like(operands.bc_region, dtype=float).assign_attrs(units="1")
     bound = AdditiveBoundary(
         AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.),
@@ -408,7 +410,7 @@ def test_centered_boundary_preserves_original_coordinate_owner(double_precision,
     bound = MultiplicativeChoice(
         {"pdf": "normal", "mu": 1., "sigma": .1},
         StateActivity(active=np.array([True, False])) if partial else None,
-    ).bind(observations, CenteredOperands.from_dataset(data))
+    ).bind(observations, raw_transport(data))
     with registered_model() as model:
         bound.add(**({} if owner is None else {"owner": owner}))  # None selects the default owner.
     assert model.named_vars_to_dims["bc"] == (expected,)
@@ -447,7 +449,7 @@ def test_boundary_metadata_uses_choice_facts_without_evaluating_lazy_inputs(doub
                     "boundary_anomalies": "weighted", "boundary_mean": "whole_window",
                     "bc_frequency": "monthly", "bc_anchor_time": None}
     else:
-        transport = data.H_bc_anomaly if kind == "absolute" else CenteredOperands.from_dataset(data)
+        transport = data.H_bc_anomaly if kind == "absolute" else raw_transport(data)
         bound = MultiplicativeChoice(prior, frequency="10D", anchor_time="2020-01-01").bind(observations, transport)
         expected = {"boundary_formulation": "multiplicative", "bc_frequency": "10D", "bc_anchor_time": "2020-01-01"}
         if kind == "centered":
@@ -491,7 +493,7 @@ def test_labelled_period_mean_prior_shares_the_owned_period_axis(family, owner):
         choice = AdditiveChoice(prior, 0.0, anomalies="period_contrasts", mean_by_period=True, frequency="monthly")
     else:
         choice = AnomalyScalingChoice(prior, 0.1, mean_by_period=True, frequency="monthly")
-    bound = choice.bind(observations, CenteredOperands.from_dataset(data))
+    bound = choice.bind(observations, raw_transport(data))
     bound = replace(bound, data=bound.data.compute())
     with registered_model() as model:
         bound.add(prefix="co2_", owner=owner)

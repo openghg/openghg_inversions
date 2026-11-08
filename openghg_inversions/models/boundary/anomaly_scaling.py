@@ -1,6 +1,6 @@
 """Boundary corrections that scale the prescribed concentration anomaly.
 
-Centered transport (:class:`~.operands.CenteredOperands`; see
+Centered transport (:class:`~.contracts.BoundCenteredTransport`; see
 :doc:`/usage/centered_boundary_conditions`) gives the prescribed boundary as
 ``A 1 + c M 1``. This
 family adds two corrections: a mean shift ``m`` in concentration units,
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import numpy as np
 import pymc as pm
@@ -36,7 +36,8 @@ from openghg_inversions.models.components import AffineBlock, AffineConcentratio
 from openghg_inversions.models.coords import add_model_data, component_coords
 
 from .mean_shift import add_boundary_mean_shift, mean_shift_outputs
-from .operands import CenteredOperands, check_bound_transport, materialized_reference_shift
+from .contracts import BoundCenteredTransport, RawCenteredTransport
+from .operands import bind_centered_transport, check_bound_transport, materialized_reference_shift
 from .outputs import BoundaryOutputs
 
 ReferencePolicy = float | Literal["stored", "whole_window_transport_mean"]
@@ -97,15 +98,15 @@ class AnomalyScalingChoice:
         if self.mean_by_period and (self.mean_prior is None or self.frequency is None):
             raise ValueError("bc_mean_by_period requires a mean shift prior and a boundary frequency.")
 
-    def bind(self, observations: xr.DataArray, transport: CenteredOperands) -> AnomalyScalingBoundary:
+    def bind(self, observations: xr.DataArray, transport: RawCenteredTransport) -> AnomalyScalingBoundary:
         """Bind centered transport to one fit and re-express it about the chosen reference.
 
         Args:
             observations: One channel's observations with its observation axis
                 first. Its labels select and order the transport rows; its
                 ``time`` values assign rows to boundary periods.
-            transport: Prepared centered operands on their raw ``nmeasure``
-                or ``time`` axis. Centering weights are ignored.
+            transport: Raw centered transport on its ``nmeasure`` or ``time``
+                axis. Centering weights are ignored.
 
         Returns:
             The bound boundary. ``H_bc_anomaly`` is the recentred ``A'`` and
@@ -119,7 +120,9 @@ class AnomalyScalingChoice:
             ValueError: If PyTensor is not configured for float64, or periods
                 or indexed timestamps conflict with the observations.
         """
-        data = transport.bind(observations, frequency=self.frequency, anchor_time=self.anchor_time)
+        data = bind_centered_transport(
+            transport, observations, frequency=self.frequency, anchor_time=self.anchor_time,
+        )
         if self.reference == "stored":
             return AnomalyScalingBoundary(self, data)
         anomaly, mass, stored = data.H_bc_anomaly, data.H_bc_mass, data.bc_reference
@@ -127,10 +130,12 @@ class AnomalyScalingChoice:
             shift = anomaly.sum() / mass.sum()
         else:
             shift = float(self.reference) - stored
-        return AnomalyScalingBoundary(self, data.assign(
+        # Recentring keeps the bound layout and units: the shift is a scalar.
+        recentred = data.assign(
             H_bc_anomaly=(anomaly - shift * mass).assign_attrs(anomaly.attrs),
             bc_reference=(stored + shift).assign_attrs(stored.attrs),
-        ))
+        )
+        return AnomalyScalingBoundary(self, cast(BoundCenteredTransport, recentred))
 
 
 @dataclass(frozen=True)
@@ -154,7 +159,7 @@ class AnomalyScalingBoundary:
     """
 
     choice: AnomalyScalingChoice
-    data: xr.Dataset
+    data: BoundCenteredTransport
 
     def __post_init__(self) -> None:
         check_bound_transport(self.data, ("H_bc_anomaly", "H_bc_mass"), state_dim="bc_region")

@@ -303,7 +303,11 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.boundary.AdditiveBoundary
    openghg_inversions.models.boundary.AnomalyScalingChoice
    openghg_inversions.models.boundary.AnomalyScalingBoundary
-   openghg_inversions.models.boundary.CenteredOperands
+   openghg_inversions.models.boundary.RawCenteredTransport
+   openghg_inversions.models.boundary.BoundCenteredTransport
+   openghg_inversions.models.boundary.BoundAdditiveTransport
+   openghg_inversions.models.boundary.bind_centered_transport
+   openghg_inversions.xr_contracts.xr_contract
    openghg_inversions.models.boundary.BoundaryOutputs
    openghg_inversions.array_ops.to_dense_tree
    openghg_inversions.models.add_linked_linear_component

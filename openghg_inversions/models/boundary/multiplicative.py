@@ -3,7 +3,7 @@
 The boundary contribution is ``H b`` for dimensionless scaling states ``b``.
 With absolute transport ``H`` (``H_bc``) the graph evaluates that product
 directly. With centered transport ``H = A + c M``
-(:class:`~.operands.CenteredOperands`; see
+(:class:`~.contracts.RawCenteredTransport`; see
 :doc:`/usage/centered_boundary_conditions`) the likelihood instead uses
 ``A b + c M (b - 1)`` against observations shifted by ``c M 1``, which keeps
 small anomalies after cancellation; the absolute output still adds the shift.
@@ -26,8 +26,9 @@ from openghg_inversions.models.components import AffineBlock, AffineConcentratio
 from openghg_inversions.models.coords import add_model_data, component_coords
 from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity, resolve_state_activity
 
+from .contracts import BoundCenteredTransport, RawCenteredTransport
 from .operands import (
-    CenteredOperands,
+    bind_centered_transport,
     centered_boundary_expression,
     check_bound_transport,
     materialized_reference_shift,
@@ -74,7 +75,7 @@ class MultiplicativeChoice:
         validate_centered_boundary_periods(self.frequency, self.anchor_time)
 
     def bind(
-        self, observations: xr.DataArray, transport: xr.DataArray | CenteredOperands,
+        self, observations: xr.DataArray, transport: xr.DataArray | RawCenteredTransport,
     ) -> MultiplicativeBoundary:
         """Bind prepared absolute or centered transport to one fit's rows and periods.
 
@@ -82,8 +83,9 @@ class MultiplicativeChoice:
             observations: One channel's observations with its observation axis
                 first. Its labels select and order the transport rows; its
                 ``time`` values assign rows to boundary periods.
-            transport: Absolute ``H_bc`` in concentration units, or centered
-                operands, on the raw ``nmeasure`` or ``time`` axis. Absolute
+            transport: Absolute ``H_bc`` in concentration units, or raw
+                centered transport, on the raw ``nmeasure`` or ``time`` axis.
+                A Dataset is centered transport; a DataArray is absolute. Absolute
                 transport already expanded to periods is accepted only without
                 a ``frequency`` or ``anchor_time``.
 
@@ -102,8 +104,11 @@ class MultiplicativeChoice:
                 observations, or a calendar override is requested for
                 already-expanded absolute transport.
         """
-        if isinstance(transport, CenteredOperands):
-            data = transport.bind(observations, frequency=self.frequency, anchor_time=self.anchor_time)
+        data: xr.Dataset
+        if isinstance(transport, xr.Dataset):
+            data = bind_centered_transport(
+                transport, observations, frequency=self.frequency, anchor_time=self.anchor_time,
+            )
         else:
             data = bind_boundary_sensitivity(
                 transport, observations, frequency=self.frequency, anchor_time=self.anchor_time,
@@ -117,10 +122,10 @@ class MultiplicativeBoundary:
 
     Attributes:
         choice: The resolved multiplicative choice.
-        data: Absolute ``H_bc`` (concentration units), or centered
-            ``H_bc_anomaly`` (concentration units) and ``H_bc_mass``
-            (dimensionless) beside the scalar ``bc_reference``, on
-            ``(observation, state)``. The arrays are borrowed and may be
+        data: Absolute ``H_bc`` (concentration units) on
+            ``(observation, state)``, or
+            :class:`~.contracts.BoundCenteredTransport`. Absolute transport
+            keeps its own supported state layouts and has no contract. The arrays are borrowed and may be
             Dask-backed. Materialize them jointly with the other model inputs
             and the choice prior before :meth:`add`; rows may be padded or
             subset with ``dataclasses.replace``, keeping that layout.
@@ -131,7 +136,7 @@ class MultiplicativeBoundary:
     """
 
     choice: MultiplicativeChoice
-    data: xr.Dataset
+    data: BoundCenteredTransport | xr.Dataset
 
     def __post_init__(self) -> None:
         if self.centered:

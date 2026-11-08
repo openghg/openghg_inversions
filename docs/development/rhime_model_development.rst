@@ -185,7 +185,7 @@ adapter resolves user options into a choice (``MultiplicativeChoice`` or
 ``AdditiveChoice``); it never touches arrays. Runners take that one choice (a
 channel mapping for linked recipes) and call ``choice.bind(observations,
 transport)`` once per channel and fit, where transport is the prepared absolute
-``H_bc`` or ``CenteredOperands``. The bound record pairs the choice with
+``H_bc`` or a ``RawCenteredTransport`` Dataset. The bound record pairs the choice with
 borrowed labelled transport on the fit's rows and boundary periods. Reusable raw
 transport keeps its spatial meaning independently of fit periods.
 

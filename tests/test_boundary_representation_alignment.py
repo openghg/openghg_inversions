@@ -8,7 +8,9 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity
-from openghg_inversions.models.boundary import CenteredOperands, MultiplicativeChoice
+from openghg_inversions.models.boundary import MultiplicativeChoice
+from openghg_inversions.models.boundary import bind_centered_transport
+from boundary_test_utils import raw_transport, centered_transport
 
 
 @pytest.mark.parametrize("frequency,anchor", [(None, None), ("monthly", None), ("1D", "2020-01-30")])
@@ -27,7 +29,7 @@ def test_reusable_ordinary_and_centered_share_selected_periods(frequency, anchor
     calls = []
     with pytensor.config.change_flags(floatX="float64"), Callback(posttask=lambda *args: calls.append(args)):
         ordinary = bind_boundary_sensitivity(absolute, observations, frequency=frequency, anchor_time=anchor)
-        centered = CenteredOperands.from_dataset(raw).bind(observations, frequency=frequency, anchor_time=anchor)
+        centered = bind_centered_transport(raw_transport(raw), observations, frequency=frequency, anchor_time=anchor)
     assert not calls
     assert hasattr(ordinary.data, "__dask_graph__")
     expected = (centered.H_bc_anomaly + centered.bc_reference * centered.H_bc_mass).transpose(*ordinary.dims)
@@ -116,9 +118,9 @@ def test_indexed_boundary_time_conflict_is_rejected_without_computing_payload(ce
     }, attrs={"units": "ppm"})
     with pytensor.config.change_flags(floatX="float64"), pytest.raises(ValueError, match="Indexed boundary time labels conflict"):
         if centered:
-            CenteredOperands(
+            bind_centered_transport(centered_transport(
                 payload, xr.ones_like(payload).assign_attrs(units="1"), xr.DataArray(400., attrs={"units": "ppm"}),
-            ).bind(observations, frequency="monthly")
+            ), observations, frequency="monthly")
         else:
             bind_boundary_sensitivity(payload, observations, frequency="monthly")
 
@@ -187,7 +189,7 @@ def test_native_datetime_dimension_restoration_preserves_rows_and_periods(center
     original = operands.copy(deep=True)
     with pytensor.config.change_flags(floatX="float64"), Callback(posttask=lambda *args: pytest.fail("Boundary payload computed during binding")):
         if centered:
-            aligned = CenteredOperands.from_dataset(operands).bind(observations, frequency=frequency)
+            aligned = bind_centered_transport(raw_transport(operands), observations, frequency=frequency)
             result = aligned.H_bc_anomaly + aligned.bc_reference * aligned.H_bc_mass
         else:
             raw = (operands.H_bc_anomaly + operands.bc_reference * operands.H_bc_mass).assign_attrs(

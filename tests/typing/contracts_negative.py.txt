@@ -1,0 +1,28 @@
+"""Negative static-type probe for centered boundary transport contracts."""
+
+import xarray as xr
+
+from openghg_inversions.models.boundary import (
+    AdditiveChoice,
+    BoundAdditiveTransport,
+    BoundCenteredTransport,
+    RawCenteredTransport,
+    bind_centered_transport,
+)
+
+
+def needs_bound(data: BoundCenteredTransport) -> None: ...
+
+
+def needs_additive(data: BoundAdditiveTransport) -> None: ...
+
+
+supplied = xr.Dataset()
+observations = xr.DataArray()
+raw = RawCenteredTransport.validate(supplied)
+
+needs_bound(supplied)  # expect-error: plain-dataset
+needs_bound(raw)  # expect-error: raw-as-bound
+needs_additive(BoundCenteredTransport.validate(supplied))  # expect-error: shared-as-extension
+bind_centered_transport(supplied, observations)  # expect-error: plain-dataset
+AdditiveChoice(None, 0.3, anomalies="independent").bind(observations, supplied)  # expect-error: plain-dataset

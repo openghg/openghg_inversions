@@ -376,7 +376,7 @@ Temporal state construction
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 At model binding,
-:meth:`~openghg_inversions.models.boundary.CenteredOperands.bind`
+:func:`~openghg_inversions.models.boundary.bind_centered_transport`
 assigns a fitted period from the retained observation timestamp.
 
 .. code-block:: text

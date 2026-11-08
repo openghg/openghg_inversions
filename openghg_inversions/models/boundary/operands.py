@@ -1,24 +1,28 @@
-"""Centered boundary transport and its single binding step.
+"""Centered boundary transport binding and numerical helpers.
 
 Centered preparation stores the boundary contribution as three operands:
 the concentration anomaly ``A`` (``H_bc_anomaly``), the dimensionless transport
 mass ``M`` (``H_bc_mass``) and a scalar concentration reference ``c``
 (``bc_reference``). Absolute concentrations are ``A + c M``. Preparation and
-artifact loading validate their units, labels and layout; this module trusts
-those checks and only binds the raw spatial operands to one fit's observation
-rows and boundary periods.
+artifact loading establish :class:`~.contracts.RawCenteredTransport`; this
+module trusts that contract and binds the raw spatial operands to one fit's
+observation rows and boundary periods, producing
+:class:`~.contracts.BoundCenteredTransport` by construction.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
+import pandas as pd
 import pytensor
 import xarray as xr
 
 from openghg_inversions.boundary_sensitivity import _expand_boundary_periods, _select_native_boundary
 from openghg_inversions.inversion_inputs import DatetimeLike
+
+from .contracts import STATE_LEVELS, BoundAdditiveTransport, BoundCenteredTransport, RawCenteredTransport
 
 
 def require_centered_precision() -> None:
@@ -117,82 +121,91 @@ def materialized_reference_shift(
     return shift
 
 
-@dataclass(frozen=True)
-class CenteredOperands:
-    """Prepared centered transport, borrowed from a validated preparation.
+def bind_centered_transport(
+    transport: RawCenteredTransport,
+    observations: xr.DataArray,
+    *,
+    frequency: str | None = None,
+    anchor_time: DatetimeLike | None = None,
+) -> BoundCenteredTransport:
+    """Select one fit's observation rows and expand spatial states by period.
 
-    Attributes:
-        anomaly: ``A`` on raw spatial ``bc_region`` and the ``time`` or
-            ``nmeasure`` observation axis, in observation concentration units.
-        mass: ``M`` on the same axes, dimensionless.
-        reference: Scalar ``c`` in the anomaly's concentration units.
-        weights: Optional positive dimensionless centering weights on
-            ``(bc_curtain, bc_period)``, with interval-start period labels.
-            Only the additive boundary consumes them.
+    Observation dimension labels own the row order; their auxiliary ``time``
+    values own period membership when supplied. Indexed boundary times must
+    match those timestamps; this check may compute a lazy timestamp
+    coordinate, while numerical operands remain borrowed and lazy.
+
+    The result is established by construction: row selection by unique
+    observation labels and the shared period mask produce the
+    ``(observation, bc_region)`` layout with a ``(bc_curtain, bc_period)``
+    state index for every curtain in every period, and the scalar reference
+    is carried unchanged. Raw centering weights are not included; see
+    :func:`bind_centering_weights`.
+
+    Args:
+        transport: Raw centered transport on its ``time`` or ``nmeasure`` axis.
+        observations: One native channel with its observation axis first.
+        frequency: Optional frequency expanding spatial states by period.
+        anchor_time: Optional origin for fixed-duration periods.
+
+    Returns:
+        ``H_bc_anomaly`` and ``H_bc_mass`` on ``(observation, bc_region)`` with
+        the bound state index, plus the scalar ``bc_reference``.
+
+    Raises:
+        ValueError: If PyTensor is not configured for float64, or periods or
+            indexed timestamps conflict with the observations.
     """
+    require_centered_precision()
+    native_dim = str(observations.dims[0])
+    raw_dim = "time" if "time" in transport.H_bc_anomaly.dims else "nmeasure"
+    raw = _select_native_boundary(transport[["H_bc_anomaly", "H_bc_mass"]], observations, raw_dim)
+    bound = _expand_boundary_periods(
+        raw, observation_dim=raw_dim, frequency=frequency, anchor_time=anchor_time, observation_labels=None,
+    )
+    if raw_dim != native_dim:
+        # Native time has already determined periods; the restored dimension
+        # index owns those same labels, so its auxiliary copy is redundant.
+        if native_dim == "time" and "time" in bound.coords:
+            bound = bound.drop_vars("time")
+        bound = bound.rename({raw_dim: native_dim})
+    bound = bound.transpose(native_dim, "bc_region").assign(bc_reference=transport.bc_reference)
+    return cast(BoundCenteredTransport, bound)
 
-    anomaly: xr.DataArray
-    mass: xr.DataArray
-    reference: xr.DataArray
-    weights: xr.DataArray | None = None
 
-    @classmethod
-    def from_dataset(cls, dataset: xr.Dataset) -> CenteredOperands:
-        """Select operands (and any centering weights) from a validated preparation."""
-        return cls(
-            dataset["H_bc_anomaly"], dataset["H_bc_mass"], dataset["bc_reference"],
-            dataset.get("bc_centering_weights"),
-        )
+def bind_centering_weights(bound: BoundCenteredTransport, weights: xr.DataArray) -> BoundAdditiveTransport:
+    """Align raw centering weights to bound states, giving the additive extension.
 
-    def bind(
-        self,
-        observations: xr.DataArray,
-        *,
-        frequency: str | None = None,
-        anchor_time: DatetimeLike | None = None,
-    ) -> xr.Dataset:
-        """Select one fit's observation rows and expand spatial states by period.
+    Weights must label exactly the bound curtains and periods, so a calendar
+    mismatch is reported here rather than silently reindexed. The bound state
+    index is reused for the stacked weights; their values stay borrowed.
 
-        Observation dimension labels own the row order; their auxiliary
-        ``time`` values own period membership when supplied. Indexed boundary
-        times must match those timestamps; this check may compute a lazy
-        timestamp coordinate, while numerical operands remain borrowed and lazy.
+    Args:
+        bound: Bound centered transport.
+        weights: Raw weights on ``(bc_curtain, bc_period)``, structurally
+            checked with the raw transport.
 
-        Args:
-            observations: One native channel with its observation axis first.
-            frequency: Optional frequency expanding spatial states by period.
-            anchor_time: Optional origin for fixed-duration periods.
+    Returns:
+        ``bound`` with ``bc_centering_weights`` on ``bc_region``.
 
-        Returns:
-            ``H_bc_anomaly`` and ``H_bc_mass`` on ``(observation, bc_region)``
-            with a ``(bc_curtain, bc_period)`` state index, plus scalar
-            ``bc_reference``. Centering weights are not included.
-
-        Raises:
-            ValueError: If PyTensor is not configured for float64, or periods
-                or indexed timestamps conflict with the observations.
-        """
-        require_centered_precision()
-        native_dim = str(observations.dims[0])
-        raw_dim = "time" if "time" in self.anomaly.dims else "nmeasure"
-        raw = _select_native_boundary(
-            xr.Dataset({"H_bc_anomaly": self.anomaly, "H_bc_mass": self.mass}), observations, raw_dim,
-        )
-        bound = _expand_boundary_periods(
-            raw, observation_dim=raw_dim, frequency=frequency, anchor_time=anchor_time,
-            observation_labels=None,
-        )
-        if raw_dim != native_dim:
-            # Native time has already determined periods; the restored dimension
-            # index owns those same labels, so its auxiliary copy is redundant.
-            if native_dim == "time" and "time" in bound.coords:
-                bound = bound.drop_vars("time")
-            bound = bound.rename({raw_dim: native_dim})
-        return bound.transpose(native_dim, "bc_region").assign(bc_reference=self.reference)
+    Raises:
+        ValueError: If the weights' curtain and period labels differ from the
+            bound states.
+    """
+    periods = weights.indexes["bc_period"]
+    if isinstance(periods, pd.DatetimeIndex):
+        # Period starts from the fit calendar are nanosecond timestamps.
+        weights = weights.assign_coords(bc_period=periods.as_unit("ns"))
+    stacked = weights.stack(bc_region=STATE_LEVELS)
+    observation_dim = BoundCenteredTransport.observation_dim(bound)
+    xr.align(bound.H_bc_anomaly, stacked, join="exact", copy=False, exclude={observation_dim})
+    # Labels match exactly, so the bound state index is reused for the weights.
+    return cast(BoundAdditiveTransport, bound.assign(bc_centering_weights=stacked.variable))
 
 
 __all__ = [
-    "CenteredOperands",
+    "bind_centered_transport",
+    "bind_centering_weights",
     "check_bound_transport",
     "centered_boundary_expression",
     "materialized_reference_shift",
