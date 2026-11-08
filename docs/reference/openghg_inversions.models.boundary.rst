@@ -11,6 +11,7 @@ openghg\_inversions.models.boundary
    :maxdepth: 4
 
    openghg_inversions.models.boundary.additive
+   openghg_inversions.models.boundary.additive_anomalies
    openghg_inversions.models.boundary.anomaly_scaling
    openghg_inversions.models.boundary.centered
    openghg_inversions.models.boundary.contracts
