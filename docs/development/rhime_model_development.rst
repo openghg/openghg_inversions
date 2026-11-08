@@ -284,9 +284,8 @@ reject reversed observation rows before reading lazy cache payloads, and accept
 independent coefficient blocks with different labels on identically named axes.
 The cached conversion aligns only observation rows; it does not align separate
 coefficient axes. Independent curtain corrections replay through the same
-scientific correction role without declaring a weighted anomaly policy.
-Only explicit ``boundary_anomaly_scale`` and ``boundary_centering_weights``
-roles select that policy, and either declaration requires both.
+scientific correction role. Unsampled additive anomalies are recorded as zero
+deterministics, so replay reads every declared role from the saved draws.
 
 For a new family, scientific tests belong with its component in
 ``tests/models/test_boundary_components.py`` and its configuration in
@@ -306,9 +305,9 @@ This probe does not add Student-t to the released configuration choices.
 The review check is that this module list does not grow to include likelihood,
 cache, sampler or output modules. Those consumers operate on the shared affine
 result and the component's declarations through the existing ``OutputContract``.
-The pure saved-boundary decoder/reconstructor consumes fitted scientific facts,
-including explicit zero anomalies for mean-only fits. Saved traces can omit
-those zero matrices. Prior and posterior groups retain independent sample sizes;
+The pure saved-boundary decoder/reconstructor reads fitted scientific facts,
+including the zero anomalies recorded for mean-only fits, from saved draws and
+constants. Prior and posterior groups retain independent sample sizes;
 replay neither builds a graph nor chooses a new period calendar.
 
 Keep configuration with its scientific owner

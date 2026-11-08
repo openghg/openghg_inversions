@@ -496,13 +496,11 @@ def build_co2_cached_sigma_model(
             sum((term.output for term in terms[1:]), start=terms[0].output),
             dims=output_dim,
         )
-        likelihood_mean, likelihood_observations, shift = likelihood_representation(
+        likelihood_mean, likelihood_observations = likelihood_representation(
             terms,
             observations,
             modelled_mean,
         )
-        if shift is not None:
-            add_model_data(shift.rename("boundary_reference_shift"))
         cached = _add_cached_likelihood(
             tuple(terms),
             covariance=covariance,

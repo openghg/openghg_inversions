@@ -193,8 +193,8 @@ def test_forward_equations_and_cached_likelihood_gradient(n_boundary: int, anoma
             assert not any("anomaly" in rv.name for rv in model.free_RVs)
             assert "bc_anomaly_latent" not in model.named_vars
             assert "bc_anomaly_basis" not in model.named_vars
-            assert "bc_anomaly" not in model.named_vars
-            assert "mu_bc_anomaly" not in model.named_vars
+            np.testing.assert_array_equal(model["bc_anomaly"].eval(), 0.0)
+            np.testing.assert_array_equal(model["mu_bc_anomaly"].eval(), 0.0)
         point = model.initial_point()
         if model is cached.model:
             point["ou_site_amplitude_log__"] = np.log(np.full(2, 0.4))
@@ -341,13 +341,13 @@ def test_additive_term_keeps_sampled_boundary_and_observation_offsets_in_mean() 
         observation_offset = pm.Normal("observation_offset", mu=0.0, sigma=0.1)
         offset = pt.ones(inputs.sizes["nmeasure"]) * observation_offset
         absolute = result.output + offset
-        mean, observations, shift = likelihood_representation(
+        mean, observations = likelihood_representation(
             [result, ConcentrationTerm.absolute(offset)],
             inputs.mf,
             absolute,
         )
     expected_shift = 200000.0 * mass.sum("bc_region")
-    xr.testing.assert_allclose(shift, expected_shift)
+    np.testing.assert_allclose(model["boundary_reference_shift"].eval(), expected_shift.values)
     xr.testing.assert_allclose(observations, inputs.mf - expected_shift)
     evaluate = model.compile_fn(
         model.replace_rvs_by_values([absolute, mean, model["bc_correction"]]),
@@ -365,7 +365,6 @@ def test_additive_term_keeps_sampled_boundary_and_observation_offsets_in_mean() 
         )
         np.testing.assert_allclose(centered_values, expected, atol=1e-12)
         np.testing.assert_allclose(absolute_values, centered_values + expected_shift, atol=1e-10)
-        xr.testing.assert_allclose(shift, expected_shift)
 
 
 @pytest.mark.parametrize("cached", [False, True])
@@ -509,7 +508,7 @@ def test_bound_additive_affine_result_equals_likelihood_and_keeps_resolved_scale
     assert len(result.blocks) == (2 if anomaly_scale else 1)
     assert len(result.sampled_rvs) == (2 if anomaly_scale else 1)
     assert "bc_mean_shift_interval__" in model.initial_point()
-    assert ("bc_anomaly" in model) == bool(anomaly_scale)
+    assert ("bc_anomaly_latent" in model) == bool(anomaly_scale)
     for transformed_mean in (-1.2, 0.0, 1.1):
         point = model.initial_point()
         point["bc_mean_shift_interval__"] = np.asarray(transformed_mean)

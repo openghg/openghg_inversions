@@ -50,7 +50,7 @@ from openghg_inversions.rhime.materialization import (
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.sigma import SigmaAlignment
 
-from .boundary_output import restore_absolute_predictives
+from .boundary_output import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
 from .co2_model import _normalise_offset_args, build_co2_model
 from .co2_preparation import Co2PreparedInputs
 
@@ -93,7 +93,7 @@ def annotate_co2_trace(
     Returns:
         The annotated trace.
     """
-    trace.attrs["rhime_boundary_format_version"] = 1
+    trace.attrs["rhime_boundary_format_version"] = BOUNDARY_FORMAT_VERSION
     restore_absolute_predictives(trace)
     trace.attrs["rhime_priors"] = json.dumps(prior_records(built.model))
     roles = dict(built.output_contract.variable_roles)

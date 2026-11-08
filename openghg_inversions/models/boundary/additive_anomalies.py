@@ -151,18 +151,13 @@ def anomaly_outputs(structure: AnomalyStructure, *, sampled: bool, concentration
         concentration: Observation concentration units.
 
     Returns:
-        Unprefixed roles and units for the selected formulation. Weighted
-        anomalies retain scale/weight roles even when unsampled so trace
-        reconstruction can identify intentionally zero anomalies.
+        Unprefixed roles and units. The anomaly state and contribution are
+        always declared, as sampled values or recorded zeros.
     """
-    roles: dict[str, str] = {}
-    units = {"bc_anomaly_scale": concentration}
+    roles = {"boundary_correction_anomaly": "bc_anomaly", "boundary_anomaly_concentration": "mu_bc_anomaly"}
+    units = {"bc_anomaly_scale": concentration, "bc_anomaly": concentration, "mu_bc_anomaly": concentration}
     if structure == "weighted":
-        roles.update(boundary_anomaly_scale="bc_anomaly_scale", boundary_centering_weights="bc_centering_weights")
         units["bc_centering_weights"] = "1"
-    if sampled:
-        roles.update(boundary_correction_anomaly="bc_anomaly", boundary_anomaly_concentration="mu_bc_anomaly")
-        units.update(bc_anomaly=concentration, mu_bc_anomaly=concentration)
-        if structure != "independent":
-            units.update(bc_anomaly_latent=concentration, bc_anomaly_basis="1")
+    if sampled and structure != "independent":
+        units.update(bc_anomaly_latent=concentration, bc_anomaly_basis="1")
     return BoundaryOutputs(roles, units)

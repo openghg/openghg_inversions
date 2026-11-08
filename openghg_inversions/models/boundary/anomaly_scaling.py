@@ -27,16 +27,14 @@ import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
-from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.boundary_sensitivity import validate_centered_boundary_periods
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models.components import AffineBlock, AffineConcentrationTerm
-from openghg_inversions.models.coords import add_model_data, component_coords
 
-from .mean_shift import add_boundary_mean_shift, mean_shift_outputs
+from .centered import add_centered_transport, centered_outputs
 from .contracts import BoundCenteredTransport, RawCenteredTransport
-from .outputs import BoundaryOutputs
+from .outputs import BoundaryCorrection, BoundaryOutputs
 
 ReferencePolicy = float | Literal["stored", "whole_window_transport_mean"]
 
@@ -206,58 +204,19 @@ class AnomalyScalingBoundary:
                 invalid, or a whole-window mean prior is not scalar.
             RuntimeError: If the model lacks the coordinate registry.
         """
-        if output_dim != self.observation_dim:
-            raise ValueError(f"output_dim {output_dim!r} is not the bound observation dimension {self.observation_dim!r}.")
-        # Class-owned numerical operations reject lazy values and check them once.
         choice = self.choice
-        anomaly = self.data.H_bc_anomaly
-        mass = self.data.H_bc_mass
-        reference = self.data.bc_reference
-        reference_shift = BoundCenteredTransport.reference_shift(self.data).rename(f"{prefix}bc_reference_shift")
-        fixed = anomaly.sum("bc_region", skipna=False).assign_attrs(anomaly.attrs)
-
-        # Owner-qualified coordinates plus model data, sharing the observation axis.
-        def register_boundary_data(array: xr.DataArray, name: str) -> TensorVariable:
-            """Register a boundary array with the recipe's coordinate ownership."""
-            return add_model_data(component_coords(array, owner, observation_dim=output_dim), f"{prefix}{name}")
-
-        a = register_boundary_data(anomaly, "H_bc_anomaly")
-        m = register_boundary_data(mass, "H_bc_mass")
-        register_boundary_data(reference, "bc_reference")
+        graph = add_centered_transport(self.data, output_dim=output_dim, prefix=prefix, owner=owner)
         # Save the resolved width for provenance; the prior uses the scalar directly.
-        register_boundary_data(xr.DataArray(choice.scale_sd), "bc_scale_sd")
-        state_dim = str(component_coords(mass, owner, observation_dim=output_dim).dims[1])
-        latents: tuple[TensorVariable, ...] = ()
-        blocks: list[AffineBlock] = []
-
-        # Mean shift, transported through M.
-        mean_signal = pt.zeros((mass.sizes[output_dim],))
-        if choice.mean_prior is not None:
-            mean = add_boundary_mean_shift(
-                choice.mean_prior, mass, m, by_period=choice.mean_by_period,
-                output_dim=output_dim, prefix=prefix, owner=owner,
-            )
-            mean_signal = mean.signal
-            latents += (mean.latent,)
-            blocks.append(mean.block)
+        graph.register(xr.DataArray(choice.scale_sd), "bc_scale_sd")
+        corrections = graph.mean_shift(choice.mean_prior, by_period=choice.mean_by_period)
 
         # Scalings v of the recentred anomaly, contributing A' v.
-        scaling = pm.Normal(f"{prefix}bc_scaling", mu=0.0, sigma=choice.scale_sd, dims=state_dim)
-        scaling_signal = pm.Deterministic(f"{prefix}mu_bc_scaling", pt.dot(a, scaling), dims=output_dim)
-        latents += (scaling,)
-        blocks.append(AffineBlock(anomaly, scaling))
+        scaling = pm.Normal(f"{prefix}bc_scaling", mu=0.0, sigma=choice.scale_sd, dims=graph.state_dim)
+        signal = pm.Deterministic(f"{prefix}mu_bc_scaling", pt.dot(graph.anomaly, scaling), dims=output_dim)
+        corrections.append(BoundaryCorrection(scaling, signal, AffineBlock(self.data.H_bc_anomaly, scaling), scaling))
 
         # Complete boundary contribution A' 1 + c' M 1 + m M 1 + A' v.
-        absolute_reference = register_boundary_data(
-            (fixed + reference_shift).assign_attrs(anomaly.attrs), "mu_bc_reference",
-        )
-        output = pm.Deterministic(
-            f"{prefix}mu_bc", absolute_reference + mean_signal + scaling_signal, dims=output_dim,
-        )
-        return AffineConcentrationTerm(
-            output, pt.sum(a, axis=1) + mean_signal + scaling_signal, reference_shift,
-            fixed_contribution=fixed, blocks=tuple(blocks), sampled_rvs=latents,
-        )
+        return graph.term(corrections)
 
     def outputs(self, prefix: str = "") -> BoundaryOutputs:
         """Declare the roles, units and metadata of this boundary's graph.
@@ -275,36 +234,16 @@ class AnomalyScalingBoundary:
         """
         choice = self.choice
         concentration = self.data.bc_reference.attrs["units"]
-        roles = {
-            "boundary_concentration": "mu_bc",
-            "boundary_anomaly": "H_bc_anomaly",
-            "boundary_mass": "H_bc_mass",
-            "boundary_reference": "bc_reference",
-            "boundary_reference_concentration": "mu_bc_reference",
+        reference = choice.reference
+        return centered_outputs(
+            self.data, "anomaly_scaling", mean_prior=choice.mean_prior, mean_by_period=choice.mean_by_period,
+            frequency=choice.frequency, anchor_time=choice.anchor_time,
             # The shared anomaly roles carry the dimensionless scalings v and
             # their contribution A' v through boundary reconstruction.
-            "boundary_correction_anomaly": "bc_scaling",
-            "boundary_anomaly_concentration": "mu_bc_scaling",
-        }
-        units = {name: concentration for name in (
-            "mu_bc", "H_bc_anomaly", "bc_reference", "mu_bc_reference", "mu_bc_scaling",
-        )}
-        units.update(H_bc_mass="1", bc_scaling="1", bc_scale_sd="1")
-
-        mean = mean_shift_outputs(choice.mean_prior, by_period=choice.mean_by_period, concentration=concentration)
-        roles.update(mean.roles)
-        units.update(mean.units)
-
-        reference = choice.reference
-        metadata = {
-            "boundary_formulation": "anomaly_scaling",
-            "boundary_representation": "centered-v1",
-            **mean.metadata,
-            "bc_reference_policy": reference if isinstance(reference, str) else "explicit",
-            "bc_frequency": choice.frequency,
-            "bc_anchor_time": None if choice.anchor_time is None else str(choice.anchor_time),
-        }
-        return BoundaryOutputs(roles, units, metadata).prefixed(prefix)
+            roles={"boundary_correction_anomaly": "bc_scaling", "boundary_anomaly_concentration": "mu_bc_scaling"},
+            units={"mu_bc_scaling": concentration, "bc_scaling": "1", "bc_scale_sd": "1"},
+            metadata={"bc_reference_policy": reference if isinstance(reference, str) else "explicit"},
+        ).prefixed(prefix)
 
 
 __all__ = ["AnomalyScalingBoundary", "AnomalyScalingChoice"]

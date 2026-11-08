@@ -413,13 +413,11 @@ def build_co2_o2_model(
             dims=output_dim,
         )
 
-        likelihood_mean, likelihood_observations, shift = likelihood_representation(
+        likelihood_mean, likelihood_observations = likelihood_representation(
             [ConcentrationTerm.absolute(fixed + joint_signal), *baseline_components],
             observations,
             modelled,
         )
-        if shift is not None:
-            add_model_data(shift.rename("boundary_reference_shift"), "boundary_reference_shift")
         if tau_hours is None:
             if fixed_site_amplitudes is not None or site_amplitude_prior is not None:
                 raise ValueError("Fixed-OU amplitudes require tau_hours.")

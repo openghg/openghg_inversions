@@ -20,7 +20,7 @@ from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
-from .boundary_output import restore_absolute_predictives
+from .boundary_output import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
 from .co2_o2_model import _validate_channel_offset_options, build_co2_o2_model
 from .co2_o2_preparation import Co2O2PreparedInputs
 
@@ -478,7 +478,7 @@ def annotate_co2_o2_trace(
     species/site grouping and joint likelihood/predictive scope. The trace is
     updated and returned; no graph is constructed or inference performed.
     """
-    trace.attrs["rhime_boundary_format_version"] = 1
+    trace.attrs["rhime_boundary_format_version"] = BOUNDARY_FORMAT_VERSION
     restore_absolute_predictives(trace)
     trace = _annotate_co2_o2_trace(trace, built=built)
     if "log_likelihood" in trace.children and "y" in trace["log_likelihood"]:

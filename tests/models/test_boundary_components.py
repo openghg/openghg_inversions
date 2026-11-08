@@ -336,8 +336,9 @@ def test_output_roles_and_units_declare_resolved_anomaly_state(double_precision,
     roles, units = outputs.roles, outputs.units
     assert roles["co2_boundary_concentration"] == "co2_mu_bc"
     assert roles["co2_boundary_mean_shift"] == "co2_bc_mean_shift"
-    assert ("co2_boundary_correction_anomaly" in roles) == active
-    assert ("co2_boundary_anomaly_concentration" in roles) == active
+    # Unsampled anomalies keep their roles; the graph records zeros.
+    assert roles["co2_boundary_correction_anomaly"] == "co2_bc_anomaly"
+    assert roles["co2_boundary_anomaly_concentration"] == "co2_mu_bc_anomaly"
     assert ("co2_bc_anomaly_latent" in units) == active
     assert units["co2_bc_mean_shift"] == "ppm"
     assert units["co2_bc_mean_shift_latent"] == "1"
@@ -345,8 +346,8 @@ def test_output_roles_and_units_declare_resolved_anomaly_state(double_precision,
     with registered_model() as model:
         bound.add(prefix="co2_")
     assert set(roles.values()).issubset(model.named_vars)
-    if active:
-        assert roles["co2_boundary_correction_anomaly"] == "co2_bc_anomaly"
+    if not active:
+        np.testing.assert_array_equal(model["co2_bc_anomaly"].eval(), 0.0)
 
 
 @pytest.mark.parametrize("centered", [False, True])

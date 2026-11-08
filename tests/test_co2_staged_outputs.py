@@ -71,7 +71,7 @@ def _components_fixture():
     datasets["/"] = xr.Dataset(
         attrs={
             "rhime_variable_roles": json.dumps(roles),
-            "rhime_boundary_format_version": 1,
+            "rhime_boundary_format_version": 2,
             "rhime_model_metadata": json.dumps({"recipe": "co2"}),
         }
     )

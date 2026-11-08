@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import pymc as pm
 import pytensor.tensor as pt
@@ -27,8 +27,23 @@ from openghg_inversions.models.coords import add_model_data, component_coords
 from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity, resolve_state_activity
 
 from .contracts import BoundCenteredTransport, RawCenteredTransport
-from .operands import centered_boundary_expression
 from .outputs import BoundaryOutputs
+
+
+def centered_boundary_expression(anomaly, mass, reference, state):
+    """Evaluate ``A b + c M (b - 1)`` without subtracting a large reference.
+
+    Args:
+        anomaly: Concentration anomaly design A, on observations by states.
+        mass: Dimensionless transport M on the same axes.
+        reference: Scalar concentration reference c.
+        state: Dimensionless physical boundary scaling vector b.
+
+    Returns:
+        Centered concentration, using NumPy or PyTensor operands supplied by
+        the caller. Alignment and materialization belong to the caller.
+    """
+    return anomaly @ state + reference * (mass @ (state - 1.0))
 
 
 @dataclass(frozen=True)
@@ -190,7 +205,9 @@ class MultiplicativeBoundary:
             anomaly = self.data.H_bc_anomaly
             mass = self.data.H_bc_mass
             reference = self.data.bc_reference
-            shift = BoundCenteredTransport.reference_shift(self.data).rename(f"{prefix}bc_reference_shift")
+            shift = BoundCenteredTransport.reference_shift(cast(BoundCenteredTransport, self.data)).rename(
+                f"{prefix}bc_reference_shift",
+            )
             design = (anomaly + reference * mass).assign_attrs(anomaly.attrs)
         else:
             design = self.data.H_bc
@@ -259,4 +276,4 @@ class MultiplicativeBoundary:
         return BoundaryOutputs(roles, units, metadata).prefixed(prefix)
 
 
-__all__ = ["MultiplicativeBoundary", "MultiplicativeChoice"]
+__all__ = ["MultiplicativeBoundary", "MultiplicativeChoice", "centered_boundary_expression"]
