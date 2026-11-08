@@ -41,7 +41,7 @@ from pytensor.tensor.variable import TensorVariable
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.array_ops import select_gathered_data_array
 from openghg_inversions.inversion_inputs import make_freq_indicator, make_site_indicator
-from openghg_inversions.models.coords import add_coords, add_model_data as add_model_data, component_coords
+from openghg_inversions.models.coords import add_component_data, add_coords, add_model_data as add_model_data, component_coords
 from openghg_inversions.models._flux import _namespace_sector_state_coords
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.models.state_activity import (
@@ -220,9 +220,7 @@ def apply_linear_sensitivity(
     coordinate_owner: str | None = None,
 ) -> TensorVariable:
     """Apply a prepared sensitivity using its state's explicit coordinate owner."""
-    h = add_model_data(component_coords(
-        prepared.sensitivity, coordinate_owner, observation_dim=prepared.output_dim,
-    ), data_name)
+    h = add_component_data(prepared.sensitivity, data_name, coordinate_owner, observation_dim=prepared.output_dim)
     output = pt.dot(h, state[prepared.retained_indices])
     if compute_deterministic:
         output = pm.Deterministic(output_name, output, dims=prepared.output_dim)
@@ -443,7 +441,7 @@ def likelihood_representation(
     observations, *shifts = xr.align(observations, *shifts, join="exact", copy=False)
     shift = sum(shifts[1:], start=shifts[0])
     add_model_data(shift.rename("boundary_reference_shift"), "boundary_reference_shift")
-    mean = sum((term.likelihood_contribution for term in terms[1:]), start=terms[0].likelihood_contribution)
+    mean = pt.add(*(term.likelihood_contribution for term in terms))
     return mean, observations - shift
 
 

@@ -1,4 +1,4 @@
-"""Restore absolute predictives, decode fitted boundary facts and reconstruct quantities."""
+"""Restore absolute predictives, decode saved boundaries and reconstruct boundary quantities."""
 
 from __future__ import annotations
 
@@ -53,17 +53,23 @@ def restore_absolute_predictives(trace: xr.DataTree) -> xr.DataTree:
 
 
 @dataclass(frozen=True)
-class BoundaryOutputFacts:
-    """Validated current fitted boundary names and the saved constants."""
+class SavedBoundary:
+    """One fitted boundary read back from a saved trace.
+
+    Attributes:
+        roles: Stable quantity name to saved variable name, for the quantities
+            that :func:`reconstruct_boundary` returns.
+        constants: The trace's constant data, which holds unsampled quantities.
+    """
 
     roles: Mapping[str, str]
     constants: xr.Dataset
 
 
-def decode_boundary_facts(
+def decode_saved_boundaries(
     trace: xr.DataTree, *, roles: Mapping[str, str] | None = None,
     channels: tuple[str, ...] = ("",),
-) -> dict[str, BoundaryOutputFacts]:
+) -> dict[str, SavedBoundary]:
     """Validate saved boundary facts once at the scientific replay boundary.
 
     Draws stay borrowed; no preparation, model construction or calendar
@@ -85,12 +91,12 @@ def decode_boundary_facts(
         version = trace.attrs.get("rhime_boundary_format_version")
         if isinstance(version, bool) or not isinstance(version, (int, np.integer)) or version != BOUNDARY_FORMAT_VERSION:
             raise ValueError("Unsupported saved boundary format; prepare again and repeat sampling.")
-        result[channel] = BoundaryOutputFacts(selected, constants)
+        result[channel] = SavedBoundary(selected, constants)
     return result
 
 
 def reconstruct_boundary(
-    facts: BoundaryOutputFacts, draws: xr.Dataset,
+    facts: SavedBoundary, draws: xr.Dataset,
 ) -> dict[str, xr.DataArray]:
     """Return stable scientific quantities from saved draws and constants.
 

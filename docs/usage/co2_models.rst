@@ -193,11 +193,11 @@ choice have no boundary term. The configuration adapters produce the same
 choices from ``[model.boundary]`` and ``[channels.<name>.boundary]``.
 
 The runner binds the choice once with ``choice.bind(observations,
-transport)``, where transport is the prepared ``H_bc`` or a
-:class:`~openghg_inversions.models.boundary.RawCenteredTransport` Dataset.
+sensitivity)``, where the sensitivity is the prepared ``H_bc`` or a
+:class:`~openghg_inversions.models.boundary.RawCenteredSensitivity` Dataset.
 Binding produces
-:class:`~openghg_inversions.models.boundary.BoundCenteredTransport` (extended
-to :class:`~openghg_inversions.models.boundary.BoundAdditiveTransport` for
+:class:`~openghg_inversions.models.boundary.BoundCenteredSensitivity` (extended
+to :class:`~openghg_inversions.models.boundary.BoundAdditiveSensitivity` for
 weighted additive anomalies); these are static annotations on ordinary
 Datasets carrying structural guarantees. Numerical requirements are checked
 once by the explicit reference-shift and weight-normalization operations after
@@ -234,13 +234,13 @@ only its observation rows. The full boundary-state support and resolved prior
 remain on that record::
 
     from dataclasses import replace
-    from openghg_inversions.models.boundary import AdditiveChoice, RawCenteredTransport
+    from openghg_inversions.models.boundary import AdditiveChoice, RawCenteredSensitivity, validate_centering_weights
 
     choice = AdditiveChoice(mean_prior, anomaly_scale, frequency="monthly")
-    transport = RawCenteredTransport.validate(raw_operands)
-    RawCenteredTransport.validate_weights(weights)
-    transport = RawCenteredTransport.with_centering_weights(transport, weights)
-    bound = choice.bind(observations, transport)
+    sensitivity = RawCenteredSensitivity.validate(raw_operands)
+    validate_centering_weights(weights)
+    sensitivity = RawCenteredSensitivity.with_centering_weights(sensitivity, weights)
+    bound = choice.bind(observations, sensitivity)
     subset = replace(bound, data=bound.data.isel(nmeasure=selected_rows))
 
 Pass ``subset`` as the builder's ``boundary`` alongside the same observation

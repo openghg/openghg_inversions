@@ -51,7 +51,7 @@ def _forbid_compute(*_args, **_kwargs):
 
 def test_contract_modules_are_discovered():
     """Discovery imports at least the boundary contracts without an import list."""
-    assert "openghg_inversions.models.boundary.contracts.RawCenteredTransport" in CONTRACTS
+    assert "openghg_inversions.models.boundary.contracts.RawCenteredSensitivity" in CONTRACTS
 
 
 def test_every_declared_contract_supplies_examples():

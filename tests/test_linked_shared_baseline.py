@@ -74,11 +74,11 @@ def case(mode="multiplicative", cross=0.0, constant_outer=False, inputs=None):
         calibration = calibrate_biosphere_prior(prior, biosphere=sampled, weights=weights,
                                                reference=reference, residual_sd_multiplier=0.5)
     if inputs is not None:
-        inputs.update(observations=native, fixed_prior_contribution=fixed, boundary_transport=transport)
+        inputs.update(observations=native, fixed_prior_contribution=fixed, boundary_sensitivity=transport)
     p = bind_linked_shared_baseline(
         choices(mode), native,
         co2_sensitivity=raw["co2"], o2_sensitivity=raw["o2"], retained_prior=prior,
-        fixed_prior_contribution=fixed, boundary_transport=transport,
+        fixed_prior_contribution=fixed, boundary_sensitivity=transport,
         outer=outer, sampled_outer=sampled, calibrated_prior=calibration,
     )
     return p, base, raw

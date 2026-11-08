@@ -128,8 +128,17 @@ fluxes; a multisector component can combine several pollution contributions.
 Prefer a normal function. Its name, options, inputs, and result should explain
 the scientific concept. A composite can call nearby smaller functions; keep a
 model-specific composite beside its recipe until another production recipe
-uses the same equations and meanings. Inheritance, semantic graphs, and
-manifests are unnecessary prerequisites for authoring a component.
+uses the same equations and meanings. Semantic graphs and manifests are
+unnecessary prerequisites for authoring a component.
+
+Some components have alternatives that share a lifecycle: options resolved
+before any data, bound to one fit's data, added to a model, and declared for
+saved outputs. Represent each alternative as small frozen dataclasses behind
+structural protocols, as the boundary families do; a recipe then calls the
+same methods whichever alternative it receives. A shared base class is
+appropriate when alternatives handle their data identically. Keep each
+alternative's recipe in its own ``add``: the base provides the steps, not the
+order.
 
 Return the smallest result the consumer needs. An observed tensor can be the
 whole result of a likelihood. A small dataclass can join related scientific
@@ -158,6 +167,13 @@ or a general sampler protocol. Fixed OU, IID site sigma, and global sigma are
 different scientific targets even when they reuse numerical kernels. Use a
 stock PyMC calculation as the correctness reference for an optimized route.
 
+Build model graphs from array operations. A Python loop or ``sum`` over a
+fixed handful of terms unrolls into a few graph nodes and is fine; prefer one
+n-ary ``pt.add`` to a chain. A loop whose length grows with the data, such as
+one per site, period or state, belongs in a matrix product or a
+concatenation, as the per-period boundary mean shift uses an indicator
+matrix rather than one term per period.
+
 Preserve labels until a named numerical boundary. Shared alignment values such
 as ``SigmaAlignment`` keep site/period interpretation close to the mismatch
 component; repeated factorization or parallel lists can hide that meaning.
@@ -178,16 +194,19 @@ it protects a scientific policy or gives a materially better boundary failure.
 Boundary component extension check
 ----------------------------------
 
-A boundary family is a *choice*, the prior specification before binding, and a
-*bound* record, both small frozen dataclasses in one module under
-``models/boundary/``. The configuration
-adapter resolves user options into a choice (``MultiplicativeChoice`` or
-``AdditiveChoice``); it never touches arrays. Runners take that one choice (a
-channel mapping for linked recipes) and call ``choice.bind(observations,
-transport)`` once per channel and fit, where transport is the prepared absolute
-``H_bc`` or a ``RawCenteredTransport`` Dataset. The bound record pairs the choice with
-borrowed labelled transport on the fit's rows and boundary periods. Reusable raw
-transport keeps its spatial meaning independently of fit periods.
+A boundary family is a *choice*, one resolved selection of the user's options
+before binding, and a *bound* record, both small frozen dataclasses in one
+module under ``models/boundary/``. The configuration adapter resolves user
+options such as ``bc_freq`` and ``bc_prior`` into a choice
+(``MultiplicativeChoice`` or ``AdditiveChoice``); it never touches arrays.
+Runners take that one choice (a channel mapping for linked recipes) and call
+``choice.bind(observations, sensitivity)`` once per channel and fit, where the
+sensitivity is the prepared absolute ``H_bc`` or a ``RawCenteredSensitivity``
+Dataset. The bound record pairs the choice with borrowed labelled sensitivity
+on the fit's rows and boundary periods. Reusable raw sensitivity keeps its
+spatial meaning independently of fit periods. The same options, choice and
+bound sequence suits other components whose options define a prior over
+data-dependent states.
 
 Recipes materialize the bound record with their other inputs in one
 ``dask.compute`` over :func:`~openghg_inversions.array_ops.to_dense_tree`, which
@@ -204,7 +223,7 @@ after binding the boundary and selecting the model inputs:
    )
 
 Keep this computation joint: a boundary-only materialization method could
-execute transport graphs again when the other model inputs use them. The eager
+execute sensitivity graphs again when the other model inputs use them. The eager
 check in ``boundary.add`` enforces the materialized-data precondition. Inside the
 registered model, ``boundary.add(...)`` returns an ``AffineConcentrationTerm``,
 a ``ConcentrationTerm`` subclass: ordinary recipes use it as a term, and cached
@@ -217,8 +236,12 @@ equations. Offsets remain separate components; the offset-confounding warning
 inspects every affine block for a constant unit response, so it needs no
 knowledge of boundary families.
 
-The additive recipe composes its mean shift, anomalies and complete boundary
-concentration in that order. Factor construction and sampling share the same
+The centered families inherit ``CenteredBoundary``: ``add`` registers the
+sensitivity, adds the family's corrections in scientific order and finishes
+the term with the shared helpers, while ``outputs`` extends the shared
+declarations. The additive recipe composes its mean shift, anomalies and
+complete boundary concentration in that order, and passes their summed state
+correction through ``M`` once. Factor construction and sampling share the same
 selection of contrast basis or direct state sampling.
 
 The scalar ``bc_anomaly_scale`` saved in model data records the resolved prior
@@ -228,7 +251,7 @@ Updating these saved scalars does not update the distributions' widths.
 
 Validation is not repeated along this path. Preparation and artifact loading
 own units, labels and layout; ``bind`` owns calendar and row alignment and the
-single float64 check for centered transport; ``add`` checks only values that
+single float64 check for centered sensitivity; ``add`` checks only values that
 become available once lazy payloads are materialized.
 
 AST inspection of the concrete builder signatures gives:
@@ -267,8 +290,9 @@ one parameter relative to the boundary-only counts.
 A dry-run extension with a new supported boundary prior reaches these owners:
 
 * A new module under ``models/boundary/``: define the choice (with ``bind``) and
-  the bound record (with ``add`` and ``outputs``). ``BoundaryChoice`` and
-  ``Boundary`` are structural protocols, so no shared list of families changes.
+  the bound record (with ``add`` and ``outputs``), inheriting
+  ``CenteredBoundary`` for a centered family. ``Choice`` and ``Bound`` are
+  structural protocols, so no shared list of families changes.
 * ``rhime/co2/configuration.py`` and, for channel-specific syntax,
   ``co2_o2_configuration.py``: resolve user selections into component inputs.
 * Scientific component tests and the affected configuration tests: establish

@@ -15,7 +15,7 @@ from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.operators import BucketBasisOperator
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.rhime.co2.co2_o2_model import _gather_co2_o2_sensitivity
-from openghg_inversions.rhime.co2.boundary_output import decode_boundary_facts, reconstruct_boundary
+from openghg_inversions.postprocessing.boundary_outputs import decode_saved_boundaries, reconstruct_boundary
 from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
@@ -101,7 +101,7 @@ def reconstruct_co2_o2_concentrations(
         prior_scale = _role(trace, "flux_scale", "prior")
         sensitivity, prior_scale = xr.align(sensitivity, prior_scale, join="exact", copy=False)
         scales_by_group["prior"] = prior_scale
-    boundary_facts = decode_boundary_facts(trace, roles=roles, channels=("co2", "o2"))
+    boundary_facts = decode_saved_boundaries(trace, roles=roles, channels=("co2", "o2"))
     boundary_by_group = {
         group: {channel: reconstruct_boundary(facts, trace_group(trace, group))
                 for channel, facts in boundary_facts.items()}

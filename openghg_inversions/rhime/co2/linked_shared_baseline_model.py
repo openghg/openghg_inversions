@@ -15,8 +15,8 @@ from dask import compute
 from openghg_inversions.array_ops import select_gathered_data_array, to_dense, to_dense_tree
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.additive_sigma import add_additive_sigma_likelihood
-from openghg_inversions.models.boundary import BoundaryOutputs, require_centered_precision
-from openghg_inversions.rhime.co2.boundary_output import BOUNDARY_FORMAT_VERSION
+from openghg_inversions.models.boundary import Outputs, require_centered_precision
+from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION
 from openghg_inversions.models.components import (
     AffineBlock, AffineConcentrationTerm, ConcentrationTerm,
     _add_prepared_correlated_lognormal_state_with_activity,
@@ -48,7 +48,7 @@ from .shared_baseline_model import (
 )
 
 
-def _linked_outputs(baseline: Mapping[str, SharedBaseline]) -> BoundaryOutputs:
+def _linked_outputs(baseline: Mapping[str, SharedBaseline]) -> Outputs:
     """Channel-prefixed level roles and units, with per-channel metadata."""
     roles: dict[str, str] = {}
     units: dict[str, str] = {}
@@ -61,7 +61,7 @@ def _linked_outputs(baseline: Mapping[str, SharedBaseline]) -> BoundaryOutputs:
         roles.update(outputs.roles)
         units.update(outputs.units)
         metadata["boundary_metadata"][channel] = outputs.metadata
-    return BoundaryOutputs(roles, units, metadata)
+    return Outputs(roles, units, metadata)
 
 
 def _linked_inputs(
