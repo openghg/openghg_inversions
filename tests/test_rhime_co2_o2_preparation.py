@@ -716,7 +716,7 @@ def test_linked_save_computes_shared_payloads_together(tmp_path: Path, suffix: s
     )
     tree = prepared.to_datatree()
     assert executions == []
-    assert tree.attrs["schema_version"] == 4
+    assert tree.attrs["schema_version"] == 5
     path = tmp_path / f"shared{suffix}"
     prepared.save(path)
     assert executions == ["payload"]
@@ -966,16 +966,16 @@ def test_centered_mass_and_nonseparable_weights_survive_prepared_roundtrip(tmp_p
         **inputs, boundary_operands={"o2": operands}, bc_centering_weights={"o2": weights},
     )
     assert prepared.boundary_operands["o2"].H_bc_mass.data is mass.data
-    assert prepared.bc_centering_weights["o2"].data is weights.data
+    assert prepared.boundary_operands["o2"].bc_centering_weights.data is weights.data
     path = tmp_path / f"linked-weighted-boundary{suffix}"
     prepared.save(path)
     loaded = Co2O2PreparedInputs.load(path)
     xr.testing.assert_identical(loaded.boundary_operands["o2"].H_bc_mass, mass.rename("H_bc_mass").compute())
-    xr.testing.assert_identical(loaded.bc_centering_weights["o2"], weights)
+    xr.testing.assert_identical(loaded.boundary_operands["o2"].bc_centering_weights, weights)
     # The raw spatial state keeps the unobserved curtain independently of fit periods.
     assert loaded.boundary_operands["o2"].sizes["bc_region"] == 2
     np.testing.assert_array_equal(loaded.boundary_operands["o2"].H_bc_mass.sel(bc_region="east"), 0.)
-    assert "bc_period" not in loaded.boundary_operands["o2"].dims
+    assert "bc_period" not in loaded.boundary_operands["o2"].H_bc_mass.dims
     assert isinstance(prepared.boundary_operands["o2"].H_bc_mass.data, da.Array)
 
 

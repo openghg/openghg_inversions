@@ -11,7 +11,7 @@ from collections import defaultdict
 from collections.abc import Collection, Mapping
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import xarray as xr
 from dask.array import Array
@@ -24,7 +24,7 @@ from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions.array_ops import to_dense_tree
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import PreparedInputs
-from openghg_inversions.models.boundary import Boundary, BoundaryChoice, CenteredOperands, MultiplicativeChoice
+from openghg_inversions.models.boundary import Boundary, BoundaryChoice, MultiplicativeChoice, RawCenteredTransport
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.models.scalar_sigma import (
@@ -52,7 +52,7 @@ from openghg_inversions.rhime.materialization import (
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.sigma import SigmaAlignment
 
-from .boundary_output import restore_absolute_predictives
+from .boundary_output import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
 from .co2_model import _normalise_offset_args, build_co2_model
 from .co2_preparation import Co2PreparedInputs
 
@@ -97,7 +97,7 @@ def annotate_co2_trace(
     Returns:
         The annotated trace.
     """
-    trace.attrs["rhime_boundary_format_version"] = 1
+    trace.attrs["rhime_boundary_format_version"] = BOUNDARY_FORMAT_VERSION
     restore_absolute_predictives(trace)
     trace.attrs["rhime_priors"] = json.dumps(prior_records(built.model))
     roles = dict(built.output_contract.variable_roles)
@@ -308,17 +308,19 @@ def describe_co2_likelihood_kwargs(value: Any) -> Any:
 
 
 def _bind_co2_boundary(
-    inputs: xr.Dataset, boundary: BoundaryChoice[CenteredOperands] | None,
+    inputs: xr.Dataset, boundary: BoundaryChoice | None,
 ) -> Boundary | None:
     """Bind a boundary choice once to the prepared absolute or centered transport.
 
     The prepared dataset identifies its representation here; absolute ``H_bc``
-    is bound only by choices that accept it.
+    is bound only by choices that accept it. CO2 prepared inputs establish
+    :class:`RawCenteredTransport` for centered inputs when constructed or
+    loaded, so the dataset is annotated here without validating it again.
     """
     if boundary is None:
         return None
     if "H_bc_anomaly" in inputs:
-        return boundary.bind(inputs["mf"], CenteredOperands.from_dataset(inputs))
+        return boundary.bind(inputs["mf"], cast(RawCenteredTransport, inputs))
     if "H_bc" not in inputs:
         raise ValueError("A boundary choice requires prepared H_bc or centered boundary operands.")
     if not isinstance(boundary, MultiplicativeChoice):
@@ -347,7 +349,7 @@ def materialize_co2_inputs(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     no_model_error: bool = False,
-    boundary: BoundaryChoice[CenteredOperands] | None = None,
+    boundary: BoundaryChoice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> tuple[xr.Dataset, dict[str, PriorArgs], Boundary | None]:

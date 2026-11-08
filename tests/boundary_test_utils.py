@@ -6,10 +6,10 @@ and bind it, so builder tests exercise the same choice -> bind -> add route as
 the runners.
 """
 
-from dataclasses import replace
+import xarray as xr
 
 from openghg_inversions.array_ops import select_gathered_data_array
-from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands, MultiplicativeChoice
+from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeChoice, RawCenteredTransport
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 
 
@@ -24,6 +24,21 @@ BOUNDARY_OPTIONS = (
     "bc_centering_weights",
     "bc_anomaly_scale",
 )
+
+
+def raw_transport(dataset, weights=None):
+    """Validate prepared centered operands, optionally adding raw centering weights."""
+    data = dataset if weights is None else dataset.assign(bc_centering_weights=weights)
+    return RawCenteredTransport.validate(data)
+
+
+def centered_transport(anomaly, mass, reference, weights=None):
+    """Assemble and validate raw centered transport from its three operands."""
+    data = xr.Dataset(
+        {"H_bc_anomaly": anomaly, "H_bc_mass": mass, "bc_reference": reference},
+        attrs={"boundary_representation": "centered-v1"},
+    )
+    return raw_transport(data, weights=weights)
 
 
 def boundary_choice(options, channel=None):
@@ -48,9 +63,7 @@ def boundary_transport(options, channel=None):
 
     operands = get("boundary_operands")
     if operands is not None:
-        weights = get("bc_centering_weights")
-        transport = CenteredOperands.from_dataset(operands)
-        return transport if weights is None else replace(transport, weights=weights)
+        return raw_transport(operands, weights=get("bc_centering_weights"))
     sensitivity = get("boundary_sensitivity")
     if sensitivity is None:
         raise ValueError("A boundary choice requires boundary_sensitivity or centered operands.")

@@ -39,7 +39,7 @@ from openghg_inversions.models.boundary import (
     Boundary,
     BoundaryChoice,
     BoundaryOutputs,
-    CenteredOperands,
+    RawCenteredTransport,
     MultiplicativeBoundary,
     MultiplicativeChoice,
 )
@@ -110,7 +110,7 @@ __all__ = [
     "Boundary",
     "BoundaryChoice",
     "BoundaryOutputs",
-    "CenteredOperands",
+    "RawCenteredTransport",
     "MultiplicativeBoundary",
     "MultiplicativeChoice",
     "ConcentrationTerm",

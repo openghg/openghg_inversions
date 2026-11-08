@@ -171,6 +171,39 @@ def _pad_channel_design(
     return native.reindex_like(observations, fill_value=0).transpose(observations.dims[0], *coefficient_dims)
 
 
+def pad_linked_boundary(bound: Boundary, observations: xr.DataArray, channel: str) -> Boundary:
+    """Embed one channel's bound boundary rows on the joint linked observation axis.
+
+    Variables whose first dimension is the bound observation dimension are
+    selected by the channel's native labels and zero-padded onto the joint
+    rows, keeping their trailing state dimensions, labels and attributes.
+    State-only and scalar variables, such as ``bc_centering_weights`` and
+    ``bc_reference``, are kept unchanged rather than treated as rows. The
+    result therefore preserves the bound record's contract (for centered
+    families :class:`~openghg_inversions.models.boundary.BoundCenteredTransport`
+    or its additive extension), with the joint observation dimension first;
+    padded rows contribute zero transport. Values stay borrowed.
+
+    Args:
+        bound: A boundary bound to the channel's native observation rows.
+        observations: Joint linked observations with a ``species`` level in
+            their observation MultiIndex.
+        channel: Channel label in the ``species`` level.
+
+    Returns:
+        The same family's record with padded data.
+    """
+    native_dim = bound.observation_dim
+    padded = xr.Dataset(
+        {
+            name: _pad_channel_design(value, observations, channel) if value.dims[:1] == (native_dim,) else value
+            for name, value in bound.data.data_vars.items()
+        },
+        attrs=bound.data.attrs,
+    )
+    return replace(bound, data=padded)
+
+
 def _add_co2_o2_baseline_components(
     *,
     observations: xr.DataArray,
@@ -196,13 +229,9 @@ def _add_co2_o2_baseline_components(
         bound = (boundary or {}).get(channel)
         boundary_result = None
         if bound is not None:
-            native_dim = str(sensitivity.dims[0])
-            padded = xr.Dataset({
-                name: _pad_channel_design(value, observations, channel)
-                if native_dim in value.dims else value
-                for name, value in bound.data.data_vars.items()
-            })
-            boundary_result = replace(bound, data=padded).add(output_dim=output_dim, prefix=f"{channel}_", owner=channel)
+            boundary_result = pad_linked_boundary(bound, observations, channel).add(
+                output_dim=output_dim, prefix=f"{channel}_", owner=channel,
+            )
             components.append(boundary_result)
             boundaries.append(boundary_result.output)
         channel_offset_prior = (offset_prior or {}).get(channel)
@@ -391,13 +420,11 @@ def build_co2_o2_model(
             dims=output_dim,
         )
 
-        likelihood_mean, likelihood_observations, shift = likelihood_representation(
+        likelihood_mean, likelihood_observations = likelihood_representation(
             [ConcentrationTerm.absolute(fixed + joint_signal), *baseline_components],
             observations,
             modelled,
         )
-        if shift is not None:
-            add_model_data(shift.rename("boundary_reference_shift"), "boundary_reference_shift")
         if tau_hours is None:
             if fixed_site_amplitudes is not None or site_amplitude_prior is not None:
                 raise ValueError("Fixed-OU amplitudes require tau_hours.")

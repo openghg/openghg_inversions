@@ -12,8 +12,9 @@ import xarray as xr
 
 from openghg_inversions.array_ops import select_gathered_data_array
 from openghg_inversions.biosphere_prior import calibrate_biosphere_prior
-from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice, CenteredOperands
+from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice
 from openghg_inversions.models.linked_shared_baseline import bind_linked_shared_baseline
+from boundary_test_utils import centered_transport
 from openghg_inversions.models.shared_baseline import SharedBaselineChoice
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
@@ -88,7 +89,7 @@ def review_case(mode="multiplicative", method="A", *, partition_size=None, bound
                              for j in range(partition_size)], axis=1)
             coords["bc_region"] = np.arange(partition_size)
             anomaly = mass * np.linspace(-1e-9, 2e-9, partition_size)
-        transport = CenteredOperands(
+        transport = centered_transport(
             xr.DataArray(anomaly, dims=("nmeasure", "bc_region"), coords=coords, attrs={"units": "ppm"}),
             xr.DataArray(mass, dims=("nmeasure", "bc_region"), coords=coords, attrs={"units": "1"}),
             xr.DataArray(reference, attrs={"units": "ppm"}),
@@ -101,7 +102,7 @@ def review_case(mode="multiplicative", method="A", *, partition_size=None, bound
         rows = native.rename({row: "nmeasure"})
         factor = None if boundary is None else boundary.bind(rows, transport).anomaly_factor()
         corrections[channel] = xr.Dataset({
-            "bc_prescribed_centered": transport.anomaly.sum("bc_region"),
+            "bc_prescribed_centered": transport.H_bc_anomaly.sum("bc_region"),
             "bc_pattern_design": (
                 xr.DataArray(np.empty((native.size, 0)), dims=("nmeasure", "bc_pattern_term"))
                 if factor is None else factor.transpose("nmeasure", ...).drop_vars(
@@ -181,7 +182,7 @@ def test_independent_mean_density_and_cached_state_gradients(mode, partition_siz
         anomaly = bc[channel].bc_prescribed_centered.values
         mean = mean + anomaly
         if partition_size is not None:
-            mean = mean + float(native_bc[channel].reference) * (native_bc[channel].mass.sum("bc_region").values - 1)
+            mean = mean + float(native_bc[channel].bc_reference) * (native_bc[channel].H_bc_mass.sum("bc_region").values - 1)
         design = bc[channel].bc_pattern_design.values
         centered = design - weights @ design
         mean = mean + ordinary[f"{channel}_bc_mean_shift"]
@@ -579,7 +580,7 @@ def test_co2_channel_marginal_matches_existing_co2_shared_recipe():
 def test_normalized_native_partition_roundoff_preserves_o2_oracle(partition_size):
     native = {}
     review_case(partition_size=partition_size, boundary_inputs=native)
-    roundoff = native["o2"].mass.sum("bc_region").values - 1
+    roundoff = native["o2"].H_bc_mass.sum("bc_region").values - 1
     assert np.any(roundoff != 0)
     assert np.max(abs(roundoff)) <= np.finfo(float).eps
     # At 209300 ppm this native partition has a 2.324e-11 ppm closure residual.

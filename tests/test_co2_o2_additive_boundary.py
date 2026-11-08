@@ -11,14 +11,17 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.models import get_coord_registry, restore_inferencedata_coords
-from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands, MultiplicativeChoice
+from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeChoice
 from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
 from openghg_inversions.rhime.co2.co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
 from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2, annotate_co2_o2_trace
+from openghg_inversions.rhime.co2.co2_o2_preparation import _raw_centered_channels
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from test_co2_o2_fixed_ou import _prepared, _kwargs
 from openghg_inversions.array_ops import select_gathered_data_array
+from openghg_inversions.models.boundary import BoundCenteredTransport
 from boundary_test_utils import boundary_choice, bound_linked_model_arguments
+from boundary_test_utils import raw_transport
 
 
 @pytest.fixture(autouse=True)
@@ -62,7 +65,7 @@ def _additive_inputs(prepared=None):
             ragged_dim="channel_observation",
             stack_dim="observation",
         ).rename({"observation": dim})
-        bound = CenteredOperands.from_dataset(operands[channel]).bind(native_observations)
+        bound = BoundCenteredTransport.bind(raw_transport(operands[channel]), native_observations)
         channel_weights = xr.DataArray(
             weights.values, dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"}
         )
@@ -144,8 +147,7 @@ def test_linked_additive_inferred_ou_cache_matches_stock_density_and_gradients(s
             if scale > 0:
                 point[name] = np.array([0.01, -0.02])
             else:
-                assert f"{channel}_bc_anomaly" not in model
-                assert f"{channel}_mu_bc_anomaly" not in model
+                np.testing.assert_array_equal(model[f"{channel}_mu_bc_anomaly"].eval(), 0.0)
         sigma = np.array([0.3, 0.4, 0.5])
         point["ou_site_amplitude_log__"] = np.log(sigma)
         cached.shared_cache.update(cached.target.refresh(sigma))
@@ -183,8 +185,8 @@ def test_linked_additive_runner_restores_absolute_predictives_and_annotations(tm
         kwargs["bc_anomaly_scale"]["o2"] = o2_anomaly_scale
         prepared = _prepared()
         prepared = replace(
-            prepared, observations=kwargs["observations"], boundary_operands=kwargs["boundary_operands"],
-            bc_centering_weights=kwargs["bc_centering_weights"],
+            prepared, observations=kwargs["observations"],
+            boundary_operands=_raw_centered_channels(kwargs["boundary_operands"], kwargs["bc_centering_weights"]),
         )
         built = build_rhime_co2_o2(
             prepared_inputs=prepared, independent_error_sd=kwargs["independent_error_sd"],
@@ -217,9 +219,8 @@ def test_linked_additive_runner_restores_absolute_predictives_and_annotations(tm
         trace = load_trace(path)
         assert ("o2_bc_anomaly_latent" in trace.prior) == (o2_anomaly_scale > 0)
         if o2_anomaly_scale == 0:
-            assert "o2_bc_anomaly" not in trace.prior
-            assert "o2_mu_bc_anomaly" not in trace.prior
-            assert "o2_boundary_correction_anomaly" not in roles
+            np.testing.assert_array_equal(trace.prior.o2_bc_anomaly, 0.0)
+            np.testing.assert_array_equal(trace.prior.o2_mu_bc_anomaly, 0.0)
         trace["posterior"] = trace["prior"].dataset.copy(deep=False)
         result = make_co2_o2_output(
             prepared=prepared, trace=trace, start_date="2021-01-01", end_date="2021-01-02", domain="EUROPE"
@@ -284,9 +285,7 @@ def test_standalone_co2_matches_linked_co2_boundary_equation_and_marginal_densit
                 kwargs["bc_mean_shift_prior"]["co2"], kwargs["bc_anomaly_scale"]["co2"],
             ).bind(
                 observations,
-                replace(
-                    CenteredOperands.from_dataset(kwargs["boundary_operands"]["co2"]),
-                    weights=kwargs["bc_centering_weights"]["co2"],
+                raw_transport(kwargs["boundary_operands"]["co2"], weights=kwargs["bc_centering_weights"]["co2"],
                 ),
             ),
         )
@@ -335,10 +334,7 @@ def test_public_linked_runners_forward_prepared_additive_boundary_options(monkey
         prepared = replace(
             _prepared(),
             observations=kwargs["observations"],
-            boundary_operands=kwargs["boundary_operands"],
-            bc_centering_weights={
-                channel: kwargs["bc_centering_weights"][channel] for channel in ("co2", "o2")
-            },
+            boundary_operands=_raw_centered_channels(kwargs["boundary_operands"], kwargs["bc_centering_weights"]),
         )
         options = {"boundary": _linked_choices(kwargs)}
 
@@ -368,10 +364,9 @@ def test_public_linked_runners_forward_prepared_additive_boundary_options(monkey
             assert trace.constant_data[f"{channel}_bc_anomaly_scale"].item() == scale
             assert (f"{channel}_bc_anomaly_latent" in trace.prior) == (scale > 0)
             if scale == 0:
-                assert f"{channel}_bc_anomaly" not in trace.prior
-                assert f"{channel}_mu_bc_anomaly" not in trace.prior
+                np.testing.assert_array_equal(trace.prior[f"{channel}_mu_bc_anomaly"], 0.0)
         roles = json.loads(trace.attrs["rhime_variable_roles"])
-        assert roles["o2_boundary_anomaly_scale"] == "o2_bc_anomaly_scale"
+        assert roles["o2_boundary_correction_anomaly"] == "o2_bc_anomaly"
         assert "o2_boundary_scale" not in roles
 
 
@@ -439,8 +434,7 @@ def test_linked_runners_do_not_compute_passive_additive_arrays(monkeypatch, cach
             _prepared(),
             observations=kwargs["observations"],
             boundary_sensitivity=kwargs["boundary_sensitivity"],
-            boundary_operands=kwargs["boundary_operands"],
-            bc_centering_weights=weights,
+            boundary_operands=_raw_centered_channels(kwargs["boundary_operands"], weights),
         )
         options = {"boundary": boundary}
 
@@ -494,7 +488,7 @@ def test_mixed_centered_boundary_ou_density_gradients_and_absolute_closure(o2_an
             observations = xr.DataArray(
                 np.zeros(sensitivity.sizes[dim]), dims=dim, coords={dim: sensitivity[dim]}
             )
-            bound = CenteredOperands.from_dataset(operands).bind(observations)
+            bound = BoundCenteredTransport.bind(raw_transport(operands), observations)
             if channel == "co2":
                 absolute_kwargs["boundary_sensitivity"][channel] = (
                     bound.H_bc_anomaly + bound.bc_reference * bound.H_bc_mass
@@ -561,8 +555,9 @@ def test_public_linked_ou_restores_mixed_centered_boundary_predictions(monkeypat
         prepared = replace(
             _prepared(),
             observations=kwargs["observations"],
-            boundary_operands=kwargs["boundary_operands"],
-            bc_centering_weights={"o2": kwargs["bc_centering_weights"]["o2"]},
+            boundary_operands=_raw_centered_channels(
+                kwargs["boundary_operands"], {"o2": kwargs["bc_centering_weights"]["o2"]},
+            ),
         )
         options = dict(
             boundary=_linked_choices(kwargs),

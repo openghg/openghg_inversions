@@ -16,8 +16,8 @@ def _trace() -> xr.DataTree:
         "boundary_mean_shift": "bc_mean_shift",
         "boundary_mean_shift_concentration": "mu_bc_mean_shift",
         "boundary_reference_concentration": "mu_bc_reference",
-        "boundary_anomaly_scale": "bc_anomaly_scale",
-        "boundary_centering_weights": "bc_centering_weights",
+        "boundary_correction_anomaly": "bc_anomaly",
+        "boundary_anomaly_concentration": "mu_bc_anomaly",
     }
     groups = {}
     for group, count in (("prior", 7), ("posterior", 3)):
@@ -27,21 +27,18 @@ def _trace() -> xr.DataTree:
         groups[group] = xr.Dataset({
             "bc_mean_shift": mean,
             "bc_correction": correction,
+            "bc_anomaly": xr.zeros_like(correction),
             "mu_bc_mean_shift": mean * response,
+            "mu_bc_anomaly": xr.zeros_like(mean * response),
             "mu_bc": 400.0 + mean * response,
         })
-    groups["constant_data"] = xr.Dataset({
-        "bc_anomaly_scale": xr.DataArray(0.0),
-        "bc_centering_weights": xr.DataArray([2.0, 3.0], dims="bc_region",
-                                             coords={"bc_region": ["observed", "unobserved"]}),
-        "mu_bc_reference": xr.DataArray([400.0, 400.0], dims="nmeasure"),
-    })
+    groups["constant_data"] = xr.Dataset({"mu_bc_reference": xr.DataArray([400.0, 400.0], dims="nmeasure")})
     trace = xr.DataTree.from_dict(groups)
-    trace.attrs.update(rhime_variable_roles=json.dumps(roles), rhime_boundary_format_version=1)
+    trace.attrs.update(rhime_variable_roles=json.dumps(roles), rhime_boundary_format_version=2)
     return trace
 
 
-def test_mean_only_replay_restores_zero_anomalies_for_unequal_sample_sizes() -> None:
+def test_mean_only_replay_reads_recorded_zero_anomalies_for_unequal_sample_sizes() -> None:
     trace = _trace()
     original = trace.copy(deep=True)
     facts = decode_boundary_facts(trace)[""]
@@ -54,48 +51,20 @@ def test_mean_only_replay_restores_zero_anomalies_for_unequal_sample_sizes() -> 
     xr.testing.assert_identical(trace, original)
 
 
-def test_active_anomaly_facts_cannot_replay_mean_only_draws() -> None:
+@pytest.mark.parametrize("version", [None, 1])
+def test_old_boundary_posterior_fails_with_prepare_again(version) -> None:
     trace = _trace()
-    trace["constant_data"]["bc_anomaly_scale"] = xr.DataArray(0.2)
-    with pytest.raises(ValueError, match="Active boundary anomalies require saved"):
-        reconstruct_boundary(decode_boundary_facts(trace)[""], trace.posterior.to_dataset())
-
-
-def test_old_boundary_posterior_fails_with_prepare_again() -> None:
-    trace = _trace()
-    del trace.attrs["rhime_boundary_format_version"]
+    if version is None:
+        del trace.attrs["rhime_boundary_format_version"]
+    else:
+        trace.attrs["rhime_boundary_format_version"] = version
     with pytest.raises(ValueError, match="prepare again"):
         decode_boundary_facts(trace)
 
 
-def test_zero_scale_rejects_contradictory_saved_anomaly_roles() -> None:
-    trace = _trace()
-    roles = json.loads(trace.attrs["rhime_variable_roles"])
-    roles["boundary_correction_anomaly"] = "bc_anomaly"
-    trace.attrs["rhime_variable_roles"] = json.dumps(roles)
-    with pytest.raises(ValueError, match="zero boundary anomaly policy conflicts"):
-        decode_boundary_facts(trace)
-
-
-@pytest.mark.parametrize("missing", ["boundary_anomaly_scale", "boundary_centering_weights"])
-def test_weighted_policy_requires_both_explicit_roles(missing: str) -> None:
-    trace = _trace()
-    roles = json.loads(trace.attrs["rhime_variable_roles"])
-    del roles[missing]
-    trace.attrs["rhime_variable_roles"] = json.dumps(roles)
-    with pytest.raises(ValueError, match="both scale and centering-weight roles"):
-        decode_boundary_facts(trace)
-
-
 @pytest.mark.parametrize("missing", ["bc_anomaly", "mu_bc_anomaly"])
-def test_declared_active_weighted_anomalies_require_saved_draws(missing: str) -> None:
+def test_declared_anomalies_require_saved_draws(missing: str) -> None:
     trace = _trace()
-    trace["constant_data"]["bc_anomaly_scale"] = xr.DataArray(0.2)
-    roles = json.loads(trace.attrs["rhime_variable_roles"])
-    roles.update(boundary_correction_anomaly="bc_anomaly", boundary_anomaly_concentration="mu_bc_anomaly")
-    trace.attrs["rhime_variable_roles"] = json.dumps(roles)
-    trace["posterior"]["bc_anomaly"] = xr.zeros_like(trace.posterior.bc_correction)
-    trace["posterior"]["mu_bc_anomaly"] = xr.zeros_like(trace.posterior.mu_bc_mean_shift)
     del trace["posterior"][missing]
     with pytest.raises(ValueError, match="require role 'boundary_.*' in saved draws"):
         reconstruct_boundary(decode_boundary_facts(trace)[""], trace.posterior.to_dataset())
@@ -131,9 +100,7 @@ def test_independent_corrections_replay_through_existing_scientific_roles(
         trace[group]["dimensionless_scale"] = correction.assign_attrs(units="ppm")
         trace[group]["state_custom"].attrs["units"] = "ppm"
         trace[group]["contribution"] = xr.zeros_like(draws.bc_custom).assign_attrs(units="ppm")
-    # Undeclared constants must not select a weighted prior policy by name.
     trace["constant_data"] = xr.Dataset({
-        "bc_anomaly_scale": xr.DataArray(-1.0),
         "reference": xr.full_like(prepared.inv_inputs.mf, 2.0).assign_attrs(units="ppm"),
     })
     before = trace.copy(deep=True)

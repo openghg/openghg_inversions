@@ -91,7 +91,7 @@ def _joint_fixture(
             "/": xr.Dataset(
                 attrs={
                     "rhime_recipe": "co2_o2",
-                    "rhime_boundary_format_version": 1,
+                    "rhime_boundary_format_version": 2,
                     "rhime_variable_roles": json.dumps(roles),
                     "rhime_model_metadata": json.dumps({"provenance": "joint fixture"}),
                 }
@@ -211,16 +211,7 @@ def test_declared_boundary_coefficients_survive_linked_products(monkeypatch, ano
             "boundary_mean_shift": "level",
             "boundary_mean_shift_concentration": "level_response",
         }
-        if zero_anomaly:
-            declared.update(boundary_correction="correction", boundary_anomaly_scale="width",
-                            boundary_centering_weights="weights")
-            constants[prefix + "width"] = xr.DataArray(0.0, attrs={"units": "ppm"})
-            constants[prefix + "weights"] = xr.DataArray(
-                [1.0, 2.0, 3.0], dims=prefix + "pattern_term",
-                coords={prefix + "pattern_term": ["east", "west", "top"]},
-            )
-        else:
-            declared.update(boundary_correction_anomaly="pattern", boundary_anomaly_concentration="pattern_response")
+        declared.update(boundary_correction_anomaly="pattern", boundary_anomaly_concentration="pattern_response")
         roles.update({prefix + role: prefix + name for role, name in declared.items()})
         for group in ("posterior", "prior"):
             draws = trace[group].to_dataset()
@@ -238,11 +229,10 @@ def test_declared_boundary_coefficients_survive_linked_products(monkeypatch, ano
             level_response = xr.where(native, level.sum(prefix + "level_period"), 0.0)
             pattern_response = xr.where(native, (pattern * [1.0, 2.0, 4.0]).sum(prefix + "pattern_term"), 0.0)
             if zero_anomaly:
-                pattern_response = xr.zeros_like(level_response)
-                draws[prefix + "correction"] = xr.full_like(pattern, 2.0).assign_attrs(units="ppm")
-            else:
-                draws[prefix + "pattern"] = pattern
-                draws[prefix + "pattern_response"] = pattern_response.assign_attrs(units="ppm")
+                # Unsampled anomalies are recorded as zeros.
+                pattern, pattern_response = xr.zeros_like(pattern), xr.zeros_like(level_response)
+            draws[prefix + "pattern"] = pattern
+            draws[prefix + "pattern_response"] = pattern_response.assign_attrs(units="ppm")
             draws[prefix + "level"] = level
             draws[prefix + "reference"] = reference.assign_attrs(units="ppm")
             draws[prefix + "level_response"] = level_response.assign_attrs(units="ppm")
@@ -253,7 +243,7 @@ def test_declared_boundary_coefficients_survive_linked_products(monkeypatch, ano
                 draws["prediction"] = draws.prediction + contribution
             trace[group] = draws
     trace["constant_data"] = constants
-    trace.attrs.update(rhime_boundary_format_version=1, rhime_variable_roles=json.dumps(roles))
+    trace.attrs.update(rhime_boundary_format_version=2, rhime_variable_roles=json.dumps(roles))
     before = trace.copy(deep=True)
     observed_data = prepared.observations.data
     coefficient_data = trace.posterior.co2_level.data
@@ -272,12 +262,10 @@ def test_declared_boundary_coefficients_survive_linked_products(monkeypatch, ano
         )
         for group in ("posterior", "prior"):
             for component, source in (
-                ("mean_shift", "level"), ("anomaly", "correction" if zero_anomaly else "pattern"),
+                ("mean_shift", "level"), ("anomaly", "pattern"),
             ):
                 name = f"boundary_{component}_coefficient_{group}"
                 expected = trace[group][f"{species}_{source}"]
-                if zero_anomaly and component == "anomaly":
-                    expected = xr.zeros_like(expected)
                 if group == "prior":
                     expected = expected.rename(chain="prior_chain", draw="prior_draw")
                 xr.testing.assert_identical(raw[name], expected.rename(name))

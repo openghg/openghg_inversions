@@ -3,7 +3,7 @@
 The boundary contribution is ``H b`` for dimensionless scaling states ``b``.
 With absolute transport ``H`` (``H_bc``) the graph evaluates that product
 directly. With centered transport ``H = A + c M``
-(:class:`~.operands.CenteredOperands`; see
+(:class:`~.contracts.RawCenteredTransport`; see
 :doc:`/usage/centered_boundary_conditions`) the likelihood instead uses
 ``A b + c M (b - 1)`` against observations shifted by ``c M 1``, which keeps
 small anomalies after cancellation; the absolute output still adds the shift.
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import pymc as pm
 import pytensor.tensor as pt
@@ -26,13 +26,24 @@ from openghg_inversions.models.components import AffineBlock, AffineConcentratio
 from openghg_inversions.models.coords import add_model_data, component_coords
 from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity, resolve_state_activity
 
-from .operands import (
-    CenteredOperands,
-    centered_boundary_expression,
-    check_bound_transport,
-    materialized_reference_shift,
-)
+from .contracts import BoundCenteredTransport, RawCenteredTransport
 from .outputs import BoundaryOutputs
+
+
+def centered_boundary_expression(anomaly, mass, reference, state):
+    """Evaluate ``A b + c M (b - 1)`` without subtracting a large reference.
+
+    Args:
+        anomaly: Concentration anomaly design A, on observations by states.
+        mass: Dimensionless transport M on the same axes.
+        reference: Scalar concentration reference c.
+        state: Dimensionless physical boundary scaling vector b.
+
+    Returns:
+        Centered concentration, using NumPy or PyTensor operands supplied by
+        the caller. Alignment and materialization belong to the caller.
+    """
+    return anomaly @ state + reference * (mass @ (state - 1.0))
 
 
 @dataclass(frozen=True)
@@ -74,7 +85,7 @@ class MultiplicativeChoice:
         validate_centered_boundary_periods(self.frequency, self.anchor_time)
 
     def bind(
-        self, observations: xr.DataArray, transport: xr.DataArray | CenteredOperands,
+        self, observations: xr.DataArray, transport: xr.DataArray | RawCenteredTransport,
     ) -> MultiplicativeBoundary:
         """Bind prepared absolute or centered transport to one fit's rows and periods.
 
@@ -82,8 +93,9 @@ class MultiplicativeChoice:
             observations: One channel's observations with its observation axis
                 first. Its labels select and order the transport rows; its
                 ``time`` values assign rows to boundary periods.
-            transport: Absolute ``H_bc`` in concentration units, or centered
-                operands, on the raw ``nmeasure`` or ``time`` axis. Absolute
+            transport: Absolute ``H_bc`` in concentration units, or raw
+                centered transport, on the raw ``nmeasure`` or ``time`` axis.
+                A Dataset is centered transport; a DataArray is absolute. Absolute
                 transport already expanded to periods is accepted only without
                 a ``frequency`` or ``anchor_time``.
 
@@ -102,8 +114,11 @@ class MultiplicativeChoice:
                 observations, or a calendar override is requested for
                 already-expanded absolute transport.
         """
-        if isinstance(transport, CenteredOperands):
-            data = transport.bind(observations, frequency=self.frequency, anchor_time=self.anchor_time)
+        data: xr.Dataset
+        if isinstance(transport, xr.Dataset):
+            data = BoundCenteredTransport.bind(
+                transport, observations, frequency=self.frequency, anchor_time=self.anchor_time,
+            )
         else:
             data = bind_boundary_sensitivity(
                 transport, observations, frequency=self.frequency, anchor_time=self.anchor_time,
@@ -117,31 +132,24 @@ class MultiplicativeBoundary:
 
     Attributes:
         choice: The resolved multiplicative choice.
-        data: Absolute ``H_bc`` (concentration units), or centered
-            ``H_bc_anomaly`` (concentration units) and ``H_bc_mass``
-            (dimensionless) beside the scalar ``bc_reference``, on
-            ``(observation, state)``. The arrays are borrowed and may be
-            Dask-backed. Materialize them jointly with the other model inputs
-            and the choice prior before :meth:`add`; rows may be padded or
-            subset with ``dataclasses.replace``, keeping that layout.
+        data: :class:`~.contracts.BoundCenteredTransport`, or absolute
+            ``H_bc`` (concentration units) on ``(observation, state)``.
+            Absolute transport keeps its own supported state layouts and has
+            no contract. The arrays are borrowed and may be Dask-backed.
+            Materialize them jointly with the other model inputs and the
+            choice prior before :meth:`add`; rows may be padded or subset
+            with ``dataclasses.replace``, keeping that layout.
 
-    Raises:
-        ValueError: On construction, if ``data`` lacks a variable or does not
-            have that layout. Only dimensions are checked.
+    :meth:`MultiplicativeChoice.bind` establishes either layout by
+    construction, so the record does not validate it again.
     """
 
     choice: MultiplicativeChoice
-    data: xr.Dataset
-
-    def __post_init__(self) -> None:
-        if self.centered:
-            check_bound_transport(self.data, ("H_bc_anomaly", "H_bc_mass"), state_dim="bc_region")
-        else:
-            check_bound_transport(self.data, ("H_bc",))
+    data: BoundCenteredTransport | xr.Dataset
 
     @property
     def observation_dim(self) -> str:
-        """Observation dimension of the bound transport."""
+        """Observation dimension of the bound transport, the first transport dimension."""
         return str(self.data["H_bc_anomaly" if self.centered else "H_bc"].dims[0])
 
     @property
@@ -197,7 +205,9 @@ class MultiplicativeBoundary:
             anomaly = self.data.H_bc_anomaly
             mass = self.data.H_bc_mass
             reference = self.data.bc_reference
-            shift = materialized_reference_shift(anomaly, mass, reference).rename(f"{prefix}bc_reference_shift")
+            shift = BoundCenteredTransport.reference_shift(cast(BoundCenteredTransport, self.data)).rename(
+                f"{prefix}bc_reference_shift",
+            )
             design = (anomaly + reference * mass).assign_attrs(anomaly.attrs)
         else:
             design = self.data.H_bc
@@ -266,4 +276,4 @@ class MultiplicativeBoundary:
         return BoundaryOutputs(roles, units, metadata).prefixed(prefix)
 
 
-__all__ = ["MultiplicativeBoundary", "MultiplicativeChoice"]
+__all__ = ["MultiplicativeBoundary", "MultiplicativeChoice", "centered_boundary_expression"]
