@@ -15,6 +15,7 @@ from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeCho
 from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
 from openghg_inversions.rhime.co2.co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
 from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2, annotate_co2_o2_trace
+from openghg_inversions.rhime.co2.co2_o2_preparation import _raw_centered_channels
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from test_co2_o2_fixed_ou import _prepared, _kwargs
 from openghg_inversions.array_ops import select_gathered_data_array
@@ -185,8 +186,8 @@ def test_linked_additive_runner_restores_absolute_predictives_and_annotations(tm
         kwargs["bc_anomaly_scale"]["o2"] = o2_anomaly_scale
         prepared = _prepared()
         prepared = replace(
-            prepared, observations=kwargs["observations"], boundary_operands=kwargs["boundary_operands"],
-            bc_centering_weights=kwargs["bc_centering_weights"],
+            prepared, observations=kwargs["observations"],
+            boundary_operands=_raw_centered_channels(kwargs["boundary_operands"], kwargs["bc_centering_weights"]),
         )
         built = build_rhime_co2_o2(
             prepared_inputs=prepared, independent_error_sd=kwargs["independent_error_sd"],
@@ -335,10 +336,7 @@ def test_public_linked_runners_forward_prepared_additive_boundary_options(monkey
         prepared = replace(
             _prepared(),
             observations=kwargs["observations"],
-            boundary_operands=kwargs["boundary_operands"],
-            bc_centering_weights={
-                channel: kwargs["bc_centering_weights"][channel] for channel in ("co2", "o2")
-            },
+            boundary_operands=_raw_centered_channels(kwargs["boundary_operands"], kwargs["bc_centering_weights"]),
         )
         options = {"boundary": _linked_choices(kwargs)}
 
@@ -439,8 +437,7 @@ def test_linked_runners_do_not_compute_passive_additive_arrays(monkeypatch, cach
             _prepared(),
             observations=kwargs["observations"],
             boundary_sensitivity=kwargs["boundary_sensitivity"],
-            boundary_operands=kwargs["boundary_operands"],
-            bc_centering_weights=weights,
+            boundary_operands=_raw_centered_channels(kwargs["boundary_operands"], weights),
         )
         options = {"boundary": boundary}
 
@@ -561,8 +558,9 @@ def test_public_linked_ou_restores_mixed_centered_boundary_predictions(monkeypat
         prepared = replace(
             _prepared(),
             observations=kwargs["observations"],
-            boundary_operands=kwargs["boundary_operands"],
-            bc_centering_weights={"o2": kwargs["bc_centering_weights"]["o2"]},
+            boundary_operands=_raw_centered_channels(
+                kwargs["boundary_operands"], {"o2": kwargs["bc_centering_weights"]["o2"]},
+            ),
         )
         options = dict(
             boundary=_linked_choices(kwargs),

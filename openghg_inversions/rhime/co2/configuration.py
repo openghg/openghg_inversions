@@ -13,7 +13,7 @@ from typing import Any
 import tomllib
 
 
-from openghg_inversions.models.boundary import AdditiveChoice, BoundaryChoice, MultiplicativeChoice, RawCenteredTransport
+from openghg_inversions.models.boundary import AdditiveChoice, BoundaryChoice, MultiplicativeChoice
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.priors import positive_prior_args
 from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likelihood
@@ -342,7 +342,7 @@ def _sampling(value: object) -> RhimeSampler:
     return sampler
 
 
-def _boundary_choice(boundary: dict[str, object]) -> BoundaryChoice[RawCenteredTransport] | None:
+def _boundary_choice(boundary: dict[str, object]) -> BoundaryChoice | None:
     """Resolve one ``[model.boundary]`` table; ``None`` when explicitly disabled."""
     enabled = _bool(boundary.pop("enabled", True), "model.boundary.enabled")
     prior = _prior(boundary.pop("prior"), "model.boundary.prior") if "prior" in boundary else None
@@ -535,7 +535,7 @@ class Co2ModelConfig:
     The boundary choice is a prior specification; inference binds it to the preparation.
     """
 
-    boundary: BoundaryChoice[RawCenteredTransport] | None = None
+    boundary: BoundaryChoice | None = None
     offset_prior: Mapping[str, Any] | None = None
     offset_args: Mapping[str, Any] | None = None
     no_model_error: bool | None = None

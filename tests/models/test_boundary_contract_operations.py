@@ -7,7 +7,7 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.models.boundary import BoundAdditiveTransport, BoundCenteredTransport, RawCenteredTransport
-from openghg_inversions.rhime.co2.co2_o2_preparation import _validate_boundary_corrections
+from openghg_inversions.rhime.co2.co2_o2_preparation import _raw_centered_channels
 from test_boundary_contracts import _forbid_compute, _observations, _raw_on_nmeasure, bound_example
 
 
@@ -43,7 +43,7 @@ def test_weight_preparation_is_structural_and_normalization_owns_values():
     invalid = xr.full_like(raw.bc_centering_weights, -1.0)
     for weights in (invalid, invalid.chunk()):
         with dask.config.set(scheduler=_forbid_compute):
-            _validate_boundary_corrections({"co2": weights}, {"co2": raw})
+            _raw_centered_channels({"co2": raw}, {"co2": weights})
     with pytest.raises(ValueError, match="finite and strictly positive"):
         BoundAdditiveTransport.normalized_weights(invalid)
 
@@ -98,8 +98,8 @@ def test_linked_runner_does_not_hide_a_supplied_weight_calendar_mismatch():
             for channel, data in arguments["boundary_operands"].items()
         }
         raw["co2"] = RawCenteredTransport.with_centering_weights(raw["co2"], original_weights)
-        weights = {**arguments["bc_centering_weights"], "co2": replacement}
-        _validate_boundary_corrections(weights, raw)
-        prepared = replace(prepared, boundary_operands=raw, bc_centering_weights=weights)
+        raw = _raw_centered_channels(raw, {**arguments["bc_centering_weights"], "co2": replacement})
+        xr.testing.assert_identical(raw["co2"].bc_centering_weights, replacement.rename("bc_centering_weights"))
+        prepared = replace(prepared, boundary_operands=raw)
         with pytest.raises(ValueError, match="align"):
             _bind_co2_o2_boundaries(prepared, _linked_choices(arguments))

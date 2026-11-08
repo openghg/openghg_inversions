@@ -14,6 +14,7 @@ from openghg_inversions.inversion_inputs import DatetimeLike, make_period_calend
 
 __all__ = [
     "BoundaryAlignment",
+    "bind_period_states",
     "validate_boundary_operands",
     "scale_satellite_boundary_sensitivity_to_column_signal",
 ]
@@ -150,6 +151,42 @@ def _select_native_boundary(
     return selected
 
 
+def bind_period_states(
+    raw: xr.Dataset,
+    observations: xr.DataArray,
+    *,
+    frequency: str | None = None,
+    anchor_time: DatetimeLike | None = None,
+) -> xr.Dataset:
+    """Select one fit's rows of raw spatial boundary data and expand its states by period.
+
+    Observation labels own the row order and their auxiliary timestamps own
+    period membership; indexed boundary times must match those timestamps.
+    This check may compute a lazy timestamp coordinate, while numerical
+    payloads stay borrowed. Returns ``raw``'s variables on ``(observation,
+    bc_region)``, where ``bc_region`` is the ``(bc_curtain, bc_period)``
+    MultiIndex.
+    """
+    native_dim = str(observations.dims[0])
+    raw_dim = native_dim if native_dim in raw.dims else ("time" if "time" in raw.dims else "nmeasure")
+    expanded = _expand_boundary_periods(
+        _select_native_boundary(raw, observations, raw_dim), observation_dim=raw_dim,
+        frequency=frequency, anchor_time=anchor_time, observation_labels=None,
+    )
+    return _restore_native_dim(expanded, raw_dim, native_dim).transpose(native_dim, "bc_region")
+
+
+def _restore_native_dim(data: xr.Dataset, raw_dim: str, native_dim: str) -> xr.Dataset:
+    """Rename selected rows to the native observation dimension."""
+    if raw_dim == native_dim:
+        return data
+    # Native time has already determined periods; the restored dimension
+    # index owns those same labels, so its auxiliary copy is redundant.
+    if native_dim == "time" and "time" in data.coords:
+        data = data.drop_vars("time")
+    return data.rename({raw_dim: native_dim})
+
+
 def bind_boundary_sensitivity(
     sensitivity: xr.DataArray,
     observations: xr.DataArray,
@@ -159,17 +196,14 @@ def bind_boundary_sensitivity(
 ) -> xr.DataArray:
     """Select an ordinary boundary and expand raw spatial states at model binding.
 
-    Observation labels own the row order and their auxiliary timestamps own
-    period membership when supplied. Indexed boundary times must match those
-    timestamps; this binding check may materialize a lazy timestamp coordinate,
-    while boundary payloads remain borrowed. Raw sensitivities can be reused with
-    different frequencies; already expanded sensitivities may be consumed only
-    without a period override. Direct callers may supply an independently named
-    state axis. Unmarked direct inputs retain their state labels when no temporal
-    expansion is requested; marked ``raw-spatial`` preparations and explicit
-    frequency choices produce the canonical ``bc_region`` curtain/period index.
-    Payloads stay borrowed and lazy until the model's explicit materialization
-    boundary.
+    Rows and periods follow :func:`bind_period_states`. Raw sensitivities can
+    be reused with different frequencies; already expanded sensitivities may
+    be consumed only without a period override. Direct callers may supply an
+    independently named state axis. Unmarked direct inputs retain their state
+    labels when no temporal expansion is requested; marked ``raw-spatial``
+    preparations and explicit frequency choices produce the canonical
+    ``bc_region`` curtain/period index. Payloads stay borrowed and lazy until
+    the model's explicit materialization boundary.
     """
     validate_centered_boundary_periods(frequency, anchor_time)
     native_dim = str(observations.dims[0])
@@ -177,39 +211,24 @@ def bind_boundary_sensitivity(
         str(dim) for dim in sensitivity.dims if dim in ("nmeasure", "time")
     )
     state_dim = next(str(dim) for dim in sensitivity.dims if dim != raw_dim)
-    sensitivity = _select_native_boundary(
-        sensitivity.rename("H_bc").to_dataset(), observations, raw_dim,
-    ).H_bc
+    data = sensitivity.rename("H_bc").to_dataset()
     expanded = (
         sensitivity.attrs.get("boundary_sensitivity_preparation") == "sampled-period-expansion"
         or "bc_period" in sensitivity.coords
         or isinstance(sensitivity.indexes.get(state_dim), pd.MultiIndex)
     )
-    if expanded:
-        if frequency is not None or anchor_time is not None:
-            raise ValueError("Boundary period overrides require raw spatial sensitivity; regenerate baked inputs.")
-        aligned = sensitivity
-    elif (frequency is None and anchor_time is None
-          and sensitivity.attrs.get("boundary_sensitivity_preparation") != "raw-spatial"):
-        # Direct scientific callers retain state labels shared with their priors
-        # when requesting no expansion. Prepared raw-spatial arrays explicitly
-        # opt into the reusable curtain/period contract, including one period.
-        aligned = sensitivity
-    else:
-        if state_dim != "bc_region":
-            sensitivity = sensitivity.rename({state_dim: "bc_region"})
-            state_dim = "bc_region"
-        aligned = _expand_boundary_periods(
-            sensitivity.rename("H_bc").to_dataset(), observation_dim=raw_dim,
-            frequency=frequency, anchor_time=anchor_time, observation_labels=None,
-        ).H_bc
-    if raw_dim != native_dim:
-        # Native time has already determined periods; the restored dimension
-        # index owns those same labels, so its auxiliary copy is redundant.
-        if native_dim == "time" and "time" in aligned.coords:
-            aligned = aligned.drop_vars("time")
-        aligned = aligned.rename({raw_dim: native_dim})
-    return aligned.transpose(native_dim, state_dim)
+    if expanded and (frequency is not None or anchor_time is not None):
+        raise ValueError("Boundary period overrides require raw spatial sensitivity; regenerate baked inputs.")
+    if not expanded and (frequency is not None or anchor_time is not None
+                         or sensitivity.attrs.get("boundary_sensitivity_preparation") == "raw-spatial"):
+        # Prepared raw-spatial arrays explicitly opt into the reusable
+        # curtain/period contract, including one period.
+        data = data.rename({state_dim: "bc_region"}) if state_dim != "bc_region" else data
+        return bind_period_states(data, observations, frequency=frequency, anchor_time=anchor_time).H_bc
+    # Expanded inputs, and direct scientific callers requesting no expansion,
+    # retain state labels shared with their priors.
+    selected = _select_native_boundary(data, observations, raw_dim)
+    return _restore_native_dim(selected, raw_dim, native_dim).H_bc.transpose(native_dim, state_dim)
 
 
 def validate_boundary_operands(operands: xr.Dataset) -> bool:

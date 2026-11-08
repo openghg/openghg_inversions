@@ -452,7 +452,7 @@ def test_public_linked_preparation_retains_raw_operands():
     operands = {channel: _operands(options[f"{channel}_observations"]) for channel in ("co2", "o2")}
     prepared = prepare_co2_o2_inputs(**options, boundary_operands=operands)
     assert prepared.boundary_operands["co2"] is operands["co2"]
-    assert prepared.to_datatree().attrs["schema_version"] == 4
+    assert prepared.to_datatree().attrs["schema_version"] == 5
     with pytest.raises(ValueError, match="not both"):
         prepare_co2_o2_inputs(
             **options,

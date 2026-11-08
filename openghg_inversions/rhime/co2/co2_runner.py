@@ -304,7 +304,7 @@ def describe_co2_likelihood_kwargs(value: Any) -> Any:
 
 
 def _bind_co2_boundary(
-    inputs: xr.Dataset, boundary: BoundaryChoice[RawCenteredTransport] | None,
+    inputs: xr.Dataset, boundary: BoundaryChoice | None,
 ) -> Boundary | None:
     """Bind a boundary choice once to the prepared absolute or centered transport.
 
@@ -345,7 +345,7 @@ def materialize_co2_inputs(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     no_model_error: bool = False,
-    boundary: BoundaryChoice[RawCenteredTransport] | None = None,
+    boundary: BoundaryChoice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> tuple[xr.Dataset, dict[str, PriorArgs], Boundary | None]:

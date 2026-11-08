@@ -392,10 +392,10 @@ Linked CO2/O2 concentration scales
 
 The linked ordinary and cached fixed-OU recipes apply the same formulation
 independently to each enabled channel. Pass an ``AdditiveChoice`` per channel
-in ``boundary={"co2": ..., "o2": ...}``; the channel's averaging weights come
-from the preparation's ``bc_centering_weights`` mapping. Each channel has its
-own scalar mean, weighted anomalies and explicit averaging weights. Preparation retains native
-centered ``boundary_operands`` and ``bc_centering_weights`` in channel mappings.
+in ``boundary={"co2": ..., "o2": ...}``. Preparation stores each channel's
+``bc_centering_weights`` argument in that channel's native centered
+``boundary_operands``. Each channel has its own scalar mean, weighted
+anomalies and explicit averaging weights.
 No site or channel is an identifiability reference for the other.
 Each channel independently supports a zero anomaly scale, so one can use a
 common-level-only correction while the other retains sampled contrasts or a

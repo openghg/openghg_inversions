@@ -169,33 +169,21 @@ operations. Reuse xarray and Pint where they already express the requirement.
 The centered-boundary pilot uses `xarray_validate` 0.0.5, following the
 [schema pilot](https://github.com/openghg/openghg_inversions/pull/905).
 Each contract exposes an inspectable `schema(observation_dim=...)` class-level
-operation. `RawCenteredTransport.weights_schema()` exposes its optional raw
-weight layout, reused by `RawCenteredTransport.validate_weights(weights, ...)`
-and the raw transport schema. Declarative schemas own variables, real dtypes, dimensions and
+operation. Declarative schemas own variables, real dtypes, dimensions and
 attributes; callbacks own eager index and scientific metadata relationships.
 The general contract does not mandate a validation library. Error-collection
 mode alone does not establish Dask laziness; execution tests cover lazy payloads
 and auxiliary coordinates.
 
-The raw and bound boundary contracts promise structural guarantees only.
-`BoundCenteredTransport.reference_shift(data)` requires already materialized
-operands, checks finite anomaly/reference and finite non-negative nonzero mass,
-and returns the fixed shift for reuse. Row selection can turn nonzero raw mass
-into zero bound mass, so the check belongs to this operation on the fitted rows.
-`BoundAdditiveTransport.normalized_weights(weights)` similarly requires eager
-weights, checks finite strictly positive values, and normalizes once for the
-weighted additive design. Each centered family's `add` calculates the reference
-shift once; weighted additive `add` normalizes its weights once. These operations
-reject lazy inputs rather than computing them. The recipe materializes related
-inputs together at its existing graph-construction boundary; no extra eager
-stage or contract type is introduced. Preparation, loading and saving do not
-scan weight values.
-
-`RawCenteredTransport.with_centering_weights(raw, weights)` explicitly replaces
-optional weights while retaining the raw contract. Replacement removes only
-axes owned exclusively by the old weights. Conflicts with axes used by other
-variables or coordinates are rejected rather than silently truncating supplied
-weights through Dataset alignment.
+The raw and bound boundary contracts promise structural guarantees only. Each
+centered family's `add` checks the jointly materialized anomaly, mass and
+reference once while calculating the fixed reference shift, and weighted
+additive `add` checks its weights once while normalizing them. Row selection
+can turn nonzero raw mass into zero bound mass, so that check belongs to the
+fitted rows. These operations reject lazy inputs rather than computing them;
+no extra eager stage or contract type is introduced. Replacing raw weights
+removes only axes the old weights owned, so Dataset alignment cannot silently
+truncate supplied weights.
 
 Binding and supported transformations establish their returned guarantees.
 Tests exercise their outputs against the validator. Consumers trust them;
