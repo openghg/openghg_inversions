@@ -287,7 +287,8 @@ def test_one_curtain_keeps_scalings_and_independent_states_but_no_contrast(metho
     with registered_model() as model:
         _eager(_choice(method).bind(obs, transport)).add()
     assert ("bc_scaling" in model) == (method == "scaling")
-    assert ("bc_anomaly" in model) == (method == "independent")
+    # Only independent states sample anomalies; other additive methods record zeros.
+    assert ("bc_anomaly" in {rv.name for rv in model.free_RVs}) == (method == "independent")
     assert "bc_anomaly_latent" not in model
     assert np.isfinite(model.compile_logp()(model.initial_point()))
 
