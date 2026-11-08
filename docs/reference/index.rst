@@ -306,7 +306,6 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.boundary.RawCenteredTransport
    openghg_inversions.models.boundary.BoundCenteredTransport
    openghg_inversions.models.boundary.BoundAdditiveTransport
-   openghg_inversions.models.boundary.RawCenteredTransport.weights_schema
    openghg_inversions.models.boundary.RawCenteredTransport.validate_weights
    openghg_inversions.models.boundary.RawCenteredTransport.with_centering_weights
    openghg_inversions.models.boundary.BoundCenteredTransport.bind

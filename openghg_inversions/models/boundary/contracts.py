@@ -100,6 +100,20 @@ def _require_dimensionless(array: xr.DataArray, *, label: str) -> None:
         raise ValueError(f"{label} requires dimensionless units equivalent to '1'; got {units!r}.")
 
 
+def _weights_schema() -> DataArraySchema:
+    """Describe raw centering weights on the curtain-period grid."""
+    def relationships(weights: xr.DataArray) -> None:
+        """Check indexed curtain and calendar labels and the unit scale."""
+        for dim in STATE_LEVELS:
+            _require_unique_index(weights, dim, label="bc_centering_weights")
+        periods = weights.indexes["bc_period"]
+        if not isinstance(periods, pd.DatetimeIndex) and list(periods) != [WHOLE_WINDOW]:
+            raise ValueError(f"bc_period labels must be interval start times, or {WHOLE_WINDOW!r} without timestamps.")
+        _require_dimensionless(weights, label="bc_centering_weights")
+
+    return DataArraySchema(dtype=(np.integer, np.floating), dims=STATE_LEVELS, checks=[relationships])
+
+
 @xr_contract
 class RawCenteredTransport(xr.Dataset):
     """Prepared centered boundary transport on raw spatial boundary states.
@@ -118,7 +132,9 @@ class RawCenteredTransport(xr.Dataset):
       concentration unit string; ``H_bc_mass`` has units ``'1'``. An ``mf``
       variable, when present, has the same concentration units.
     * Optional ``bc_centering_weights`` lie on ``(bc_curtain, bc_period)``
-      as described by :meth:`weights_schema`. Only weighted additive
+      with unique curtain labels, interval-start ``DatetimeIndex`` periods (or
+      the single label ``'whole_window'`` without timestamps) and units
+      equivalent to ``'1'``. Only weighted additive
       anomalies consume them.
     * Other variables are permitted. An absolute ``H_bc`` diagnostic must be
       marked ``boundary_sensitivity_preparation='unexpanded'``.
@@ -132,41 +148,17 @@ class RawCenteredTransport(xr.Dataset):
     __slots__ = ()
 
     @staticmethod
-    def weights_schema() -> DataArraySchema:
-        """Describe raw centering weights without reading their values.
-
-        Returns:
-            Metadata schema for the curtain-period grid and dimensionless units.
-        """
-        def relationships(weights: xr.DataArray) -> None:
-            """Check indexed curtain and calendar labels and the unit scale."""
-            for dim in STATE_LEVELS:
-                _require_unique_index(weights, dim, label="bc_centering_weights")
-            periods = weights.indexes["bc_period"]
-            if not isinstance(periods, pd.DatetimeIndex) and list(periods) != [WHOLE_WINDOW]:
-                raise ValueError(f"bc_period labels must be interval start times, or {WHOLE_WINDOW!r} without timestamps.")
-            _require_dimensionless(weights, label="bc_centering_weights")
-
-        return DataArraySchema(dtype=(np.integer, np.floating), dims=STATE_LEVELS, checks=[relationships])
-
-    @staticmethod
     def validate_weights(weights: xr.DataArray, *, label: str = "bc_centering_weights") -> None:
-        """Check the structure of raw additive centering weights.
-
-        Raw weights lie on ``("bc_curtain", "bc_period")`` with unique indexed
-        curtain labels and unique interval-start ``DatetimeIndex`` period labels
-        (or the single label ``'whole_window'`` for timestamp-free transport),
-        and have units equivalent to ``'1'``. Payload values are not inspected;
-        their positivity is checked by the explicit later numerical operation.
+        """Check raw centering weights against the layout above, without reading values.
 
         Args:
             weights: Borrowed weights, possibly Dask-backed.
             label: Name used in error messages.
 
         Raises:
-            ValueError: If the weights violate that structure.
+            ValueError: If the weights violate that layout.
         """
-        _validate_schema(RawCenteredTransport.weights_schema(), weights, label=label)
+        _validate_schema(_weights_schema(), weights, label=label)
 
     @staticmethod
     def schema(*, observation_dim: str = "time") -> DatasetSchema:
@@ -179,7 +171,9 @@ class RawCenteredTransport(xr.Dataset):
             Inspectable metadata schema; callbacks check units and eager indexes.
         """
         def relationships(data: xr.Dataset) -> None:
-            """Check spatial state, expansion and unit relationships."""
+            """Check the representation marker and spatial state, expansion and unit relationships."""
+            if data.attrs.get("boundary_representation") != "centered-v1":
+                raise ValueError("require boundary_representation='centered-v1'.")
             if not set(CENTERED_NAMES).issubset(data.data_vars):
                 return
             if "H_bc" in data and data.H_bc.attrs.get("boundary_sensitivity_preparation") != "unexpanded":
@@ -198,9 +192,9 @@ class RawCenteredTransport(xr.Dataset):
         return DatasetSchema(
             data_vars={
                 **_centered_variables(observation_dim, ordered=False),
-                "{bc_centering_weights}": RawCenteredTransport.weights_schema(),
+                "{bc_centering_weights}": _weights_schema(),
             },
-            attrs={"boundary_representation": AttrSchema(value="centered-v1")}, checks=[relationships],
+            checks=[relationships],
         )
 
     @staticmethod
@@ -227,17 +221,15 @@ class RawCenteredTransport(xr.Dataset):
     def with_centering_weights(data: RawCenteredTransport, weights: xr.DataArray) -> RawCenteredTransport:
         """Replace raw weights without aligning them to an obsolete weight calendar.
 
-        The caller owns the supplied weights' structural validation. Only axes
-        owned exclusively by the old weights are removed. Binding subsequently
-        checks the supplied labels against the fit's actual curtain-period grid.
+        Only axes owned exclusively by the old weights are removed, so the
+        supplied labels survive until binding checks them exactly.
 
         Args:
             data: Borrowed raw transport, optionally with existing weights.
             weights: Structurally valid replacement on curtain and period axes.
 
         Returns:
-            New dataset retaining transport and the replacement's exact labels
-            and lazy payload. Neither input is mutated or computed.
+            New dataset with the replacement's exact labels; nothing is computed.
 
         Raises:
             ValueError: If another variable or auxiliary coordinate shares an
@@ -354,16 +346,10 @@ class BoundCenteredTransport(xr.Dataset):
     ) -> BoundCenteredTransport:
         """Select one fit's observation rows and expand spatial states by period.
 
-        Observation dimension labels own the row order; their auxiliary ``time``
-        values own period membership when supplied. Indexed boundary times must
-        match those timestamps; this check may compute a lazy timestamp
-        coordinate, while numerical operands remain borrowed and lazy.
-
-        The result is established by construction: row selection by unique
-        observation labels and the shared period mask produce the
-        ``(observation, bc_region)`` layout with a ``(bc_curtain, bc_period)``
-        state index for every curtain in every period, and the scalar reference
-        is carried unchanged. Raw centering weights are not included; see
+        Observation labels own the row order and their auxiliary ``time``
+        values own period membership. Checking indexed boundary times may
+        compute a lazy timestamp coordinate; numerical operands stay lazy. The
+        contract holds by construction. Weights are not included; see
         :meth:`BoundAdditiveTransport.bind_weights`.
 
         Args:
@@ -374,8 +360,7 @@ class BoundCenteredTransport(xr.Dataset):
             anchor_time: Optional origin for fixed-duration periods.
 
         Returns:
-            ``H_bc_anomaly`` and ``H_bc_mass`` on ``(observation, bc_region)`` with
-            the bound state index, plus the scalar ``bc_reference``.
+            Bound transport.
 
         Raises:
             ValueError: If PyTensor is not configured for float64, or periods or
@@ -401,15 +386,8 @@ class BoundCenteredTransport(xr.Dataset):
     def reference_shift(data: BoundCenteredTransport) -> xr.DataArray:
         """Check eager centered values once and calculate the fixed shift ``c M 1``.
 
-        The recipe materializes related inputs together before calling this
-        operation. It establishes the numerical requirements of graph construction
-        and returns the shift for reuse; structural validation never calls it.
-
-        Preparation validates layout, labels and units without computing borrowed
-        payloads, and recentring at binding can derive new values, so finite
-        values are first checkable here, after the joint materialization that
-        must precede graph construction. Every centered family calls this once at
-        the start of ``add``.
+        Every centered family calls this once at the start of ``add``, after the
+        recipe's joint materialization, and reuses the shift.
 
         Args:
             data: Bound transport materialized jointly with the model inputs.
@@ -487,19 +465,14 @@ class BoundAdditiveTransport(BoundCenteredTransport):
 
     @staticmethod
     def bind_weights(bound: BoundCenteredTransport, weights: xr.DataArray) -> BoundAdditiveTransport:
-        """Align raw centering weights to bound states, giving the additive extension.
-
-        Weights must label exactly the bound curtains and periods, so a calendar
-        mismatch is reported here rather than silently reindexed. The bound state
-        index is reused for the stacked weights; their values stay borrowed.
+        """Align raw centering weights exactly to bound states, giving the additive extension.
 
         Args:
             bound: Bound centered transport.
-            weights: Raw weights on ``(bc_curtain, bc_period)``, structurally
-                checked with the raw transport.
+            weights: Structurally valid raw weights on ``(bc_curtain, bc_period)``.
 
         Returns:
-            ``bound`` with ``bc_centering_weights`` on ``bc_region``.
+            ``bound`` with ``bc_centering_weights`` on ``bc_region``; values stay lazy.
 
         Raises:
             ValueError: If the weights' curtain and period labels differ from the
@@ -520,11 +493,10 @@ class BoundAdditiveTransport(BoundCenteredTransport):
         """Check materialized weights once and normalize their sum to one.
 
         Args:
-            weights: Borrowed positive weights on the bound ``bc_region`` states.
+            weights: Weights on the bound ``bc_region`` states.
 
         Returns:
-            Dimensionless weights with the same state coordinates. Scaling by the
-            maximum first avoids overflow when summing large finite weights.
+            Dimensionless normalized weights; scaling by the maximum first avoids overflow.
 
         Raises:
             ValueError: If weights are lazy, empty, non-finite or not positive.
