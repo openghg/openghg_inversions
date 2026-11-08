@@ -456,7 +456,7 @@ def test_raw_time_snapshot_identity_never_rebinds_on_load(native, monkeypatch, t
     path = tmp_path / "time.nc"
     prepared.save(path)
     monkeypatch.setattr(SharedBaselineChoice, "bind", lambda *a, **kw: pytest.fail("snapshot load rebound support"))
-    monkeypatch.setattr("openghg_inversions.models.boundary.BoundCenteredTransport.bind",
+    monkeypatch.setattr("openghg_inversions.models.boundary.BoundCenteredSensitivity.bind",
                         lambda *a, **kw: pytest.fail("snapshot load rebuilt calendar"))
     restored = Co2O2PreparedInputs.load(path)
     for channel in ("co2", "o2"):

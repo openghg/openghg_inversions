@@ -5,13 +5,13 @@ from typing_extensions import assert_type
 
 from openghg_inversions.models.boundary import (
     AdditiveChoice,
-    BoundAdditiveTransport,
-    BoundCenteredTransport,
-    RawCenteredTransport,
+    BoundAdditiveSensitivity,
+    BoundCenteredSensitivity,
+    RawCenteredSensitivity,
 )
 
 
-def needs_bound(data: BoundCenteredTransport) -> None: ...
+def needs_bound(data: BoundCenteredSensitivity) -> None: ...
 
 
 def needs_dataset(data: xr.Dataset) -> None: ...
@@ -19,18 +19,18 @@ def needs_dataset(data: xr.Dataset) -> None: ...
 
 supplied = xr.Dataset()
 observations = xr.DataArray()
-raw = RawCenteredTransport.validate(supplied)
-assert_type(raw, RawCenteredTransport)
+raw = RawCenteredSensitivity.validate(supplied)
+assert_type(raw, RawCenteredSensitivity)
 
-bound = BoundCenteredTransport.bind(raw, observations)
-assert_type(bound, BoundCenteredTransport)
+bound = BoundCenteredSensitivity.bind(raw, observations)
+assert_type(bound, BoundCenteredSensitivity)
 needs_bound(bound)
-needs_bound(BoundCenteredTransport.validate(supplied))
+needs_bound(BoundCenteredSensitivity.validate(supplied))
 needs_dataset(bound)
 
-extended = BoundAdditiveTransport.bind_weights(bound, xr.DataArray())
-assert_type(extended, BoundAdditiveTransport)
+extended = BoundAdditiveSensitivity.bind_weights(bound, xr.DataArray())
+assert_type(extended, BoundAdditiveSensitivity)
 needs_bound(extended)
-needs_bound(BoundAdditiveTransport.validate(supplied))
+needs_bound(BoundAdditiveSensitivity.validate(supplied))
 
 AdditiveChoice(None, 0.3, anomalies="independent").bind(observations, raw)

@@ -41,8 +41,8 @@ describes how those guarantees become explicit in selected static interfaces.
 ## Impact
 
 The declaration mechanism and the first centered-boundary application are
-implemented: `RawCenteredTransport`, `BoundCenteredTransport` and
-`BoundAdditiveTransport` retain ordinary Dataset runtime values and own
+implemented: `RawCenteredSensitivity`, `BoundCenteredSensitivity` and
+`BoundAdditiveSensitivity` retain ordinary Dataset runtime values and own
 class-level validation and scientific operations. Their inspectable metadata
 schemas use `xarray_validate` 0.0.5; library choice remains an application
 decision rather than a general contract requirement. Shared conformance tests

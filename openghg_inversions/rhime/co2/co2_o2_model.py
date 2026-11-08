@@ -25,7 +25,7 @@ from openghg_inversions.models import (
     resolve_state_activity,
 )
 from openghg_inversions.models.additive_sigma import add_additive_sigma_likelihood
-from openghg_inversions.models.boundary import Boundary
+from openghg_inversions.models.boundary import Bound
 from openghg_inversions.models.components import (
     AffineBlock,
     AffineConcentrationTerm,
@@ -171,7 +171,7 @@ def _pad_channel_design(
     return native.reindex_like(observations, fill_value=0).transpose(observations.dims[0], *coefficient_dims)
 
 
-def pad_linked_boundary(bound: Boundary, observations: xr.DataArray, channel: str) -> Boundary:
+def pad_linked_boundary(bound: Bound, observations: xr.DataArray, channel: str) -> Bound:
     """Embed one channel's bound boundary rows on the joint linked observation axis.
 
     Variables whose first dimension is the bound observation dimension are
@@ -180,7 +180,7 @@ def pad_linked_boundary(bound: Boundary, observations: xr.DataArray, channel: st
     State-only and scalar variables, such as ``bc_centering_weights`` and
     ``bc_reference``, are kept unchanged rather than treated as rows. The
     result therefore preserves the bound record's contract (for centered
-    families :class:`~openghg_inversions.models.boundary.BoundCenteredTransport`
+    families :class:`~openghg_inversions.models.boundary.BoundCenteredSensitivity`
     or its additive extension), with the joint observation dimension first;
     padded rows contribute zero transport. Values stay borrowed.
 
@@ -209,7 +209,7 @@ def _add_co2_o2_baseline_components(
     observations: xr.DataArray,
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
-    boundary: Mapping[str, Boundary] | None = None,
+    boundary: Mapping[str, Bound] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[AffineConcentrationTerm]:
@@ -284,7 +284,7 @@ def build_co2_o2_model(
     biosphere_prior: BiospherePrior | None = None,
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
-    boundary: Mapping[str, Boundary] | None = None,
+    boundary: Mapping[str, Bound] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -321,7 +321,7 @@ def build_co2_o2_model(
     absolute.
     After restoring sample coordinates, direct callers must restore absolute
     ``y`` with
-    :func:`~openghg_inversions.rhime.co2.boundary_output.restore_absolute_predictives`
+    :func:`~openghg_inversions.postprocessing.boundary_outputs.restore_absolute_predictives`
     before serialization or postprocessing. Ordinary recipe runners do this
     through
     :func:`~openghg_inversions.rhime.co2.co2_o2_runner.annotate_co2_o2_trace`.
