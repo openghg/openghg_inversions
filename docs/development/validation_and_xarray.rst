@@ -68,7 +68,7 @@ The :download:`explicit data contracts proposal
 <../../openspec/changes/explicit-data-contracts/specs/explicit-data-contracts/spec.md>`
 captures this pattern. :func:`openghg_inversions.xr_contracts.xr_contract` is
 the declaration decorator, and
-:mod:`openghg_inversions.models.boundary.contracts` holds the centered boundary
+``openghg_inversions.models.boundary.contracts`` holds the centered boundary
 transport contracts, the first application. The following pseudocode
 illustrates the recommended static marker for a structural contract;
 ``check_bound_layout`` and ``select_and_expand_transport`` stand for

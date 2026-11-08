@@ -28,7 +28,7 @@ nothing here enumerates the families.
 
 Transport is either absolute ``H_bc`` or centered ``A``, ``M`` and ``c``
 with ``H = A + c M``. Centered transport has static Dataset contracts
-(:mod:`~openghg_inversions.models.boundary.contracts`): preparation and
+(``openghg_inversions.models.boundary.contracts``): preparation and
 loading establish :class:`RawCenteredTransport`;
 :func:`bind_centered_transport` produces :class:`BoundCenteredTransport`,
 which every centered family consumes; and weighted additive anomalies extend

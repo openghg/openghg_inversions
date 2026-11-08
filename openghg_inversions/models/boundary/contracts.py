@@ -12,7 +12,7 @@ Stages and owners:
   spatial states. Preparation and artifact loading establish it with
   :meth:`RawCenteredTransport.validate`.
 * :class:`BoundCenteredTransport` is one fit's transport after
-  :func:`~openghg_inversions.models.boundary.operands.bind_centered_transport`
+  :func:`~openghg_inversions.models.boundary.bind_centered_transport`
   has selected observation rows and expanded spatial states by period. Every
   centered family consumes it; binding establishes it by construction.
 * :class:`BoundAdditiveTransport` extends it with centering weights aligned to
