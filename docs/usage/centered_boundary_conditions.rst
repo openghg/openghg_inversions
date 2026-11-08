@@ -376,7 +376,7 @@ Temporal state construction
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 At model binding,
-:meth:`~openghg_inversions.models.boundary.BoundCenteredTransport.bind`
+:meth:`~openghg_inversions.models.boundary.BoundCenteredSensitivity.bind`
 assigns a fitted period from the retained observation timestamp.
 
 .. code-block:: text
@@ -427,7 +427,7 @@ path.
 Guarantees trusted by graph construction
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Centered transport carries static Dataset contracts from
+Centered sensitivity carries static Dataset contracts from
 ``openghg_inversions.models.boundary.contracts``; their docstrings are the
 canonical statement of each guarantee. Each guarantee has one owner, and later
 code trusts it rather than checking it again:
@@ -438,24 +438,24 @@ code trusts it rather than checking it again:
    * - Guarantee
      - Owner
    * - Raw variables, dimensions, unique indexes, units and weight layout
-     - :meth:`~openghg_inversions.models.boundary.RawCenteredTransport.validate`
+     - :meth:`~openghg_inversions.models.boundary.RawCenteredSensitivity.validate`
        at preparation and artifact loading (metadata only, no computation)
    * - Observation-first ``(observation, bc_region)`` layout, curtain/period
        state index, scalar reference
-     - :meth:`~openghg_inversions.models.boundary.BoundCenteredTransport.bind`, by
+     - :meth:`~openghg_inversions.models.boundary.BoundCenteredSensitivity.bind`, by
        construction
    * - Weights aligned to the bound states
-     - :meth:`~openghg_inversions.models.boundary.BoundAdditiveTransport.bind_weights`,
+     - :meth:`~openghg_inversions.models.boundary.BoundAdditiveSensitivity.bind_weights`,
        by exact label alignment
    * - Joint linked rows; state-only data and reference unchanged
      - ``pad_linked_boundary`` in ``openghg_inversions.rhime.co2.co2_o2_model``,
        by construction
    * - Finite anomaly and reference; finite, non-negative, nonzero mass;
        the fixed shift ``c M 1``
-     - :meth:`~openghg_inversions.models.boundary.BoundCenteredTransport.reference_shift`,
+     - :meth:`~openghg_inversions.models.boundary.BoundCenteredSensitivity.reference_shift`,
        once at the start of ``add`` after the recipe's joint materialization
    * - Finite, strictly positive weights
-     - :meth:`~openghg_inversions.models.boundary.BoundAdditiveTransport.normalized_weights`,
+     - :func:`~openghg_inversions.models.boundary.normalize_centering_weights`,
        during graph construction after joint materialization; preparation,
        loading and saving do not scan weight values
 

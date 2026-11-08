@@ -27,7 +27,7 @@ from openghg_inversions.rhime._stage_artifacts import _validate_filename_compone
 from openghg_inversions.serialization import reset_serialisation_multiindexes, save_datatree, save_trace
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
-from .boundary_output import decode_boundary_facts, reconstruct_boundary
+from openghg_inversions.postprocessing.boundary_outputs import decode_saved_boundaries, reconstruct_boundary
 from .co2_affine_output import BoundCo2AffineFluxMap
 from .co2_preparation import Co2PreparedInputs, _require_equivalent_units
 
@@ -66,7 +66,7 @@ def validate_co2_trace(trace: xr.DataTree, prepared: Co2PreparedInputs | None = 
         raise ValueError(f"CO2 trace lacks scientific role(s): {sorted(missing)!r}.")
     if "posterior" not in trace.children:
         raise ValueError("CO2 samples require posterior draws.")
-    boundary_facts = decode_boundary_facts(trace, roles=roles)
+    boundary_facts = decode_saved_boundaries(trace, roles=roles)
     for group in ("prior", "posterior"):
         if group not in trace.children:
             continue
@@ -269,7 +269,7 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
     observations = prepared.inv_inputs["mf"]
     fixed = prepared.inv_inputs["fixed_prior_contribution"]
     result = {"observed": observations, "affine": fixed}
-    boundary_facts = decode_boundary_facts(trace, roles=roles)
+    boundary_facts = decode_saved_boundaries(trace, roles=roles)
     component_roles = {
         "modelled": "model_mean",
         "pollution": "pollution_concentration",

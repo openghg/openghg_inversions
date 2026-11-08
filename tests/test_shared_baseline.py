@@ -45,7 +45,7 @@ def bind(obs, h, prior, fixed, *, mode="multiplicative", boundary=SCALING, trans
     inputs.setdefault("sampled_outer", prior.mean.copy(data=[False, True, True, False][:prior.mean.size]))
     return SharedBaselineChoice(boundary, 5.0, mode).bind(
         obs, flux_sensitivity=h, retained_prior=prior, fixed_prior_contribution=fixed,
-        boundary_transport=operands(obs) if transport is None else transport, **inputs,
+        boundary_sensitivity=operands(obs) if transport is None else transport, **inputs,
     )
 
 
@@ -542,7 +542,7 @@ def test_shared_float32_rejected_before_transport_materialization(cached):
 def test_shared_trace_roundtrip_canonical_roles_units_and_graph_free_replay(tmp_path):
     import pymc as pm
     from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
-    from openghg_inversions.rhime.co2.boundary_output import decode_boundary_facts, reconstruct_boundary
+    from openghg_inversions.postprocessing.boundary_outputs import decode_saved_boundaries, reconstruct_boundary
     from openghg_inversions.rhime.co2.shared_baseline_model import annotate_shared_baseline_trace
     from openghg_inversions.serialization import load_trace, save_trace
 
@@ -560,7 +560,7 @@ def test_shared_trace_roundtrip_canonical_roles_units_and_graph_free_replay(tmp_
     assert restored.prior.bc_mean_shift.attrs["units"] == "ppm"
     assert restored.prior.bc_pattern_standardized.attrs["units"] == "1"
     assert restored.prior.bc_pattern_term.attrs["units"] == "1"
-    facts = decode_boundary_facts(restored)[""]
+    facts = decode_saved_boundaries(restored)[""]
     scalar = reconstruct_boundary(facts, restored.prior.to_dataset())
     xr.testing.assert_equal(scalar["mean_shift"], restored.prior.bc_mean_shift)
     replay = reconstruct_shared_baseline(restored.shared_baseline.to_dataset(), restored.prior.to_dataset())
