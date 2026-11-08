@@ -34,18 +34,30 @@ from dask import is_dask_collection
 
 import numpy as np
 import pandas as pd
+import pytensor
 import xarray as xr
 from xarray_validate import AttrSchema, DataArraySchema, DatasetSchema, DimsSchema, SchemaError, ValidationContext
 
 from openghg_inversions.xr_contracts import xr_contract
 from openghg_inversions.boundary_sensitivity import bind_period_states
 from openghg_inversions.inversion_inputs import DatetimeLike
-from .operands import require_centered_precision
 
 
 CENTERED_NAMES = ("H_bc_anomaly", "H_bc_mass", "bc_reference")
 STATE_LEVELS = ("bc_curtain", "bc_period")
 WHOLE_WINDOW = "whole_window"
+
+
+def require_centered_precision() -> None:
+    """Require a process-wide PyTensor ``floatX`` of float64 for centered graphs.
+
+    ``pm.Data`` casts registered arrays to the global ``floatX``. Centered
+    operands rely on float64 to keep small anomalies after cancellation, so a
+    float32 process would silently round them. This only reads the global
+    configuration; set ``PYTENSOR_FLAGS=floatX=float64`` before starting Python.
+    """
+    if pytensor.config.floatX != "float64":
+        raise ValueError("Centered boundaries require explicitly configured PyTensor floatX=float64.")
 
 
 def _validate_schema(schema: DatasetSchema | DataArraySchema, data: xr.Dataset | xr.DataArray, *, label: str) -> None:
@@ -502,4 +514,5 @@ __all__ = [
     "BoundAdditiveTransport",
     "BoundCenteredTransport",
     "RawCenteredTransport",
+    "require_centered_precision",
 ]

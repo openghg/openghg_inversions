@@ -56,14 +56,15 @@ import xarray as xr
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models.boundary.additive import AdditiveBoundary, AdditiveChoice
 from openghg_inversions.models.boundary.anomaly_scaling import AnomalyScalingBoundary, AnomalyScalingChoice
-from openghg_inversions.models.boundary.multiplicative import MultiplicativeBoundary, MultiplicativeChoice
+from openghg_inversions.models.boundary.multiplicative import (
+    MultiplicativeBoundary,
+    MultiplicativeChoice,
+    centered_boundary_expression,
+)
 from openghg_inversions.models.boundary.contracts import (
     BoundAdditiveTransport,
     BoundCenteredTransport,
     RawCenteredTransport,
-)
-from openghg_inversions.models.boundary.operands import (
-    centered_boundary_expression,
     require_centered_precision,
 )
 from openghg_inversions.models.boundary.outputs import BoundaryOutputs
