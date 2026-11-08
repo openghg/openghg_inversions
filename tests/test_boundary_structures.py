@@ -15,7 +15,7 @@ from scipy.linalg import helmert
 from openghg_inversions.array_ops import select_gathered_data_array
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models import get_coord_registry, registered_model, restore_inferencedata_coords
-from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice, CenteredOperands
+from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.co2 import co2_runner, inference
@@ -27,6 +27,8 @@ from openghg_inversions.rhime.co2.co2_outputs import reconstruct_co2_concentrati
 from test_co2_bound_frontends import _draws, _single_with_operands
 from test_co2_cached_sigma import _inputs
 from test_co2_o2_fixed_ou import _kwargs, _prepared
+from boundary_test_utils import centered_transport, raw_transport
+from openghg_inversions.models.boundary import BoundCenteredTransport
 
 METHODS = ["level", "contrasts", "independent", "scaling"]
 OU = {"tau_hours": 5.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75}}
@@ -52,7 +54,7 @@ def _operands(obs, c=400.0, normalised=True):
     if normalised:
         mass = (mass / mass.sum("bc_region")).assign_attrs(units="1")
     anomaly = mass.copy(data=np.arange(2 * n).reshape(n, 2) * 0.01 - 0.025).assign_attrs(units="ppm")
-    return CenteredOperands(anomaly, mass, xr.DataArray(c, attrs={"units": "ppm"}))
+    return centered_transport(anomaly, mass, xr.DataArray(c, attrs={"units": "ppm"}))
 
 
 def _choice(method, level_sd=5.0, scale=0.7, **periods):
@@ -79,7 +81,7 @@ def _designs(bound):
 def test_affine_designs_and_absolute_equation_respond_through_mass(method):
     obs = _inputs().mf
     transport = _operands(obs, normalised=False)
-    m, a = transport.mass.values, transport.anomaly.values
+    m, a = transport.H_bc_mass.values, transport.H_bc_anomaly.values
     level = m.sum(axis=1)[:, None]
     assert not np.allclose(level, 1.0)  # The level responds through M1, not 1.
     expected = {
@@ -112,6 +114,36 @@ def test_independent_curtains_match_contrasts_only_for_specific_widths():
     assert not np.allclose(independent, s**2 * level @ level.T + s**2 * contrasts @ contrasts.T)
 
 
+def test_independent_curtains_across_periods_need_one_mean_per_period():
+    obs = _inputs().mf
+    transport = _operands(obs, normalised=False)
+    s, k = 1.2, 2
+    periods = {"frequency": "2h", "anchor_time": "2021-01-01"}
+    bound = _eager(_choice("independent", scale=s, **periods).bind(obs, transport))
+    assert bound.data.indexes["bc_region"].get_level_values("bc_period").nunique() > 1
+    _, _, (iid,) = _designs(bound)
+    independent = s**2 * iid @ iid.T
+
+    def contrasts_plus_mean(by_period):
+        choice = replace(_choice("contrasts", level_sd=s / np.sqrt(k), scale=s, **periods), mean_by_period=by_period)
+        _, _, (level, contrasts) = _designs(_eager(choice.bind(obs, transport)))
+        return s**2 / k * level @ level.T + s**2 * contrasts @ contrasts.T
+
+    np.testing.assert_allclose(independent, contrasts_plus_mean(True), atol=1e-14)
+    assert not np.allclose(independent, contrasts_plus_mean(False))
+
+
+def test_independent_anomalies_are_sampled_on_the_states_without_a_basis():
+    obs = _inputs().mf
+    transport = _operands(obs, normalised=False)
+    bound = _eager(_choice("independent", scale=0.3, frequency="2h", anchor_time="2021-01-01").bind(obs, transport))
+    model, term, (design,) = _designs(bound)
+    assert "bc_anomaly_basis" not in model and "bc_anomaly_latent" not in model
+    assert term.sampled_rvs == (model["bc_anomaly"],)
+    np.testing.assert_array_equal(design, bound.data.H_bc_mass.transpose("nmeasure", "bc_region").values)
+    assert bound.anomaly_factor().dims == ("nmeasure", "bc_region")
+
+
 def test_temporal_contrast_covariance_is_not_full_weighted_centering():
     obs = _inputs().mf
     transport = _operands(obs)
@@ -121,7 +153,7 @@ def test_temporal_contrast_covariance_is_not_full_weighted_centering():
     assert contrasts.shape == (4, 3 * (2 - 1))
     rows = np.array([0, 1, 0, 2])  # Receptor period of each observation row.
     q = helmert(2, full=False).T
-    native = transport.mass.values @ q
+    native = transport.H_bc_mass.values @ q
     expected = 0.2**2 * level @ level.T
     for i in range(4):
         for j in range(4):
@@ -140,7 +172,7 @@ def test_temporal_contrast_covariance_is_not_full_weighted_centering():
         np.ones((2, 3)), dims=("bc_curtain", "bc_period"),
         coords={"bc_curtain": labels.levels[0], "bc_period": labels.levels[1]}, attrs={"units": "1"},
     )
-    weighted = AdditiveChoice(_normal(0.2), 0.3, **periods).bind(obs, replace(transport, weights=weights))
+    weighted = AdditiveChoice(_normal(0.2), 0.3, **periods).bind(obs, raw_transport(transport, weights=weights))
     weighted_model, _, (_, weighted_contrasts) = _designs(_eager(weighted))
     assert weighted_contrasts.shape == (4, 2 * 3 - 1)
     states = model["bc_anomaly_basis"].eval()
@@ -148,10 +180,58 @@ def test_temporal_contrast_covariance_is_not_full_weighted_centering():
     assert not np.allclose(states @ states.T, weighted_states @ weighted_states.T)
 
 
+@pytest.mark.parametrize("weight_scale", [1.0, 1e307])
+def test_weighted_factor_and_graph_share_the_centered_design(weight_scale):
+    """Lazy factors and sampled anomalies obey the same nonuniform centering."""
+    obs = _inputs().mf
+    periods = {"frequency": "2h", "anchor_time": "2021-01-01"}
+    transport = _operands(obs, normalised=False)
+    states = BoundCenteredTransport.bind(transport, obs, **periods).indexes["bc_region"]
+    raw_weights = np.array([[1., 2., 3.], [4., 5., 6.]])
+    weights = xr.DataArray(
+        weight_scale * raw_weights, dims=("bc_curtain", "bc_period"),
+        coords={"bc_curtain": states.levels[0], "bc_period": states.levels[1]}, attrs={"units": "1"},
+    )
+    transport = raw_transport(transport.assign(H_bc_mass=transport.H_bc_mass.chunk()), weights=weights)
+    bound = AdditiveChoice(_normal(0.2), 0.3, **periods).bind(obs, transport)
+    factor = bound.anomaly_factor()
+    assert dask.is_dask_collection(factor)
+    model, _, (_, design) = _designs(_eager(bound))
+    normalized = raw_weights.ravel() / raw_weights.sum()
+    basis = model["bc_anomaly_basis"].eval()
+    np.testing.assert_allclose(normalized @ basis, 0.0, atol=1e-16)
+    np.testing.assert_allclose(factor.compute().values, 0.3 * design, rtol=0, atol=1e-15)
+
+
+@pytest.mark.parametrize(
+    ("values", "lazy", "message"),
+    [
+        ([[1., 2., 3.], [4., 0., 6.]], False, "finite and strictly positive"),
+        ([[1., 2., np.inf], [4., 5., 6.]], False, "finite and strictly positive"),
+        ([[1., 2., 3.], [4., 5., 6.]], True, "Materialize bc_centering_weights"),
+    ],
+)
+def test_weighted_factor_rejects_invalid_or_lazy_weights(values, lazy, message):
+    """The lazy factor validates weights exactly as model construction does."""
+    obs = _inputs().mf
+    periods = {"frequency": "2h", "anchor_time": "2021-01-01"}
+    transport = _operands(obs, normalised=False)
+    states = BoundCenteredTransport.bind(transport, obs, **periods).indexes["bc_region"]
+    weights = xr.DataArray(
+        np.array(values), dims=("bc_curtain", "bc_period"),
+        coords={"bc_curtain": states.levels[0], "bc_period": states.levels[1]}, attrs={"units": "1"},
+    )
+    if lazy:
+        weights = weights.chunk()
+    bound = AdditiveChoice(_normal(0.2), 0.3, **periods).bind(obs, raw_transport(transport, weights=weights))
+    with pytest.raises(ValueError, match=message):
+        bound.anomaly_factor()
+
+
 def test_reference_reexpresses_prescribed_boundary_but_changes_scaling_covariance():
     obs = _inputs().mf
     transport = _operands(obs, 209300.0, normalised=False)
-    prescribed = (transport.anomaly + transport.reference * transport.mass).sum("bc_region")
+    prescribed = (transport.H_bc_anomaly + transport.bc_reference * transport.H_bc_mass).sum("bc_region")
     bound = {}
     for reference in ("stored", 209301.0, "whole_window_transport_mean"):
         data = _eager(AnomalyScalingChoice(_normal(5.0), 0.8, reference=reference).bind(obs, transport)).data
@@ -162,7 +242,7 @@ def test_reference_reexpresses_prescribed_boundary_but_changes_scaling_covarianc
         bound[reference] = data
     assert not np.allclose(bound["stored"].H_bc_anomaly, bound[209301.0].H_bc_anomaly)
     assert float(bound["whole_window_transport_mean"].bc_reference) == pytest.approx(
-        209300.0 + float(transport.anomaly.sum() / transport.mass.sum()), rel=0, abs=1e-9,
+        209300.0 + float(transport.H_bc_anomaly.sum() / transport.H_bc_mass.sum()), rel=0, abs=1e-9,
     )
     assert float(bound["whole_window_transport_mean"].H_bc_anomaly.sum()) == pytest.approx(0.0, abs=1e-9)
 
@@ -173,7 +253,7 @@ def test_period_mean_shifts_respond_through_each_period_mass(method):
     transport = _operands(obs, normalised=False)
     choice = _choice(method, mean_by_period=True, frequency="2h", anchor_time="2021-01-01")
     model, _, designs = _designs(_eager(choice.bind(obs, transport)))
-    np.testing.assert_allclose(designs[0], transport.mass.values.sum(axis=1)[:, None] * np.eye(3)[[0, 1, 0, 2]])
+    np.testing.assert_allclose(designs[0], transport.H_bc_mass.values.sum(axis=1)[:, None] * np.eye(3)[[0, 1, 0, 2]])
     assert model["bc_mean_shift"].eval().shape == (3,)
     assert model.named_vars_to_dims["bc_mean_shift"] == ("bc_mean_period",)
 
@@ -186,9 +266,11 @@ def test_binding_is_lazy_and_materializes_the_whole_window_reference_once():
     @delayed
     def payload():
         calls.append(1)
-        return transport.anomaly.values
+        return transport.H_bc_anomaly.values
 
-    lazy = replace(transport, anomaly=transport.anomaly.copy(data=da.from_delayed(payload(), shape=(4, 2), dtype=float)))
+    lazy = raw_transport(transport.assign(
+        H_bc_anomaly=transport.H_bc_anomaly.copy(data=da.from_delayed(payload(), shape=(4, 2), dtype=float)),
+    ))
     bound = AnomalyScalingChoice(_normal(5.0), 0.8, reference="whole_window_transport_mean").bind(obs, lazy)
     assert calls == []
     (eager,) = dask.compute(bound)
@@ -200,12 +282,14 @@ def test_binding_is_lazy_and_materializes_the_whole_window_reference_once():
 def test_one_curtain_keeps_scalings_and_independent_states_but_no_contrast(method):
     obs = _inputs().mf
     transport = _operands(obs)
-    transport = CenteredOperands(transport.anomaly.isel(bc_region=[0]), xr.ones_like(transport.mass.isel(bc_region=[0])),
-                                 transport.reference)
+    transport = centered_transport(transport.H_bc_anomaly.isel(bc_region=[0]), xr.ones_like(transport.H_bc_mass.isel(bc_region=[0])),
+                                 transport.bc_reference)
     with registered_model() as model:
         _eager(_choice(method).bind(obs, transport)).add()
     assert ("bc_scaling" in model) == (method == "scaling")
-    assert ("bc_anomaly_latent" in model) == (method == "independent")
+    # Only independent states sample anomalies; other additive methods record zeros.
+    assert ("bc_anomaly" in {rv.name for rv in model.free_RVs}) == (method == "independent")
+    assert "bc_anomaly_latent" not in model
     assert np.isfinite(model.compile_logp()(model.initial_point()))
 
 
@@ -291,7 +375,7 @@ def test_linked_ordinary_cached_channels_are_independent_at_oxygen_precision(met
     assert "co2_bc" not in model and "o2_bc" not in model
     point = model.initial_point()
     independent = method == "independent"
-    point["o2_bc_anomaly_latent" if independent else "o2_bc_mean_shift"] = (
+    point["o2_bc_anomaly" if independent else "o2_bc_mean_shift"] = (
         np.full(2, 0.000123) if independent else np.array(0.000123)
     )
     signal = "mu_bc_anomaly" if independent else "mu_bc_mean_shift"
@@ -323,18 +407,29 @@ def test_public_co2_trace_products_reconstruct_each_structure(cached, method):
             assert trace[group].bc_mean_shift.attrs["units"] == "ppm"
             total = total + components[f"boundary_mean_contribution_{group}"]
         if method in ("contrasts", "independent"):
-            assert trace[group].bc_anomaly_latent.attrs["units"] == "ppm"
+            latent = "bc_anomaly" if method == "independent" else "bc_anomaly_latent"
+            assert trace[group][latent].attrs["units"] == "ppm"
             total = total + components[f"boundary_anomaly_contribution_{group}"]
         if method == "scaling":
-            assert trace[group].bc_scaling.attrs["units"] == "1"
-            scaling = trace[group].mu_bc_scaling
-            if group == "prior":
-                scaling = scaling.rename(chain="prior_chain", draw="prior_draw")
-            total = total + scaling
+            # Exported components alone decompose the scaling contribution.
+            assert components[f"boundary_anomaly_{group}"].attrs["units"] == "1"
+            assert "bc_region" in components[f"boundary_anomaly_{group}"].dims
+            total = total + components[f"boundary_anomaly_contribution_{group}"]
         xr.testing.assert_allclose(components[f"boundary_{group}"], total.transpose(*components[f"boundary_{group}"].dims))
         xr.testing.assert_allclose(components[f"modelled_{group}"],
                                    components[f"pollution_{group}"] + components[f"boundary_{group}"])
 
+
+
+def test_missing_scaling_draws_fail_boundary_reconstruction():
+    prepared = _single_with_operands(additive=False)
+    built, _ = inference.build_co2_inference(
+        prepared, {"boundary": _choice("scaling", level_sd=0.5, scale=0.2), "no_model_error": True},
+    )
+    trace = co2_runner.annotate_co2_trace(_draws(built), built, concentration_units="ppm")
+    trace["posterior"] = trace["posterior"].to_dataset().drop_vars("mu_bc_scaling")
+    with pytest.raises(ValueError, match="boundary_anomaly_concentration"):
+        reconstruct_co2_concentrations(trace, prepared)
 
 def test_restored_trace_coordinates_label_period_contrast_states():
     prepared = _single_with_operands(additive=False)

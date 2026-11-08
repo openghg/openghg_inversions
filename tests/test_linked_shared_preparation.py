@@ -20,9 +20,7 @@ from test_co2_o2_fixed_ou import _prepared
 
 
 def operands(obs, c=400.):
-    raw = bound_operands(obs, c=c)
-    return xr.Dataset(dict(H_bc_anomaly=raw.anomaly, H_bc_mass=raw.mass, bc_reference=raw.reference),
-                      attrs={"boundary_representation": "centered-v1"})
+    return bound_operands(obs, c=c)
 
 
 @pytest.fixture(autouse=True)
@@ -474,7 +472,7 @@ def test_raw_time_snapshot_identity_never_rebinds_on_load(native, monkeypatch, t
     path = tmp_path / "time.nc"
     prepared.save(path)
     monkeypatch.setattr(SharedBaselineChoice, "bind", lambda *a, **kw: pytest.fail("snapshot load rebound support"))
-    monkeypatch.setattr("openghg_inversions.models.boundary.CenteredOperands.bind",
+    monkeypatch.setattr("openghg_inversions.models.boundary.BoundCenteredTransport.bind",
                         lambda *a, **kw: pytest.fail("snapshot load rebuilt calendar"))
     restored = Co2O2PreparedInputs.load(path)
     for channel in ("co2", "o2"):
