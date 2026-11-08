@@ -191,25 +191,16 @@ validation coverage.
 ### Requirement: Raw centered boundary transport has a contract
 
 Prepared or loaded centered boundary transport SHALL be established as a raw
-centered transport contract before binding. The contract SHALL require
-`H_bc_anomaly` and `H_bc_mass` sharing the spatial `bc_region` dimension and
-one raw observation dimension, `time` or `nmeasure`, each with unique indexed
-labels and a plain (not period-expanded) state index; a scalar `bc_reference`;
-anomaly and reference in the same concentration units and dimensionless mass;
-and `boundary_representation='centered-v1'`. Optional additive centering
-weights SHALL lie on `(bc_curtain, bc_period)` with unique curtain labels,
-interval-start period labels (or the single `whole_window` label without
-timestamps) and dimensionless units. Other variables SHALL be permitted.
-
-The raw contract SHALL establish structural guarantees only. Its documentation
-SHALL distinguish those guarantees from the finite anomaly/reference,
-finite non-negative nonzero mass, and finite strictly positive weight
-requirements owned by later explicit numerical operations. Preparation,
-loading and saving SHALL NOT scan weight payloads to establish positivity.
+centered transport contract before binding. The contract SHALL describe the
+concentration anomaly, dimensionless mass and scalar reference on raw spatial
+boundary states and one raw observation axis, their unit relationships, and
+optional additive centering weights on boundary curtains and periods. The
+contract SHALL establish structure only; finite and positive values remain
+requirements of the later numerical operation that uses them.
 
 #### Scenario: Accept supplied centered transport
 
-- **WHEN** independently supplied or loaded centered transport satisfies the raw layout in either operand dimension order
+- **WHEN** independently supplied or loaded centered transport satisfies the raw layout
 - **THEN** the accepting preparation or loading boundary returns it unchanged with the raw contract type
 - **AND** no numerical payload or auxiliary coordinate is computed
 
@@ -221,45 +212,24 @@ loading and saving SHALL NOT scan weight payloads to establish positivity.
 ### Requirement: Bound centered boundary transport has a shared contract
 
 Binding raw centered transport to one fit SHALL produce a bound centered
-transport contract consumed by every centered boundary family. It SHALL
-contain `H_bc_anomaly` and `H_bc_mass` on `(observation, bc_region)` in that
-order, where the observation dimension is the first dimension of
-`H_bc_anomaly` and has unique indexed labels in the fit's row order, and
-`bc_region` is a unique index with levels `(bc_curtain, bc_period)` covering
-every curtain in every boundary period. It SHALL retain the scalar reference
-and the raw units. Binding SHALL establish the contract by construction
-without computing numerical payloads.
+transport contract, consumed by every centered boundary family, whose states
+cover every boundary curtain in every boundary period. Binding SHALL establish
+the contract by construction without computing numerical payloads. Weighted
+additive anomalies SHALL use an extension that adds centering weights aligned
+exactly to the bound states.
 
-The additive extension SHALL additionally hold dimensionless centering weights
-on `bc_region`, aligned exactly to the bound states. Only weighted additive
-anomalies SHALL require it; other families SHALL consume the shared contract
-without weights. These bound contracts SHALL establish structure only;
-subsetting observations MAY leave all-zero mass even when raw mass was nonzero.
-
-Before graph construction relies on numerical values, its explicit operation
-SHALL reject lazy inputs, check finite anomaly/reference and finite non-negative
-nonzero bound mass, and calculate the fixed reference shift once for reuse.
-The weighted additive normalization operation SHALL reject lazy weights and
-check finite strictly positive weights once when forming its normalized design.
-Materialization SHALL remain with the recipe's joint input boundary, rather
-than being hidden in these operations or added solely for contract typing.
+Graph construction SHALL check the numerical requirements of the jointly
+materialized bound values once, without hiding materialization in that check.
 
 #### Scenario: Reject an incomplete state grid
 
-- **WHEN** a supplied bound state index omits a combination of its represented curtain and period labels
-- **THEN** structural validation reports incomplete curtain-period coverage without computing payloads
+- **WHEN** a supplied bound state index omits a combination of its curtain and period labels
+- **THEN** structural validation reports incomplete coverage without computing payloads
 
 #### Scenario: Apply numerical requirements to selected values
 
 - **WHEN** structurally valid bound transport has all-zero mass after selecting fit rows
-- **THEN** its explicit reference-shift operation rejects that numerical input
-- **AND** the lazy-stage contract has made no nonzero-mass guarantee
-
-#### Scenario: Normalize supplied additive weights once
-
-- **WHEN** weighted additive graph construction receives materialized bound weights
-- **THEN** its normalization operation checks finite strictly positive values and returns weights summing to one
-- **AND** preparation, loading and saving have not repeated that scan
+- **THEN** graph construction rejects that numerical input
 
 #### Scenario: Bind raw transport
 
@@ -275,11 +245,6 @@ than being hidden in these operations or added solely for contract typing.
 
 ### Requirement: Absolute multiplicative transport keeps its own layout
 
-Absolute `H_bc` transport, accepted only by the multiplicative family, SHALL
-keep its supported state layouts without centered curtain/period or reference
-assumptions. It SHALL NOT require a distinct contract in this pilot.
-
-#### Scenario: Bind absolute transport
-
-- **WHEN** a multiplicative choice binds absolute `H_bc`
-- **THEN** it binds without centered operands, reference or centering weights
+Absolute transport, accepted only by the multiplicative family, SHALL keep its
+supported state layouts without centered assumptions and SHALL NOT require a
+contract in this pilot.

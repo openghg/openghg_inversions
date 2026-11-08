@@ -38,7 +38,7 @@ import xarray as xr
 from xarray_validate import AttrSchema, DataArraySchema, DatasetSchema, DimsSchema, SchemaError, ValidationContext
 
 from openghg_inversions.xr_contracts import xr_contract
-from openghg_inversions.boundary_sensitivity import _expand_boundary_periods, _select_native_boundary
+from openghg_inversions.boundary_sensitivity import bind_period_states
 from openghg_inversions.inversion_inputs import DatetimeLike
 from .operands import require_centered_precision
 
@@ -346,10 +346,9 @@ class BoundCenteredTransport(xr.Dataset):
     ) -> BoundCenteredTransport:
         """Select one fit's observation rows and expand spatial states by period.
 
-        Observation labels own the row order and their auxiliary ``time``
-        values own period membership. Checking indexed boundary times may
-        compute a lazy timestamp coordinate; numerical operands stay lazy. The
-        contract holds by construction. Weights are not included; see
+        Rows and periods follow
+        :func:`~openghg_inversions.boundary_sensitivity.bind_period_states`.
+        The contract holds by construction. Weights are not included; see
         :meth:`BoundAdditiveTransport.bind_weights`.
 
         Args:
@@ -367,20 +366,10 @@ class BoundCenteredTransport(xr.Dataset):
                 indexed timestamps conflict with the observations.
         """
         require_centered_precision()
-        native_dim = str(observations.dims[0])
-        raw_dim = "time" if "time" in transport.H_bc_anomaly.dims else "nmeasure"
-        raw = _select_native_boundary(transport[["H_bc_anomaly", "H_bc_mass"]], observations, raw_dim)
-        bound = _expand_boundary_periods(
-            raw, observation_dim=raw_dim, frequency=frequency, anchor_time=anchor_time, observation_labels=None,
+        bound = bind_period_states(
+            transport[["H_bc_anomaly", "H_bc_mass"]], observations, frequency=frequency, anchor_time=anchor_time,
         )
-        if raw_dim != native_dim:
-            # Native time has already determined periods; the restored dimension
-            # index owns those same labels, so its auxiliary copy is redundant.
-            if native_dim == "time" and "time" in bound.coords:
-                bound = bound.drop_vars("time")
-            bound = bound.rename({raw_dim: native_dim})
-        bound = bound.transpose(native_dim, "bc_region").assign(bc_reference=transport.bc_reference)
-        return cast(BoundCenteredTransport, bound)
+        return cast(BoundCenteredTransport, bound.assign(bc_reference=transport.bc_reference))
 
     @staticmethod
     def reference_shift(data: BoundCenteredTransport) -> xr.DataArray:

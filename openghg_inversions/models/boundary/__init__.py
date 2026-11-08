@@ -32,14 +32,10 @@ with ``H = A + c M``. Centered transport has static Dataset contracts
 loading establish :class:`RawCenteredTransport`;
 :meth:`BoundCenteredTransport.bind` produces :class:`BoundCenteredTransport`,
 which every centered family consumes; and weighted additive anomalies extend
-it to :class:`BoundAdditiveTransport`. :class:`BoundaryChoice` is generic in
-the transport its ``bind`` accepts: every family accepts raw centered
-transport, and only :class:`MultiplicativeChoice` also accepts absolute
-``H_bc``, so a ``BoundaryChoice[RawCenteredTransport]`` is any family. The
-transport parameter is erased at runtime, so the recipe input helpers that
-identify a prepared dataset's representation admit absolute transport only
-for :class:`MultiplicativeChoice`; a new family that accepts absolute
-transport must also be admitted there. Centered transport keeps small
+it to :class:`BoundAdditiveTransport`. Every :class:`BoundaryChoice` binds raw
+centered transport; only :class:`MultiplicativeChoice` also accepts absolute
+``H_bc``, so the recipe input helpers that identify a prepared dataset's
+representation admit absolute transport only for that family. Centered transport keeps small
 anomalies after cancellation: likelihoods use observations shifted by the
 fixed ``c M 1``, while absolute outputs add it back. Centered graphs need a
 float64 PyTensor process (:func:`require_centered_precision`), checked once
@@ -53,7 +49,7 @@ checks values that only become available once lazy payloads are materialized.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, Protocol, TypeVar, runtime_checkable
+from typing import Any, ClassVar, Protocol, runtime_checkable
 
 import xarray as xr
 
@@ -72,9 +68,6 @@ from openghg_inversions.models.boundary.operands import (
 )
 from openghg_inversions.models.boundary.outputs import BoundaryOutputs
 from openghg_inversions.models.components import AffineConcentrationTerm
-
-
-TransportT_contra = TypeVar("TransportT_contra", contravariant=True)
 
 
 @runtime_checkable
@@ -108,13 +101,8 @@ class Boundary(Protocol):
 
 
 @runtime_checkable
-class BoundaryChoice(Protocol[TransportT_contra]):
-    """Prior specification for one boundary family, before binding.
-
-    The type parameter is the transport representation ``bind`` accepts.
-    It is contravariant, so a choice accepting ``xr.DataArray |
-    RawCenteredTransport`` is also a ``BoundaryChoice[RawCenteredTransport]``.
-    """
+class BoundaryChoice(Protocol):
+    """Prior specification for one boundary family, before binding."""
 
     __dataclass_fields__: ClassVar[dict[str, Any]]
 
@@ -124,7 +112,7 @@ class BoundaryChoice(Protocol[TransportT_contra]):
     @property
     def anchor_time(self) -> DatetimeLike | None: ...
 
-    def bind(self, observations: xr.DataArray, transport: TransportT_contra) -> Boundary: ...
+    def bind(self, observations: xr.DataArray, transport: RawCenteredTransport) -> Boundary: ...
 
 
 __all__ = [

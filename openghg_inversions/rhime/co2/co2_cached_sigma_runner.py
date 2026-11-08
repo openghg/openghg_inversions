@@ -17,7 +17,7 @@ from pymc.initial_point import convert_str_to_rv_dict, make_initial_point_fn  # 
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
-from openghg_inversions.models.boundary import BoundaryChoice, RawCenteredTransport
+from openghg_inversions.models.boundary import BoundaryChoice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
@@ -220,7 +220,7 @@ def build_rhime_co2_cached_sigma(
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
-    boundary: BoundaryChoice[RawCenteredTransport] | None = None,
+    boundary: BoundaryChoice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> Co2CachedSigmaModel:
