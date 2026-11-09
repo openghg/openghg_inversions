@@ -3,8 +3,7 @@
 The boundary contribution is ``H b`` for dimensionless scaling states ``b``.
 With absolute transport ``H`` (``H_bc``) the graph evaluates that product
 directly. With centered transport ``H = A + c M``
-(:class:`~.operands.CenteredOperands`; see
-:doc:`/usage/centered_boundary_conditions`) the likelihood instead uses
+(:class:`~.operands.CenteredOperands`) the likelihood instead uses
 ``A b + c M (b - 1)`` against observations shifted by ``c M 1``, which keeps
 small anomalies after cancellation; the absolute output still adds the shift.
 """

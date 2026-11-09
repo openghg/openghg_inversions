@@ -1387,13 +1387,8 @@ ordinary route with ``likelihood_builder=add_fixed_ou_gaussian_likelihood``. The
 amplitude update use directly composed centered means, while public BC states,
 priors and concentration outputs retain their physical meaning. See the
 :ref:`centered boundary contract <surface-centered-boundary-contract>` for
-period alignment, fixed states, restoration and persistence limits. Direct
-scientific builders also forward centered observations and means to ordinary
-likelihood callables. A custom density that depends on absolute concentration
-must handle the known fixed translation explicitly, including any captured
-physical reference context. Prepared-input runner replay supports the built-in
-additive-Gaussian and fixed-OU likelihoods; direct custom callers own their
-predictive-restoration and output contract.
+period alignment, fixed states, restoration and persistence limits, including the
+supported built-in likelihoods.
 
 :doc:`coherent_reduction` describes the linked retained prior, effective
 operator, affine contribution, and unresolved covariance.
