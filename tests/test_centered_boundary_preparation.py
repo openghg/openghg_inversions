@@ -81,7 +81,7 @@ def test_validated_no_time_operands_bind_one_period_without_computation():
         result = align_boundary_operands(raw, observation_labels=labels)
     assert "time" not in result.coords
     assert result.indexes["bc_region"].names == ["bc_curtain", "bc_period"]
-    assert set(result.bc_period.values) == {0}
+    assert set(result.bc_period.values) == {"whole_window"}
     for name in ("H_bc_anomaly", "H_bc_mass"):
         assert result[name].attrs["bc_frequency"] == "none"
         assert result[name].attrs["bc_anchor_time"] == "not-applicable"

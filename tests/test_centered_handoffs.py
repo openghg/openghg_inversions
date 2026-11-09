@@ -104,7 +104,10 @@ def test_saved_raw_periods_prior_predictive_save_reopen(tmp_path, linked, center
         scale = trace.prior[f"{prefix}bc"]
         dim = str(scale.dims[-1])
         assert scale.sizes[dim] == 4
-        assert scale[f"{prefix}bc_period"].values.tolist() == [0, 1, 0, 1]
+        times = observed.time.sel(species=channel).values if linked else observed.time.values
+        duration = np.timedelta64(2, "D")
+        first = np.datetime64(anchor) + ((times.min() - np.datetime64(anchor)) // duration) * duration
+        np.testing.assert_array_equal(scale[f"{prefix}bc_period"], np.tile([first, first + duration], 2))
         assert scale[f"{prefix}bc_curtain"].values.tolist() == ["north", "north", "south", "south"]
         # Midnight samples straddle the noon anchor: first period, then second.
         if centered:
