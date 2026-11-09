@@ -51,17 +51,37 @@ def test_each_site_selects_and_orders_shared_basis_without_mutation_or_execution
     xr.testing.assert_identical(basis, original_basis)
 
 
+def _absolute(site):
+    """The same curtains as ordinary absolute ``bc_n/e/s/w`` operands."""
+    absolute = site.rename({f"bc_anomaly_{d}": f"bc_{d}" for d in "nesw"})
+    absolute = absolute.drop_vars([f"bc_mass_{d}" for d in "nesw"] + ["bc_reference"])
+    absolute.attrs = {}
+    return absolute
+
+
+@pytest.mark.parametrize("form", ["dataset", "builder"])
 @pytest.mark.parametrize("time_axis", ["absent", "singleton"])
-def test_time_independent_basis_still_broadcasts_to_retained_site_times(time_axis):
+def test_time_independent_basis_still_broadcasts_to_retained_site_times(time_axis, form):
     site, basis = _inputs()
     basis = basis.isel(time=slice(0, 1))
     if time_axis == "absent":
         basis = basis.squeeze("time", drop=True)
+    supplied = basis if form == "dataset" else (lambda _: basis)
     selected = site.isel(time=[3, 1])
-    result = bc_sensitivity({"AAA": selected}, basis)["AAA"]
+    result = bc_sensitivity({"AAA": selected}, supplied)["AAA"]
     xr.testing.assert_identical(result.time, selected.time)
     np.testing.assert_allclose(result.H_bc_anomaly.transpose("bc_region", "time"), [[10., 10.]])
     np.testing.assert_allclose(result.H_bc_mass.transpose("bc_region", "time"), [[.4, .4]])
+    absolute = bc_sensitivity({"AAA": _absolute(selected)}, supplied)["AAA"].H_bc
+    np.testing.assert_allclose(absolute.transpose("bc_region", "time"), [[10., 10.]])
+
+
+def test_absolute_projection_selects_retained_times_from_a_wider_basis():
+    site, basis = _inputs()
+    selected = _absolute(site.isel(time=[3, 1]))
+    result = bc_sensitivity({"AAA": selected}, basis)["AAA"].H_bc
+    xr.testing.assert_identical(result.time, selected.time)
+    np.testing.assert_allclose(result.transpose("bc_region", "time"), [[40., 20.]])
 
 
 def test_missing_retained_timestamp_is_rejected_without_nearest_or_forward_fill():
