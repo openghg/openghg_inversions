@@ -11,5 +11,6 @@ openghg\_inversions.inference
    :maxdepth: 4
 
    openghg_inversions.inference.cached_sigma
+   openghg_inversions.inference.convergence
    openghg_inversions.inference.diagnostics
    openghg_inversions.inference.sampling
