@@ -2826,7 +2826,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         assert actual is merged
         assert kwargs == {
             "split_by_sectors": multisector, "use_bc": False,
-            "flux_sources": config.data.flux_sources, "require_footprints": True,
+            "flux_sources": config.data.flux_sources,
         }
         calls.append("validate")
 
@@ -3173,7 +3173,6 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
     basis_functions = basis_module.prepare_basis(
         site_data=filtered,
         runtime_flux=resolve_runtime_flux(merged.flux_data),
-        weighting_flux=merged.flux_data[setup.data.flux_sources[0]]["flux"],
         domain=setup.data.domain, start_date=setup.data.start_date,
         nbasis=setup.data.nbasis,
     )

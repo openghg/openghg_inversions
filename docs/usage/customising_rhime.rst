@@ -114,12 +114,9 @@ labelled arrays:
    runtime_flux = resolve_runtime_flux(
        merged.flux_data, split_by_sectors=merged.split_by_sectors,
    )
-   weighting_source = config.data.flux_sources[0] if config.data.flux_sources else next(iter(merged.flux_data))
-   weighting_flux = merged.flux_data[weighting_source]["flux"]
    basis = prepare_basis(
        site_data=filtered,
        runtime_flux=runtime_flux,
-       weighting_flux=weighting_flux,
        domain=config.data.domain,
        start_date=config.data.start_date,
        nbasis=config.data.nbasis,
@@ -145,8 +142,9 @@ accept explicit selections and forward already resolved paths. These scientific
 steps receive resolved values.
 
 ``runtime_flux`` is native prior flux, resolved once for this domain/grid
-context. It retains all sources and their signed values. ``weighting_flux``
-selects only the first requested source for basis design. Non-sectoral source
+context. It retains all sources and their signed values. Generated-basis
+weights come from the filtered sites' ``fp_x_flux`` responses, not from native
+flux; see :ref:`generated-basis-weights`. Non-sectoral source
 combination follows the established OpenGHG time alignment and forward-fill
 policy; sectoral native flux retains its time/grid compatibility checks.
 Observation-aligned ``fp_x_flux`` and ``fp_x_flux_sectoral`` remain in the site
@@ -276,11 +274,11 @@ are not implicitly converted. Equal-scale expressions remain interchangeable.
 Inspect or apply the concrete site schema explicitly during customisation::
 
    schema = merged.site_schema(
-       split_by_sectors=False, require_footprints=False, use_bc=False,
+       split_by_sectors=False, use_bc=False,
    )
    schema.validate(merged.site_data["TAC"])
    merged.validate_scientific_inputs(
-       split_by_sectors=False, require_footprints=False, use_bc=False,
+       split_by_sectors=False, use_bc=False,
        flux_sources=("inventory",),
    )
 
@@ -583,7 +581,7 @@ composes public basis primitives instead of selecting a built-in basis
 algorithm. It:
 
 * derives and normalises a two-dimensional weight field with
-  ``basis_weights_from_data(site_data, weighting_flux)``;
+  ``basis_weights_from_data(site_data)``;
 * receives a class map resolved before acquisition from an exact ``landsea_path``
   or explicitly selected packaged support map, then reduces positive codes to
   ``land`` and the remaining cells to ``ocean``;
@@ -596,7 +594,7 @@ algorithm. It:
 * wraps the flat labels and current run flux in retained ``BasisFunctions``
   with ``basis_functions_from_flat_basis(flux=runtime_flux, ...)``.
 
-The weight field uses the first requested source. The retained basis attaches
+The weight field is the mean absolute retained ``fp_x_flux`` response. The retained basis attaches
 all runtime flux sources, combining them for an ordinary inversion or stacking
 them in mapping order when ``split_by_sectors=True``. Neither handoff needs the
 legacy merged dictionary.
@@ -611,12 +609,8 @@ function that maps the loaded integer country codes or country names to those
 classes. Keep this classification outside OpenGHG Inversions unless it becomes
 a broadly supported policy.
 
-The weighting is deliberately not identical to that later verification-games
-preparation step. Verification-games sums absolute cached ``fp_x_flux`` after
-those sensitivities exist. At this earlier visible-runner basis boundary they
-have not been constructed yet, so the example uses the public
-``basis_weights_from_data`` field while preserving the guarded split strategy
-and class composition.
+The weighting matches the verification-games preparation step: both weight
+the strategy by absolute retained ``fp_x_flux`` responses.
 
 The flat labels and retained object record namespaced provenance for the class
 policy, normalised weight source, connected balanced-inertial strategy,

@@ -162,15 +162,16 @@ def test_multiple_native_sources_are_retained_once_and_replayed_without_original
         resolutions.append(tuple(sources))
         return resolve(sources, **kwargs)
 
-    def check_first_weight(**kwargs):
-        weights.append(kwargs["weighting_flux"])
+    def check_shared_state_weight(**kwargs):
+        assert "weighting_flux" not in kwargs
+        weights.append(kwargs.get("multisector", False))
         return prepare_basis(**kwargs)
 
     def forbidden(*args, **kwargs):
         raise AssertionError("Preparation or replay performed acquisition, basis export or inference")
 
     monkeypatch.setattr(standard, "resolve_runtime_flux", resolve_once)
-    monkeypatch.setattr(standard, "prepare_basis", check_first_weight)
+    monkeypatch.setattr(standard, "prepare_basis", check_shared_state_weight)
     monkeypatch.setattr(standard.MergedData, "from_options", forbidden)
     monkeypatch.setattr(BasisFunctions, "save", forbidden)
     monkeypatch.setattr(RhimeSampler, "sample", forbidden)
@@ -184,7 +185,7 @@ def test_multiple_native_sources_are_retained_once_and_replayed_without_original
     xr.testing.assert_allclose(prepared.basis_functions.flux, expected)
 
     # Scientific callers may change source order without changing the sum;
-    # only the first requested source supplies basis-design weighting.
+    # source order no longer selects the basis-design weighting.
     reversed_merged = replace(merged, flux_data=dict(reversed(tuple(merged.flux_data.items()))))
     reversed_prepared = standard.prepare_standard(
         reversed_merged, basis_inputs=resolve_basis_inputs(data),
@@ -193,9 +194,8 @@ def test_multiple_native_sources_are_retained_once_and_replayed_without_original
            "flux_sources": ("supplemental", "inventory")},
     )
     assert resolutions == [("inventory", "supplemental"), ("supplemental", "inventory")]
-    assert len(weights) == 2
-    np.testing.assert_array_equal(weights[0], [[1.0, 2.0], [3.0, 4.0]])
-    np.testing.assert_array_equal(weights[1], [[0.3, 1.2], [2.1, 0.4]])
+    assert weights == [False, False]
+    xr.testing.assert_equal(reversed_prepared.basis_functions.flat_basis(), prepared.basis_functions.flat_basis())
     np.testing.assert_allclose(reversed_prepared.inv_inputs.H, h[None, :])
     np.testing.assert_allclose(reversed_prepared.inv_inputs.mf_error, 0.1)
     xr.testing.assert_allclose(reversed_prepared.basis_functions.flux, expected)

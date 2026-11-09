@@ -34,8 +34,8 @@ sector separates different flux sources on one spatial layout; a nested domain
 separates two transport grids for the same flux source and must retain two
 independent basis operators. Native runtime flux is resolved separately for
 each grid, after the outer scientific mask is applied. Each basis binds its
-current native prior; generation uses the first requested source for design
-weights. Reusing a saved operator does not replace either current prior with
+current native prior; generation weights each grid by its retained (masked)
+``fp_x_flux`` response. Reusing a saved operator does not replace either current prior with
 the artifact's saved flux. Observation-aligned response arrays remain separate
 inputs to sensitivity construction. See the :doc:`family support summary
 <nested_domain_model_family>` before using this guide.

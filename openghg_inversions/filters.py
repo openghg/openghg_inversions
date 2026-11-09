@@ -290,6 +290,10 @@ def local_influence(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Datas
     """Subset for times when "local influence" is below threshold.
 
     Local influence expressed as a fraction of the sum of entire footprint domain.
+    It is computed from the raw footprint ``fp`` unless the dataset already
+    carries a variable with ``standard_name="local_ratio"``. Response-only
+    merged inputs, which retain ``fp_x_flux`` but not ``fp``, need that
+    precomputed ratio.
 
     Args:
         dataset: dataset to filter
@@ -297,8 +301,17 @@ def local_influence(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Datas
 
     Returns:
         filtered dataset
+
+    Raises:
+        ValueError: If neither ``fp`` nor a ``local_ratio`` variable is present.
     """
     if not dataset.filter_by_attrs(standard_name="local_ratio"):
+        if "fp" not in dataset:
+            raise ValueError(
+                "The local_influence filter requires the raw footprint 'fp' or a precomputed "
+                "variable with standard_name='local_ratio'; retain 'fp' in merged site data "
+                "when selecting this filter."
+            )
         lr = _local_ratio(dataset)
     else:
         lr = dataset.local_ratio

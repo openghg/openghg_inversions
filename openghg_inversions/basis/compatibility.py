@@ -82,9 +82,11 @@ def make_basis_functions(
     selected support maps are loaded eagerly.
 
     ``emissions_name`` aliases ``flux_sources`` and cannot be supplied with it.
-    The first requested source supplies generation weights, falling back to
-    the first ``flux_data`` entry. All runtime sources are retained, separately
-    in mapping order when ``split_by_sectors=True`` and combined otherwise.
+    Generated weights use the sites' retained responses: the total
+    ``fp_x_flux`` magnitude, or summed ``fp_x_flux_sectoral`` magnitudes when
+    ``split_by_sectors=True``; ``flux_sources`` no longer selects them. All
+    runtime sources are retained, separately in mapping order when
+    ``split_by_sectors=True`` and combined otherwise.
     ``output_path`` is a historical root directory, with a domain subdirectory
     and filename derived from ``species``, algorithm, month and ``outputname``.
     It is used only for generated bases. ``basis_output_format="datatree"``
@@ -135,7 +137,7 @@ def make_basis_functions(
         result = prepare_basis(
             site_data=site_data,
             runtime_flux=resolve_runtime_flux(flux_data, split_by_sectors=split_by_sectors),
-            weighting_flux=flux_data[flux_sources[0] if flux_sources else next(iter(flux_data))]["flux"],
+            multisector=split_by_sectors,
             domain=domain,
             start_date=start_date,
             nbasis=nbasis,
@@ -217,7 +219,6 @@ def load_basis_functions(
     result = prepare_basis(
         site_data={},
         runtime_flux=resolve_runtime_flux(flux_data, split_by_sectors=split_by_sectors),
-        weighting_flux=flux_data[next(iter(flux_data))]["flux"],
         domain=domain,
         start_date="",
         nbasis=0,

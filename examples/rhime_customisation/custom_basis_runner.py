@@ -6,11 +6,9 @@ emissions-basis stage is replaced by :func:`build_project_basis`.  The example
 either reuses a saved basis operator with current runtime flux or creates
 a guarded region-constrained basis whose regions stay within land/ocean
 classes, remain connected, and satisfy a project eccentricity threshold.
-The verification-games workflow weights that strategy with summed absolute
-cached ``fp_x_flux``. At this earlier runner stage projected sensitivities do
-not exist, so the example deliberately substitutes the public
-``basis_weights_from_data`` field while preserving the guarded strategy and
-class composition.
+Like the verification-games workflow, the strategy is weighted by the mean
+absolute retained ``fp_x_flux`` response, here from the public
+``basis_weights_from_data`` field.
 
 Use :func:`run_custom_rhime` from Python or :func:`main` from the command line.
 Acquired xarray objects are treated as borrowed.  Generated-basis fitting is
@@ -78,7 +76,6 @@ def _guarded_basis(
     *,
     site_data: dict[str, xr.Dataset],
     runtime_flux: xr.DataArray,
-    weighting_flux: xr.DataArray,
     domain: str,
     nbasis: int = 100,
     region_classes: xr.DataArray,
@@ -87,14 +84,13 @@ def _guarded_basis(
     """Build the project's connected, eccentricity-guarded retained basis.
 
     The public weight adapter intentionally materializes a derived 2-D weight
-    field from borrowed footprint and flux inputs here. The project then owns
+    field from the borrowed retained ``fp_x_flux`` responses here. The project then owns
     normalization, class composition, guarded splitting, and conversion of the
     flat labels to retained ``BasisFunctions`` without mutating the supplied arrays.
 
     Args:
-        site_data: Filtered, borrowed site datasets containing footprints.
+        site_data: Filtered, borrowed site datasets containing ``fp_x_flux``.
         runtime_flux: Resolved native prior flux for every retained source.
-        weighting_flux: Native flux of the first requested source for weights.
         domain: Model domain recorded on the generated basis.
         nbasis: Requested number of basis regions.
         region_classes: Resolved borrowed country/class map.
@@ -108,12 +104,8 @@ def _guarded_basis(
         ValueError: If zero-filled weights do not have a positive finite
             maximum, or geometry, allocation, or guarded splitting is invalid.
     """
-    # 1. Turn the filtered footprints and flux into one spatial importance map.
-    weights = basis_weights_from_data(
-        site_data,
-        weighting_flux,
-        abs_flux=True,
-    )
+    # 1. Turn the filtered responses into one spatial importance map.
+    weights = basis_weights_from_data(site_data)
     finite_weights = weights.fillna(0.0).astype(np.float64)
     maximum = float(finite_weights.max())
     if not np.isfinite(maximum) or maximum <= 0.0:
@@ -159,7 +151,7 @@ def _guarded_basis(
         "openghg_inversions:project_basis_connectivity": 1,
         "openghg_inversions:project_basis_max_child_pca_eccentricity": float(max_child_pca_eccentricity),
         "openghg_inversions:project_basis_class_policy": "land_ocean",
-        "openghg_inversions:project_basis_weights": "basis_weights_from_data_abs_flux_normalized",
+        "openghg_inversions:project_basis_weights": "basis_weights_from_data_abs_response_normalized",
     }
     basis_flat.attrs.update(provenance)
     # 5. Attach the current flux so standard RHIME sensitivity code can use it.
@@ -174,7 +166,6 @@ def build_project_basis(
     *,
     site_data: dict[str, xr.Dataset],
     runtime_flux: xr.DataArray,
-    weighting_flux: xr.DataArray,
     domain: str,
     nbasis: int = 100,
     region_classes: xr.DataArray | None = None,
@@ -184,9 +175,8 @@ def build_project_basis(
     """Return the project-selected retained emissions basis.
 
     Args:
-        site_data: Filtered, borrowed site datasets containing footprints.
+        site_data: Filtered, borrowed site datasets containing ``fp_x_flux``.
         runtime_flux: Resolved native prior flux for every retained source.
-        weighting_flux: Native flux of the first requested source for weights.
         domain: Model domain recorded on the generated basis.
         nbasis: Requested number of basis regions.
         region_classes: Resolved borrowed country/class map.
@@ -220,7 +210,6 @@ def build_project_basis(
     return _guarded_basis(
         site_data=site_data,
         runtime_flux=runtime_flux,
-        weighting_flux=weighting_flux,
         domain=domain,
         nbasis=nbasis,
         region_classes=region_classes,
@@ -299,13 +288,10 @@ def run_custom_rhime(
     runtime_flux = resolve_runtime_flux(
         merged.flux_data, split_by_sectors=merged.split_by_sectors,
     )
-    weighting_source = config.data.flux_sources[0] if config.data.flux_sources else next(iter(merged.flux_data))
-    weighting_flux = merged.flux_data[weighting_source]["flux"]
     # Replace only basis construction; subsequent scientific stages stay visible.
     basis_functions = build_project_basis(
         site_data=filtered,
         runtime_flux=runtime_flux,
-        weighting_flux=weighting_flux,
         **config.data.select("domain", "nbasis"),
         region_classes=region_classes,
         project_basis_path=project_basis_path,

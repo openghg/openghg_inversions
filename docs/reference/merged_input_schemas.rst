@@ -27,19 +27,19 @@ Standard observations with a supplied basis and no BCs
 ------------------------------------------------------
 
 .. schema-reference:: openghg_inversions.inversion_data._merged_schema:merged_site_schema
-   :kwargs: {"split_by_sectors": false, "require_footprints": false, "use_bc": false}
+   :kwargs: {"split_by_sectors": false, "use_bc": false}
 
 Multisector observations with a generated spatial basis and ordinary BCs
 ------------------------------------------------------------------------
 
 .. schema-reference:: openghg_inversions.inversion_data._merged_schema:merged_site_schema
-   :kwargs: {"split_by_sectors": true, "require_footprints": true, "use_bc": true}
+   :kwargs: {"split_by_sectors": true, "use_bc": true}
 
 Standard observations with a generated spatial basis and centered BCs
 ---------------------------------------------------------------------
 
 .. schema-reference:: openghg_inversions.inversion_data._merged_schema:merged_site_schema
-   :kwargs: {"split_by_sectors": false, "require_footprints": true, "use_bc": true, "boundary_representation": "centered-v1"}
+   :kwargs: {"split_by_sectors": false, "use_bc": true, "boundary_representation": "centered-v1"}
 
 Static native flux with canonical numerical scale
 -------------------------------------------------

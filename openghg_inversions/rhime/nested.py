@@ -795,7 +795,6 @@ def _prepare_one_domain(
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=basis_algorithm):
         basis_functions = prepare_basis(
             site_data=merged.site_data, runtime_flux=runtime_flux,
-            weighting_flux=merged.flux_data[flux_sources[0]]["flux"],
             domain=domain, start_date=start_date, basis_algorithm=basis_algorithm,
             nbasis=nbasis, fix_outer_regions=fix_basis_outer_regions,
             **basis_inputs, allow_empty_inner_region=allow_empty_inner_region,

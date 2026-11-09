@@ -148,13 +148,13 @@ class MergedData:
     site_schema = staticmethod(merged_site_schema)
 
     def validate_scientific_inputs(
-        self, *, split_by_sectors: bool, require_footprints: bool,
+        self, *, split_by_sectors: bool,
         use_bc: bool, flux_sources: Sequence[str], grid_dims: tuple[str, str] = ("lat", "lon"),
     ) -> None:
         """Validate acquired arrays for selected preparation without execution.
 
         Unlike acquisition-fact compatibility, this checks the per-site schema,
-        conditional responses/BCs/footprints and native inventory flux. Centered
+        conditional responses/BCs and native inventory flux. Centered
         boundaries retain anomaly/mass/reference operands; their units and
         scientific invariants remain with boundary projection. Errors
         identify ``site_data[site]`` or ``flux_data[source]`` and the offending
@@ -176,10 +176,9 @@ class MergedData:
 
         Args:
             split_by_sectors: Select the standard or source-resolved response.
-            require_footprints: Require raw footprints when fitting basis weights.
             use_bc: Require acquired directional boundary contributions.
-            flux_sources: Selected source identities, including the first source
-                used for basis-design weights. All retained inventories are checked.
+            flux_sources: Selected source identities. All retained inventories
+                are checked.
             grid_dims: Native spatial axis names, latitude then longitude.
 
         Raises:
@@ -199,7 +198,7 @@ class MergedData:
         for site in self.sites:
             dataset = self.site_data[site]
             schema = self.site_schema(
-                split_by_sectors=split_by_sectors, require_footprints=require_footprints,
+                split_by_sectors=split_by_sectors,
                 use_bc=use_bc, grid_dims=grid_dims,
                 concentration_units=reference_units, flux_sources=flux_sources,
                 boundary_representation=dataset.attrs.get("boundary_representation"),

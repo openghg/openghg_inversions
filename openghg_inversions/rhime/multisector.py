@@ -405,7 +405,7 @@ def prepare_multisector(
     Args:
         domain: Domain label for prepared inputs and basis metadata.
         start_date: Requested start of the preparation interval.
-        flux_sources: Ordered source identities; the first weights basis design.
+        flux_sources: Ordered source identities selected for the response.
         averaging_error: Include variability when deriving observation errors.
         filters: Observation-filter choices interpreted by the filtering owner.
         basis_algorithm: Selected basis-generation algorithm.
@@ -426,7 +426,6 @@ def prepare_multisector(
     preparation_start = timer_start()
     merged_data.validate_scientific_inputs(
         split_by_sectors=True, use_bc=use_bc, flux_sources=flux_sources,
-        require_footprints=basis_inputs.get("basis_path") is None and basis_inputs.get("basis_partition") is None,
     )
     # Preparation works on per-site datasets; ``merged_data`` stays acquired data.
     filtered, site_options = filter_observations(
@@ -443,11 +442,11 @@ def prepare_multisector(
         basis_functions = prepare_basis(
             site_data=filtered,
             runtime_flux=runtime_flux,
-            weighting_flux=merged_data.flux_data[flux_sources[0]]["flux"],
             domain=domain,
             start_date=start_date,
             basis_algorithm=basis_algorithm,
             nbasis=nbasis,
+            multisector=True,
             fix_outer_regions=fix_basis_outer_regions,
             **basis_inputs,
         )

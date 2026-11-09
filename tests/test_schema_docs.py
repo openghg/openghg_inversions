@@ -20,7 +20,7 @@ def _forbid_execution(*args, **kwargs):
 
 @pytest.mark.parametrize("kwargs", [
     {},
-    {"split_by_sectors": True, "require_footprints": True, "use_bc": True},
+    {"split_by_sectors": True, "use_bc": True},
     {"use_bc": True, "boundary_representation": "centered-v1"},
 ])
 def test_merged_schema_description_preserves_structure_and_does_not_execute(kwargs):

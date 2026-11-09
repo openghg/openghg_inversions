@@ -50,7 +50,8 @@ def test_sector_mapping_order_does_not_change_preparation_weighting(tmp_path, mo
     prepare_basis = multisector.prepare_basis
 
     def capture_weights(**kwargs):
-        weights.append(kwargs["weighting_flux"])
+        assert "weighting_flux" not in kwargs
+        weights.append(kwargs["multisector"])
         return prepare_basis(**kwargs)
 
     monkeypatch.setattr(multisector, "prepare_basis", capture_weights)
@@ -66,9 +67,8 @@ def test_sector_mapping_order_does_not_change_preparation_weighting(tmp_path, mo
     xr.testing.assert_equal(preparations[0].basis_functions.operator.basis_matrix,
                             preparations[1].basis_functions.operator.basis_matrix)
     xr.testing.assert_equal(preparations[0].inv_inputs.H, preparations[1].inv_inputs.H)
-    assert len(weights) == 2
-    for weighting_flux in weights:
-        xr.testing.assert_equal(weighting_flux, flux["inventory"])
+    # Separate sector states select summed sector-magnitude weights.
+    assert weights == [True, True]
 
 
 def test_one_preparation_two_priors_and_likelihoods_matches_full_prepared_and_replay(tmp_path, monkeypatch):
