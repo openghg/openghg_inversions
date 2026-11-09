@@ -219,8 +219,9 @@ def test_linked_additive_runner_restores_absolute_predictives_and_annotations(tm
         trace = load_trace(path)
         assert ("o2_bc_anomaly_latent" in trace.prior) == (o2_anomaly_scale > 0)
         if o2_anomaly_scale == 0:
-            np.testing.assert_array_equal(trace.prior.o2_bc_anomaly, 0.0)
-            np.testing.assert_array_equal(trace.prior.o2_mu_bc_anomaly, 0.0)
+            for name in ("o2_bc_anomaly", "o2_mu_bc_anomaly"):
+                assert name not in trace.prior
+                np.testing.assert_array_equal(trace.constant_data[name], 0.0)
         trace["posterior"] = trace["prior"].dataset.copy(deep=False)
         result = make_co2_o2_output(
             prepared=prepared, trace=trace, start_date="2021-01-01", end_date="2021-01-02", domain="EUROPE"
@@ -364,7 +365,8 @@ def test_public_linked_runners_forward_prepared_additive_boundary_options(monkey
             assert trace.constant_data[f"{channel}_bc_anomaly_scale"].item() == scale
             assert (f"{channel}_bc_anomaly_latent" in trace.prior) == (scale > 0)
             if scale == 0:
-                np.testing.assert_array_equal(trace.prior[f"{channel}_mu_bc_anomaly"], 0.0)
+                assert f"{channel}_mu_bc_anomaly" not in trace.prior
+                np.testing.assert_array_equal(trace.constant_data[f"{channel}_mu_bc_anomaly"], 0.0)
         roles = json.loads(trace.attrs["rhime_variable_roles"])
         assert roles["o2_boundary_correction_anomaly"] == "o2_bc_anomaly"
         assert "o2_boundary_scale" not in roles

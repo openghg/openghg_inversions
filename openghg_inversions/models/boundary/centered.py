@@ -1,23 +1,25 @@
-"""Shared base and graph pieces of the centered additive and anomaly-scaling families.
+"""Shared base and graph pieces of the centered boundary families.
 
-Centered sensitivity represents the boundary design as ``A + c M``
-(:class:`~.contracts.BoundCenteredSensitivity`). Both families inherit
+Centered sensitivity represents the absolute boundary sensitivity as
+``A + c M`` (:class:`~.contracts.BoundCenteredSensitivity`). The centered
+multiplicative, additive and anomaly-scaling families inherit
 :class:`CenteredBoundary` and build their boundary term in the same order:
 
 1. :meth:`CenteredBoundary._register_sensitivity` checks the materialized
    sensitivity once and registers ``A``, ``M`` and ``c``, returning a
    :class:`RegisteredSensitivity`;
 2. the family adds its corrections in scientific order, each a
-   :class:`Correction`, starting with the shared :class:`MeanShift`;
+   :class:`Correction`; the additive and anomaly-scaling families start with
+   the shared :class:`MeanShift`;
 3. :meth:`CenteredBoundary._term` adds the absolute ``mu_bc`` and returns the
    :class:`~openghg_inversions.models.components.AffineConcentrationTerm`.
 
 :meth:`CenteredBoundary._outputs` declares the matching shared outputs. The
-base defines no ``add``, so each family's recipe stays explicit. The
-multiplicative family scales the whole design and also accepts absolute
-sensitivity, so it does not use these pieces.
+base defines no ``add``, so each family's recipe stays explicit. Absolute
+multiplicative sensitivity has no centered representation and does not use
+these pieces.
 
-The families share one mean equation: a shift ``m`` in observation
+The additive and anomaly-scaling families share one mean equation: a shift ``m`` in observation
 concentration units on every bound boundary state, either one scalar over the
 inversion window or one independent value per boundary period, contributing
 ``M m`` to the observations. Under supported surface preparation ``M 1 = 1``;
@@ -51,9 +53,14 @@ class Correction:
     """Graph pieces of one sampled boundary correction, such as a mean shift or anomalies.
 
     Attributes:
-        state: Correction on every bound boundary state, in concentration units.
-        signal: Observation response of the correction, recorded as a
-            deterministic.
+        state: Correction on every bound boundary state. Its units depend on
+            the formulation: concentration units for mean shifts and additive
+            anomalies, which respond through ``M``; dimensionless for anomaly
+            scalings ``v`` and multiplicative deviations ``b - 1``, which
+            respond through ``A'`` and ``A + c M``. Combine states only within
+            one formulation.
+        signal: Observation response of the correction, in concentration
+            units.
         block: Affine block: the response to each sampled coefficient, with
             those physical coefficients.
         latent: Sampled variable behind the correction, after any
@@ -74,6 +81,7 @@ class RegisteredSensitivity:
         data: The materialized bound sensitivity.
         anomaly: ``A`` registered as model data.
         mass: ``M`` registered as model data.
+        reference: The scalar ``c`` registered as model data.
         reference_shift: The fixed ``c M 1``.
         fixed: The fixed contribution ``A 1``.
         output_dim: Observation dimension registered by the model.
@@ -85,6 +93,7 @@ class RegisteredSensitivity:
     data: BoundCenteredSensitivity
     anomaly: TensorVariable
     mass: TensorVariable
+    reference: TensorVariable
     reference_shift: xr.DataArray
     fixed: xr.DataArray
     output_dim: str
@@ -122,7 +131,7 @@ class MeanShift:
 
         Returns:
             No corrections without a prior. Otherwise one: the shift on every
-            state, its response, an affine block whose design is ``M 1`` (or
+            state, its response, an affine block whose sensitivity is ``M 1`` (or
             ``M`` summed over each period's states) and the sampled latent.
 
         Raises:
@@ -232,9 +241,9 @@ class CenteredBoundary:
         anomaly, mass = data.H_bc_anomaly, data.H_bc_mass
         a = add_component_data(anomaly, f"{prefix}H_bc_anomaly", owner, observation_dim=output_dim)
         m = add_component_data(mass, f"{prefix}H_bc_mass", owner, observation_dim=output_dim)
-        add_component_data(data.bc_reference, f"{prefix}bc_reference", owner, observation_dim=output_dim)
+        c = add_component_data(data.bc_reference, f"{prefix}bc_reference", owner, observation_dim=output_dim)
         return RegisteredSensitivity(
-            data, a, m, shift,
+            data, a, m, c, shift,
             fixed=anomaly.sum("bc_region", skipna=False).assign_attrs(anomaly.attrs),
             output_dim=output_dim,
             state_dim=str(component_coords(mass, owner, observation_dim=output_dim).dims[1]),
@@ -243,7 +252,12 @@ class CenteredBoundary:
         )
 
     def _term(
-        self, registered: RegisteredSensitivity, corrections: Sequence[Correction], signal: TensorVariable,
+        self,
+        registered: RegisteredSensitivity,
+        corrections: Sequence[Correction],
+        signal: TensorVariable,
+        *,
+        fixed: xr.DataArray | None = None,
     ) -> AffineConcentrationTerm:
         """Add ``mu_bc`` and return the boundary term.
 
@@ -251,12 +265,16 @@ class CenteredBoundary:
             registered: The registered sensitivity.
             corrections: Corrections in scientific order; their blocks and
                 latents form the affine representation.
-            signal: Total observation response of the corrections.
+            signal: Total observation response of the corrections, including
+                any part from states that are not sampled.
+            fixed: Fixed contribution of the affine representation, when
+                unsampled states respond as well as ``A 1``; defaults to
+                ``A 1``.
 
         Returns:
             The term: ``output`` is the absolute ``mu_bc``; the likelihood
             contribution omits the fixed ``c M 1``, which is the reference
-            shift; the fixed contribution is ``A 1``.
+            shift; the fixed contribution is ``fixed``.
         """
         absolute_reference = registered.register(
             (registered.fixed + registered.reference_shift).assign_attrs(self.data.H_bc_anomaly.attrs),
@@ -267,7 +285,7 @@ class CenteredBoundary:
         )
         return AffineConcentrationTerm(
             output, pt.sum(registered.anomaly, axis=1) + signal, registered.reference_shift,
-            fixed_contribution=registered.fixed, blocks=tuple(item.block for item in corrections),
+            fixed_contribution=registered.fixed if fixed is None else fixed, blocks=tuple(item.block for item in corrections),
             sampled_rvs=tuple(item.latent for item in corrections),
         )
 
