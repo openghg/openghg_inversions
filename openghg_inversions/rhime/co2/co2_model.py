@@ -189,7 +189,7 @@ def build_co2_model(
             without ``sigma_alignment``, or if a centered boundary is combined
             with a custom likelihood callback or wrapper.
     """
-    if (boundary is not None and "H_bc_anomaly" in boundary.data
+    if (boundary is not None and boundary.centered
             and likelihood_builder is not None
             and likelihood_builder is not add_fixed_ou_gaussian_likelihood):
         raise ValueError(
