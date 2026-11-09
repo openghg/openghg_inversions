@@ -343,7 +343,7 @@ def test_multisector_preparation_selects_sources_from_typed_request():
 
     site_data = rhime.build_sensitivities(
         merged.site_data, basis, flux_sources=config.data.flux_sources,
-        use_bc=config.data.use_bc, bc_basis=None, multisector=True,
+        use_bc=config.data.use_bc, multisector=True,
     )
 
     # Assignment preserves the merged dataset's labelled source axis.
