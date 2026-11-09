@@ -24,7 +24,7 @@ Standard observations with a supplied basis and no BCs
    :kwargs: {"split_by_sectors": false, "require_footprints": false, "use_bc": false}
 
 Multisector observations with generated basis weights and ordinary BCs
----------------------------------------------------------------------
+----------------------------------------------------------------------
 
 .. schema-reference:: openghg_inversions.inversion_data._merged_schema:merged_site_schema
    :kwargs: {"split_by_sectors": true, "require_footprints": true, "use_bc": true}
