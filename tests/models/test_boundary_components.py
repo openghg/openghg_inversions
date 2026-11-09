@@ -110,6 +110,22 @@ def test_centered_affine_keeps_fixed_activity_and_physical_coefficients(double_p
             assert result.blocks[0].design.attrs["units"] == "ppm"
 
 
+def test_boundary_families_report_whether_transport_is_centered(double_precision):
+    """Every boundary family exposes the ``centered`` protocol property."""
+    data, observations = _native_boundary()
+    prior = {"pdf": "normal", "mu": 1., "sigma": .1}
+    absolute = MultiplicativeChoice(prior).bind(observations, data.H_bc_anomaly.rename("H_bc"))
+    centered = MultiplicativeChoice(prior).bind(observations, CenteredOperands.from_dataset(data))
+    one_state = data.sel(bc_region=["north"])
+    weights = _whole_window(
+        xr.DataArray([1.], dims="bc_curtain", coords={"bc_curtain": ["north"]}, attrs={"units": "1"}), observations,
+    )
+    additive = AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.).bind(
+        observations, _centered(one_state, weights),
+    )
+    assert (absolute.centered, centered.centered, additive.centered) == (False, True, True)
+
+
 def test_absolute_affine_keeps_inactive_effects():
     data, observations = _native_boundary()
     design = data.H_bc_anomaly.rename("H_bc")
