@@ -57,7 +57,7 @@ def test_explicit_multifile_basis_preserves_time_alignment_and_grid_tolerance(tm
     basis = load_bc_basis([early, late])
     snapshot = basis.copy(deep=True)
     result = bc_sensitivity({"SITE": _contributions()}, bc_basis=basis)
-    np.testing.assert_array_equal(result["SITE"].H_bc.compute(), [[20], [30]])
+    np.testing.assert_array_equal(result["SITE"].H_bc.compute(), [[20, 30]])
     xr.testing.assert_identical(basis, snapshot)
 
 
@@ -66,7 +66,7 @@ def test_single_basis_time_applies_to_all_observation_times(tmp_path):
     _basis(pd.date_range("2010-01-01", periods=1), [2]).to_netcdf(path)
     basis = load_bc_basis([path])
     result = bc_sensitivity({"SITE": _contributions()}, bc_basis=basis)
-    np.testing.assert_array_equal(result["SITE"].H_bc.compute(), [[20], [20]])
+    np.testing.assert_array_equal(result["SITE"].H_bc.compute(), [[20, 20]])
 
 
 @pytest.mark.parametrize("invalid", ["missing.nc", "unreadable.nc"])

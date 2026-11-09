@@ -129,6 +129,11 @@ class PreserveBucketProlongation:
         )
         gram_values = np.asarray(gram.values, dtype=np.float64)
         gram_values = (gram_values + gram_values.T) * 0.5
+        if not np.isfinite(gram_values).all():
+            raise ValueError("The bucket prolongation Gram matrix must contain only finite values")
+        eigenvalues = np.linalg.eigvalsh(gram_values)
+        if eigenvalues.size and eigenvalues[0] <= len(eigenvalues) * np.finfo(np.float64).eps * eigenvalues[-1]:
+            raise ValueError("The bucket prolongation contains redundant retained states")
         try:
             factor = cho_factor(gram_values, lower=True, check_finite=True)
             covariance_values = cho_solve(factor, np.eye(gram_values.shape[0]), check_finite=False)

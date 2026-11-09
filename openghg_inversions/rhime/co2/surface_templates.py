@@ -13,7 +13,8 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions._serialization_codecs import _json_value
-from openghg_inversions.basis._helpers import _project_centered_boundaries
+from openghg_inversions.basis._helpers import _normalise_basis, _project_centered_boundaries
+from openghg_inversions.basis.boundary import nesw_basis
 from openghg_inversions.inversion_data.surface import SURFACE_POLICY_REVISION
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import MergedData
@@ -137,7 +138,7 @@ def _channel_templates(
             }
         )
         projected = {name: native(value) for name, value in
-                     _project_centered_boundaries(normalized, basis=None).items()}
+                     _project_centered_boundaries(normalized, _normalise_basis(nesw_basis(normalized))).items()}
         boundaries.append(xr.Dataset(projected))
         records[site] = {"inlet": inlet, "input_units": ds.mf.attrs.get("units"),
                          "bc_reference": references[site].item(), "bc_reference_units": ds.bc_reference.attrs.get("units"),
