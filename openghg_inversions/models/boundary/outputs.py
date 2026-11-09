@@ -26,7 +26,16 @@ class Outputs:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def prefixed(self, prefix: str) -> Outputs:
-        """Return the same declarations for graph names built with ``prefix``."""
+        """Return the same declarations for graph names built with ``prefix``.
+
+        Args:
+            prefix: Text prepended to every role key and graph name and to
+                every unit key, matching the prefix given to the boundary's
+                ``add``.
+
+        Returns:
+            New declarations; metadata is copied unprefixed.
+        """
         return Outputs(
             {prefix + role: prefix + name for role, name in self.roles.items()},
             {prefix + name: unit for name, unit in self.units.items()},

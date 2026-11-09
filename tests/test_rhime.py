@@ -2821,6 +2821,15 @@ def test_public_rhime_runners_follow_named_stage_order(
     basis = cast(Any, object())
     site_data = cast(Any, object())
 
+    def validate_scientific_inputs(actual: MergedData, **kwargs: Any) -> None:
+        """Record the acquired-data boundary before error/filter preparation."""
+        assert actual is merged
+        assert kwargs == {
+            "split_by_sectors": multisector, "use_bc": False,
+            "flux_sources": config.data.flux_sources, "require_footprints": True,
+        }
+        calls.append("validate")
+
     def retrieve(*, site_options: SiteOptions, merged_data=None, **kwargs: Any) -> Any:
         """Record ordinary acquisition or external-data validation."""
         assert site_options is config.data.site_options
@@ -2924,6 +2933,7 @@ def test_public_rhime_runners_follow_named_stage_order(
 
     monkeypatch.setattr(recipe_module.RhimeConfig, "from_params", staticmethod(resolve))
     monkeypatch.setattr(recipe_module.MergedData, "from_options", retrieve)
+    monkeypatch.setattr(recipe_module.MergedData, "validate_scientific_inputs", validate_scientific_inputs)
     monkeypatch.setattr(recipe_module, "filter_observations", filter_observations)
     monkeypatch.setattr(recipe_module, "prepare_observation_errors", prepare_errors)
     monkeypatch.setattr(recipe_module, "prepare_basis", build_basis)
@@ -2955,6 +2965,7 @@ def test_public_rhime_runners_follow_named_stage_order(
     expected_calls = [
         "resolve",
         *([] if external_data else ["retrieve"]),
+        "validate",
         "filter",
         "errors",
         "basis",
@@ -3584,6 +3595,7 @@ def test_run_rhime_rejects_noncanonical_custom_likelihood_before_sampling(
         site_options=config.data.site_options,
     )
     monkeypatch.setattr(rhime_standard.MergedData, "from_options", lambda *args, **kwargs: merged)
+    monkeypatch.setattr(rhime_standard.MergedData, "validate_scientific_inputs", lambda *args, **kwargs: None)
     monkeypatch.setattr(rhime_standard, "filter_observations", lambda data, options, **kwargs: (data, options))
     monkeypatch.setattr(rhime_standard, "prepare_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(rhime_standard, "build_sensitivities", lambda *args, **kwargs: object())
@@ -8517,6 +8529,8 @@ output_format = "inv_out"
     monkeypatch.setattr(rhime_standard.MergedData, "from_options",
         fake_load,
     )
+    monkeypatch.setattr(rhime_standard.MergedData, "validate_scientific_inputs",
+                        lambda *args, **kwargs: seen.update(validation=kwargs))
     monkeypatch.setattr(rhime_standard, "filter_observations", lambda value, options, **kwargs: (filtered.site_data, options))
     monkeypatch.setattr(rhime_standard, "resolve_basis_inputs", lambda config: {"landsea_classes": xr.DataArray([[1]], dims=("lat", "lon"))})
     monkeypatch.setattr(rhime_standard, "prepare_basis", fake_basis)
@@ -8733,13 +8747,15 @@ def test_retained_error_population_reaches_preparation_full_run_and_saved_inputs
     dataset["mf_repeatability"] = ("time", [1000.0, 0.0, 2.0])
     dataset["mf_variability"] = ("time", [0.0, 0.0, 0.0])
     dataset["release_lon"] = ("time", [0.0, 0.0, 0.0])
+    dataset["fp"] = xr.ones_like(dataset.fp_x_flux)
     if multisector:
         dataset["fp_x_flux_sectoral"] = dataset.fp_x_flux.expand_dims(source=list(sources))
     if lazy:
         dataset = dataset.chunk(time=1)
     original = dataset.copy(deep=True)
     spatial = _fake_basis_functions()
-    flux = spatial.flux.expand_dims(source=list(sources)) if multisector else spatial.flux
+    native_flux = spatial.flux.assign_attrs(units="mol m-2 s-1")
+    flux = native_flux.expand_dims(source=list(sources)) if multisector else native_flux
     basis = basis_functions_from_flat_basis(
         basis_flat={source: spatial.operator.basis_flat for source in sources} if multisector else spatial.operator.basis_flat,
         flux=flux,
@@ -8751,7 +8767,7 @@ def test_retained_error_population_reaches_preparation_full_run_and_saved_inputs
         mismatch_model="fixed_error",
     ), multisector=multisector)
     merged = MergedData(
-        site_data={"TAC": dataset}, flux_data={source: spatial.flux.to_dataset(name="flux") for source in sources},
+        site_data={"TAC": dataset}, flux_data={source: native_flux.to_dataset(name="flux") for source in sources},
         site_options=config.data.site_options, split_by_sectors=multisector,
     )
     monkeypatch.setattr(recipe, "prepare_basis", lambda **kwargs: basis)

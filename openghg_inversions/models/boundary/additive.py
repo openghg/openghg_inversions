@@ -99,6 +99,7 @@ class AdditiveChoice:
     anchor_time: DatetimeLike | None = None
 
     def __post_init__(self) -> None:
+        """Copy the mean prior and validate the anomaly options and calendar."""
         if self.mean_prior is not None:
             object.__setattr__(self, "mean_prior", dict(self.mean_prior))
         validate_centered_boundary_periods(self.frequency, self.anchor_time)

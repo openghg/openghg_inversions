@@ -209,9 +209,96 @@ identity. Each ``InputProvenance`` exposes ``store``, ``uuid`` and
 The software fields are ``openghg_version`` and ``openghg_commit``.
 Both classes are available from ``openghg_inversions.inversion_data``.
 They describe selected inputs; scientific compatibility remains the
-responsibility of ``validate_for_preparation``. Empty or all-unknown provenance
+responsibility of the acquisition-fact and scientific-input boundaries below. Empty or all-unknown provenance
 is false in boolean tests; that does not establish data validity. Missing
 input identities default to unknown without replacing supplied identities.
+
+Validate customised merged arrays
+---------------------------------
+
+Standard and multisector preparation use ``xarray-validate`` schemas at the
+acquired-data boundary. ``MergedData`` contains ordinary borrowed ``xr.Dataset`` sites.
+Construction checks the dataset containers, selector labels and provenance
+labels. ``validate_for_preparation`` separately compares known acquisition
+facts with a request. Neither operation computes numerical arrays.
+
+``prepare_standard`` and ``prepare_multisector`` call
+``merged.validate_scientific_inputs`` before deriving errors or filtering.
+Their full runners and saved preparation commands use these same functions.
+These checks apply to every standard and multisector preparation, whether the
+data was acquired by the package or supplied by the caller. Nested-domain and
+CO2-family preparation retain their existing validation paths and do not call
+this merged-input validator. Typed centered-boundary contracts are a separate
+application of the schema library.
+The :doc:`generated merged-input schema reference </reference/merged_input_schemas>`
+lists required variables, dimensions, dtypes, coordinates and attributes for
+selected standard, multisector, ordinary-BC and centered-BC variants. Its tables
+and relationship descriptions are built directly from the executable schemas.
+
+Centered inputs retain their anomaly, dimensionless mass and concentration
+reference without reconstructing ordinary curtains. The schema checks their
+structure; boundary projection owns their unit and scientific checks. See the
+:ref:`surface-centered-boundary-contract` for that existing contract and the
+CO2-family model binding required to consume the prepared operands.
+
+Schema dtypes describe decoded, in-memory xarray data rather than the on-disk
+representation. Xarray decodes CF numeric time offsets and their ``units`` and
+``calendar`` attributes before validation; these schemas require the resulting
+time coordinates to be ``datetime64``. Dates decoded to ``cftime`` objects are
+not accepted by this merged-input schema.
+
+The arrays accept real integer or floating dtypes and any permutation of the
+named dimensions. Indexed coordinates must be unique and contain no missing
+labels; time coordinates are explicit ``datetime64`` values. Time axes, observation counts
+and averaging periods can differ between sites. Empty sites and missing
+payload values remain valid here: filtering, gathering and numerical components
+own their existing missing-value policies. Extra variables, attributes and lazy
+auxiliary coordinates are allowed. Custom filters own any further requirements.
+
+All sites use the same concentration numerical scale. Absent units on error,
+response and ordinary directional-BC fields inherit that site's ``mf`` convention;
+explicit units must have the same scale. For example, ``umol/mol`` is accepted
+with ``ppm``, while ``ppb`` is rejected. Validation does not attach attributes
+or convert values. Native ``flux_data[source].flux`` separately requires
+``mol m-2 s-1`` or an equal-scale expression, on ``lat`` and ``lon`` with an
+optional inventory ``time`` dimension. The explicit surface route, identified
+by acquired ``surface_transport`` metadata, also accepts compatible scaled flux
+units: native flux resolution converts these before combining sources. Validation
+checks their compatibility without converting or executing them. Inventory and
+observation times are independent. For other routes, convert externally supplied
+quantities with Pint before entering preparation when their scales differ.
+
+This validation tightens the handling of independently supplied inputs: sites
+with different observation numerical scales, and explicit error, response or
+ordinary-BC units at a different scale, now fail before filtering. These values
+are not implicitly converted. Equal-scale expressions remain interchangeable.
+
+Inspect or apply the concrete site schema explicitly during customisation::
+
+   schema = merged.site_schema(
+       split_by_sectors=False, require_footprints=False, use_bc=False,
+   )
+   schema.validate(merged.site_data["TAC"])
+   merged.validate_scientific_inputs(
+       split_by_sectors=False, require_footprints=False, use_bc=False,
+       flux_sources=("inventory",),
+   )
+
+The mapping-level method supplies site/source paths in errors and checks
+cross-site concentration scales and native flux. It also accepts an explicit
+``grid_dims`` pair for custom named grids. The schema is metadata-only: its
+``lazy`` validation mode collects errors and does not execute Dask payloads.
+The documentation exporter supplements the library serialization with dtype
+alternatives, attribute type names and callback descriptions. These descriptions
+are not executable validators; apply the Python schema for validation. Independent-grid
+alignment remains with the basis and native-flux owners. See :download:`the executable validation example
+<../../examples/rhime_customisation/validate_merged.py>`.
+
+Preparation does not retry arbitrary filter ``ValueError`` exceptions after
+computing every site. Filter owners must make any required materialisation
+explicit; invalid filter requests propagate once with their original error.
+The CO2 recipes still consume prepared inputs and coherent reductions; this
+schema adds no native CO2 acquisition route.
 
 Selected ``MergedDataProvenance`` remains on the in-memory merged handoff. It
 is not included in saved ``PreparedInputs`` or the staged preparation
