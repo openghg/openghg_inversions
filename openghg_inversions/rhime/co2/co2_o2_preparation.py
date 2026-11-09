@@ -136,6 +136,8 @@ class Co2O2PreparedInputs:
             raise ValueError("boundary_operands requires distinct co2/o2 channels from boundary_sensitivity.")
         if set(self.boundary_sensitivity) - {"co2", "o2"}:
             raise ValueError("boundary_sensitivity must be keyed only by co2 and o2.")
+        # Structural only: directly constructed inputs meet the same raw contract as prepared ones.
+        _raw_centered_channels(self.boundary_operands)
         arrays = {
             "joint": {
                 "observed_concentration": self.observations,
