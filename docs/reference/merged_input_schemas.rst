@@ -7,6 +7,12 @@ preparation variants, rather than prescribing a single layout for every recipe.
 Other combinations use the same factories with different keyword arguments.
 See :doc:`/usage/customising_rhime` for the preparation workflow and unit policy.
 
+Data types describe decoded, in-memory xarray data, not the on-disk
+representation. For example, a file may store numeric time offsets with CF
+``units`` and ``calendar`` attributes; xarray decodes these before validation.
+The time coordinates in these schemas must be ``datetime64`` after decoding.
+Dates decoded to ``cftime`` objects do not satisfy that dtype requirement.
+
 Each table distinguishes required fields, optional pattern matches, and allowed
 extras. Dimensions are ordered unless the table says otherwise; an empty dimension
 list means a scalar. Dtypes such as ``integer`` and ``floating`` denote whole
@@ -23,14 +29,14 @@ Standard observations with a supplied basis and no BCs
 .. schema-reference:: openghg_inversions.inversion_data._merged_schema:merged_site_schema
    :kwargs: {"split_by_sectors": false, "require_footprints": false, "use_bc": false}
 
-Multisector observations with generated basis weights and ordinary BCs
-----------------------------------------------------------------------
+Multisector observations with a generated spatial basis and ordinary BCs
+------------------------------------------------------------------------
 
 .. schema-reference:: openghg_inversions.inversion_data._merged_schema:merged_site_schema
    :kwargs: {"split_by_sectors": true, "require_footprints": true, "use_bc": true}
 
-Standard observations with generated basis weights and centered BCs
--------------------------------------------------------------------
+Standard observations with a generated spatial basis and centered BCs
+---------------------------------------------------------------------
 
 .. schema-reference:: openghg_inversions.inversion_data._merged_schema:merged_site_schema
    :kwargs: {"split_by_sectors": false, "require_footprints": true, "use_bc": true, "boundary_representation": "centered-v1"}

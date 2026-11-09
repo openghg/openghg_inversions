@@ -241,6 +241,12 @@ structure; boundary projection owns their unit and scientific checks. See the
 :ref:`surface-centered-boundary-contract` for that existing contract and the
 CO2-family model binding required to consume the prepared operands.
 
+Schema dtypes describe decoded, in-memory xarray data rather than the on-disk
+representation. Xarray decodes CF numeric time offsets and their ``units`` and
+``calendar`` attributes before validation; these schemas require the resulting
+time coordinates to be ``datetime64``. Dates decoded to ``cftime`` objects are
+not accepted by this merged-input schema.
+
 The arrays accept real integer or floating dtypes and any permutation of the
 named dimensions. Indexed coordinates must be unique and contain no missing
 labels; time coordinates are explicit ``datetime64`` values. Time axes, observation counts
