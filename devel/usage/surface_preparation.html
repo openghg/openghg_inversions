@@ -714,13 +714,21 @@ durations and must be omitted for calendar-month periods.</p>
 <code class="docutils literal notranslate"><span class="pre">time</span></code> coordinate, it determines period membership and replaces auxiliary
 boundary timestamps. Boundary times that also serve as indexed row labels must
 agree with the observation timestamps; conflicting values raise an error.</p>
-<p>Centered inference supports the additive-Gaussian recipe and fixed-OU recipes
-with inferred amplitudes using the matched cached sampler. Configure PyTensor
+<p>Centered inference supports the additive-Gaussian recipe, ordinary fixed-OU
+likelihoods with fixed or inferred amplitudes, and inferred-amplitude fixed OU
+using the matched cached sampler. Configure PyTensor
 <code class="docutils literal notranslate"><span class="pre">floatX=float64</span></code> before model construction; these routes reject an explicit
-float32 choice. Fixed-amplitude OU and custom likelihood routes still reject
-centered inputs. Standard and multisector model builders also reject them;
-their preparation operations can still produce the reusable canonical handoff
-shown above.</p>
+float32 choice.</p>
+<p>The concrete CO2 builder accepts <code class="docutils literal notranslate"><span class="pre">likelihood_builder=None</span></code> for the default
+additive-Gaussian likelihood or the exact
+<a class="reference internal" href="../reference/openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood" title="openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">add_fixed_ou_gaussian_likelihood()</span></code></a>
+function when <code class="docutils literal notranslate"><span class="pre">boundary_operands</span></code> is supplied. Arbitrary callbacks and wrappers
+around the built-in function are rejected before operand binding or graph
+construction, matching the prepared-input runner’s supported centered policy.
+Custom likelihood callbacks remain supported when centered boundary operands are
+absent. Standard and multisector model builders still reject centered inputs;
+their preparation operations can produce the reusable canonical handoff shown
+above.</p>
 <p>For the original BC coefficients b, the centered likelihood uses
 <code class="docutils literal notranslate"><span class="pre">q</span> <span class="pre">=</span> <span class="pre">c</span> <span class="pre">*</span> <span class="pre">M</span> <span class="pre">&#64;</span> <span class="pre">ones</span></code>, <code class="docutils literal notranslate"><span class="pre">y_centered</span> <span class="pre">=</span> <span class="pre">y</span> <span class="pre">-</span> <span class="pre">q</span></code> and
 <code class="docutils literal notranslate"><span class="pre">mu_centered</span> <span class="pre">=</span> <span class="pre">flux</span> <span class="pre">+</span> <span class="pre">A</span> <span class="pre">&#64;</span> <span class="pre">b</span> <span class="pre">+</span> <span class="pre">c</span> <span class="pre">*</span> <span class="pre">M</span> <span class="pre">&#64;</span> <span class="pre">(b</span> <span class="pre">-</span> <span class="pre">ones)</span> <span class="pre">+</span> <span class="pre">offset</span></code>.

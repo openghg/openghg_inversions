@@ -1599,10 +1599,13 @@ contribution. Optional boundary and offset terms remain scientifically
 distinct components named <code class="docutils literal notranslate"><span class="pre">mu_bc</span></code> and <code class="docutils literal notranslate"><span class="pre">offset</span></code>.</p>
 <p>Direct custom callers are responsible for supplying scientifically
 coherent arrays from one preparation and for their positional semantics
-when labels are absent.</p>
+when labels are absent. Custom likelihood callables remain supported when
+centered boundary operands are absent.</p>
 <p>With centered <code class="docutils literal notranslate"><span class="pre">boundary_operands</span></code>, raw PyMC observed and predictive
 <code class="docutils literal notranslate"><span class="pre">y</span></code> values are centered; BC and total concentration deterministics remain
-absolute.
+absolute. Only the default additive-Gaussian likelihood or the exact built-in
+fixed-OU function is supported. Other callbacks, including wrappers around
+the built-in function, are rejected before operand binding or graph construction.
 After restoring sample coordinates, direct callers must restore absolute
 <code class="docutils literal notranslate"><span class="pre">y</span></code> with
 <a class="reference internal" href="openghg_inversions.rhime.co2.centered_boundary.html#openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives" title="openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives"><code class="xref py py-func docutils literal notranslate"><span class="pre">restore_absolute_predictives()</span></code></a>
@@ -1623,7 +1626,9 @@ named <code class="docutils literal notranslate"><span class="pre">fixed_prior_c
 <li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Reported observation standard deviation.</p></li>
 <li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Prepared fixed aggregation-error representation.</p></li>
 <li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.15)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional ordinary likelihood component. When
-supplied, it replaces the default additive-sigma likelihood.</p></li>
+supplied, it replaces the default additive-sigma likelihood. With
+centered boundary operands, only the exact
+<code class="docutils literal notranslate"><span class="pre">add_fixed_ou_gaussian_likelihood</span></code> function is accepted.</p></li>
 <li><p><strong>likelihood_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Options passed only to the selected likelihood.</p></li>
 <li><p><strong>sigma_alignment</strong> (<a class="reference internal" href="openghg_inversions.sigma.html#openghg_inversions.sigma.SigmaAlignment" title="openghg_inversions.sigma.SigmaAlignment"><em>SigmaAlignment</em></a><em> | </em><em>None</em>) – Optional grouping policy for inferred additive model
 error.</p></li>
@@ -1658,7 +1663,8 @@ and Gaussian likelihood.</p>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If shared preparation, prior construction, or registered
     coordinate alignment fails, or if <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> is supplied
-    without <code class="docutils literal notranslate"><span class="pre">sigma_alignment</span></code>.</p>
+    without <code class="docutils literal notranslate"><span class="pre">sigma_alignment</span></code>, or if centered boundary operands are
+    combined with a custom likelihood callback or wrapper.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.4.0)"><em>Model</em></a></p>
@@ -1802,7 +1808,8 @@ species/state ratio factor before constructing that joint sensitivity.</p>
 as finite and positive. Direct custom callers own that check, exact label
 alignment, row-unit consistency, coherent covariance provenance, and the
 embedded-ratio contract before calling this lower-level builder.</p>
-<p>With centered <code class="docutils literal notranslate"><span class="pre">boundary_operands</span></code>, raw PyMC observed and predictive
+<p>Centered boundaries support both additive-sigma and fixed-OU likelihoods.
+With centered <code class="docutils literal notranslate"><span class="pre">boundary_operands</span></code>, raw PyMC observed and predictive
 <code class="docutils literal notranslate"><span class="pre">y</span></code> values are centered; BC and total concentration deterministics remain
 absolute.
 After restoring sample coordinates, direct callers must restore absolute

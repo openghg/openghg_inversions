@@ -674,7 +674,8 @@ species/state ratio factor before constructing that joint sensitivity.</p>
 as finite and positive. Direct custom callers own that check, exact label
 alignment, row-unit consistency, coherent covariance provenance, and the
 embedded-ratio contract before calling this lower-level builder.</p>
-<p>With centered <code class="docutils literal notranslate"><span class="pre">boundary_operands</span></code>, raw PyMC observed and predictive
+<p>Centered boundaries support both additive-sigma and fixed-OU likelihoods.
+With centered <code class="docutils literal notranslate"><span class="pre">boundary_operands</span></code>, raw PyMC observed and predictive
 <code class="docutils literal notranslate"><span class="pre">y</span></code> values are centered; BC and total concentration deterministics remain
 absolute.
 After restoring sample coordinates, direct callers must restore absolute
