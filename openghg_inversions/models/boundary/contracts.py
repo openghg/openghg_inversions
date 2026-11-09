@@ -504,19 +504,20 @@ class BoundAdditiveSensitivity(BoundCenteredSensitivity):
             # Period starts from the fit calendar are nanosecond timestamps.
             weights = weights.assign_coords(bc_period=periods.as_unit("ns"))
         stacked = weights.stack(bc_region=STATE_LEVELS)
-        observation_dim = BoundCenteredSensitivity.observation_dim(bound)
-        try:
-            xr.align(bound.H_bc_anomaly, stacked, join="exact", copy=False, exclude={observation_dim})
-        except ValueError as exc:
-            expected, given = set(bound.indexes["bc_region"]), set(stacked.indexes["bc_region"])
-            raise ValueError(
-                "Centering-weight labels do not align with the bound boundary states. Weights must be "
-                "labelled by every (bc_curtain, bc_period) state of this fit's calendar, where bc_period is "
-                "the interval start (the first selected observation time when there is no frequency). "
-                f"Missing from the weights: {sorted(expected - given, key=str)[:5]}; "
-                f"unexpected in the weights: {sorted(given - expected, key=str)[:5]}."
-            ) from exc
-        # Labels match exactly, so the bound state index is reused for the weights.
+        expected_index, given_index = bound.indexes["bc_region"], stacked.indexes["bc_region"]
+        if not given_index.equals(expected_index):
+            expected, given = set(expected_index), set(given_index)
+            if expected != given or len(given_index) != len(expected_index):
+                raise ValueError(
+                    "Centering-weight labels do not align with the bound boundary states. Weights must be "
+                    "labelled by every (bc_curtain, bc_period) state of this fit's calendar, where bc_period is "
+                    "the interval start (the first selected observation time when there is no frequency). "
+                    f"Missing from the weights: {sorted(expected - given, key=str)[:5]}; "
+                    f"unexpected in the weights: {sorted(given - expected, key=str)[:5]}."
+                )
+            # Same labels in another order: select the weights in the bound state order.
+            stacked = stacked.sel(bc_region=expected_index)
+        # Labels now match in order, so the bound state index is reused for the weights.
         return cast(BoundAdditiveSensitivity, bound.assign(bc_centering_weights=stacked.variable))
 
 

@@ -28,7 +28,23 @@ _QUANTITY_ROLES = {
 
 
 def restore_absolute_predictives(trace: xr.DataTree) -> xr.DataTree:
-    """Restore centered y once, using only retained trace constants and labels."""
+    """Restore centered y once, using only retained trace constants and labels.
+
+    Centered likelihoods record ``y`` against observations translated by the
+    fixed ``boundary_reference_shift``. This adds that shift back to every
+    predictive and observed group that has one, once: groups already marked
+    ``concentration_representation="absolute-v1"`` are left alone.
+
+    Args:
+        trace: Sampled trace; updated in place.
+
+    Returns:
+        The same trace, with absolute ``y`` where a shift was recorded and
+        ``boundary_representation`` set to ``"centered-v1"``.
+
+    Raises:
+        ValueError: If the shift's labels do not match ``y`` exactly.
+    """
     for name in ("observed_data", "prior_predictive", "posterior_predictive", "predictions"):
         if name not in trace.children or "y" not in trace[name]:
             continue
@@ -75,6 +91,20 @@ def decode_saved_boundaries(
     Draws stay borrowed; no preparation, model construction or calendar
     calculation is performed. Earlier internal posterior formats require
     preparation and sampling again.
+
+    Args:
+        trace: Saved trace.
+        roles: Scientific role to variable name; defaults to the trace's
+            ``rhime_variable_roles`` attribute.
+        channels: Channel prefixes to decode; ``""`` for an unprefixed model.
+
+    Returns:
+        Decoded boundary facts per channel, omitting channels without
+        boundary roles.
+
+    Raises:
+        ValueError: If the roles are malformed, or the trace's
+            ``rhime_boundary_format_version`` is not the supported version.
     """
     if roles is None:
         roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
@@ -104,6 +134,17 @@ def reconstruct_boundary(
     for prior and posterior. Constants, such as the fixed reference or zero
     anomalies that were not sampled, broadcast over this group's
     ``chain`` and ``draw`` only.
+
+    Args:
+        facts: Decoded boundary facts from :func:`decode_saved_boundaries`.
+        draws: Posterior or prior draw group.
+
+    Returns:
+        Stable quantity name to its values over this group's samples.
+
+    Raises:
+        ValueError: If a declared role is in neither the draws nor the
+            constants.
     """
     # Leading sample dimensions, with the draw group's labels where it has them.
     samples = {

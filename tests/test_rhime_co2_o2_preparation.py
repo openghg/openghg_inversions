@@ -977,6 +977,10 @@ def test_centered_mass_and_nonseparable_weights_survive_prepared_roundtrip(tmp_p
     np.testing.assert_array_equal(loaded.boundary_operands["o2"].H_bc_mass.sel(bc_region="east"), 0.)
     assert "bc_period" not in loaded.boundary_operands["o2"].H_bc_mass.dims
     assert isinstance(prepared.boundary_operands["o2"].H_bc_mass.data, da.Array)
+    # Directly constructed inputs meet the same raw contract before anything is written.
+    unmarked = replace(prepared, boundary_operands={"o2": operands.drop_attrs(deep=False)})
+    with pytest.raises(ValueError, match="o2 centered boundaries"):
+        unmarked.to_datatree()
 
 
 @pytest.mark.parametrize("version", [1, 2, 3, 4, 5])

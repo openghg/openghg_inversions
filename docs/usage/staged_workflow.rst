@@ -487,7 +487,7 @@ CO2-family internal handoffs
 ----------------------------
 
 CO2 and linked CO2/O2 preparation and sample manifests use version 2. Their
-prepared scientific artifacts use schema versions 3 and 4 respectively. Only
+prepared scientific artifacts use schema versions 3 and 6 respectively. Only
 these current internal formats are accepted: prepare and sample again when
 an older artifact is rejected. Preserve original manifest versions; editing a
 version number does not migrate scientific facts. Boundary averaging weights
