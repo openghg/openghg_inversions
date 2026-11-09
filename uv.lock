@@ -2246,7 +2246,7 @@ requires-dist = [
     { name = "sparse" },
     { name = "towncrier", marker = "extra == 'dev'", specifier = ">=24.8" },
     { name = "xarray", specifier = ">=2025.8.0" },
-    { name = "xarray-validate", specifier = "==0.0.5" },
+    { name = "xarray-validate", specifier = ">=0.0.5,<0.1" },
 ]
 provides-extras = ["jupyter", "dev"]
 

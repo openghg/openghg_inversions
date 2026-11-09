@@ -314,6 +314,15 @@ def to_dense_tree(value: Any) -> Any:
     parameters. Other leaves are returned unchanged. Dask graphs are preserved,
     so the caller can pass the result to one ``dask.compute`` call that
     materializes related arrays together. Inputs are not mutated.
+
+    Args:
+        value: A labelled array, dataset, mapping, list, tuple, dataclass
+            instance, or any other object.
+
+    Returns:
+        A structure of the same shape with each labelled array densified;
+        dataclass fields that are not ``init`` fields are not copied. Other
+        leaves are returned as given.
     """
     if isinstance(value, xr.DataArray):
         return to_dense(value)
@@ -321,6 +330,8 @@ def to_dense_tree(value: Any) -> Any:
         return value.map(to_dense, keep_attrs=True)
     if isinstance(value, Mapping):
         return {key: to_dense_tree(item) for key, item in value.items()}
+    if isinstance(value, tuple) and hasattr(value, "_fields"):
+        return type(value)(*(to_dense_tree(item) for item in value))
     if isinstance(value, list | tuple):
         return type(value)(to_dense_tree(item) for item in value)
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
