@@ -90,7 +90,7 @@ def acquire_supplied(obs, fp, fluxes, bc, *, mixed_transport=False):
         obs, fp, fluxes, species="co2",
         transport={source: "time_resolved" if mixed_transport and source == "biosphere" else "integrated"
                    for source in fluxes},
-        boundary_representation="centered", boundary_data=bc, boundary_reference=400., boundary_reference_units="ppm", boundary_mass_tolerance=1e-6,
+        boundary_data=bc, boundary_reference=400., boundary_reference_units="ppm", boundary_mass_tolerance=1e-6,
     )
 
 

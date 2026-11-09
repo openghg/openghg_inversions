@@ -28,6 +28,8 @@ from openghg_inversions.array_ops import require_unique_index, same_index, valid
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
+from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
+from openghg_inversions.models.boundary import Choice, boundary_preparation
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
     AGGREGATION_ERROR_SD,
@@ -778,10 +780,49 @@ def prepare_co2_inputs(
     )
 
 
+def check_prepared_boundary(
+    inputs: xr.Dataset, boundary: Choice | None, representation: BoundaryRepresentation | None = None,
+) -> None:
+    """Reject prepared inputs whose boundary data cannot serve the configured choice.
+
+    Reads only attributes and variable names. A saved preparation can serve
+    several model configurations, so an omitted ``representation`` accepts any
+    representation the choice can bind; an explicit one must match exactly.
+
+    Args:
+        inputs: Prepared ``inv_inputs``.
+        boundary: Configured boundary choice, or ``None``.
+        representation: Explicitly requested representation, or ``None``.
+
+    Raises:
+        ValueError: If the boundary data are missing, in another representation,
+            or lack the centering weights the choice needs.
+    """
+    needs = boundary_preparation(boundary, representation)
+    if inputs.attrs.get("boundary_representation") == "centered-v1":
+        actual: str | None = "centered"
+    else:
+        actual = "ordinary" if "H_bc" in inputs else None
+    if actual is None:
+        if boundary is not None or representation is not None:
+            raise ValueError("The prepared inputs have no boundary sensitivity, but a boundary is configured.")
+        return
+    # Without an explicit request, only a centered-only choice constrains the artifact.
+    required = representation or ("centered" if needs.representation == "centered" else None)
+    if required is not None and required != actual:
+        raise ValueError(
+            f"The prepared inputs have {actual} boundary sensitivity, but {required} is required; "
+            f"prepare again with boundary_representation={required!r}."
+        )
+    if needs.centering_weights and "bc_centering_weights" not in inputs:
+        raise ValueError("The weighted additive boundary requires prepared bc_centering_weights.")
+
+
 __all__ = [
     "CO2_PREPARED_INPUTS_SCHEMA",
     "CO2_PREPARED_INPUTS_SCHEMA_VERSION",
     "Co2PreparedInputs",
+    "check_prepared_boundary",
     "prepare_co2_inputs",
     "requested_co2_facts",
 ]

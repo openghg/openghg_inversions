@@ -135,7 +135,7 @@ def test_missing_boundary_keeps_search_error(monkeypatch):
 @pytest.fixture
 def acquire_monthly_boundary(monkeypatch, boundary_provider):
     """Public acquisition with provider-like slicing and real boundary arithmetic."""
-    def acquire(start, end, *, centered=False, scenario=False):
+    def acquire(start, end, *, scenario=False):
         times = pd.date_range(start, pd.Timestamp(end) - pd.Timedelta(hours=12), freq="12h")
         obs = xr.Dataset({"co2": ("time", np.full(len(times), 400.), {"units": "ppm"})},
                          coords={"time": times}, attrs={"scale": "WMO", "platform": "surface"})
@@ -164,8 +164,8 @@ def acquire_monthly_boundary(monkeypatch, boundary_provider):
             species="co2", site_options=SiteOptions.from_inputs(sites=["MHD"], averaging_period="1h"),
             domain="EUROPE", start_date=start, end_date=end, flux_sources=["a"], use_bc=True,
             surface_transport=None if scenario else {"a": "integrated"},
-            **({"boundary_representation": "centered", "reference": 400.,
-                "reference_units": "ppm", "mass_tolerance": 1e-6} if centered else {}),
+            **({} if scenario else {"boundary_reference": 400., "boundary_reference_units": "ppm",
+                                    "boundary_mass_tolerance": 1e-6}),
         )
     return acquire
 
@@ -177,8 +177,10 @@ def acquire_monthly_boundary(monkeypatch, boundary_provider):
     ("2020-01-31", "2020-02-02", [401., 402.]),
 ])
 def test_fresh_ordinary_acquisition_retains_monthly_boundary(acquire_monthly_boundary, scenario, start, end, expected):
+    from openghg_inversions.inversion_data import select_boundary_representation
+
     result = acquire_monthly_boundary(start, end, scenario=scenario)
-    site = result.site_data["MHD"]
+    site = select_boundary_representation(result.site_data, "ordinary")["MHD"]
     np.testing.assert_allclose(sum(site[f"bc_{direction}"] for direction in "nesw").squeeze(), np.repeat(expected, 2))
     assert result.provenance.boundary.uuid == "boundary-id"
     assert result.provenance.boundary.dataversion == "v3"

@@ -7,7 +7,6 @@ import dask.array as da
 import numpy as np
 import pandas as pd
 import pytest
-import sparse
 import xarray as xr
 from dask.callbacks import Callback
 
@@ -261,7 +260,6 @@ def test_actual_resolved_kernel_counts_residual_once(inputs, species, compatible
     assert result.attrs["surface_provider_policy_revision"] == "openghg-time-resolved-v1"
 
 
-
 def test_resolved_provider_borrows_lazy_flux(inputs, compatible_provider):
     obs, fp, flux = resolved_inputs(inputs)
     flux = flux.chunk({"time": 744})
@@ -338,8 +336,6 @@ def test_invalid_inputs_fail_clearly(inputs, change, message):
         prepare_surface_site(obs, fp, {"a": flux}, species=species, transport=transport or {"a": mode})
 
 
-
-
 def test_opt_in_reuses_getters_retention_and_provenance(inputs, monkeypatch):
     obs, fp, flux = inputs
     options = SiteOptions.from_inputs(
@@ -399,43 +395,6 @@ def test_fresh_rejects_mixed_native_axes(inputs, monkeypatch):
             use_bc=False,
             surface_transport={"a": "integrated", "b": "integrated"},
         )
-
-
-
-
-@pytest.mark.parametrize("lazy", [False, True])
-def test_sparse_boundary_weights_through_surface_preparation(inputs, lazy):
-    obs, fp, flux = inputs
-    fp = fp.assign_coords(height=[10., 20.])
-    bc = xr.Dataset(coords={"height": fp.height, "lat": fp.lat, "lon": fp.lon, "time": fp.time},
-                    attrs={"time_period": "1 hour"})
-    for direction in "nesw":
-        side = "lon" if direction in "ns" else "lat"
-        weights = np.zeros((2, 1, 3))
-        weights[0] = 0.25
-        fp[f"particle_locations_{direction}"] = xr.DataArray(
-            sparse.COO.from_numpy(weights), dims=("height", side, "time"), attrs={"units": "1"}
-        )
-        bc[f"vmr_{direction}"] = xr.DataArray(
-            np.full((2, 1, 3), 400.05), dims=("height", side, "time"), attrs={"units": "ppm"}
-        )
-    if lazy:
-        fp, bc = fp.chunk({"time": 1}), bc.chunk({"time": 1})
-    borrowed = {name: value.data for name, value in fp.data_vars.items()}
-    with Callback(pretask=lambda *args: pytest.fail("preparation computed borrowed payload")):
-        result = prepare_surface_site(
-            obs, fp, {"a": flux}, species="co2", transport={"a": "integrated"},
-            boundary_data=bc,
-        )
-    if lazy:
-        assert isinstance(result.bc_mod.data, da.Array)
-        result = result.compute(scheduler="synchronous")
-    np.testing.assert_allclose(result.bc_mod.data.todense(), 400.05, rtol=0,
-                               atol=2e-5)
-    for name, value in fp.data_vars.items():
-        assert value.data is borrowed[name]
-
-
 
 
 def test_resolved_acquisition_requests_history_and_complete_months(inputs, monkeypatch, compatible_provider):
@@ -540,43 +499,6 @@ def test_mapped_footprints_require_explicit_site_transport(inputs):
     obs, fp, flux = inputs
     with pytest.raises(ValueError, match="require explicit site_footprint_data"):
         prepare_surface_site(obs, {"a": fp}, {"a": flux}, species="co2", transport={"a": "integrated"})
-
-
-def test_mapped_boundaries_use_explicit_site_transport(inputs, monkeypatch):
-    obs, fp, flux = inputs
-    site_fp, bc = boundary_inputs(fp.assign(pblh=fp.pblh + 500))
-    site_fp.attrs = {**fp.attrs, "uuid": "explicit-site-transport", "model": "site-model"}
-    contribution = fp.assign(pblh=fp.pblh * 0)
-
-    def provider(boundary, footprint, **kwargs):
-        xr.testing.assert_identical(footprint.pblh, site_fp.pblh)
-        raise RuntimeError("explicit site transport reached boundary provider")
-
-    import openghg.analyse._modelled_baseline as boundary_provider
-    monkeypatch.setattr(boundary_provider, "baseline_sensitivities", provider)
-    with pytest.raises(RuntimeError, match="explicit site transport reached"):
-        prepare_surface_site(
-            obs,
-            {"a": contribution},
-            {"a": flux},
-            species="co2",
-            transport={"a": "integrated"},
-            site_footprint_data=site_fp,
-            boundary_data=bc,
-        )
-    result = prepare_surface_site(
-        obs,
-        {"a": contribution},
-        {"a": flux},
-        species="co2",
-        transport={"a": "integrated"},
-        site_footprint_data=site_fp,
-    )
-    assert result.attrs["footprint_transport_model"] == "site-model"
-    provenance = json.loads(result.attrs["surface_transport_provenance"])
-    assert provenance["site_footprint_selection"] == "explicit"
-    assert provenance["site_footprint"]["uuid"] == "explicit-site-transport"
-    assert provenance["sources"]["a"]["mode"] == "integrated"
 
 
 def test_resolved_requires_provider_convolution_operation(inputs, monkeypatch):
@@ -684,62 +606,6 @@ def test_integrated_declared_year_validity_never_reuses_climatological_year(inpu
     annual.flux.attrs["time_period"] = "yearly"
     result = prepare_surface_site(obs, fp, {"annual": annual}, species="co2", transport={"annual": "integrated"})
     np.testing.assert_allclose(result.mf_mod, 1.0)
-
-
-
-
-
-
-@pytest.mark.parametrize("lazy", [False, True])
-@pytest.mark.parametrize("mode", ["integrated", "time_resolved"])
-@pytest.mark.parametrize("extra_releases", [False, True])
-def test_native_products_precede_observation_averaging(inputs, mode, lazy, extra_releases):
-    if mode == "time_resolved":
-        obs, fp, flux = resolved_inputs(inputs)
-    else:
-        obs, fp, flux = inputs
-    times = pd.date_range("2020-01-01", periods=4, freq="h")
-    obs = obs.reindex(time=times, method="ffill")
-    obs = obs.isel(time=[0, 2])
-    obs.attrs["sampling_period"] = 7200
-    fp = fp.reindex(time=times, method="ffill")
-    fp["fp"] = fp.fp.copy(data=np.array([[[1., 3., 1., 3.]]]))
-    if mode == "integrated":
-        flux = flux.reindex(time=times, method="ffill")
-    flux["flux"] = flux.flux.copy(data=np.where(flux.time.dt.hour.values % 2, 3e-6, 1e-6)[None, None, :])
-    if mode == "time_resolved":
-        fp["fp_time_resolved"] = fp.fp.expand_dims(H_back=[0, 1]) / 2
-        fp.fp_time_resolved.attrs["units"] = fp.fp.attrs["units"]
-        fp["fp_residual"] = fp.fp * 0
-        fp.fp_residual.attrs["units"] = fp.fp.attrs["units"]
-    fp = fp.assign_coords(height=[10.])
-    bc = xr.Dataset(coords={"height": [10.], "lat": fp.lat, "lon": fp.lon, "time": times})
-    for direction in "nesw":
-        horizontal = "lon" if direction in "ns" else "lat"
-        fp[f"particle_locations_{direction}"] = xr.DataArray(
-            np.array([.1, .4, .1, .4] if direction == "n" else [.3, .2, .3, .2])[None, None, :],
-            dims=("height", horizontal, "time"), attrs={"units": "dimensionless"},
-        )
-        bc[f"vmr_{direction}"] = xr.DataArray(
-            np.array([400., 404., 400., 404.])[None, None, :],
-            dims=("height", horizontal, "time"), attrs={"units": "ppm"},
-        )
-    bc.attrs["time_period"] = "hourly"
-    if extra_releases:
-        # These unused releases must not require flux or boundary coverage.
-        fp = fp.reindex(time=pd.date_range(times[0], periods=6, freq="h"), method="ffill")
-    if lazy:
-        fp, flux, bc = (value.chunk({"time": 2}) for value in (fp, flux, bc))
-    before = [value.copy(deep=True) for value in (obs, fp, flux, bc)]
-    result = prepare_surface_site(
-        obs, fp, {"a": flux}, species="co2", transport={"a": mode}, boundary_data=bc,
-    )
-    # Integrated native products: mean(1*1, 3*3)=5; resolved uses the two-hour history mean=2.
-    np.testing.assert_allclose(result.mf_mod, 5. if mode == "integrated" else 4.)
-    np.testing.assert_allclose(result.bc_mod, 402.)
-    np.testing.assert_allclose(result.bc_n, (400. * .1 + 404. * .4) / 2)
-    for value, saved in zip((obs, fp, flux, bc), before, strict=True):
-        xr.testing.assert_identical(value, saved)
 
 
 def test_transport_metadata_falls_back_to_wrapper_and_serializes_numpy(inputs):

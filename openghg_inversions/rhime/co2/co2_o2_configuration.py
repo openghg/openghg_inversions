@@ -20,6 +20,7 @@ from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, normalise_optional_
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .configuration import (
     _validate_section_option_names, _PREPARATION_OPTION_NAMES, _SAMPLING_OPTION_NAMES,
+    _NATIVE_PREPARATION_OPTION_NAMES,
     _PRIOR_OPTION_NAMES, _MODEL_SECTION_OPTION_NAMES,
     _reject_unknown,
     _bool, _number, _take, _model, _co2_likelihood, _frozen,
@@ -125,7 +126,15 @@ class Co2O2PreparationConfig:
         prepared = _table(_table(config, "config").get("prepared_inputs", {}), "prepared_inputs")
         if "reconstruction_path" in prepared:
             raise ValueError("Linked CO2/O2 preparation does not support prepared_inputs.reconstruction_path.")
-        ordinary = Co2PreparationConfig.from_params({"prepared_inputs": prepared}, require_path=require_path)
+        unsupported = sorted((_NATIVE_PREPARATION_OPTION_NAMES | {"boundary_representation"}) & set(prepared))
+        if unsupported:
+            raise ValueError(
+                f"Linked CO2/O2 preparation imports a saved artifact with prepared_inputs.path; "
+                f"configured linked preparation is not yet available ({', '.join(unsupported)})."
+            )
+        if require_path and "path" not in prepared:
+            raise ValueError("Missing required option prepared_inputs.path.")
+        ordinary = Co2PreparationConfig.from_params({"prepared_inputs": prepared})
         return cls(ordinary.prepared_path, ordinary.start_date, ordinary.end_date, ordinary.domain)
 
     def preparation_arguments(self) -> dict[str, Any]:

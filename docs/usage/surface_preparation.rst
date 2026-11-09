@@ -10,9 +10,8 @@ continue to use their existing owners.
 Dependency and precision
 ------------------------
 
-Ordinary boundary sensitivities, observation alignment and flux convolution reuse
-OpenGHG helpers. Accurate centered boundary normalization and anomaly/mass
-arithmetic are owned by OGI. The normal
+Observation alignment and flux convolution reuse OpenGHG helpers. Accurate
+boundary normalization and anomaly/mass arithmetic are owned by OGI. The normal
 installation temporarily pins OpenGHG devel commit
 ``b9a9d1f21f22d2f8dcca714283eb936c22338c57``. This pilot calls its xarray
 integrated and time-resolved convolution operations. Both pip and uv installs receive that revision; VG
@@ -33,12 +32,12 @@ Centered boundary provenance records
 The operation uses native boundary/transport inputs, never rounded absolute
 sensitivities, and records its arithmetic policy revision.
 
-For centered preparation, OGI normalizes all four stable boundary curtains together, using an
+With boundaries, OGI normalizes all four stable boundary curtains together, using an
 explicit tolerance for their total raw mass versus unity. Choose that tolerance
 from the footprint's justified numerical error. Nonfinite or negative weights,
 zero mass, and mass outside the tolerance fail validation. Boundary coverage must
 be declared by ``time_period`` interval starts. Concentrations and references are
-converted to common units before subtraction. Centered preparation arithmetic uses float64; this cannot recover precision already lost in stored input.
+converted to common units before subtraction. This arithmetic uses float64; it cannot recover precision already lost in stored input.
 
 Input validation
 ----------------
@@ -86,19 +85,36 @@ With existing OpenGHG data wrappers or xarray datasets:
        species="co2",
        transport={"biosphere": "time_resolved", "fossil": "integrated"},
        boundary_data=boundary_curtains,
-       boundary_representation="centered",
        boundary_reference=400.0,
        boundary_reference_units="ppm",
        boundary_mass_tolerance=justified_mass_tolerance,
        output_units="ppm",
    )
 
-Ordinary preparation is the default. Omit ``boundary_representation`` and the
-reference arguments to obtain absolute ``bc_n/e/s/w`` contributions. Supply
-``boundary_representation="centered"`` plus the reference to retain accurate
-anomaly/mass operands instead. A reference alone never selects centered preparation;
-Centered preparation requires a justified mass tolerance; ordinary preparation
-uses OpenGHG’s existing baseline arithmetic without joint mass normalization.
+With boundary data, the result always holds the centered operands
+``bc_anomaly_n/e/s/w``, ``bc_mass_n/e/s/w`` and scalar ``bc_reference``, so the
+reference, its units and a justified mass tolerance are required. Acquisition
+does not choose the prepared representation: the same site data can feed an
+ordinary or a centered preparation. Preparation selects it with
+``select_boundary_representation``:
+
+.. code-block:: python
+
+   from openghg_inversions.inversion_data import select_boundary_representation
+
+   ordinary = select_boundary_representation({"MHD": site}, "ordinary")
+   centered = select_boundary_representation({"MHD": site}, "centered")
+
+Ordinary selection collapses the operands exactly to absolute ``bc_n/e/s/w``,
+``bc_<d> = bc_anomaly_<d> + bc_reference * bc_mass_<d>``, in float64. The
+reference cancels, so it does not change ordinary results. These absolute
+contributions use the jointly normalized curtain mass, unlike OpenGHG’s
+unnormalized baseline arithmetic, so they can differ from ModelScenario results
+by the footprint's mass error. Centered selection keeps the operands for
+numerically precise inference, for example for O₂, whose large absolute
+background would amplify small rounding errors. The reference is part of the
+prior only for ``anomaly_scaling`` boundaries, whose default ``c'`` is the stored
+reference.
 
 Each source and boundary contribution is calculated at native footprint release
 times, then averaged to the chosen observation cadence. Each source is convolved
@@ -150,16 +166,18 @@ Retrieval and retained native flux
        start_date="2020-01-01", end_date="2020-02-01",
        site_options=selectors, flux_sources=["biosphere", "fossil"],
        surface_transport={"biosphere": "time_resolved", "fossil": "integrated"},
-       use_bc=True, boundary_representation="centered",
-       reference=400.0, reference_units="ppm",
-       mass_tolerance=justified_mass_tolerance,
+       use_bc=True, boundary_reference=400.0, boundary_reference_units="ppm",
+       boundary_mass_tolerance=justified_mass_tolerance,
    )
 
 Pass the appropriate store and dataset selectors for your installation. This
 route delegates to ``acquire_surface_data`` and shares concrete observation and
 footprint retrieval with the existing scenario route. It retains observation
 averaging, calibration, inlet/height selection, missing-site handling, explicit
-total observation errors and flux sanitation.
+total observation errors and flux sanitation. Its boundaries keep the centered
+operands described above. The scenario route (without ``surface_transport``)
+keeps OpenGHG's absolute ``bc_n/e/s/w`` and so supports only ordinary
+preparation; requesting centered operands from it fails.
 
 Acquisition retrieves retained observations and footprints before flux. It uses
 one observation-role resolution, unit conversion and coarsest alignment per
@@ -203,8 +221,10 @@ reporting. Standard/multisector scientific preparation of a supplied surface
 stacking or summing. Mixed-cadence observation-space responses can be calculated
 with ``prepare_surface_site``; they do not yet define a common native reporting
 axis or an affine flux companion. Supply an independently justified native
-representation before using such products. This pilot does not construct the
-ordinary CO₂ coherent reduction automatically; see :doc:`coherent_reduction` and
+representation before using such products. Configured CO₂ preparation
+(``[prepared_inputs.acquisition]``, see :doc:`co2_models`) acquires through this
+route and constructs the coherent reduction and affine companion; Python
+callers can also build them directly, see :doc:`coherent_reduction` and
 :doc:`co2_model_family`.
 
 .. _surface-centered-boundary-contract:
@@ -216,8 +236,9 @@ See :doc:`centered_boundary_conditions` for definitions of the anomaly and
 mass operators, their mathematical relation to the absolute boundary response,
 and pseudocode for native curtain products, spatial projection and period masks.
 
-Apply supported observation selection first, then derive missing observation
-errors with ``prepare_observation_errors`` on the retained population. Explicit
+Select the centered representation with ``select_boundary_representation``
+(a no-op for centered site data), apply supported observation selection, then
+derive missing observation errors with ``prepare_observation_errors`` on the retained population. Explicit
 existing errors remain unchanged. Project the native ``bc_anomaly_*`` and
 ``bc_mass_*`` arrays through the same chosen BC basis using ``bc_sensitivity`` or
 ``build_sensitivities``. Their outputs are ``H_bc_anomaly`` (A), ``H_bc_mass`` (M)

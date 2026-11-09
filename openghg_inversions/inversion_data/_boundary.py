@@ -1,9 +1,13 @@
 """Accurate centered boundary operands for stable CO2/O2 surface inversions."""
 
+from collections.abc import Mapping
+from typing import get_args
+
 import numpy as np
 import xarray as xr
 
 from openghg_inversions.array_ops import to_dense
+from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 
 from ._units import mole_fraction_unit_scale
 
@@ -177,3 +181,55 @@ def baseline_reference_sensitivities(
         result[f"bc_anomaly_{direction}"] = anomaly.assign_attrs(units=output_units)
     result["bc_reference"] = xr.DataArray(converted_reference * output_scale, attrs={"units": output_units})
     return xr.Dataset(result)
+
+
+def select_boundary_representation(
+    site_data: Mapping[str, xr.Dataset], representation: BoundaryRepresentation,
+) -> dict[str, xr.Dataset]:
+    """Give every site dataset the requested boundary representation.
+
+    Surface acquisition keeps centered operands, so one merged dataset can feed
+    either preparation. Ordinary preparation collapses them exactly to
+    ``bc_<d> = bc_anomaly_<d> + bc_reference * bc_mass_<d>`` in float64,
+    in the anomaly units; the reference cancels. Centered preparation keeps
+    them unchanged. Sites without boundaries, and absolute sites requested
+    as ordinary, are returned unchanged. Datasets are borrowed: results are
+    shallow copies and lazy payloads stay lazy.
+
+    Args:
+        site_data: Per-site merged datasets.
+        representation: ``"ordinary"`` for absolute ``bc_n/e/s/w``, or
+            ``"centered"`` for ``bc_anomaly``/``bc_mass``/``bc_reference``.
+
+    Returns:
+        A new mapping of site datasets in the requested representation.
+
+    Raises:
+        ValueError: If the representation is unknown, or centered operands are
+            requested from a site that has only absolute boundary sensitivities.
+    """
+    if representation not in get_args(BoundaryRepresentation):
+        raise ValueError(f"boundary_representation must be one of {get_args(BoundaryRepresentation)!r}.")
+    result = {}
+    for site, dataset in site_data.items():
+        centered = dataset.attrs.get("boundary_representation") == "centered-v1"
+        if representation == "centered" and not centered and "bc_n" in dataset:
+            raise ValueError(
+                f"Merged data for site {site!r} has only absolute boundary sensitivities and cannot "
+                "produce centered operands; acquire it through surface transport."
+            )
+        if representation == "centered" or not centered:
+            result[site] = dataset
+            continue
+        reference = dataset["bc_reference"]
+        absolute = {
+            f"bc_{d}": (dataset[f"bc_anomaly_{d}"] + reference * dataset[f"bc_mass_{d}"]).assign_attrs(
+                units=dataset[f"bc_anomaly_{d}"].attrs["units"]
+            )
+            for d in "nesw"
+        }
+        operands = [f"{prefix}_{d}" for prefix in ("bc_anomaly", "bc_mass") for d in "nesw"]
+        collapsed = dataset.drop_vars([*operands, "bc_reference"]).assign(absolute)
+        collapsed.attrs = {key: value for key, value in dataset.attrs.items() if key != "boundary_representation"}
+        result[site] = collapsed
+    return result

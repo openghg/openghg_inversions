@@ -10,6 +10,33 @@ start_date = "2020-01-01"
 end_date = "2020-02-01"
 domain = "EUROPE"
 
+# To build a new preparation instead, replace `path` above with these tables
+# (CO2 only). Acquisition keeps centered boundary operands; the [model.boundary]
+# type selects the prepared representation unless it is set explicitly.
+# boundary_representation = "centered"   # optional: "ordinary" or "centered"
+# aggregation_error_rank = 512           # or "exact"
+#
+# [prepared_inputs.acquisition]
+# sites = ["MHD"]
+# averaging_period = "1h"
+# flux_sources = ["biosphere", "fossil"]
+# surface_transport = { biosphere = "time_resolved", fossil = "integrated" }
+# boundary_reference = 400.0
+# boundary_reference_units = "ppm"
+# boundary_mass_tolerance = 1e-4
+#
+# [prepared_inputs.observations]
+# filters = ["daytime9to5"]
+#
+# [prepared_inputs.basis]
+# algorithm = "weighted"
+# nbasis = 100
+# bc_algorithm = "NESW"
+#
+# [prepared_inputs.native_prior]
+# sigma = 0.5
+# correlation_length = 1.5
+
 [likelihood]
 kind = "fixed_ou"
 tau_hours = 24.0

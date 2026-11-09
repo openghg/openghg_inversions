@@ -76,7 +76,10 @@ sensitivity; only :class:`MultiplicativeChoice` is also an
 :class:`AbsoluteChoice`, whose ``bind_absolute`` binds absolute ``H_bc`` to
 :class:`MultiplicativeBoundary`, the one bound record that does not inherit
 :class:`~.centered.CenteredBoundary`. :func:`bind_prepared` is the one place
-that checks a choice against the representation preparation produced. Centered
+that checks a choice against the representation preparation produced; before
+preparation, ``choice.preparation(representation)`` (or
+:func:`boundary_preparation`, which also covers no boundary) states which
+representation and prepared inputs a choice needs. Centered
 sensitivity keeps small anomalies after cancellation: likelihoods use
 observations shifted by the fixed ``c M 1``, while absolute outputs add it
 back. Centered graphs need a float64 PyTensor process
@@ -113,6 +116,8 @@ from openghg_inversions.models.boundary.contracts import (
     validate_centering_weights,
 )
 from openghg_inversions.models.boundary.outputs import Outputs
+from openghg_inversions.models.boundary.preparation import Preparation, boundary_preparation
+from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 from openghg_inversions.models.components import AffineConcentrationTerm
 
 
@@ -164,6 +169,10 @@ class Choice(Protocol):
     def anchor_time(self) -> DatetimeLike | None: ...
 
     def bind(self, observations: xr.DataArray, sensitivity: RawCenteredSensitivity) -> Bound: ...
+
+    def preparation(self, representation: BoundaryRepresentation | None = None) -> Preparation:
+        """Return the prepared inputs this choice needs, or raise if it cannot bind them."""
+        ...
 
 
 @runtime_checkable
@@ -229,6 +238,8 @@ __all__ = [
     "Choice",
     "Outputs",
     "MultiplicativeBoundary",
+    "Preparation",
+    "boundary_preparation",
     "MultiplicativeChoice",
     "RawCenteredSensitivity",
     "bind_prepared",

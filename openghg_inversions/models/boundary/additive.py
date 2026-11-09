@@ -52,6 +52,8 @@ from .additive_anomalies import Anomalies, AnomalyStructure, anomaly_basis
 from .centered import CenteredBoundary, MeanShift
 from .contracts import BoundAdditiveSensitivity, BoundCenteredSensitivity, RawCenteredSensitivity
 from .outputs import Outputs
+from .preparation import Preparation, check_representation
+from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 
 
 @dataclass(frozen=True)
@@ -117,6 +119,26 @@ class AdditiveChoice:
     def mean_shift(self) -> MeanShift:
         """The mean shift these options define; without a prior it adds nothing."""
         return MeanShift(self.mean_prior, self.mean_by_period)
+
+    def preparation(self, representation: BoundaryRepresentation | None = None) -> Preparation:
+        """Additive corrections need centered sensitivity, and weights when weighted.
+
+        Args:
+            representation: Requested representation, or ``None``.
+
+        Returns:
+            Centered preparation, with ``bc_centering_weights`` for weighted
+            anomalies.
+
+        Raises:
+            ValueError: If ordinary sensitivity is requested.
+        """
+        if check_representation(representation or "centered") != "centered":
+            raise ValueError(
+                "The additive boundary requires boundary_representation='centered'; "
+                "it cannot use ordinary H_bc."
+            )
+        return Preparation("centered", centering_weights=self.anomalies == "weighted")
 
     def bind(self, observations: xr.DataArray, sensitivity: RawCenteredSensitivity) -> AdditiveBoundary:
         """Bind centered sensitivity, and any centering weights, to one fit.

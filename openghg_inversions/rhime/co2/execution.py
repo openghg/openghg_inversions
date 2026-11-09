@@ -5,12 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
-from openghg_inversions.inversion_data import PreparedInputs
+from openghg_inversions.inversion_data import MergedData, PreparedInputs
+from openghg_inversions.models.boundary import boundary_preparation
 from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
 
 from .co2_affine_output import _bind_affine_flux_map, prepared_inputs_content_id
@@ -18,7 +19,8 @@ from .co2_outputs import (
     Co2Output, Co2OutputOptions, calculate_co2_products, save_co2_products, make_co2_output,
     validate_co2_product_request,
 )
-from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts
+from .co2_native_preparation import prepare_native_co2
+from .co2_preparation import Co2PreparedInputs, check_prepared_boundary, prepare_co2_inputs, requested_co2_facts
 from .inference import sample_co2_inference
 from .configuration import (
     load_co2_family_config, validate_co2_config, _validate_co2_option_names, Co2PreparationConfig,
@@ -71,16 +73,20 @@ def run_co2(
     output_path: str | Path | None = None, start_date: str | None = None, end_date: str | None = None,
     prepared: Co2PreparedInputs | None = None, canonical_inputs: PreparedInputs | None = None,
     reduction: CoherentGaussianReduction | None = None, affine_artifact: AffineFluxMapArtifact | None = None,
-    aggregation_error_rank: int | None = 512,
+    aggregation_error_rank: int | None = 512, merged_data: MergedData | None = None,
 ) -> Co2Output:
     """Prepare or load CO2 inputs, sample and create requested products.
 
-    This configured product entry point consumes ``model``, ``likelihood``,
-    ``sampling`` and ``outputs`` without intermediate manifests. Trace-only
-    callers use the model-selected inference steps directly. Supplied canonical
-    inputs and their coherent reduction are prepared together; an existing
-    preparation is reused unchanged. Imported runs must supply requested dates
-    and domain explicitly or retain them in preparation provenance.
+    This configured product entry point consumes ``prepared_inputs``,
+    ``model``, ``likelihood``, ``sampling`` and ``outputs`` without
+    intermediate manifests. Trace-only callers use the model-selected inference
+    steps directly. Configured acquisition (``prepared_inputs.acquisition``)
+    acquires, or uses supplied ``merged_data``, and builds a new preparation
+    with its affine companion. Supplied canonical inputs and their coherent
+    reduction are prepared together; an existing preparation is reused
+    unchanged. Every route is checked against the configured boundary choice.
+    Imported runs must supply requested dates and domain explicitly or retain
+    them in preparation provenance.
 
     Returns:
         Scientific result containing the trace, concentration components and
@@ -107,12 +113,24 @@ def run_co2(
         raise ValueError("Pass prepared or canonical_inputs/reduction, not both.")
     source = preparation.prepared_path
     supplied_prepared = prepared is not None
-    if canonical_inputs is not None and reduction is not None:
+    if merged_data is not None and preparation.native is None:
+        raise ValueError("merged_data requires prepared_inputs.acquisition choices.")
+    if preparation.native is not None:
+        if prepared is not None or canonical_inputs is not None or affine_artifact is not None:
+            raise ValueError("Configured acquisition builds its own preparation; do not pass prepared inputs.")
+        prepared, affine_artifact = prepare_native_co2(
+            preparation.native, domain=cast(str, preparation.domain),
+            start_date=cast(str, preparation.start_date), end_date=cast(str, preparation.end_date),
+            boundary=boundary_preparation(preparation.boundary, preparation.boundary_representation),
+            merged_data=merged_data,
+        )
+    elif canonical_inputs is not None and reduction is not None:
         prepared = prepare_co2_inputs(canonical_inputs, reduction, aggregation_error_rank=aggregation_error_rank)
     elif prepared is None:
         if source is None:
             raise ValueError("Pass prepared inputs or configure prepared_inputs.path.")
         prepared = Co2PreparedInputs.load(source)
+    check_prepared_boundary(prepared.inv_inputs, preparation.boundary, preparation.boundary_representation)
     model = model_config.model_arguments()
     facts = requested_co2_facts(
         prepared, start_date=start_date, end_date=end_date,

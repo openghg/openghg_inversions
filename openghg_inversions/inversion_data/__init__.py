@@ -4,6 +4,7 @@ from ._site_options import SiteOptions
 from .prepared_inputs import PreparedInputs
 from .xarray_adapter import prepare_rhime_inputs_from_xarray
 from .surface import prepare_surface_site
+from ._boundary import select_boundary_representation
 
 __all__ = [
     "prepare_surface_site",
@@ -15,4 +16,5 @@ __all__ = [
     "MergedDataProvenance",
     "SiteOptions",
     "prepare_rhime_inputs_from_xarray",
+    "select_boundary_representation",
 ]

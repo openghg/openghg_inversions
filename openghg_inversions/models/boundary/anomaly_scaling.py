@@ -35,6 +35,8 @@ from openghg_inversions.models.components import AffineBlock, AffineConcentratio
 from .centered import CenteredBoundary, Correction, MeanShift
 from .contracts import BoundCenteredSensitivity, RawCenteredSensitivity
 from .outputs import Outputs
+from .preparation import Preparation, check_representation
+from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 
 ReferencePolicy = float | Literal["stored", "whole_window_transport_mean"]
 
@@ -100,6 +102,25 @@ class AnomalyScalingChoice:
     def mean_shift(self) -> MeanShift:
         """The mean shift these options define; without a prior it adds nothing."""
         return MeanShift(self.mean_prior, self.mean_by_period)
+
+    def preparation(self, representation: BoundaryRepresentation | None = None) -> Preparation:
+        """Anomaly scaling needs centered sensitivity; the stored reference is its default ``c'``.
+
+        Args:
+            representation: Requested representation, or ``None``.
+
+        Returns:
+            Centered preparation.
+
+        Raises:
+            ValueError: If ordinary sensitivity is requested.
+        """
+        if check_representation(representation or "centered") != "centered":
+            raise ValueError(
+                "The anomaly_scaling boundary requires boundary_representation='centered'; "
+                "it cannot use ordinary H_bc."
+            )
+        return Preparation("centered")
 
     def bind(self, observations: xr.DataArray, sensitivity: RawCenteredSensitivity) -> AnomalyScalingBoundary:
         """Bind centered sensitivity to one fit and re-express it about the chosen reference.

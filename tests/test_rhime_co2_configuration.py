@@ -96,7 +96,7 @@ def test_installed_templates_pass_the_semantic_resolver() -> None:
             resolve_co2_o2_sampler(config, model=Co2O2ModelConfig.from_params(config))
         elif config["recipe"] == "co2":
             validate_co2_config(config)
-            Co2PreparationConfig.from_params(config, require_path=True).preparation_arguments()
+            Co2PreparationConfig.from_params(config, require_source=True).preparation_arguments()
             Co2ModelConfig.from_params(config).model_arguments()
             _resolve_co2_sampling(config, model=Co2ModelConfig.from_params(config).model_arguments()).sampler
 
@@ -107,7 +107,7 @@ def test_ordinary_configuration_matches_explicit_scientific_arguments() -> None:
         "no_model_error": False,
         "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75},
     }
-    assert Co2PreparationConfig.from_params(config, require_path=True).preparation_arguments()["prepared_path"] == Path("prepared.zarr").resolve()
+    assert Co2PreparationConfig.from_params(config, require_source=True).preparation_arguments()["prepared_path"] == Path("prepared.zarr").resolve()
     assert _resolve_co2_sampling(config, model=Co2ModelConfig.from_params(_ordinary()).model_arguments()).sampler == RhimeSampler(
         draws=20, tune=10, chains=2, nuts_sampler="numpyro",
         sample_kwargs={"target_accept": 0.95, "random_seed": 42},
@@ -392,12 +392,14 @@ def test_imported_preparation_facts_are_explicit_and_optional() -> None:
     assert Co2PreparationConfig.from_params(config).preparation_arguments() == {
         "prepared_path": Path("prepared.zarr").resolve(), "affine_path": Path("affine.nc").resolve(),
         "start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE",
+        "boundary_representation": None, "boundary": None, "native": None,
     }
     assert Co2PreparationConfig.from_params({}).preparation_arguments() == {
         "prepared_path": None, "affine_path": None, "start_date": None, "end_date": None, "domain": None,
+        "boundary_representation": None, "boundary": None, "native": None,
     }
     with pytest.raises(ValueError, match="prepared_inputs.path"):
-        Co2PreparationConfig.from_params({}, require_path=True).preparation_arguments()
+        Co2PreparationConfig.from_params({}, require_source=True).preparation_arguments()
 
 
 def test_model_resolution_consumes_only_owned_choices_without_an_envelope() -> None:

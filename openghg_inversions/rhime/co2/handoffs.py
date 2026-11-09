@@ -21,7 +21,9 @@ import xarray as xr
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine, save as save_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
-from openghg_inversions.inversion_data import PreparedInputs
+from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
+from openghg_inversions.inversion_data import MergedData, PreparedInputs
+from openghg_inversions.models.boundary import Choice, boundary_preparation
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime._stage_artifacts import (
     _output_path, check_checkpoint_targets, finish_checkpoint, read_manifest,
@@ -42,12 +44,12 @@ from .co2_outputs import (
     validate_co2_trace, validate_co2_product_request,
 )
 from .co2_preparation import (
-    Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts,
+    Co2PreparedInputs, check_prepared_boundary, prepare_co2_inputs, requested_co2_facts,
 )
 from .inference import (
     annotate_co2_inference, build_co2_inference, sample_co2_inference, describe_co2_inference,
 )
-from .configuration import Co2ModelConfig, _resolve_co2_sampling
+from .configuration import Co2ModelConfig, Co2NativePreparationConfig, _resolve_co2_sampling
 
 
 @dataclass(frozen=True)
@@ -129,17 +131,43 @@ def prepare(
     reduction: CoherentGaussianReduction | None = None,
     aggregation_error_rank: int | None = 512,
     affine_artifact: AffineFluxMapArtifact | None = None, affine_path: str | Path | None = None,
+    boundary_representation: BoundaryRepresentation | None = None, boundary: Choice | None = None,
+    native: Co2NativePreparationConfig | None = None, merged_data: MergedData | None = None,
 ) -> Path:
-    """Prepare a coherent reduction or import a saved prepared/affine pair.
+    """Build a preparation, prepare a coherent reduction, or import a saved pair.
 
-    Pass canonical inputs and their defining coherent reduction together, or one
-    saved prepared path. Imported pairs are validated and referenced directly;
-    callers retain those files for later sampling/replay. New pairs use
-    :func:`save_preparation` and the existing numerical codecs. Defining priors, covariance, operators and
-    projections belong to the coherent preparation, never an inference override.
+    Pass configured ``native`` choices (optionally with supplied
+    ``merged_data``), canonical inputs with their defining coherent reduction,
+    or one saved prepared path. Imported pairs are validated and referenced
+    directly; callers retain those files for later sampling/replay. New pairs
+    use :func:`save_preparation` and the existing numerical codecs. Defining
+    priors, covariance, operators and projections belong to the coherent
+    preparation, never an inference override.
+
+    ``boundary`` is the configured boundary choice: a new native preparation
+    produces the representation it needs (or the explicit
+    ``boundary_representation``), and other routes are checked with
+    :func:`~openghg_inversions.rhime.co2.co2_preparation.check_prepared_boundary`.
     """
     if (canonical_inputs is None) != (reduction is None):
         raise ValueError("Pass canonical_inputs and reduction together.")
+    if merged_data is not None and native is None:
+        raise ValueError("merged_data requires configured native preparation choices.")
+    if native is not None:
+        if prepared_path is not None or canonical_inputs is not None or affine_path is not None:
+            raise ValueError("Native preparation builds its own artifact; do not pass saved or canonical inputs.")
+        if start_date is None or end_date is None or domain is None:
+            raise ValueError("Native preparation requires start_date, end_date and domain.")
+        from .co2_native_preparation import prepare_native_co2
+
+        prepared, affine = prepare_native_co2(
+            native, domain=domain, start_date=start_date, end_date=end_date,
+            boundary=boundary_preparation(boundary, boundary_representation), merged_data=merged_data,
+        )
+        return save_preparation(
+            prepared, output_dir=output_dir, start_date=start_date, end_date=end_date, domain=domain,
+            affine_artifact=affine,
+        )
     if (prepared_path is None) == (canonical_inputs is None):
         raise ValueError("Pass either prepared_path or canonical_inputs with reduction.")
     if affine_artifact is not None and affine_path is not None:
@@ -151,12 +179,14 @@ def prepare(
             canonical_inputs, cast(CoherentGaussianReduction, reduction),
             aggregation_error_rank=aggregation_error_rank,
         )
+        check_prepared_boundary(prepared.inv_inputs, boundary, boundary_representation)
         return save_preparation(
             prepared, output_dir=output_dir, start_date=start_date, end_date=end_date, domain=domain,
             affine_artifact=affine_artifact,
         )
     source = Path(cast(str | Path, prepared_path)).resolve()
     prepared = Co2PreparedInputs.load(source)
+    check_prepared_boundary(prepared.inv_inputs, boundary, boundary_representation)
     if affine_artifact is not None:
         raise ValueError("Imported preparation requires affine_path; use save_preparation for a new pair.")
     facts = requested_co2_facts(prepared, start_date=start_date, end_date=end_date, domain=domain)
@@ -241,6 +271,7 @@ def sample(
     model_options = model_config.model_arguments()
     choices = _resolve_co2_sampling({"sampling": sampling if sampling is not None else {}}, model=model_options)
     preparation = load_preparation(preparation_manifest)
+    check_prepared_boundary(preparation.prepared.inv_inputs, model_config.boundary)
     model_options = model_config.model_arguments()
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
@@ -329,6 +360,7 @@ def prior_predictive(
     stage = _check_stage(stage)
     model_config = model if isinstance(model, Co2ModelConfig) else Co2ModelConfig.from_params(load_co2_params(params=model))
     preparation = load_preparation(preparation_manifest)
+    check_prepared_boundary(preparation.prepared.inv_inputs, model_config.boundary)
     model_options = model_config.model_arguments()
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
