@@ -125,6 +125,21 @@ def test_to_dense_tree_densifies_nested_records_for_one_compute() -> None:
     assert isinstance(values[0].data, np.ndarray)
 
 
+def test_to_dense_tree_keeps_named_tuples() -> None:
+    """Named tuples are rebuilt from positional fields rather than one iterable."""
+    from typing import NamedTuple
+
+    class _Pair(NamedTuple):
+        left: xr.DataArray
+        right: float
+
+    sparse_chunks = da.from_array(sparse.COO.from_numpy(np.array([0.0, 2.0])), chunks=1)
+    dense = to_dense_tree(_Pair(xr.DataArray(sparse_chunks, dims="x"), 1.0))
+
+    assert isinstance(dense, _Pair) and dense.right == 1.0
+    assert isinstance(dense.left.data._meta, np.ndarray)
+
+
 def test_to_dense_accepts_mixed_payloads_under_sparse_dask_metadata() -> None:
     """Sparse metadata may describe either sparse or already dense delayed chunks."""
     executions = []
