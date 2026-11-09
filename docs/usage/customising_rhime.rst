@@ -225,42 +225,10 @@ facts with a request. Neither operation computes numerical arrays.
 ``prepare_standard`` and ``prepare_multisector`` call
 ``merged.validate_scientific_inputs`` before deriving errors or filtering.
 Their full runners and saved preparation commands use these same functions.
-The selected preparation determines which fields are required:
-
-.. list-table:: Acquired per-site contract
-   :header-rows: 1
-   :widths: 24 42 34
-
-   * - Field
-     - Dimensions
-     - Requirement
-   * - ``mf``
-     - ``time``
-     - Always, with explicit concentration units.
-   * - ``mf_error``, ``mf_repeatability``, ``mf_variability``
-     - ``time``
-     - Supply ``mf_error`` or at least one uncertainty component.
-   * - ``fp_x_flux``
-     - ``lat``, ``lon``, ``time``
-     - Standard preparation.
-   * - ``fp_x_flux_sectoral``
-     - ``source``, ``lat``, ``lon``, ``time``
-     - Multisector preparation, with the selected source labels.
-   * - ``fp``
-     - ``lat``, ``lon``, ``time``
-     - Generated basis weights; unnecessary with a saved operator or partition.
-   * - ``bc_n``, ``bc_s``
-     - ``height``, ``lon``, ``time``
-     - When ordinary boundary conditions are enabled.
-   * - ``bc_e``, ``bc_w``
-     - ``height``, ``lat``, ``time``
-     - When ordinary boundary conditions are enabled.
-   * - ``bc_anomaly_n/e/s/w``, ``bc_mass_n/e/s/w``
-     - Same native curtain axes as the corresponding ordinary contributions.
-     - With boundary conditions and ``boundary_representation="centered-v1"``.
-   * - ``bc_reference``
-     - Scalar
-     - With the centered anomaly/mass representation.
+The :doc:`generated merged-input schema reference </reference/merged_input_schemas>`
+lists required variables, dimensions, dtypes, coordinates and attributes for
+selected standard, multisector, ordinary-BC and centered-BC variants. Its tables
+and relationship descriptions are built directly from the executable schemas.
 
 Centered inputs retain their anomaly, dimensionless mass and concentration
 reference without reconstructing ordinary curtains. The schema checks their
@@ -304,8 +272,9 @@ The mapping-level method supplies site/source paths in errors and checks
 cross-site concentration scales and native flux. It also accepts an explicit
 ``grid_dims`` pair for custom named grids. The schema is metadata-only: its
 ``lazy`` validation mode collects errors and does not execute Dask payloads.
-Schema export omits the unit/conditional callbacks and these generic dtype
-unions; apply the Python schema to retain those checks. Independent-grid
+The documentation exporter supplements the library serialization with dtype
+alternatives, attribute type names and callback descriptions. These descriptions
+are not executable validators; apply the Python schema for validation. Independent-grid
 alignment remains with the basis and native-flux owners. See :download:`the executable validation example
 <../../examples/rhime_customisation/validate_merged.py>`.
 

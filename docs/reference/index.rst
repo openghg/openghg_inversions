@@ -138,6 +138,9 @@ Import both values from
 :ref:`centered boundary contract <surface-centered-boundary-contract>` for
 operands and supported model routes.
 
+The :doc:`merged-input schema reference <merged_input_schemas>` is generated
+from the metadata validators used before standard and multisector preparation.
+
 .. autosummary::
    :nosignatures:
 
@@ -379,3 +382,4 @@ module-level view.
    :maxdepth: 4
 
    openghg_inversions
+   merged_input_schemas

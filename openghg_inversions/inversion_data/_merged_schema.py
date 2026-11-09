@@ -112,6 +112,14 @@ def merged_site_schema(
         coordinate_schemas["height"] = DataArraySchema(dtype=_REAL_DTYPES, dims=("height",))
 
     def relationships(dataset: xr.Dataset) -> None:
+        """Require at least one uncertainty field and unique indexed coordinates without missing labels.
+
+        Observation units must have a finite positive mole-fraction scale and
+        match the supplied concentration scale, when specified. Explicit error,
+        response and ordinary-BC units must share the observation scale. Source
+        labels must be nonempty strings identifying exactly the requested sources,
+        when specified. These checks inspect metadata and eager indexes only.
+        """
         if not any(name in dataset for name in _UNCERTAINTIES):
             raise ValueError("data_vars requires mf_error or at least one of mf_repeatability and mf_variability.")
         _indexed_coordinates(dataset, tuple(coordinate_schemas))
@@ -151,6 +159,12 @@ def merged_flux_schema(
         coords["time"] = DataArraySchema(dtype=np.datetime64, dims=("time",))
 
     def units(dataset: xr.Dataset) -> None:
+        """Require unique indexed coordinates without missing labels and compatible native flux units.
+
+        Flux units must have finite positive scale relative to mol m-2 s-1.
+        Unless allow_scaled_units is selected, that numerical scale must be one.
+        Values are neither read nor converted.
+        """
         _indexed_coordinates(dataset, tuple(coords))
         if "flux" in dataset:
             _check_unit_scale(
