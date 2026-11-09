@@ -148,6 +148,11 @@ class AdditiveBoundary:
         return str(self.data.H_bc_anomaly.dims[0])
 
     @property
+    def centered(self) -> bool:
+        """Whether the bound transport is centered; additive boundaries always are."""
+        return True
+
+    @property
     def has_anomalies(self) -> bool:
         """Whether anomalies are sampled (positive scale and several states)."""
         return self.choice.anomaly_scale > 0 and self.data.sizes["bc_region"] > 1

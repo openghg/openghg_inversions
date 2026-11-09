@@ -79,6 +79,11 @@ class Boundary(Protocol):
     @property
     def data(self) -> xr.Dataset: ...
 
+    @property
+    def centered(self) -> bool:
+        """Whether the bound transport is centered (shifts the likelihood observations)."""
+        ...
+
     def add(
         self, *, output_dim: str = ..., prefix: str = ..., owner: str | None = ...,
     ) -> AffineConcentrationTerm: ...
