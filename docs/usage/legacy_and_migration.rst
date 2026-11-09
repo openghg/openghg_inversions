@@ -63,7 +63,8 @@ configuration as follows:
   before acquisition and preserve their time combination and alignment.
   Custom scientific sensitivity calls receive the loaded ``bc_basis`` dataset.
   ``bc_basis_algorithm="NESW"`` is the default built-in selection. It uses
-  acquired directional contributions and ``bc_basis=None`` without a file.
+  acquired directional contributions through the default ``nesw_basis``
+  builder, without a file.
   Exact ``bc_basis_paths`` win over the inactive algorithm; ``use_bc=False``
   skips BC basis resolution and loading.
 * Modern runners reject ``fp_basis_case``, ``basis_directory``, ``bc_basis_case``
