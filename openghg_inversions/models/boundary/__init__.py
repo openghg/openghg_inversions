@@ -77,7 +77,9 @@ class Boundary(Protocol):
     __dataclass_fields__: ClassVar[dict[str, Any]]
 
     @property
-    def data(self) -> xr.Dataset: ...
+    def data(self) -> xr.Dataset:
+        """Observation-aligned transport arrays bound to this fit."""
+        ...
 
     @property
     def centered(self) -> bool:
@@ -86,9 +88,30 @@ class Boundary(Protocol):
 
     def add(
         self, *, output_dim: str = ..., prefix: str = ..., owner: str | None = ...,
-    ) -> AffineConcentrationTerm: ...
+    ) -> AffineConcentrationTerm:
+        """Add the boundary's states and concentration to the current PyMC model.
 
-    def outputs(self, prefix: str = ...) -> BoundaryOutputs: ...
+        Args:
+            output_dim: Observation dimension registered by the model.
+            prefix: Prefix for graph variable names.
+            owner: Namespace for component-owned state coordinates, or ``None``
+                for local names.
+
+        Returns:
+            The boundary's concentration term.
+        """
+        ...
+
+    def outputs(self, prefix: str = ...) -> BoundaryOutputs:
+        """Declare roles, units and metadata of the graph ``add`` builds.
+
+        Args:
+            prefix: Graph-name prefix used for ``add``.
+
+        Returns:
+            The declarations, available before sampling.
+        """
+        ...
 
 
 @runtime_checkable
@@ -103,12 +126,31 @@ class BoundaryChoice(Protocol[TransportT_contra]):
     __dataclass_fields__: ClassVar[dict[str, Any]]
 
     @property
-    def frequency(self) -> str | None: ...
+    def frequency(self) -> str | None:
+        """Boundary-period frequency (``"monthly"`` or a fixed duration), or ``None`` for one period."""
+        ...
 
     @property
-    def anchor_time(self) -> DatetimeLike | None: ...
+    def anchor_time(self) -> DatetimeLike | None:
+        """Optional start of the fixed-duration period grid."""
+        ...
 
-    def bind(self, observations: xr.DataArray, transport: TransportT_contra) -> Boundary: ...
+    def bind(self, observations: xr.DataArray, transport: TransportT_contra) -> Boundary:
+        """Bind prepared transport to one fit's observations and periods.
+
+        Args:
+            observations: Observations of the fit, supplying row labels and
+                times.
+            transport: Prepared transport in the representation this choice
+                accepts.
+
+        Returns:
+            The bound boundary.
+
+        Raises:
+            ValueError: If the transport or period settings are invalid.
+        """
+        ...
 
 
 __all__ = [
