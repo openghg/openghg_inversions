@@ -737,9 +737,18 @@ the mean raw footprint times the mean flux of the first requested source. Let
   resolution.
 
 The absolute value is taken per observation, so temporal sign changes cannot
-cancel. Observations are pooled across sites by count. The rule follows from the
-model's state layout; it is not a configuration option. Fixed-outer and nested
-generation use the same rule for their inner regions.
+cancel. Observations are pooled across sites by count. By default the rule
+follows from the model's state layout. Fixed-outer and nested generation use the
+same rule for their inner regions.
+
+Callers may choose the rule explicitly with ``weight_rule="abs_of_sum"`` or
+``weight_rule="sum_of_abs"`` on ``prepare_basis``, ``basis_weights_from_data``
+and ``fixed_outer_regions_basis_from_data``; ``None`` keeps the layout default.
+``"abs_of_sum"`` can suit a partition shared by separately scaled sectors whose
+scalings are positively correlated, such as GPP and TER, where their perturbations
+partly cancel in the net flux and resolution should follow the net signal.
+``"sum_of_abs"`` needs source-resolved responses, so it requires
+``multisector=True``. The option is not yet exposed in RHIME configuration.
 
 **Generated partitions, and therefore fitted results, may change.** For a
 time-varying or signed flux the new weights deliberately differ from the old
@@ -754,11 +763,12 @@ requires ``fp`` or a precomputed ``local_ratio`` variable and reports a clear
 error otherwise. API changes:
 
 * ``prepare_basis`` no longer accepts ``weighting_flux``; pass
-  ``multisector=True`` when sectors have separate states.
-* ``basis_weights_from_data(site_data, *, multisector=False, mask=None)`` no
-  longer accepts a flux or ``abs_flux``.
+  ``multisector=True`` when sectors have separate states, and optionally
+  ``weight_rule``.
+* ``basis_weights_from_data(site_data, *, multisector=False, weight_rule=None,
+  mask=None)`` no longer accepts a flux or ``abs_flux``.
 * ``fixed_outer_regions_basis_from_data`` takes native ``flux`` only for its grid,
-  plus ``multisector``; ``abs_flux`` is removed.
+  plus ``multisector`` and ``weight_rule``; ``abs_flux`` is removed.
 * ``paired_abs_response_weights`` is removed; use ``basis_weights_from_data``.
 * ``MergedData.validate_scientific_inputs`` and ``merged_site_schema`` no longer
   accept ``require_footprints``.

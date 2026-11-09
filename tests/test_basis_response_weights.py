@@ -58,6 +58,61 @@ def test_separate_sector_states_sum_sector_magnitudes():
     np.testing.assert_array_equal(weights, [[6.0, 0.0], [0.0, 2.0]])
 
 
+@pytest.mark.parametrize(
+    ("weight_rule", "expected"),
+    [
+        (None, [[6.0, 0.0], [0.0, 2.0]]),
+        ("sum_of_abs", [[6.0, 0.0], [0.0, 2.0]]),
+        ("abs_of_sum", [[0.0, 0.0], [0.0, 2.0]]),
+    ],
+)
+def test_explicit_weight_rule_on_multisector_opposite_signed_sectors(weight_rule, expected):
+    """Separately scaled sectors may choose the net-signal rule; None keeps the layout default."""
+    site = _cancelling_site().drop_vars("fp_x_flux")  # abs_of_sum sums the sectoral response itself
+
+    weights = basis_weights_from_data({"SITE": site}, multisector=True, weight_rule=weight_rule)
+
+    np.testing.assert_array_equal(weights, expected)
+
+
+def test_explicit_weight_rules_keep_per_observation_absolute_values():
+    """Both rules take the absolute value before averaging retained observations."""
+    sectoral = np.zeros((2, 2, 2, 2))
+    sectoral[0, 1, :, 0] = [2.0, -2.0]
+    sectoral[0, 1, :, 1] = [1.0, -1.0]
+    site = _site(sectoral)
+
+    for weight_rule, expected in (("abs_of_sum", 3.0), ("sum_of_abs", 3.0)):
+        weights = basis_weights_from_data({"SITE": site}, multisector=True, weight_rule=weight_rule)
+        assert float(weights.sel(lat=50.0, lon=-1.0)) == expected
+    shared = basis_weights_from_data({"SITE": site}, weight_rule="abs_of_sum")
+    assert float(shared.sel(lat=50.0, lon=-1.0)) == 3.0
+
+
+def test_invalid_weight_rules_fail_before_reading_responses():
+    """Unknown rules and sum_of_abs without sector responses are rejected eagerly."""
+    with pytest.raises(ValueError, match="weight_rule must be"):
+        basis_weights_from_data({}, multisector=True, weight_rule="net")
+    with pytest.raises(ValueError, match="multisector=True"):
+        basis_weights_from_data({}, weight_rule="sum_of_abs")
+    with pytest.raises(ValueError, match="weight_rule must be"):
+        prepare_basis(site_data={}, runtime_flux=xr.DataArray(), domain="TEST", start_date="2020-01-01",
+                      nbasis=1, basis_algorithm="quadtree", multisector=True, weight_rule="net")
+
+
+def test_prepare_basis_forwards_explicit_weight_rule():
+    """An explicit rule changes the multisector partition fitted by prepare_basis."""
+    merged = _response_only_merged(True)
+    runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=True)
+    actual = prepare_basis(site_data=merged.site_data, runtime_flux=runtime_flux, domain="TEST",
+                           start_date="2020-01-01", nbasis=2, basis_algorithm="quadtree",
+                           multisector=True, weight_rule="abs_of_sum")
+    expected = basis_module.quadtree_basis_from_weights(
+        basis_weights_from_data(merged.site_data, multisector=True, weight_rule="abs_of_sum"),
+        "2020-01-01", "TEST", nbasis=2)
+    xr.testing.assert_equal(actual.flat_basis(), expected.squeeze("time", drop=True).rename("basis"))
+
+
 def test_sector_order_cannot_select_the_weighting_policy():
     """Each sector contributes its own response regardless of its position."""
     site = _cancelling_site()
@@ -235,8 +290,8 @@ def test_time_resolved_response_needs_no_history_payload_and_inputs_are_borrowed
     xr.testing.assert_allclose(weights, expected)
 
 
-@pytest.mark.parametrize("multisector", [False, True])
-def test_fixed_outer_inner_weights_follow_the_state_layout(monkeypatch, multisector):
+@pytest.mark.parametrize(("multisector", "weight_rule"), [(False, None), (True, None), (True, "abs_of_sum")])
+def test_fixed_outer_inner_weights_follow_the_state_layout(monkeypatch, multisector, weight_rule):
     """Fixed-outer generation fits its inner region to the state-layout weights."""
     lat, lon = np.arange(4.0), np.arange(4.0)
     sectoral = np.zeros((4, 4, 2, 2))
@@ -260,9 +315,10 @@ def test_fixed_outer_inner_weights_follow_the_state_layout(monkeypatch, multisec
 
     monkeypatch.setattr(basis_module, "quadtree_basis_from_weights", fake_quadtree)
     fixed_outer_regions_basis_from_data(sites, flux, "2020-01-01", "quadtree", "TEST", nbasis=1,
-                                        multisector=multisector, outer_regions=outer)
+                                        multisector=multisector, weight_rule=weight_rule, outer_regions=outer)
 
-    expected = [[2.0, 10.0], [10.0, 10.0]] if multisector else [[2.0, 0.0], [0.0, 0.0]]
+    sum_of_abs = multisector and weight_rule is None
+    expected = [[2.0, 10.0], [10.0, 10.0]] if sum_of_abs else [[2.0, 0.0], [0.0, 0.0]]
     np.testing.assert_array_equal(seen["weights"], expected)
     np.testing.assert_array_equal(seen["weights"].lat, [1.0, 2.0])
     np.testing.assert_array_equal(seen["weights"].lon, [1.0, 2.0])

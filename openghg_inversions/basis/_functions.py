@@ -35,10 +35,58 @@ openghginv_path = Paths.openghginv
 _INNER_REGION_LABEL_ATTR = "inner_region_label"
 
 
+BasisWeightRule = Literal["abs_of_sum", "sum_of_abs"]
+"""How sector responses reduce to one weight field.
+
+``"abs_of_sum"`` is ``mean_o(abs(sum_s R_s(o)))`` and ``"sum_of_abs"`` is
+``sum_s mean_o(abs(R_s(o)))``. Both take the absolute value per observation.
+"""
+
+
+def _resolve_weight_rule(weight_rule: BasisWeightRule | None, *, multisector: bool) -> BasisWeightRule:
+    """Return the explicit rule, or the state-layout default, rejecting unknown or unusable rules."""
+    if weight_rule is None:
+        return "sum_of_abs" if multisector else "abs_of_sum"
+    if weight_rule not in ("abs_of_sum", "sum_of_abs"):
+        raise ValueError("weight_rule must be 'abs_of_sum', 'sum_of_abs' or None.")
+    if weight_rule == "sum_of_abs" and not multisector:
+        raise ValueError(
+            "weight_rule='sum_of_abs' needs source-resolved responses; use it with multisector=True."
+        )
+    return weight_rule
+
+
+def _summed_response_magnitude(
+    response: xr.DataArray, weight_rule: BasisWeightRule, *, sector_dim: str | None,
+) -> xr.DataArray:
+    """Sum absolute observation responses over ``time``, reducing sectors by ``weight_rule``.
+
+    A grouped basis can call this with its group's sectors selected from the
+    source-resolved response and its own rule.
+
+    Args:
+        response: One site's response with ``time``, spatial dimensions and,
+            when ``sector_dim`` is given, a sector dimension.
+        weight_rule: Sum sectors before (``"abs_of_sum"``) or after
+            (``"sum_of_abs"``) the per-observation absolute value.
+        sector_dim: Sector dimension of ``response``, or None for a total response.
+
+    Returns:
+        Lazy spatial field of summed per-observation magnitudes.
+    """
+    if sector_dim is not None and weight_rule == "abs_of_sum":
+        response = response.sum(sector_dim)
+    magnitude = abs(response)
+    if sector_dim is not None and weight_rule == "sum_of_abs":
+        magnitude = magnitude.sum(sector_dim)
+    return magnitude.sum("time")
+
+
 def basis_weights_from_data(
     site_data: Mapping[str, xr.Dataset],
     *,
     multisector: bool = False,
+    weight_rule: BasisWeightRule | None = None,
     mask: xr.DataArray | None = None,
 ) -> xr.DataArray:
     """Materialize response-magnitude weights for generated basis fitting.
@@ -51,16 +99,22 @@ def basis_weights_from_data(
     retained observation contributes once, and sites are not given equal
     weight.
 
-    The state layout selects the rule; it is not a separate option:
+    Two rules reduce sector responses ``R_s``:
 
-    * Sectors sharing one scaling state (standard RHIME) use the
-      selected-source total ``fp_x_flux``:
-      ``W = mean_o(abs(sum_s R_s))``. Sectors are summed before the absolute
-      value, so opposing sector responses cancel.
-    * Sectors with separate scaling states sharing one partition (multisector)
-      use ``fp_x_flux_sectoral``: ``W = sum_s mean_o(abs(R_s))``. Each sector
-      contributes its own magnitude, so cancellation between sectors does not
-      remove resolution.
+    * ``"abs_of_sum"``: ``W = mean_o(abs(sum_s R_s))``. Sectors are summed
+      before the absolute value, so opposing sector responses cancel and
+      resolution follows the net signal.
+    * ``"sum_of_abs"``: ``W = sum_s mean_o(abs(R_s))``. Each sector contributes
+      its own magnitude, so cancellation between sectors does not remove
+      resolution.
+
+    By default the state layout selects the rule. Sectors sharing one scaling
+    state (standard RHIME) use ``"abs_of_sum"`` on the selected-source total
+    ``fp_x_flux``. Sectors with separate scaling states sharing one partition
+    (multisector) use ``"sum_of_abs"`` on ``fp_x_flux_sectoral``. A
+    multisector caller may choose ``"abs_of_sum"`` instead, for example when
+    positively correlated sector scalings (such as GPP and TER) make the net
+    response the informative signal.
 
     This named eager algorithm boundary computes the reduced two-dimensional
     field once, densifying sparse payloads. Borrowed inputs are unchanged.
@@ -71,8 +125,10 @@ def basis_weights_from_data(
             dimension when ``multisector``) with ``time`` and the same spatial
             coordinates at every site. Sites may have no retained observations,
             provided at least one observation remains overall.
-        multisector: Use separate-state sector weights instead of the shared
-            total-response weights.
+        multisector: Weight source-resolved responses for sectors with separate
+            scaling states instead of the shared total response.
+        weight_rule: ``"abs_of_sum"`` or ``"sum_of_abs"``; None selects the
+            state-layout default. ``"sum_of_abs"`` requires ``multisector``.
         mask: Optional Boolean spatial mask with the weights' spatial sizes;
             its coordinates are overridden by the response grid. Cells outside
             it are dropped.
@@ -82,9 +138,11 @@ def basis_weights_from_data(
         when those dimensions are present.
 
     Raises:
-        ValueError: If no site or retained observation is supplied, a response
-            is missing, or site response grids differ.
+        ValueError: If the rule is invalid for the layout, no site or retained
+            observation is supplied, a response is missing, or site response
+            grids differ.
     """
+    weight_rule = _resolve_weight_rule(weight_rule, multisector=multisector)
     name = "fp_x_flux_sectoral" if multisector else "fp_x_flux"
     if not site_data:
         raise ValueError("Generated basis weights require at least one site dataset.")
@@ -94,10 +152,9 @@ def basis_weights_from_data(
         if name not in dataset:
             raise ValueError(f"site_data[{site!r}] requires {name!r} for generated basis weights.")
         response = dataset[name]
-        magnitude = abs(response)
-        if multisector:
-            magnitude = magnitude.sum("source")
-        magnitude_sums.append(magnitude.sum("time"))
+        magnitude_sums.append(
+            _summed_response_magnitude(response, weight_rule, sector_dim="source" if multisector else None)
+        )
         n_observations += response.sizes["time"]
     if n_observations == 0:
         raise ValueError("Generated basis weights require at least one retained observation.")
@@ -745,6 +802,7 @@ def fixed_outer_regions_basis_from_data(
     nbasis: int = 100,
     *,
     multisector: bool = False,
+    weight_rule: BasisWeightRule | None = None,
     outer_regions: xr.DataArray,
     landsea_classes: xr.DataArray | None = None,
     region_classes: xr.DataArray | None = None,
@@ -787,8 +845,11 @@ def fixed_outer_regions_basis_from_data(
             ``"region_constrained"``.
         domain: Domain across which to calculate basis functions.
         nbasis: Desired number of inner-region basis labels.
-        multisector: Weight sectors with separate scaling states by the sum of
-            their response magnitudes instead of the total-response magnitude.
+        multisector: Weight source-resolved responses for sectors with
+            separate scaling states instead of the shared total response.
+        weight_rule: ``"abs_of_sum"`` or ``"sum_of_abs"`` sector reduction;
+            None selects the state-layout default. See
+            :func:`basis_weights_from_data`.
         outer_regions: Borrowed resolved fixed outer-region map.
         landsea_classes: Borrowed resolved land/sea classes for weighted fitting.
         region_classes: Region or country class field used only with
@@ -820,6 +881,7 @@ def fixed_outer_regions_basis_from_data(
         zero, its label is kept unsplit.
     """
     _validate_basis_algorithm(basis_algorithm)
+    _resolve_weight_rule(weight_rule, multisector=multisector)
     intem_regions = outer_regions
 
     # Validate the physical grid before adopting the authoritative flux coordinates.
@@ -841,7 +903,7 @@ def fixed_outer_regions_basis_from_data(
 
     mask = intem_regions == inner_index
 
-    weights = basis_weights_from_data(site_data, multisector=multisector, mask=mask)
+    weights = basis_weights_from_data(site_data, multisector=multisector, weight_rule=weight_rule, mask=mask)
     if allow_empty_inner_region:
         finite_inner_weights = weights.to_numpy()
         finite_inner_weights = finite_inner_weights[np.isfinite(finite_inner_weights)]
