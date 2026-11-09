@@ -66,12 +66,13 @@ the producer, as described below.
 
 The :download:`explicit data contracts proposal
 <../../openspec/changes/explicit-data-contracts/specs/explicit-data-contracts/spec.md>`
-captures this pattern; it does not indicate that contract types have already
-been implemented. The following pseudocode illustrates the recommended static
-marker for a structural contract. ``xr_contract`` denotes the proposed
-declaration decorator; ``check_bound_layout`` and
-``select_and_expand_transport`` stand for domain-specific validation and
-preparation. These are not existing package functions.
+captures this pattern. :func:`openghg_inversions.xr_contracts.xr_contract` is
+the declaration decorator, and
+``openghg_inversions.models.boundary.contracts`` holds the centered boundary
+transport contracts, the first application. The following pseudocode
+illustrates the recommended static marker for a structural contract;
+``check_bound_layout`` and ``select_and_expand_transport`` stand for
+domain-specific validation and preparation.
 
 .. code-block:: python
 
@@ -121,7 +122,7 @@ type-check but fail at runtime. Use class-level helpers for additional behavior,
 and do not use ``isinstance`` to decide whether the contract holds. An ordinary
 record may hold contracted fields without repeating their validation.
 
-Declare contracts through the proposed package decorator in ``contracts.py``
+Declare contracts through the package decorator in ``contracts.py``
 modules within their owning packages. Shared tests discover those files and
 import their modules without a hand-maintained import list. Each contract's
 tests supply valid examples, including lazy ones, and required validator
@@ -176,6 +177,21 @@ a check requires reliable failure behavior for the stated policy; Cholesky
 success alone does not establish symmetry or a specified rank tolerance.
 Compatibility with a particular model's observation labels belongs to the
 composition boundary combining them.
+
+Centered-boundary application
+-----------------------------
+
+The first application is
+:class:`~openghg_inversions.models.boundary.RawCenteredSensitivity`,
+:class:`~openghg_inversions.models.boundary.BoundCenteredSensitivity` and its
+:class:`~openghg_inversions.models.boundary.BoundAdditiveSensitivity` extension.
+Their schemas use ``xarray_validate`` for declarative variables, dtypes,
+dimensions and attributes, with callbacks for unit and index relationships;
+the library choice belongs to this application, not to every contract. The
+contracts are structural: each centered family's ``add`` performs the one
+numerical check of the jointly materialized values. The class docstrings list
+the guarantees and operations; see :doc:`/usage/centered_boundary_conditions`
+for the scientific model.
 
 Transpose, align, compute
 -------------------------

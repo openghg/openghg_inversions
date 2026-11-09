@@ -41,7 +41,7 @@ from pytensor.tensor.variable import TensorVariable
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.array_ops import select_gathered_data_array
 from openghg_inversions.inversion_inputs import make_freq_indicator, make_site_indicator
-from openghg_inversions.models.coords import add_coords, add_model_data as add_model_data, component_coords
+from openghg_inversions.models.coords import add_component_data, add_coords, add_model_data as add_model_data, component_coords
 from openghg_inversions.models._flux import _namespace_sector_state_coords
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.models.state_activity import (
@@ -220,9 +220,7 @@ def apply_linear_sensitivity(
     coordinate_owner: str | None = None,
 ) -> TensorVariable:
     """Apply a prepared sensitivity using its state's explicit coordinate owner."""
-    h = add_model_data(component_coords(
-        prepared.sensitivity, coordinate_owner, observation_dim=prepared.output_dim,
-    ), data_name)
+    h = add_component_data(prepared.sensitivity, data_name, coordinate_owner, observation_dim=prepared.output_dim)
     output = pt.dot(h, state[prepared.retained_indices])
     if compute_deterministic:
         output = pm.Deterministic(output_name, output, dims=prepared.output_dim)
@@ -431,13 +429,15 @@ def likelihood_representation(
     terms: Sequence[ConcentrationTerm],
     observations: xr.DataArray,
     modelled_mean: TensorVariable,
-) -> tuple[TensorVariable, xr.DataArray, xr.DataArray | None]:
+) -> tuple[TensorVariable, xr.DataArray]:
     """Choose the likelihood mean and observations for concentration terms.
 
     Without observation shifts this returns ``modelled_mean`` and the
     observations unchanged. Otherwise it sums the likelihood contributions
     directly, rather than subtracting a large shift from ``modelled_mean``,
-    which would lose small centered anomalies.
+    which would lose small centered anomalies, and registers the total shift
+    as model data ``boundary_reference_shift`` so replay can restore absolute
+    predictions. Call it inside the active model.
 
     Args:
         terms: Complete ordered decomposition of ``modelled_mean``. Tensor
@@ -449,8 +449,8 @@ def likelihood_representation(
             retaining the recipe's summation grouping and deterministic name.
 
     Returns:
-        The likelihood mean, the translated observations and the total
-        observation shift (``None`` when no term is shifted).
+        The likelihood mean and the translated observations, which keep the
+        observations' attributes.
 
     Raises:
         ValueError: If indexed observation labels differ between observations
@@ -458,11 +458,12 @@ def likelihood_representation(
     """
     shifts = [term.observation_shift for term in terms if term.observation_shift is not None]
     if not shifts:
-        return modelled_mean, observations, None
+        return modelled_mean, observations
     observations, *shifts = xr.align(observations, *shifts, join="exact", copy=False)
     shift = sum(shifts[1:], start=shifts[0])
-    mean = sum((term.likelihood_contribution for term in terms[1:]), start=terms[0].likelihood_contribution)
-    return mean, observations - shift, shift
+    add_model_data(shift.rename("boundary_reference_shift"), "boundary_reference_shift")
+    mean = pt.add(*(term.likelihood_contribution for term in terms))
+    return mean, (observations - shift).assign_attrs(observations.attrs)
 
 
 def _active_state_coords(

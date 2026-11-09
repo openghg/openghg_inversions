@@ -31,16 +31,6 @@ from openghg_inversions.models.components import (
     add_sigma_component,
     likelihood_representation,
 )
-from openghg_inversions.models.boundary import (
-    AdditiveBoundary,
-    AdditiveChoice,
-    Boundary,
-    BoundaryChoice,
-    BoundaryOutputs,
-    CenteredOperands,
-    MultiplicativeBoundary,
-    MultiplicativeChoice,
-)
 from openghg_inversions.models.cached_sigma import (
     FixedOuCachedSigmaTarget,
     MarginalQuadraticCache,
@@ -101,14 +91,6 @@ __all__ = [
     "add_correlated_lognormal_state_with_activity",
     "AffineBlock",
     "AffineConcentrationTerm",
-    "AdditiveBoundary",
-    "AdditiveChoice",
-    "Boundary",
-    "BoundaryChoice",
-    "BoundaryOutputs",
-    "CenteredOperands",
-    "MultiplicativeBoundary",
-    "MultiplicativeChoice",
     "ConcentrationTerm",
     "add_coherent_affine_component",
     "likelihood_representation",

@@ -16,7 +16,12 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.models import StateActivity, registered_model
-from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands, MultiplicativeChoice
+from openghg_inversions.models.boundary import (
+    AdditiveChoice,
+    AnomalyScalingChoice,
+    MultiplicativeChoice,
+)
+from boundary_test_utils import centered_transport
 
 TIMES = pd.to_datetime(["2020-01-03", "2020-01-20", "2020-02-03", "2020-02-05"])
 ROWS = [10, 20, 30, 40]
@@ -47,7 +52,7 @@ def _spatial(values, units):
 
 def _operands(weights=None):
     rng = np.random.default_rng(3)
-    return CenteredOperands(
+    return centered_transport(
         _spatial(rng.normal(0.0, 2.0, (4, 3)), "ppm"),
         _spatial(rng.uniform(0.1, 0.5, (4, 3)), "1"),
         xr.DataArray(400.0, attrs={"units": "ppm"}),
@@ -73,6 +78,15 @@ CASES = {
     ),
     "additive-anomalies": lambda: (AdditiveChoice(MEAN_PRIOR, 2.0, frequency="monthly"), _operands(_weights("monthly"))),
     "additive-mean-only": lambda: (AdditiveChoice(MEAN_PRIOR, 0.0), _operands(_weights(None))),
+    "additive-period-contrasts-and-means": lambda: (
+        AdditiveChoice(MEAN_PRIOR, 2.0, anomalies="period_contrasts", mean_by_period=True, frequency="monthly"),
+        _operands(),
+    ),
+    "additive-independent": lambda: (AdditiveChoice(None, 2.0, anomalies="independent", frequency="monthly"), _operands()),
+    "anomaly-scaling": lambda: (
+        AnomalyScalingChoice(MEAN_PRIOR, 0.3, reference="whole_window_transport_mean", frequency="monthly"),
+        _operands(),
+    ),
 }
 
 

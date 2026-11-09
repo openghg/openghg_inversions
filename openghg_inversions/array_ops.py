@@ -330,6 +330,8 @@ def to_dense_tree(value: Any) -> Any:
         return value.map(to_dense, keep_attrs=True)
     if isinstance(value, Mapping):
         return {key: to_dense_tree(item) for key, item in value.items()}
+    if isinstance(value, tuple) and hasattr(value, "_fields"):
+        return type(value)(*(to_dense_tree(item) for item in value))
     if isinstance(value, list | tuple):
         return type(value)(to_dense_tree(item) for item in value)
     if dataclasses.is_dataclass(value) and not isinstance(value, type):

@@ -15,6 +15,7 @@ from openghg_inversions.inversion_inputs import DatetimeLike, make_period_calend
 __all__ = [
     "BoundaryAlignment",
     "align_boundary_operands",
+    "bind_period_states",
     "validate_boundary_operands",
     "scale_satellite_boundary_sensitivity_to_column_signal",
 ]
@@ -87,13 +88,7 @@ def _expand_boundary_periods(
     anchor_time: DatetimeLike | None,
     observation_labels: xr.DataArray | None,
 ) -> xr.Dataset:
-    """Select scientific rows and apply one period mask to all boundary operands.
-
-    A datetime ``time`` coordinate along the observations is computed once if
-    lazy, because period labels are interval-start timestamps (the first time
-    when ``frequency`` is None). Without one, the single period is labelled
-    ``'whole_window'``.
-    """
+    """Select scientific rows and apply one period mask to all boundary operands."""
     normalise_frequency(frequency)
     if observation_labels is not None:
         raw = raw.sel({observation_dim: observation_labels.transpose(observation_dim)})
@@ -157,6 +152,42 @@ def _select_native_boundary(
     return selected
 
 
+def bind_period_states(
+    raw: xr.Dataset,
+    observations: xr.DataArray,
+    *,
+    frequency: str | None = None,
+    anchor_time: DatetimeLike | None = None,
+) -> xr.Dataset:
+    """Select one fit's rows of raw spatial boundary data and expand its states by period.
+
+    Observation labels own the row order and their auxiliary timestamps own
+    period membership; indexed boundary times must match those timestamps.
+    This check may compute a lazy timestamp coordinate, while numerical
+    payloads stay borrowed. Returns ``raw``'s variables on ``(observation,
+    bc_region)``, where ``bc_region`` is the ``(bc_curtain, bc_period)``
+    MultiIndex.
+    """
+    native_dim = str(observations.dims[0])
+    raw_dim = native_dim if native_dim in raw.dims else ("time" if "time" in raw.dims else "nmeasure")
+    expanded = _expand_boundary_periods(
+        _select_native_boundary(raw, observations, raw_dim), observation_dim=raw_dim,
+        frequency=frequency, anchor_time=anchor_time, observation_labels=None,
+    )
+    return _restore_native_dim(expanded, raw_dim, native_dim).transpose(native_dim, "bc_region")
+
+
+def _restore_native_dim(data: xr.Dataset, raw_dim: str, native_dim: str) -> xr.Dataset:
+    """Rename selected rows to the native observation dimension."""
+    if raw_dim == native_dim:
+        return data
+    # Native time has already determined periods; the restored dimension
+    # index owns those same labels, so its auxiliary copy is redundant.
+    if native_dim == "time" and "time" in data.coords:
+        data = data.drop_vars("time")
+    return data.rename({raw_dim: native_dim})
+
+
 def bind_boundary_sensitivity(
     sensitivity: xr.DataArray,
     observations: xr.DataArray,
@@ -166,17 +197,14 @@ def bind_boundary_sensitivity(
 ) -> xr.DataArray:
     """Select an ordinary boundary and expand raw spatial states at model binding.
 
-    Observation labels own the row order and their auxiliary timestamps own
-    period membership when supplied. Indexed boundary times must match those
-    timestamps; this binding check may materialize a lazy timestamp coordinate,
-    while boundary payloads remain borrowed. Raw sensitivities can be reused with
-    different frequencies; already expanded sensitivities may be consumed only
-    without a period override. Direct callers may supply an independently named
-    state axis. Unmarked direct inputs retain their state labels when no temporal
-    expansion is requested; marked ``raw-spatial`` preparations and explicit
-    frequency choices produce the canonical ``bc_region`` curtain/period index.
-    Payloads stay borrowed and lazy until the model's explicit materialization
-    boundary.
+    Rows and periods follow :func:`bind_period_states`. Raw sensitivities can
+    be reused with different frequencies; already expanded sensitivities may
+    be consumed only without a period override. Direct callers may supply an
+    independently named state axis. Unmarked direct inputs retain their state
+    labels when no temporal expansion is requested; marked ``raw-spatial``
+    preparations and explicit frequency choices produce the canonical
+    ``bc_region`` curtain/period index. Payloads stay borrowed and lazy until
+    the model's explicit materialization boundary.
     """
     validate_centered_boundary_periods(frequency, anchor_time)
     native_dim = str(observations.dims[0])
@@ -184,99 +212,56 @@ def bind_boundary_sensitivity(
         str(dim) for dim in sensitivity.dims if dim in ("nmeasure", "time")
     )
     state_dim = next(str(dim) for dim in sensitivity.dims if dim != raw_dim)
-    sensitivity = _select_native_boundary(
-        sensitivity.rename("H_bc").to_dataset(), observations, raw_dim,
-    ).H_bc
+    data = sensitivity.rename("H_bc").to_dataset()
     expanded = (
         sensitivity.attrs.get("boundary_sensitivity_preparation") == "sampled-period-expansion"
         or "bc_period" in sensitivity.coords
         or isinstance(sensitivity.indexes.get(state_dim), pd.MultiIndex)
     )
-    if expanded:
-        if frequency is not None or anchor_time is not None:
-            raise ValueError("Boundary period overrides require raw spatial sensitivity; regenerate baked inputs.")
-        aligned = sensitivity
-    elif (frequency is None and anchor_time is None
-          and sensitivity.attrs.get("boundary_sensitivity_preparation") != "raw-spatial"):
-        # Direct scientific callers retain state labels shared with their priors
-        # when requesting no expansion. Prepared raw-spatial arrays explicitly
-        # opt into the reusable curtain/period contract, including one period.
-        aligned = sensitivity
-    else:
-        if state_dim != "bc_region":
-            sensitivity = sensitivity.rename({state_dim: "bc_region"})
-            state_dim = "bc_region"
-        aligned = _expand_boundary_periods(
-            sensitivity.rename("H_bc").to_dataset(), observation_dim=raw_dim,
-            frequency=frequency, anchor_time=anchor_time, observation_labels=None,
-        ).H_bc
-    if raw_dim != native_dim:
-        # Native time has already determined periods; the restored dimension
-        # index owns those same labels, so its auxiliary copy is redundant.
-        if native_dim == "time" and "time" in aligned.coords:
-            aligned = aligned.drop_vars("time")
-        aligned = aligned.rename({raw_dim: native_dim})
-    return aligned.transpose(native_dim, state_dim)
+    if expanded and (frequency is not None or anchor_time is not None):
+        raise ValueError("Boundary period overrides require raw spatial sensitivity; regenerate baked inputs.")
+    if not expanded and (frequency is not None or anchor_time is not None
+                         or sensitivity.attrs.get("boundary_sensitivity_preparation") == "raw-spatial"):
+        # Prepared raw-spatial arrays explicitly opt into the reusable
+        # curtain/period contract, including one period.
+        data = data.rename({state_dim: "bc_region"}) if state_dim != "bc_region" else data
+        return bind_period_states(data, observations, frequency=frequency, anchor_time=anchor_time).H_bc
+    # Expanded inputs, and direct scientific callers requesting no expansion,
+    # retain state labels shared with their priors.
+    selected = _select_native_boundary(data, observations, raw_dim)
+    return _restore_native_dim(selected, raw_dim, native_dim).H_bc.transpose(native_dim, state_dim)
 
 
 def validate_boundary_operands(operands: xr.Dataset) -> bool:
-    """Validate raw spatial centered operands before model-period expansion.
+    """Detect raw centered operands and check their structure before period expansion.
+
+    Centered sensitivity is present when any of ``H_bc_anomaly``, ``H_bc_mass``
+    or ``bc_reference`` exists or ``boundary_representation`` is
+    ``'centered-v1'``. Present operands must then satisfy
+    :class:`~openghg_inversions.models.boundary.contracts.RawCenteredSensitivity`,
+    whose docstring lists the structural guarantees.
 
     Args:
-        operands: Borrowed dataset with ``boundary_representation='centered-v1'``,
-            ``H_bc_anomaly`` and ``H_bc_mass`` on unique indexed ``bc_region``
-            and ``time`` or ``nmeasure`` dimensions, and scalar ``bc_reference``.
-            Anomaly and reference share the exact concentration unit string;
-            mass has units ``'1'``. Optional ``mf`` has matching units. An
-            absolute ``H_bc`` diagnostic must be marked ``unexpanded``.
+        operands: Borrowed dataset, possibly Dask-backed.
 
     Returns:
         Whether centered operands are present. Accepted operands remain raw
-        for period expansion at model binding.
-        Timestamps are not required for a single period. Finite payload values
-        are checked at the shared materialization boundary; this validator does
-        not compute or mutate borrowed numerical arrays.
+        for period expansion at model binding. Finite payload values are
+        checked at the shared materialization boundary; this does not compute
+        or mutate borrowed numerical arrays.
 
     Raises:
-        ValueError: If centered operands are incomplete, already expanded, or
-            have incompatible representation, dimensions, labels or units.
+        ValueError: If ``boundary_representation`` is unsupported, or centered
+            operands violate the raw centered sensitivity contract.
     """
-    names = {"H_bc_anomaly", "H_bc_mass", "bc_reference"}
+    from openghg_inversions.models.boundary.contracts import CENTERED_NAMES, RawCenteredSensitivity
+
     representation = operands.attrs.get("boundary_representation")
     if representation is not None and representation != "centered-v1":
         raise ValueError(f"Unsupported boundary_representation {representation!r}.")
-    centered = bool(names.intersection(operands.variables)) or operands.attrs.get(
-        "boundary_representation"
-    ) == "centered-v1"
-    if not centered:
+    if not set(CENTERED_NAMES).intersection(operands.variables) and representation is None:
         return False
-    if not names <= set(operands.variables):
-        raise ValueError("Centered boundaries require H_bc_anomaly, H_bc_mass and bc_reference.")
-    if operands.attrs.get("boundary_representation") != "centered-v1":
-        raise ValueError("Centered boundaries require boundary_representation='centered-v1'.")
-    if "H_bc" in operands and operands.H_bc.attrs.get("boundary_sensitivity_preparation") != "unexpanded":
-        raise ValueError("Centered boundaries cannot include expanded or unmarked absolute H_bc.")
-    anomaly, mass, reference = (operands[name] for name in ("H_bc_anomaly", "H_bc_mass", "bc_reference"))
-    if any(
-        value.attrs.get("boundary_sensitivity_preparation") not in (None, "unexpanded")
-        or isinstance(value.indexes.get("bc_region"), pd.MultiIndex)
-        for value in (anomaly, mass)
-    ):
-        raise ValueError("Centered preparation requires unexpanded spatial operands; align only at model binding.")
-    observation_dim = "time" if "time" in anomaly.dims else "nmeasure"
-    anomaly = anomaly.transpose("bc_region", observation_dim)
-    mass = mass.transpose("bc_region", observation_dim)
-    xr.align(anomaly, mass, join="exact", copy=False)
-    for dim in ("bc_region", observation_dim):
-        if dim not in anomaly.indexes or not anomaly.indexes[dim].is_unique:
-            raise ValueError(f"Centered boundaries require unique indexed {dim} labels.")
-    if reference.ndim != 0:
-        raise ValueError("Centered bc_reference must be scalar.")
-    units = anomaly.attrs.get("units")
-    if not units or reference.attrs.get("units") != units or mass.attrs.get("units") != "1":
-        raise ValueError("Centered anomaly/reference must share concentration units; mass units must be '1'.")
-    if "mf" in operands and operands.mf.attrs.get("units") != units:
-        raise ValueError("Centered boundary concentration units must match mf units.")
+    RawCenteredSensitivity.validate(operands)
     return True
 
 
@@ -291,7 +276,6 @@ def validate_centered_boundary_periods(frequency: str | None, anchor_time: Datet
                 raise ValueError("NaT is not an anchor")
         except (TypeError, ValueError) as exc:
             raise ValueError("Boundary anchor_time must be a valid datetime.") from exc
-
 
 def align_boundary_operands(
     operands: xr.Dataset,
@@ -337,6 +321,7 @@ def align_boundary_operands(
     )
     result["bc_reference"] = operands.bc_reference
     return result
+
 
 
 def scale_satellite_boundary_sensitivity_to_column_signal(
