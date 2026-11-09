@@ -138,7 +138,20 @@ class CenteredOperands:
 
     @classmethod
     def from_dataset(cls, dataset: xr.Dataset) -> CenteredOperands:
-        """Select operands (and any centering weights) from a validated preparation."""
+        """Select operands (and any centering weights) from a validated preparation.
+
+        Args:
+            dataset: Prepared dataset holding ``H_bc_anomaly``, ``H_bc_mass``
+                and scalar ``bc_reference``, and optionally
+                ``bc_centering_weights``. Arrays are borrowed, not copied.
+
+        Returns:
+            Operands sharing the dataset's arrays; ``weights`` is ``None``
+            when the dataset has no centering weights.
+
+        Raises:
+            KeyError: If a required operand is missing.
+        """
         return cls(
             dataset["H_bc_anomaly"], dataset["H_bc_mass"], dataset["bc_reference"],
             dataset.get("bc_centering_weights"),

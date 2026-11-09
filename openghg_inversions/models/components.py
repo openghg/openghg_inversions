@@ -327,6 +327,14 @@ class ConcentrationTerm:
         """Describe a term whose likelihood contribution is its absolute output.
 
         Subclasses pass their additional keyword-only fields through ``fields``.
+
+        Args:
+            output: Absolute concentration contribution, also used as the
+                likelihood contribution.
+            **fields: Additional fields of the subclass.
+
+        Returns:
+            The term, with no observation shift.
         """
         return cls(output, output, **fields)
 
@@ -339,6 +347,11 @@ class AffineBlock:
     dimensional physical coefficient expression in exactly that order. Each
     block retains its own design/coefficient units; blocks with different
     physical units remain separate until the numerical consumer lowers them.
+
+    Attributes:
+        design: Labelled observation-by-coefficient matrix.
+        coefficients: One-dimensional physical coefficient expression, ordered
+            like the design's columns.
     """
 
     design: xr.DataArray
@@ -356,6 +369,13 @@ class AffineConcentrationTerm(ConcentrationTerm):
     distinct from those physical coefficient expressions. Numerical consumers
     concatenate blocks at their own boundary; every other consumer can treat
     the term as an ordinary :class:`ConcentrationTerm`.
+
+    Attributes:
+        fixed_contribution: Labelled concentration vector, in observation-row
+            order, that does not depend on the coefficients.
+        blocks: Design/coefficient pairs whose products add to the fixed
+            contribution.
+        sampled_rvs: Underlying sampled variables of the coefficients.
     """
 
     fixed_contribution: xr.DataArray
