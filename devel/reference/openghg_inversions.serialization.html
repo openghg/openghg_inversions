@@ -640,7 +640,8 @@ gathering coordinates.</p>
 <p>The requested coordinates and their <code class="docutils literal notranslate"><span class="pre">compress</span></code> metadata are validated
 before calling <code class="docutils literal notranslate"><span class="pre">cf_xarray</span></code>. Names are always explicit: this deliberately
 avoids <code class="docutils literal notranslate"><span class="pre">cf_xarray</span></code>’s auto-detection path, which can drop unrelated
-coordinates when no compressed indexes are present.</p>
+coordinates when no compressed indexes are present. Empty gathered dimensions
+retain their declared level domains, including unused labels and empty levels.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
