@@ -10,7 +10,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.array_ops import get_xr_dummies
-from openghg_inversions.inversion_inputs import DatetimeLike, make_freq_indicator, normalise_frequency
+from openghg_inversions.inversion_inputs import DatetimeLike, make_period_calendar, normalise_frequency
 
 __all__ = [
     "BoundaryAlignment",
@@ -26,7 +26,9 @@ class BoundaryAlignment:
 
     Args:
         data: Prepared ``H_bc`` with a ``bc_region`` MultiIndex whose levels
-            are ``bc_curtain`` and ``bc_period``, plus one observation axis.
+            are ``bc_curtain`` and interval-start ``bc_period``, plus one
+            observation axis. Timestamp-free whole-window inputs use the
+            explicit period label ``'whole_window'``.
 
     Raises:
         ValueError: If the resolved boundary-state labels are invalid.
@@ -89,17 +91,20 @@ def _expand_boundary_periods(
     normalise_frequency(frequency)
     if observation_labels is not None:
         raw = raw.sel({observation_dim: observation_labels.transpose(observation_dim)})
-    if frequency is None:
-        period = xr.zeros_like(raw[observation_dim], dtype=int)
-    else:
-        if "time" not in raw.coords or raw.time.dims != (observation_dim,) or raw.time.dtype.kind != "M":
+    has_time = "time" in raw.coords and raw.time.dims == (observation_dim,) and raw.time.dtype.kind == "M"
+    if not has_time:
+        if frequency is not None:
             raise ValueError("Frequency-based boundary expansion requires a datetime time coordinate along observations.")
+        period = xr.full_like(raw[observation_dim], "whole_window", dtype="U12")
+    else:
         time = raw.time
         if hasattr(time.data, "__dask_graph__"):
             time = time.compute()
             raw = raw.assign_coords(time=(observation_dim, time.data))
-        period = make_freq_indicator(time, frequency, anchor_time=anchor_time)
-    mask = get_xr_dummies(period.rename("bc_period"), return_sparse=False, cat_dim="bc_period")
+        _, period = make_period_calendar(time, frequency, anchor_time=anchor_time)
+    mask = get_xr_dummies(
+        period, categories=np.unique(period.data), return_sparse=False, cat_dim="bc_period"
+    )
     result = (raw.rename(bc_region="bc_curtain") * mask).stack(
         bc_region=("bc_curtain", "bc_period")
     ).transpose("bc_region", observation_dim)
@@ -111,14 +116,17 @@ def _expand_boundary_periods(
             bc_frequency=frequency or "none",
             bc_anchor_time=(
                 str(np.datetime64(anchor_time) if anchor_time is not None else time.values.min())
-                if frequency not in (None, "monthly") else "not-applicable"
+                if frequency not in (None, "monthly")
+                else "not-applicable"
             ),
         )
     return result
 
 
 def _select_native_boundary(
-    inputs: xr.Dataset, observations: xr.DataArray, observation_dim: str,
+    inputs: xr.Dataset,
+    observations: xr.DataArray,
+    observation_dim: str,
 ) -> xr.Dataset:
     """Select rows, borrow native timestamps, and check indexed-time identity.
 
