@@ -95,7 +95,8 @@ def test_saved_raw_periods_prior_predictive_save_reopen(tmp_path, linked, center
     xr.testing.assert_allclose(trace.observed_data.y, observed)
     if centered:
         assert trace.prior_predictive.y.attrs["concentration_representation"] == "absolute-v1"
-    # Prediction noise is small on the absolute concentration scale, even when q is hundreds of ppm.
+    # atol=5 checks restoration of the large reference, allowing predictive noise.
+    # Tight density/full-gradient precision is tested in test_centered_fixed_ou.
     np.testing.assert_allclose(trace.prior_predictive.y, trace.prior.modelled_concentration, atol=5, rtol=0)
     channels = ("co2", "o2") if linked else (None,)
     for channel in channels:
@@ -136,6 +137,12 @@ def test_saved_raw_periods_prior_predictive_save_reopen(tmp_path, linked, center
         from openghg_inversions.rhime.co2.co2_runner import materialize_co2_inputs, build_co2_from_materialized
         inputs, priors = materialize_co2_inputs(prepared_inputs=reopened, **options)
         rebuilt = build_co2_from_materialized(inputs, prepared_inputs=reopened, priors=priors, **options)
+        if centered:
+            # The model builder owns the centered-likelihood rule; the runner defers to it.
+            options = {name: value for name, value in options.items() if name != "no_model_error"}
+            options["likelihood_builder"] = lambda *args, **kwargs: None
+            with pytest.raises(ValueError, match="built-in fixed-OU.*custom"):
+                build_co2_from_materialized(inputs, prepared_inputs=reopened, priors=priors, **options)
     point = rebuilt.model.initial_point()
     for name in (("co2_bc", "o2_bc") if linked else ("bc",)):
         assert point[name].size == 2
@@ -238,7 +245,7 @@ def test_linked_period_override_supports_mixed_raw_channel_representations(tmp_p
 
 
 @pytest.mark.parametrize("linked", [False, True])
-def test_saved_centered_periods_reject_fixed_ou(tmp_path, linked):
+def test_saved_centered_periods_support_fixed_ou(tmp_path, linked):
     module = co2_o2_handoffs if linked else handoffs
     prepared = _joint() if linked else _ordinary()
     config = _config(linked, frequency="2D")
@@ -247,9 +254,21 @@ def test_saved_centered_periods_reject_fixed_ou(tmp_path, linked):
         prepared, output_dir=tmp_path / "prepared", domain="EUROPE",
         start_date="1969-12-01", end_date="2020-02-01",
     )
-    with pytest.raises(ValueError, match="fixed-OU"):
-        module.prior_predictive(manifest, model=config, output_dir=tmp_path / "prior", draws=2)
-    assert not (tmp_path / "prior").exists()
+    result = module.prior_predictive(
+        manifest, model=config, output_dir=tmp_path / "prior", draws=2, random_seed=13,
+    )
+    assert result["status"] == "pass"
+    trace = load_trace(tmp_path / "prior" / "prior-predictive.nc")
+    observed = prepared.observations if linked else prepared.inv_inputs.mf
+    xr.testing.assert_allclose(trace.observed_data.y, observed)
+    assert trace.prior_predictive.y.attrs["concentration_representation"] == "absolute-v1"
+    # atol=5 tests reference restoration only; independent density/gradient
+    # oracles in test_centered_fixed_ou retain their tight tolerances.
+    np.testing.assert_allclose(trace.prior_predictive.y, trace.prior.modelled_concentration, atol=5, rtol=0)
+    # Native linked channel calendars cover different numbers of 2-day periods.
+    expected_states = {"co2_": 2, "o2_": 4} if linked else {"": 4}
+    for prefix, count in expected_states.items():
+        assert trace.prior[f"{prefix}bc"].shape[-1] == count
 
 
 def test_saved_centered_cached_ou_prior_predictions_remain_absolute(tmp_path):
@@ -290,6 +309,8 @@ def test_saved_centered_cached_ou_prior_predictions_remain_absolute(tmp_path):
     ).transpose(output_dim, ...).values
     expected_boundary = np.einsum("...j,ij->...i", trace.prior.bc.values, absolute_design)
     np.testing.assert_allclose(trace.prior.mu_bc, expected_boundary)
+    # This noisy predictive check detects missing large-reference restoration.
+    # Separate full-gradient oracles establish numerical precision.
     np.testing.assert_allclose(
         trace.prior_predictive.y, trace.prior.modelled_concentration, atol=5, rtol=0,
     )

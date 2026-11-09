@@ -284,13 +284,22 @@ Native observation labels select boundary rows. When observations carry a
 boundary timestamps. Boundary times that also serve as indexed row labels must
 agree with the observation timestamps; conflicting values raise an error.
 
-Centered inference supports the additive-Gaussian recipe and fixed-OU recipes
-with inferred amplitudes using the matched cached sampler. Configure PyTensor
+Centered inference supports the additive-Gaussian recipe, ordinary fixed-OU
+likelihoods with fixed or inferred amplitudes, and inferred-amplitude fixed OU
+using the matched cached sampler. Configure PyTensor
 ``floatX=float64`` before model construction; these routes reject an explicit
-float32 choice. Fixed-amplitude OU and custom likelihood routes still reject
-centered inputs. Standard and multisector model builders also reject them;
-their preparation operations can still produce the reusable canonical handoff
-shown above.
+float32 choice.
+
+The concrete CO2 builder accepts ``likelihood_builder=None`` for the default
+additive-Gaussian likelihood or the exact
+:func:`~openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood`
+function when ``boundary_operands`` is supplied. Arbitrary callbacks and wrappers
+around the built-in function are rejected before operand binding or graph
+construction, matching the prepared-input runner's supported centered policy.
+Custom likelihood callbacks remain supported when centered boundary operands are
+absent. Standard and multisector model builders still reject centered inputs;
+their preparation operations can produce the reusable canonical handoff shown
+above.
 
 For the original BC coefficients b, the centered likelihood uses
 ``q = c * M @ ones``, ``y_centered = y - q`` and

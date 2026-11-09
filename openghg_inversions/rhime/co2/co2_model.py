@@ -27,6 +27,7 @@ from openghg_inversions.models.components import (
     add_offset_component,
     apply_linear_sensitivity,
 )
+from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import (
@@ -138,11 +139,14 @@ def build_co2_model(
 
     Direct custom callers are responsible for supplying scientifically
     coherent arrays from one preparation and for their positional semantics
-    when labels are absent.
+    when labels are absent. Custom likelihood callables remain supported when
+    centered boundary operands are absent.
 
     With centered ``boundary_operands``, raw PyMC observed and predictive
     ``y`` values are centered; BC and total concentration deterministics remain
-    absolute.
+    absolute. Only the default additive-Gaussian likelihood or the exact built-in
+    fixed-OU function is supported. Other callbacks, including wrappers around
+    the built-in function, are rejected before operand binding or graph construction.
     After restoring sample coordinates, direct callers must restore absolute
     ``y`` with
     :func:`~openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives`
@@ -162,7 +166,9 @@ def build_co2_model(
         observation_error: Reported observation standard deviation.
         aggregation_error: Prepared fixed aggregation-error representation.
         likelihood_builder: Optional ordinary likelihood component. When
-            supplied, it replaces the default additive-sigma likelihood.
+            supplied, it replaces the default additive-sigma likelihood. With
+            centered boundary operands, only the exact
+            ``add_fixed_ou_gaussian_likelihood`` function is accepted.
         likelihood_kwargs: Options passed only to the selected likelihood.
         sigma_alignment: Optional grouping policy for inferred additive model
             error.
@@ -196,8 +202,15 @@ def build_co2_model(
     Raises:
         ValueError: If shared preparation, prior construction, or registered
             coordinate alignment fails, or if ``sigma_prior`` is supplied
-            without ``sigma_alignment``.
+            without ``sigma_alignment``, or if centered boundary operands are
+            combined with a custom likelihood callback or wrapper.
     """
+    if (boundary_operands is not None and likelihood_builder is not None
+            and likelihood_builder is not add_fixed_ou_gaussian_likelihood):
+        raise ValueError(
+            "Centered boundary operands support the default additive-Gaussian or "
+            "built-in fixed-OU likelihood, not custom callbacks."
+        )
     if boundary_sensitivity is not None:
         boundary_sensitivity = bind_boundary_sensitivity(
             boundary_sensitivity, observations, frequency=bc_freq, anchor_time=bc_anchor_time,
@@ -207,8 +220,6 @@ def build_co2_model(
     if boundary_operands is not None:
         if boundary_sensitivity is not None:
             raise ValueError("Supply boundary_operands or boundary_sensitivity, not both.")
-        if likelihood_builder is not None:
-            raise ValueError("Centered boundaries do not support custom or fixed-OU likelihoods.")
         boundary_operands = bind_boundary_operands(
             boundary_operands, observations, frequency=bc_freq, anchor_time=bc_anchor_time,
         )

@@ -371,7 +371,7 @@ def test_prediction_shift_selection_uses_labels_and_prediction_constants(tmp_pat
 
 def test_unsupported_likelihood_fails_before_materialization():
     prepared = _centered_prepared()
-    with pytest.raises(ValueError, match="custom or fixed-OU"):
+    with pytest.raises(ValueError, match="custom"):
         materialize_co2_inputs(
             prepared_inputs=prepared, likelihood_builder=lambda **kwargs: None, use_bc=True
         )
@@ -487,18 +487,12 @@ def test_related_centered_arrays_materialize_one_shared_graph():
     assert isinstance(prepared.inv_inputs.H_bc_mass.data, da.Array)
 
 
-def test_centered_cached_and_fixed_ou_rejected_before_materialization(monkeypatch):
-    from openghg_inversions.rhime.co2 import co2_o2_runner, co2_cached_sigma_runner
+def test_centered_cached_rejects_float32_before_materialization(monkeypatch):
+    from openghg_inversions.rhime.co2 import co2_cached_sigma_runner
 
     def unexpected(*args, **kwargs):
         pytest.fail("materialized unsupported centered request")
 
-    monkeypatch.setattr(co2_o2_runner, "_materialize_co2_o2_replay_inputs", unexpected)
-    prepared = _linked()
-    operands = _operands(prepared.co2_sensitivity.isel({prepared.retained_prior.state_dim: 0}))
-    prepared = replace(prepared, boundary_operands={"co2": operands})
-    with pytest.raises(ValueError, match="fixed-OU"):
-        build_rhime_co2_o2(prepared_inputs=prepared, tau_hours=2.0)
     monkeypatch.setattr(co2_cached_sigma_runner, "materialize_pymc_inputs", unexpected)
     with pytensor.config.change_flags(floatX="float32"), pytest.raises(ValueError, match="float64"):
         co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
