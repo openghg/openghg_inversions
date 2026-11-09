@@ -135,6 +135,8 @@ def annotate_co2_trace(
         "fixed_model_mismatch",
         "fixed_prior_contribution",
         "modelled_concentration",
+        "mu_bc",
+        "hbc",
         "co2_flux_contribution",
         "offset_latent",
         "offset",
