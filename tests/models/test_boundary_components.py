@@ -15,6 +15,7 @@ from openghg_inversions.models import StateActivity, registered_model
 from openghg_inversions.models.components import (
     AffineBlock, AffineConcentrationTerm, warn_constant_offset_confounding,
 )
+from openghg_inversions.rhime.co2 import co2_runner
 from openghg_inversions.models.boundary import (
     AdditiveBoundary, AdditiveChoice, AnomalyScalingChoice, BoundCenteredSensitivity, CenteredMultiplicativeBoundary,
     MultiplicativeChoice,
@@ -221,6 +222,19 @@ def test_weighted_additive_binding_requires_centering_weights():
             observations, raw_transport(data),
         )
 
+
+@pytest.mark.parametrize(
+    "choice",
+    [
+        AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.),
+        AnomalyScalingChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.1),
+    ],
+)
+def test_absolute_inputs_are_rejected_where_the_representation_is_identified(choice):
+    data, observations = _native_boundary()
+    inputs = xr.Dataset({"mf": observations, "H_bc": data.H_bc_anomaly})
+    with pytest.raises(ValueError, match="requires centered boundary operands; prepare them again"):
+        co2_runner._bind_co2_boundary(inputs, choice)
 
 
 def test_absolute_boundary_registers_cli_data_name():

@@ -1,0 +1,121 @@
+"""Restore absolute predictives, decode saved boundaries and reconstruct boundary quantities."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+import json
+
+import numpy as np
+import xarray as xr
+
+from openghg_inversions.postprocessing.inversion_output import trace_group
+
+
+BOUNDARY_FORMAT_VERSION = 2
+"""Saved boundary trace format: version 2 declares zero anomalies explicitly."""
+
+_QUANTITY_ROLES = {
+    "concentration": "boundary_concentration",
+    "scale": "boundary_scale",
+    "mean_shift": "boundary_mean_shift",
+    "anomaly": "boundary_correction_anomaly",
+    "correction": "boundary_correction",
+    "reference": "boundary_reference_concentration",
+    "mean_contribution": "boundary_mean_shift_concentration",
+    "anomaly_contribution": "boundary_anomaly_concentration",
+}
+
+
+def restore_absolute_predictives(trace: xr.DataTree) -> xr.DataTree:
+    """Restore centered y once, using only retained trace constants and labels."""
+    for name in ("observed_data", "prior_predictive", "posterior_predictive", "predictions"):
+        if name not in trace.children or "y" not in trace[name]:
+            continue
+        constants = ("predictions_constant_data", "constant_data") if name == "predictions" else ("constant_data",)
+        shift = next(
+            (trace[group].dataset["boundary_reference_shift"] for group in constants
+             if group in trace.children and "boundary_reference_shift" in trace[group]),
+            None,
+        )
+        if shift is None:
+            continue
+        trace.attrs["boundary_representation"] = "centered-v1"
+        y = trace[name].dataset["y"]
+        if y.attrs.get("concentration_representation") == "absolute-v1":
+            continue
+        shift = shift.sel({dim: y[dim] for dim in shift.dims})
+        y, aligned_shift = xr.align(y, shift, join="exact", copy=False)
+        restored = y + aligned_shift
+        restored.attrs = dict(y.attrs, concentration_representation="absolute-v1")
+        trace[name]["y"] = restored.variable
+    return trace
+
+
+@dataclass(frozen=True)
+class SavedBoundary:
+    """One fitted boundary read back from a saved trace.
+
+    Attributes:
+        roles: Stable quantity name to saved variable name, for the quantities
+            that :func:`reconstruct_boundary` returns.
+        constants: The trace's constant data, which holds unsampled quantities.
+    """
+
+    roles: Mapping[str, str]
+    constants: xr.Dataset
+
+
+def decode_saved_boundaries(
+    trace: xr.DataTree, *, roles: Mapping[str, str] | None = None,
+    channels: tuple[str, ...] = ("",),
+) -> dict[str, SavedBoundary]:
+    """Validate saved boundary facts once at the scientific replay boundary.
+
+    Draws stay borrowed; no preparation, model construction or calendar
+    calculation is performed. Earlier internal posterior formats require
+    preparation and sampling again.
+    """
+    if roles is None:
+        roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
+    if not isinstance(roles, Mapping) or any(not isinstance(name, str) or not name for name in roles.values()):
+        raise ValueError("Saved boundary roles must map scientific quantities to nonempty variable names.")
+    constants = trace_group(trace, "constant_data") if "constant_data" in trace.children else xr.Dataset()
+    result = {}
+    for channel in channels:
+        prefix = f"{channel}_" if channel else ""
+        selected = {quantity: roles[prefix + role] for quantity, role in _QUANTITY_ROLES.items()
+                    if prefix + role in roles}
+        if not selected:
+            continue
+        version = trace.attrs.get("rhime_boundary_format_version")
+        if isinstance(version, bool) or not isinstance(version, (int, np.integer)) or version != BOUNDARY_FORMAT_VERSION:
+            raise ValueError("Unsupported saved boundary format; prepare again and repeat sampling.")
+        result[channel] = SavedBoundary(selected, constants)
+    return result
+
+
+def reconstruct_boundary(
+    facts: SavedBoundary, draws: xr.Dataset,
+) -> dict[str, xr.DataArray]:
+    """Return stable scientific quantities from saved draws and constants.
+
+    The supplied draw group determines sample labels and sizes independently
+    for prior and posterior. Constants, such as the fixed reference or zero
+    anomalies that were not sampled, broadcast over this group's
+    ``chain`` and ``draw`` only.
+    """
+    # Leading sample dimensions, with the draw group's labels where it has them.
+    samples = {
+        dim: draws.coords[dim].values if dim in draws.coords else draws.sizes[dim]
+        for dim in ("chain", "draw") if dim in draws.dims
+    }
+    result = {}
+    for quantity, name in facts.roles.items():
+        if name in draws:
+            result[quantity] = draws[name]
+        elif name in facts.constants:
+            result[quantity] = facts.constants[name].expand_dims(samples)
+        else:
+            raise ValueError(f"Boundary scientific outputs require role {_QUANTITY_ROLES[quantity]!r} in saved draws.")
+    return result

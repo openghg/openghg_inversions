@@ -10,6 +10,7 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.array_ops import select_gathered_data_array
+from openghg_inversions.inversion_inputs import normalise_frequency
 from openghg_inversions.rhime.co2 import Co2ModelConfig, Co2O2ModelConfig
 from openghg_inversions.rhime.co2 import handoffs, co2_o2_handoffs
 from openghg_inversions.serialization import load_trace
@@ -66,6 +67,12 @@ def _raw_ordinary(linked):
     return replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
 
 
+def _frequencies(options, linked):
+    """Return the period frequency of each bound boundary choice."""
+    choices = options["boundary"] if linked else {None: options.get("boundary")}
+    return {channel: choice.frequency for channel, choice in choices.items()}
+
+
 def _config(linked, **periods):
     boundary = {"enabled": True, "prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.01}, **periods}
     if linked:
@@ -88,9 +95,11 @@ def test_saved_raw_periods_prior_predictive_save_reopen(tmp_path, linked, center
     assert result["status"] == "pass"
     trace = load_trace(tmp_path / "prior" / "prior-predictive.nc")
     metadata = json.loads(trace.attrs["rhime_model_metadata"])
-    if centered:
-        assert metadata["bc_frequency"] == "2D"
-        assert metadata["bc_anchor_time"] == anchor
+    facts = metadata["boundary_metadata"].values() if linked else [metadata]
+    for channel_facts in facts:
+        assert channel_facts["bc_frequency"] == "2D"
+        assert channel_facts["bc_anchor_time"] == anchor
+        assert ("boundary_representation" in channel_facts) == centered
     observed = prepared.observations if linked else prepared.inv_inputs.mf
     xr.testing.assert_allclose(trace.observed_data.y, observed)
     if centered:
@@ -138,14 +147,9 @@ def test_saved_raw_periods_prior_predictive_save_reopen(tmp_path, linked, center
         rebuilt = build_rhime_co2_o2(prepared_inputs=reopened, **options)
     else:
         from openghg_inversions.rhime.co2.co2_runner import materialize_co2_inputs, build_co2_from_materialized
-        inputs, priors = materialize_co2_inputs(prepared_inputs=reopened, **options)
-        rebuilt = build_co2_from_materialized(inputs, prepared_inputs=reopened, priors=priors, **options)
-        if centered:
-            # The model builder owns the centered-likelihood rule; the runner defers to it.
-            options = {name: value for name, value in options.items() if name != "no_model_error"}
-            options["likelihood_builder"] = lambda *args, **kwargs: None
-            with pytest.raises(ValueError, match="built-in fixed-OU.*custom"):
-                build_co2_from_materialized(inputs, prepared_inputs=reopened, priors=priors, **options)
+        inputs, priors, boundary = materialize_co2_inputs(prepared_inputs=reopened, **options)
+        options = {name: value for name, value in options.items() if name != "boundary"}
+        rebuilt = build_co2_from_materialized(inputs, boundary=boundary, prepared_inputs=reopened, priors=priors, **options)
     point = rebuilt.model.initial_point()
     for name in (("co2_bc", "o2_bc") if linked else ("bc",)):
         assert point[name].size == 2
@@ -157,10 +161,10 @@ def test_raw_ordinary_boundary_period_options_bind(linked):
     owner = Co2O2ModelConfig if linked else Co2ModelConfig
     choices = owner.from_params(_config(linked))
     options = choices.bind(prepared) if linked else choices.model_arguments()
-    assert "bc_freq" not in options
+    assert set(_frequencies(options, linked).values()) == {None}
     choices = owner.from_params(_config(linked, frequency="2D"))
     options = choices.bind(prepared) if linked else choices.model_arguments()
-    assert options["bc_freq"] == "2D"
+    assert set(_frequencies(options, linked).values()) == {"2D"}
 
 
 @pytest.mark.parametrize("linked", [False, True])
@@ -179,8 +183,11 @@ def test_linked_periods_must_agree_and_forward_concrete_names():
     config = _config(True, frequency="2D", anchor_time="1970-01-01T12:00:00")
     config["channels"]["o2"]["boundary"]["frequency"] = "48h"
     bound = Co2O2ModelConfig.from_params(config).bind(_joint())
-    assert bound["bc_freq"] == "48h"
-    assert bound["bc_anchor_time"] == "1970-01-01T12:00:00"
+    # Both channels carry one shared concrete calendar.
+    frequencies = set(_frequencies(bound, True).values())
+    assert len(frequencies) == 1
+    assert normalise_frequency(frequencies.pop()) == normalise_frequency("48h")
+    assert {choice.anchor_time for choice in bound["boundary"].values()} == {"1970-01-01T12:00:00"}
     config["channels"]["o2"]["boundary"]["frequency"] = "3D"
     with pytest.raises(ValueError, match="must agree"):
         Co2O2ModelConfig.from_params(config)
@@ -202,8 +209,9 @@ def test_sampling_routes_forward_bound_period_choices(tmp_path, monkeypatch, rou
 
     def sample(incoming=None, choices=None, sampler=None, **kwargs):
         options = kwargs if linked else choices
-        assert options["bc_freq"] == "2D"
-        assert options["bc_anchor_time"] == anchor
+        choices = options["boundary"].values() if linked else [options["boundary"]]
+        assert {choice.frequency for choice in choices} == {"2D"}
+        assert {choice.anchor_time for choice in choices} == {anchor}
         raise ReachedSampling
 
     if route == "full":
@@ -236,7 +244,7 @@ def test_linked_period_override_supports_mixed_raw_channel_representations(tmp_p
     prepared = replace(prepared, boundary_operands={"co2": prepared.boundary_operands["co2"]},
                        boundary_sensitivity={"o2": ordinary.boundary_sensitivity["o2"]})
     config = _config(True, frequency="2D", anchor_time="1970-01-01T12:00:00")
-    assert Co2O2ModelConfig.from_params(config).bind(prepared)["bc_freq"] == "2D"
+    assert set(_frequencies(Co2O2ModelConfig.from_params(config).bind(prepared), True).values()) == {"2D"}
     manifest = co2_o2_handoffs.save_preparation(
         prepared, output_dir=tmp_path / "prepared", domain="EUROPE",
         start_date="1969-12-01", end_date="1970-02-01",
@@ -275,7 +283,7 @@ def test_saved_centered_periods_support_fixed_ou(tmp_path, linked):
 
 
 def test_saved_centered_cached_ou_prior_predictions_remain_absolute(tmp_path):
-    from openghg_inversions.rhime.co2.centered_boundary import restore_absolute_predictives
+    from openghg_inversions.postprocessing.boundary_outputs import restore_absolute_predictives
     from openghg_inversions.serialization import save_trace
 
     prepared = _ordinary()
@@ -361,7 +369,7 @@ def test_in_memory_linked_period_override_supports_mixed_raw_channel_representat
     from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2
 
     bound = Co2O2ModelConfig.from_params(config).bind(prepared)
-    assert bound["bc_freq"] == "2D"
+    assert set(_frequencies(bound, True).values()) == {"2D"}
     built = build_rhime_co2_o2(prepared_inputs=prepared, **bound)
     point = built.model.initial_point()
     for channel in ("co2", "o2"):

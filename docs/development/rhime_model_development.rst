@@ -128,14 +128,29 @@ fluxes; a multisector component can combine several pollution contributions.
 Prefer a normal function. Its name, options, inputs, and result should explain
 the scientific concept. A composite can call nearby smaller functions; keep a
 model-specific composite beside its recipe until another production recipe
-uses the same equations and meanings. Inheritance, semantic graphs, and
-manifests are unnecessary prerequisites for authoring a component.
+uses the same equations and meanings. Semantic graphs and manifests are
+unnecessary prerequisites for authoring a component.
+
+Some components have alternatives that share a lifecycle: options resolved
+before any data, bound to one fit's data, added to a model, and declared for
+saved outputs. Represent each alternative as small frozen dataclasses behind
+structural protocols, as the boundary families do; a recipe then calls the
+same methods whichever alternative it receives. A shared base class is
+appropriate when alternatives handle their data identically. Keep each
+alternative's recipe in its own ``add``: the base provides the steps, not the
+order.
 
 Return the smallest result the consumer needs. An observed tensor can be the
 whole result of a likelihood. A small dataclass can join related scientific
 outputs, such as aligned observation channels or a coherent reduction. A
 shorter signature, speculative flexibility, or provenance alone does not
 justify a new domain object.
+
+Recipes represent concentration contributions with ``ConcentrationTerm``:
+absolute output, likelihood contribution, and an optional fixed observation
+shift. Compose these explicitly with ``likelihood_representation`` so a
+numerical reference is restored exactly once. See
+:doc:`/usage/centered_boundary_conditions` for the scientific equations.
 
 For a concrete likelihood, show the completed mean and how measurement error,
 fixed aggregation error, and inferred mismatch enter its probability model.
@@ -151,6 +166,13 @@ likelihood variation can use the existing callable seam without a new runner
 or a general sampler protocol. Fixed OU, IID site sigma, and global sigma are
 different scientific targets even when they reuse numerical kernels. Use a
 stock PyMC calculation as the correctness reference for an optimized route.
+
+Build model graphs from array operations. A Python loop or ``sum`` over a
+fixed handful of terms unrolls into a few graph nodes and is fine; prefer one
+n-ary ``pt.add`` to a chain. A loop whose length grows with the data, such as
+one per site, period or state, belongs in a matrix product or a
+concatenation, as the per-period boundary mean shift uses an indicator
+matrix rather than one term per period.
 
 Preserve labels until a named numerical boundary. Shared alignment values such
 as ``SigmaAlignment`` keep site/period interpretation close to the mismatch
@@ -168,6 +190,150 @@ sourced values at the boundary that owns them, then trust locally constructed
 intermediates. Ordinary labelled alignment, Pint conversion, and the numerical
 operation itself often express the required check; add a custom assertion when
 it protects a scientific policy or gives a materially better boundary failure.
+
+Boundary component extension check
+----------------------------------
+
+A boundary family is a *choice*, one resolved selection of the user's options
+before binding, and a *bound* record, both small frozen dataclasses in one
+module under ``models/boundary/``. The configuration adapter resolves user
+options such as ``bc_freq`` and ``bc_prior`` into a choice
+(``MultiplicativeChoice`` or ``AdditiveChoice``); it never touches arrays.
+Runners take that one choice (a channel mapping for linked recipes) and call
+``choice.bind(observations, sensitivity)`` once per channel and fit, where the
+sensitivity is the prepared absolute ``H_bc`` or a ``RawCenteredSensitivity``
+Dataset. The bound record pairs the choice with borrowed labelled sensitivity
+on the fit's rows and boundary periods. Reusable raw sensitivity keeps its
+spatial meaning independently of fit periods. The same options, choice and
+bound sequence suits other components whose options define a prior over
+data-dependent states.
+
+Recipes materialize the bound record with their other inputs in one
+``dask.compute`` over :func:`~openghg_inversions.array_ops.to_dense_tree`, which
+traverses dataclasses, including prior parameters in the choice. For example,
+after binding the boundary and selecting the model inputs:
+
+.. code-block:: python
+
+   from dask import compute
+   from openghg_inversions.array_ops import to_dense_tree
+
+   inputs, boundary, priors = compute(
+       *to_dense_tree((inputs, boundary, priors))
+   )
+
+Keep this computation joint: a boundary-only materialization method could
+execute sensitivity graphs again when the other model inputs use them. The eager
+check in ``boundary.add`` enforces the materialized-data precondition. Inside the
+registered model, ``boundary.add(...)`` returns an ``AffineConcentrationTerm``,
+a ``ConcentrationTerm`` subclass: ordinary recipes use it as a term, and cached
+recipes lower its labelled ``AffineBlock`` designs and physical coefficients
+once into numerical matrices. ``sampled_rvs`` identifies the underlying sampled
+variables, including transformed priors. ``boundary.outputs()`` declares the
+roles, units and metadata recorded with the trace. A linked recipe embeds
+native rows and namespaces coordinates without recovering boundary-family
+equations. Offsets remain separate components; the offset-confounding warning
+inspects every affine block for a constant unit response, so it needs no
+knowledge of boundary families.
+
+The centered families inherit ``CenteredBoundary``: ``add`` registers the
+sensitivity, adds the family's corrections in scientific order and finishes
+the term with the shared helpers, while ``outputs`` extends the shared
+declarations. The additive recipe composes its mean shift, anomalies and
+complete boundary concentration in that order, and passes their summed state
+correction through ``M`` once. Factor construction and sampling share the same
+selection of contrast basis or direct state sampling.
+
+The scalar ``bc_anomaly_scale`` saved in model data records the resolved prior
+width for trace reconstruction; the distributions use the resolved choice
+value directly. Likewise ``bc_scale_sd`` records anomaly-scaling provenance.
+Updating these saved scalars does not update the distributions' widths.
+
+Validation is not repeated along this path. Preparation and artifact loading
+own units, labels and layout; ``bind`` owns calendar and row alignment and the
+single float64 check for centered sensitivity; ``add`` checks only values that
+become available once lazy payloads are materialized.
+
+AST inspection of the concrete builder signatures gives:
+
+.. list-table:: Builder parameters, including keyword-only arguments
+   :header-rows: 1
+   :widths: 55 15 15 15
+
+   * - Builder
+     - Before
+     - Current
+     - Boundary inputs
+   * - ``build_co2_model``
+     - 23
+     - 15
+     - 9 → 1
+   * - ``build_co2_cached_sigma_model``
+     - 24
+     - 16
+     - 9 → 1
+   * - ``build_co2_o2_model``
+     - 23
+     - 15
+     - 9 → 1
+   * - ``build_co2_o2_cached_sigma_model``
+     - 23
+     - 15
+     - 9 → 1
+
+To reproduce the current count, parse each builder module with ``ast.parse``,
+select its top-level ``FunctionDef`` and count ``posonlyargs + args +
+kwonlyargs``. The only boundary parameter is ``boundary``; unrelated arguments
+are unchanged.
+
+A dry-run extension with a new supported boundary prior reaches these owners:
+
+* A new module under ``models/boundary/``: define the choice (with ``bind``) and
+  the bound record (with ``add`` and ``outputs``), inheriting
+  ``CenteredBoundary`` for a centered family. ``Choice`` and ``Bound`` are
+  structural protocols, so no shared list of families changes.
+* ``rhime/co2/configuration.py`` and, for channel-specific syntax,
+  ``co2_o2_configuration.py``: resolve user selections into component inputs.
+* Scientific component tests and the affected configuration tests: establish
+  the equation, fixed-state behavior, units, full density and gradients.
+
+The exercised extension probes are
+``tests/test_co2_boundary_affine_integration.py`` and
+``tests/test_boundary_output.py``. The frontend handoff is exercised in
+``tests/test_co2_bound_frontends.py`` with raw binding forbidden, absent raw
+operators, shared delayed payloads and independent concentration equations for
+ordinary/cached single/linked fits. The embedding probes exercise a one-dimensional native response
+and a matrix with unsorted coefficient labels into interleaved joint rows,
+reject reversed observation rows before reading lazy cache payloads, and accept
+independent coefficient blocks with different labels on identically named axes.
+The cached conversion aligns only observation rows; it does not align separate
+coefficient axes. Independent curtain corrections replay through the same
+scientific correction role. Unsampled additive anomalies are registered as
+zero model data, so replay reads every declared role from the saved draws or
+constants.
+
+For a new family, scientific tests belong with its component in
+``tests/models/test_boundary_components.py`` and its configuration in
+``tests/test_rhime_co2_configuration.py`` or
+``tests/test_co2_o2_configuration.py``. These generic embedding and replay
+probes protect the consumer seam; downstream boundary-family work supplies the
+new prior's equation tests.
+
+A runnable dry-run temporarily added ``StudentT(nu, mu, sigma)`` to the
+configuration prior table in memory. Existing component prior construction
+handled it directly. Ordinary and cached graphs had finite full log densities,
+and reconstructed boundary contributions closed for three prior draws and two
+posterior draws. The only temporarily extended module was
+``rhime/co2/configuration.py``; no likelihood, cache or output module changed.
+This probe does not add Student-t to the released configuration choices.
+
+The review check is that this module list does not grow to include likelihood,
+cache, sampler or output modules. Those consumers operate on the shared affine
+result and the component's declarations through the existing ``OutputContract``.
+The pure saved-boundary decoder/reconstructor reads fitted scientific facts,
+including the constant zero anomalies of mean-only fits, from saved draws and
+constants. Prior and posterior groups retain independent sample sizes;
+replay neither builds a graph nor chooses a new period calendar.
 
 Keep configuration with its scientific owner
 --------------------------------------------
@@ -255,6 +421,12 @@ their separate reuse constraints. The :download:`#876 alignment change tasks
 revision-specific validation evidence and limits. Broader handoff programme
 acceptance remains pending.
 
+Internal Python APIs, staged manifests and prepared/posterior artifacts have no
+compatibility guarantee; only CLI behaviour and CLI outputs are protected.
+Do not add readers, aliases or shims for earlier internal formats. Reject old
+artifacts with instructions to prepare again. The approved boundary-label
+change uses interval-start timestamps in CLI products.
+
 Keep one scientific sample codec owner for save/load and let replay consume its
 decoded result. Keep product/export saving in a nearby operational helper with
 shared naming/path policy, and normalize descriptive sampler provenance through
@@ -266,6 +438,15 @@ Source selection and state grouping should remain plainly named operations on
 labelled values and retained artifacts. Resolutions, partitions, sources, and
 observation channels need explicit labels. Variable suffixes or positions alone
 cannot preserve those scientific meanings.
+
+Record each declared quantity where its values vary. A ``pm.Deterministic``
+is saved with every draw, so use it for quantities that depend on sampled
+variables. A quantity that is fixed for the fit, such as the boundary
+reference or zero anomalies that are not sampled, belongs in model data
+(``constant_data``), stored once. Keep its role either way, so output readers
+need no policy, and broadcast constants over the draws where they are read.
+This is not a ban on deterministics: selecting which sampled deterministics to
+record is a separate choice.
 
 Postprocessing needs quantity meaning as well as arrays. Small scientific-role
 mappings can connect a model's local names to real output consumers without

@@ -212,6 +212,10 @@ ordinary CO₂ coherent reduction automatically; see :doc:`coherent_reduction` a
 Centered preparation handoff
 ----------------------------
 
+See :doc:`centered_boundary_conditions` for definitions of the anomaly and
+mass operators, their mathematical relation to the absolute boundary response,
+and pseudocode for native curtain products, spatial projection and period masks.
+
 Apply supported observation selection first, then derive missing observation
 errors with ``prepare_observation_errors`` on the retained population. Explicit
 existing errors remain unchanged. Project the native ``bc_anomaly_*`` and
@@ -286,7 +290,9 @@ agree with the observation timestamps; conflicting values raise an error.
 
 Centered inference supports the additive-Gaussian recipe, ordinary fixed-OU
 likelihoods with fixed or inferred amplitudes, and inferred-amplitude fixed OU
-using the matched cached sampler. Configure PyTensor
+using the matched cached sampler. Both multiplicative and additive BC priors
+can use numerical centering; a linked model can retain multiplicative CO2
+boundaries while fitting additive O2 corrections. Configure PyTensor
 ``floatX=float64`` before model construction; these routes reject an explicit
 float32 choice.
 
@@ -311,7 +317,7 @@ annotation restores observed and predictive ``y`` to absolute concentrations
 once, using retained reference shifts; replay does not need to rebuild the model.
 The supported recipe runners perform this annotation automatically. Callers composing
 PyMC operations directly must restore sample coordinates, then call
-:func:`~openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives`
+:func:`~openghg_inversions.postprocessing.boundary_outputs.restore_absolute_predictives`
 before serialization or postprocessing.
 
 The cached sampler preserves the physical BC variables and their priors. Only

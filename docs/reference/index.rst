@@ -138,9 +138,6 @@ Import both values from
 :ref:`centered boundary contract <surface-centered-boundary-contract>` for
 operands and supported model routes.
 
-The :doc:`merged-input schema reference <merged_input_schemas>` is generated
-from the metadata validators used before standard and multisector preparation.
-
 .. autosummary::
    :nosignatures:
 
@@ -155,8 +152,6 @@ from the metadata validators used before standard and multisector preparation.
    openghg_inversions.inversion_data.acquire_surface_data
    openghg_inversions.inversion_data.MergedData.from_options
    openghg_inversions.inversion_data.MergedData.validate_for_preparation
-   openghg_inversions.inversion_data.MergedData.site_schema
-   openghg_inversions.inversion_data.MergedData.validate_scientific_inputs
    openghg_inversions.inversion_data.MergedData.with_site_data
    openghg_inversions.rhime.preparation.resolve_basis_inputs
    openghg_inversions.rhime.preparation.resolve_bc_basis
@@ -298,8 +293,6 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.parse_prior
    openghg_inversions.models.add_model_data
    openghg_inversions.models.add_linear_component
-   openghg_inversions.rhime.co2.centered_boundary.CenteredBoundaryResult
-   openghg_inversions.rhime.co2.centered_boundary.add_centered_boundary
    openghg_inversions.models.ConcentrationTerm
    openghg_inversions.models.likelihood_representation
    openghg_inversions.models.AffineBlock
@@ -408,4 +401,3 @@ module-level view.
    :maxdepth: 4
 
    openghg_inversions
-   merged_input_schemas

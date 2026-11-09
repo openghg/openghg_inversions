@@ -12,22 +12,26 @@ from typing import Any
 
 import numpy as np
 import pymc as pm
+import pytensor.tensor as pt
 import xarray as xr
+from dask import compute as dask_compute
 
-from openghg_inversions.inversion_inputs import DatetimeLike
+from openghg_inversions.array_ops import to_dense_tree
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.additive_sigma import (
     DEFAULT_ADDITIVE_SIGMA_PRIOR,
     add_additive_sigma_likelihood,
 )
+from openghg_inversions.models.boundary import Bound
 from openghg_inversions.models.components import (
+    ConcentrationTerm,
     add_coherent_affine_component,
     add_correlated_lognormal_state_with_activity,
-    add_linear_component,
     add_offset_component,
     apply_linear_sensitivity,
+    likelihood_representation,
+    warn_constant_offset_confounding,
 )
-from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import (
@@ -38,12 +42,7 @@ from openghg_inversions.models.state_activity import (
 from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.rhime._model_building import _call_custom_likelihood
 from openghg_inversions.rhime.builders import RhimeLikelihoodBuilder
-from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
-from openghg_inversions.models.coords import add_model_data
-from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity
-
-from .centered_boundary import bind_boundary_operands, add_centered_boundary
 
 
 def _fixed_mismatch_array(
@@ -103,12 +102,7 @@ def build_co2_model(
     sigma_prior: PriorArgs | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
-    boundary_sensitivity: xr.DataArray | None = None,
-    boundary_operands: xr.Dataset | None = None,
-    bc_freq: str | None = None,
-    bc_anchor_time: DatetimeLike | None = None,
-    bc_prior: PriorArgs | None = None,
-    bc_state_activity: StateActivity | None = None,
+    boundary: Bound | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> pm.Model:
@@ -139,17 +133,18 @@ def build_co2_model(
 
     Direct custom callers are responsible for supplying scientifically
     coherent arrays from one preparation and for their positional semantics
-    when labels are absent. Custom likelihood callables remain supported when
-    centered boundary operands are absent.
+    when labels are absent. Centered observations and model means are forwarded
+    explicitly to the selected likelihood, including custom callables.
 
-    With centered ``boundary_operands``, raw PyMC observed and predictive
+    With a centered ``boundary``, raw PyMC observed and predictive
     ``y`` values are centered; BC and total concentration deterministics remain
-    absolute. Only the default additive-Gaussian likelihood or the exact built-in
-    fixed-OU function is supported. Other callbacks, including wrappers around
-    the built-in function, are rejected before operand binding or graph construction.
+    absolute. Custom likelihood components receive the centered observations
+    and mean with unchanged observation-error and aggregation-error operands.
+    A custom density depending on absolute concentration must handle the known
+    fixed translation and any captured physical reference context explicitly.
     After restoring sample coordinates, direct callers must restore absolute
     ``y`` with
-    :func:`~openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives`
+    :func:`~openghg_inversions.postprocessing.boundary_outputs.restore_absolute_predictives`
     before serialization or postprocessing. Ordinary recipe runners do this
     through
     :func:`~openghg_inversions.rhime.co2.co2_runner.annotate_co2_trace`.
@@ -166,9 +161,7 @@ def build_co2_model(
         observation_error: Reported observation standard deviation.
         aggregation_error: Prepared fixed aggregation-error representation.
         likelihood_builder: Optional ordinary likelihood component. When
-            supplied, it replaces the default additive-sigma likelihood. With
-            centered boundary operands, only the exact
-            ``add_fixed_ou_gaussian_likelihood`` function is accepted.
+            supplied, it replaces the default additive-sigma likelihood.
         likelihood_kwargs: Options passed only to the selected likelihood.
         sigma_alignment: Optional grouping policy for inferred additive model
             error.
@@ -178,17 +171,7 @@ def build_co2_model(
             standard deviation.
         state_activity: Optional labelled activity policy for retained flux
             states.
-        boundary_sensitivity: Optional atmospheric boundary-condition
-            sensitivity on spatial states. Raw states are expanded using the
-            model's periods; already expanded states cannot accept overrides.
-        boundary_operands: Raw centered-v1 H_bc_anomaly/H_bc_mass and scalar
-            bc_reference, retained until model binding. Mutually exclusive with
-            absolute boundary_sensitivity for the same channel.
-        bc_freq: Optional model-owned boundary period frequency.
-        bc_anchor_time: Optional anchor for boundary period alignment.
-        bc_prior: Optional prior arguments for boundary-condition scaling.
-        bc_state_activity: Optional labelled activity policy for boundary
-            states.
+        boundary: Resolved boundary component bound to this fit.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added. Site codes are derived from the ``site`` coordinate
             on ``observations``.
@@ -202,27 +185,8 @@ def build_co2_model(
     Raises:
         ValueError: If shared preparation, prior construction, or registered
             coordinate alignment fails, or if ``sigma_prior`` is supplied
-            without ``sigma_alignment``, or if centered boundary operands are
-            combined with a custom likelihood callback or wrapper.
+            without ``sigma_alignment``.
     """
-    if (boundary_operands is not None and likelihood_builder is not None
-            and likelihood_builder is not add_fixed_ou_gaussian_likelihood):
-        raise ValueError(
-            "Centered boundary operands support the default additive-Gaussian or "
-            "built-in fixed-OU likelihood, not custom callbacks."
-        )
-    if boundary_sensitivity is not None:
-        boundary_sensitivity = bind_boundary_sensitivity(
-            boundary_sensitivity, observations, frequency=bc_freq, anchor_time=bc_anchor_time,
-        )
-    elif boundary_operands is None and (bc_freq is not None or bc_anchor_time is not None):
-        raise ValueError("Boundary period choices require boundary inputs.")
-    if boundary_operands is not None:
-        if boundary_sensitivity is not None:
-            raise ValueError("Supply boundary_operands or boundary_sensitivity, not both.")
-        boundary_operands = bind_boundary_operands(
-            boundary_operands, observations, frequency=bc_freq, anchor_time=bc_anchor_time,
-        )
     if likelihood_builder is None:
         if likelihood_kwargs:
             raise ValueError("likelihood_kwargs require likelihood_builder.")
@@ -236,7 +200,14 @@ def build_co2_model(
             "additive-sigma or fixed-mismatch options; pass its options in "
             "likelihood_kwargs."
         )
-    bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
+    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, priors = dask_compute(
+        *to_dense_tree((
+            (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary,
+            {"sigma": sigma_prior, "offset": offset_prior, "fixed_mismatch": fixed_model_mismatch},
+        ))
+    )
+    sigma_prior, offset_prior = priors["sigma"], priors["offset"]
+    fixed_model_mismatch = priors["fixed_mismatch"]
     if offset_prior is not None:
         offset_prior = dict(offset_prior)
     offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
@@ -262,31 +233,9 @@ def build_co2_model(
             scaled_flux_contribution,
             output_name="co2_flux_contribution",
         )
-        boundary_contribution = None
-        centered_boundary = None
-        reference_shift = None
-        if boundary_operands is not None:
-            centered_result = add_centered_boundary(
-                boundary_operands, prior=bc_prior, activity=bc_state_activity,
-            )
-            boundary_contribution = centered_result.component.output
-            centered_boundary = centered_result.likelihood_contribution
-            reference_shift = centered_result.reference_shift
-            add_model_data(reference_shift.rename("boundary_reference_shift"), "boundary_reference_shift")
-        if boundary_sensitivity is not None:
-            boundary_contribution = add_linear_component(
-                prepare_linear_sensitivity(boundary_sensitivity),
-                data_name="hbc",
-                prior_args=bc_prior,
-                var_name="bc",
-                output_name="mu_bc",
-                output_dim="nmeasure",
-                compute_deterministic=True,
-                state_activity=bc_state_activity,
-            coordinate_owner="bc",
-            ).output
-
-        offset = None
+        terms: list[ConcentrationTerm] = [ConcentrationTerm.absolute(co2_flux_contribution)]
+        if boundary is not None:
+            terms.append(boundary.add())
         if offset_prior is not None:
             offset = add_offset_component(
                 observations,
@@ -297,24 +246,19 @@ def build_co2_model(
                 drop_first=offset_drop_first,
                 per_site=offset_per_site,
             )
+            warn_constant_offset_confounding(terms, drop_first=offset_drop_first)
+            terms.append(ConcentrationTerm.absolute(offset))
 
-        mean_expression = co2_flux_contribution
-        if boundary_contribution is not None:
-            mean_expression = mean_expression + boundary_contribution
-        if offset is not None:
-            mean_expression = mean_expression + offset
         modelled_mean = pm.Deterministic(
             "modelled_concentration",
-            mean_expression,
+            pt.add(*(term.output for term in terms)),
             dims="nmeasure",
         )
-        likelihood_mean = modelled_mean
-        likelihood_observations = observations
-        if centered_boundary is not None and reference_shift is not None:
-            likelihood_mean = co2_flux_contribution + centered_boundary
-            if offset is not None:
-                likelihood_mean = likelihood_mean + offset
-            likelihood_observations = observations - reference_shift
+        likelihood_mean, likelihood_observations = likelihood_representation(
+            terms,
+            observations,
+            modelled_mean,
+        )
         if likelihood_builder is None:
             add_additive_sigma_likelihood(
                 observations=likelihood_observations,
