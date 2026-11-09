@@ -407,6 +407,7 @@ def materialize_co2_inputs(
             "pass its options in likelihood_kwargs."
         )
     prepared = prepared_inputs
+    # Fail before materialization, which is expensive; build_co2_model owns the rule.
     if (boundary is not None and "H_bc_anomaly" in prepared.inv_inputs
             and likelihood_builder not in (None, add_fixed_ou_gaussian_likelihood)):
         raise ValueError("Centered runner replay supports the built-in fixed-OU likelihood, not custom callbacks.")
