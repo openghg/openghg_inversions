@@ -982,6 +982,7 @@ companion:
    sites = ["MHD", "TAC"]
    averaging_period = "1h"
    inlet = ["10m", "185m"]
+   time_resolved = true    # required by time_resolved surface transport
    flux_sources = ["biosphere", "fossil"]
    surface_transport = { biosphere = "time_resolved", fossil = "integrated" }
    boundary_reference = 400.0
@@ -1001,14 +1002,22 @@ companion:
    correlation_length = 1.5
 
 ``acquisition`` takes the site selectors of
-:class:`~openghg_inversions.inversion_data.SiteOptions`, the flux sources with
-one surface transport mode each, store and dataset selectors (``obs_store``,
+:class:`~openghg_inversions.inversion_data.SiteOptions` (``time_resolved = true``
+is required when any source uses ``time_resolved`` transport), the flux sources
+with one surface transport mode each, store and dataset selectors (``obs_store``,
 ``footprint_store``, ``flux_store``, ``bc_store``, ``fp_model`` and so on) and,
-with boundaries, the reference and mass tolerance. All sources share one
-dimensionless native scaling field; the first source weights basis design.
-``basis`` takes ``algorithm``, ``nbasis``, ``path``, ``partition_path``,
-``landsea_path``, ``outer_regions_path``, ``fix_outer_regions``,
-``bc_algorithm``, ``bc_split_height`` and ``bc_paths``. ``native_prior`` gives
+with boundaries, the reference and mass tolerance. ``boundary_reference`` is a
+value you choose, such as a typical background; it is stored unchanged (see
+:doc:`surface_preparation`). These options are checked when the configuration
+is read, before any retrieval. All sources share one dimensionless native
+scaling field; the first source weights basis design.
+
+``basis`` takes ``algorithm`` (``"weighted"`` or ``"quadtree"``), ``nbasis``,
+``path``, ``partition_path``, ``landsea_path``, ``outer_regions_path``,
+``fix_outer_regions``, ``bc_algorithm``, ``bc_split_height`` and ``bc_paths``.
+``"region_constrained"`` is not available here yet because it needs a
+configured class map (`#454
+<https://github.com/openghg/openghg_inversions/issues/454>`_). ``native_prior`` gives
 the constant native mean (default 1) and the separable exponential covariance
 (``sigma`` and correlation lengths in degrees). The requested window and
 domain are required.

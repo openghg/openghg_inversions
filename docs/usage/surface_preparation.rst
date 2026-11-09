@@ -105,16 +105,25 @@ ordinary or a centered preparation. Preparation selects it with
    ordinary = select_boundary_representation({"MHD": site}, "ordinary")
    centered = select_boundary_representation({"MHD": site}, "centered")
 
+``boundary_reference`` is a value the user chooses, not one computed from the
+data: any finite concentration close to the boundary values works, for example
+a typical background. It is stored unchanged as ``bc_reference``.
+
 Ordinary selection collapses the operands exactly to absolute ``bc_n/e/s/w``,
 ``bc_<d> = bc_anomaly_<d> + bc_reference * bc_mass_<d>``, in float64. The
 reference cancels, so it does not change ordinary results. These absolute
-contributions use the jointly normalized curtain mass, unlike OpenGHG’s
-unnormalized baseline arithmetic, so they can differ from ModelScenario results
-by the footprint's mass error. Centered selection keeps the operands for
-numerically precise inference, for example for O₂, whose large absolute
-background would amplify small rounding errors. The reference is part of the
-prior only for ``anomaly_scaling`` boundaries, whose default ``c'`` is the stored
-reference.
+contributions use the jointly normalized curtain mass, whereas OpenGHG’s
+ModelScenario baseline uses the unnormalized mass. The two differ by roughly
+the relative mass error times the background, which is bounded by
+``boundary_mass_tolerance``. This is negligible for most species; it matters
+mainly for O₂ in ppm, where the background is large. Centered selection keeps
+the operands for numerically precise inference, for example for O₂, whose
+large absolute background would amplify small rounding errors.
+
+The reference affects the prior only for ``anomaly_scaling`` boundaries. Their
+``reference="stored"`` default uses this acquisition value as :math:`c'`. A
+number sets :math:`c'` directly, and ``"whole_window_transport_mean"``
+computes it from the fit's rows (see :doc:`boundary_correction_structures`).
 
 Each source and boundary contribution is calculated at native footprint release
 times, then averaged to the chosen observation cadence. Each source is convolved

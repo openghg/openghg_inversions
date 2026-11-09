@@ -15,7 +15,7 @@ import tomllib
 
 from openghg_inversions.basis.boundary import BOUNDARY_BASIS_ALGORITHMS
 from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
-from openghg_inversions.inversion_data import SiteOptions
+from openghg_inversions.inversion_data import SiteOptions, check_surface_request
 from openghg_inversions.models.boundary import AdditiveChoice, Choice, MultiplicativeChoice, boundary_preparation
 from openghg_inversions.models.boundary.preparation import check_representation
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
@@ -324,7 +324,8 @@ class Co2BasisSelection:
             )
         _reject_unknown(options, "prepared_inputs.basis")
         selected = cls(**result)
-        algorithms = ("quadtree", "weighted", "region_constrained")
+        # region_constrained also needs a configured class map, which waits on #454.
+        algorithms = ("quadtree", "weighted")
         if selected.basis_path is None and selected.basis_partition_path is None and (
             selected.basis_algorithm not in algorithms
         ):
@@ -463,6 +464,13 @@ def _acquisition(value: object) -> dict[str, Any]:
             options.pop("boundary_mass_tolerance"), f"{path}.boundary_mass_tolerance",
         )
     _reject_unknown(options, path)
+    check_surface_request(
+        species="co2", site_options=result["site_options"], flux_sources=result["flux_sources"],
+        transport=result["surface_transport"], use_bc=result.get("use_bc", True),
+        boundary_reference=result.get("boundary_reference"),
+        boundary_reference_units=result.get("boundary_reference_units"),
+        boundary_mass_tolerance=result.get("boundary_mass_tolerance"),
+    )
     return result
 
 
@@ -538,6 +546,12 @@ class Co2PreparationConfig:
                 raise ValueError("The weighted additive boundary requires prepared_inputs.bc_centering_weights_path.")
             if weights is not None and needs.representation != "centered":
                 raise ValueError("prepared_inputs.bc_centering_weights_path requires centered boundaries.")
+            use_bc = result["native"].acquisition.get("use_bc", True)
+            if not use_bc and ("boundary" in result or "boundary_representation" in result):
+                raise ValueError(
+                    "prepared_inputs.acquisition.use_bc = false cannot serve a configured boundary or "
+                    "boundary_representation; enable use_bc or remove them."
+                )
         _reject_unknown(prepared, "prepared_inputs")
         return cls(**result)
 

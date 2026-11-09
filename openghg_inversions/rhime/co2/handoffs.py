@@ -164,6 +164,7 @@ def prepare(
             native, domain=domain, start_date=start_date, end_date=end_date,
             boundary=boundary_preparation(boundary, boundary_representation), merged_data=merged_data,
         )
+        check_prepared_boundary(prepared.inv_inputs, boundary, boundary_representation)
         return save_preparation(
             prepared, output_dir=output_dir, start_date=start_date, end_date=end_date, domain=domain,
             affine_artifact=affine,

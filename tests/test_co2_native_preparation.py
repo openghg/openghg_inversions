@@ -115,12 +115,32 @@ def test_configuration_resolves_representation_from_boundary_type(partition: Pat
     ({"bc_centering_weights_path": "weights.nc"}, "requires centered boundaries"),
     ({"basis": {"algorithm": "voronoi"}}, "basis.algorithm"),
     ({"acquisition": {"sites": ["TOY"], "averaging_period": "3h"}}, "flux_sources"),
+    ({"basis": {"algorithm": "region_constrained"}}, "basis.algorithm"),
+    ({"boundary_representation": "centered", "acquisition": {**request(Path("p"))["prepared_inputs"]["acquisition"],
+                                                             "use_bc": False}}, "use_bc = false"),
+    ({"acquisition": {**request(Path("p"))["prepared_inputs"]["acquisition"],
+                      "surface_transport": {"biosphere": "time_resolved", "fossil": "integrated"}}},
+     "time_resolved=True site selectors"),
+    ({"acquisition": {key: value for key, value in request(Path("p"))["prepared_inputs"]["acquisition"].items()
+                      if key != "boundary_mass_tolerance"}}, "boundary_mass_tolerance"),
 ])
 def test_build_route_rejects_inconsistent_options(partition: Path, change: dict, message: str) -> None:
     config = request(partition)
     config["prepared_inputs"].update(change)
     with pytest.raises((TypeError, ValueError), match=message):
         Co2PreparationConfig.from_params(config)
+
+
+def test_prepare_checks_a_native_build_before_saving(tmp_path: Path, merged: MergedData, partition: Path) -> None:
+    config = request(partition)
+    config["prepared_inputs"]["acquisition"]["use_bc"] = False
+    arguments = Co2PreparationConfig.from_params(config).preparation_arguments()
+    boundary = Co2PreparationConfig.from_params(
+        {**request(partition), "model": {"boundary": {"prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}}}},
+    ).boundary
+    with pytest.raises(ValueError, match="no boundary sensitivity"):
+        handoffs.prepare(**{**arguments, "boundary": boundary}, merged_data=merged, output_dir=tmp_path / "p")
+    assert not (tmp_path / "p").exists() or not any((tmp_path / "p").iterdir())
 
 
 def test_build_route_requires_window_and_linked_route_rejects_it(partition: Path) -> None:

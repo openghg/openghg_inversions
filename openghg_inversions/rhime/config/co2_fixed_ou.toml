@@ -19,6 +19,7 @@ domain = "EUROPE"
 # [prepared_inputs.acquisition]
 # sites = ["MHD"]
 # averaging_period = "1h"
+# time_resolved = true                  # required by time_resolved surface transport
 # flux_sources = ["biosphere", "fossil"]
 # surface_transport = { biosphere = "time_resolved", fossil = "integrated" }
 # boundary_reference = 400.0
