@@ -1346,7 +1346,8 @@ def test_multiplicative_boundary_binds_explicit_periods():
     assert "G_bc" not in model.named_vars
 
 
-def test_direct_centered_model_passes_centered_arrays_to_custom_likelihood():
+def test_direct_centered_model_rejects_custom_likelihood():
+    """A centered boundary accepts only the default or built-in fixed-OU likelihood."""
     inputs = _golden_inputs()
     operands = xr.Dataset({
         "H_bc_anomaly": (("nmeasure", "bc_region"), [[.1], [.2]], {"units": "ppm"}),
@@ -1354,18 +1355,11 @@ def test_direct_centered_model_passes_centered_arrays_to_custom_likelihood():
         "bc_reference": ((), 400., {"units": "ppm"}),
     }, coords={"nmeasure": inputs.nmeasure, "bc_region": ["north"]},
         attrs={"boundary_representation": "centered-v1"})
-    received = {}
+    called = []
 
-    def likelihood(*, observations, mean, output_dim, **kwargs):
-        received["observations"] = observations
-        received["observation_error"] = kwargs["observation_error"]
-        received["aggregation_error"] = kwargs["aggregation_error"]
-        error = pm.Deterministic("epsilon", pm.math.ones_like(mean), dims=output_dim)
-        return pm.Normal("y", mu=mean, sigma=error, observed=observations, dims=output_dim)
+    def likelihood(**kwargs):
+        called.append(kwargs)
 
-    model = _build_model(inputs, boundary_operands=operands, likelihood_builder=likelihood)
-    np.testing.assert_allclose(received["observations"], inputs.mf - [280., 360.])
-    xr.testing.assert_identical(received["observation_error"], inputs.mf_error)
-    xr.testing.assert_identical(received["aggregation_error"].covariance,
-        resolve_aggregation_error(inputs, "dense").covariance)
-    assert np.isfinite(model.compile_logp()(model.initial_point()))
+    with pytest.raises(ValueError, match="Centered.*built-in fixed-OU.*custom"):
+        _build_model(inputs, boundary_operands=operands, likelihood_builder=likelihood)
+    assert not called
