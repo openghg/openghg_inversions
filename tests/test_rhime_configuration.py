@@ -152,7 +152,10 @@ def test_saved_basis_path_takes_precedence_during_resolution(algorithm):
 
 @pytest.mark.parametrize("algorithm", ("quadtree", "weighted", "region_constrained"))
 def test_builtin_basis_algorithms_resolve(algorithm):
-    config = rhime_params.RhimeConfig.from_params(_request(basis_algorithm=algorithm), multisector=False)
+    classes = {"region_classes_source": "landsea"} if algorithm == "region_constrained" else {}
+    config = rhime_params.RhimeConfig.from_params(
+        _request(basis_algorithm=algorithm, **classes), multisector=False,
+    )
     assert config.data.basis_algorithm == algorithm
 
 
