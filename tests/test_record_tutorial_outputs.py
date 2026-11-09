@@ -138,7 +138,7 @@ def test_recorded_outputs_ignores_stderr_when_a_cell_has_a_result() -> None:
 
 @pytest.mark.parametrize(
     ("name", "inputs"),
-    [("rhime_standard_tutorial", 4), ("rhime_multisector_tutorial", 3), ("prior_predictive_checking", 8)],
+    [("rhime_standard_tutorial", 5), ("rhime_multisector_tutorial", 3), ("prior_predictive_checking", 8)],
 )
 def test_tutorials_are_manual_downloadable_notebooks(name: str, inputs: int) -> None:
     document = (record_tutorial_outputs._ROOT / "docs" / "usage" / f"{name}.rst").read_text(encoding="utf-8")
@@ -149,6 +149,15 @@ def test_tutorials_are_manual_downloadable_notebooks(name: str, inputs: int) -> 
     assert len(record_tutorial_outputs._directives(document.splitlines(), "jupyter-output")) == inputs
     assert ".. jupyter-execute::" not in document
     assert ".. code-block:: python" not in document
+
+
+def test_standard_tutorial_reads_sampler_diagnostics_from_public_trace() -> None:
+    document = (record_tutorial_outputs._ROOT / "docs" / "usage" / "rhime_standard_tutorial.rst").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'result.trace.attrs["sampler_convergence"]' in document
+    assert "result.idata" not in document
 
 
 def test_recorded_outputs_saves_displayed_pngs_without_recording_figure_repr(

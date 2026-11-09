@@ -33,6 +33,7 @@ import pymc as pm
 import xarray as xr
 from openghg.util import align_lat_lon, get_domain_info
 
+from openghg_inversions.basis.boundary import BoundaryBasis, nesw_basis
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.array_ops import force_align, to_dense
 from ._domain_support import rectangular_extent_mask, remove_domain_overlap
@@ -778,7 +779,7 @@ def _prepare_one_domain(
     basis_algorithm: str | None, nbasis: int, fix_basis_outer_regions: bool,
     use_bc: bool,
     basis_inputs: Mapping[str, Any],
-    bc_basis: xr.Dataset | None = None, allow_empty_inner_region: bool = False,
+    bc_basis: BoundaryBasis = nesw_basis, allow_empty_inner_region: bool = False,
 ) -> PreparedInputs:
     """Build one native basis and its labelled sensitivities from resolved choices."""
     runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=False)
@@ -890,7 +891,7 @@ def prepare_nested_rhime_inputs(
     inner_basis_algorithm: str | None, nbasis: int, inner_nbasis: int | None,
     fix_basis_outer_regions: bool, use_bc: bool,
     outer_basis_inputs: Mapping[str, Any], inner_basis_inputs: Mapping[str, Any],
-    bc_basis: xr.Dataset | None = None,
+    bc_basis: BoundaryBasis = nesw_basis,
     time_tolerance: str | pd.Timedelta | None = None,
 ) -> NestedRhimePreparedInputs:
     """Prepare two acquired native grids using explicit scientific choices.
@@ -920,7 +921,7 @@ def prepare_nested_rhime_inputs(
         use_bc: Include boundary sensitivities from the outer domain only.
         outer_basis_inputs: Selected outer operator or partition and support maps.
         inner_basis_inputs: Selected inner operator or partition and support maps.
-        bc_basis: Loaded outer boundary-condition basis, when selected.
+        bc_basis: Loaded outer boundary-condition basis or coordinate-based basis builder.
         time_tolerance: Explicit nearest-time tolerance; omission requires exact
             timestamps. Each inner footprint can match at most one outer row.
 
