@@ -363,7 +363,7 @@ def test_direct_additive_record_accepts_only_actual_resolved_inputs(double_preci
     weights = xr.ones_like(operands.bc_region, dtype=float).assign_attrs(units="1")
     bound = AdditiveBoundary(
         AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.),
-        operands.assign(bc_centering_weights=weights),
+        operands.assign(bc_centering_weights=weights.variable),
     )
     with registered_model() as model:
         result = bound.add()

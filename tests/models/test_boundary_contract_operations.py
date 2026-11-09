@@ -31,6 +31,18 @@ def test_replacing_weights_keeps_the_supplied_calendar_until_binding():
     xr.testing.assert_identical(raw, original)
 
 
+def test_weights_with_the_bound_labels_in_another_order_bind_by_label():
+    """Weight order is not part of the contract; binding selects by curtain and period label."""
+    raw = RawCenteredSensitivity.validate(_raw_on_nmeasure(lazy=True))
+    weights = raw.bc_centering_weights
+    permuted = weights.isel(bc_curtain=slice(None, None, -1), bc_period=slice(None, None, -1))
+    with dask.config.set(scheduler=_forbid_compute), pytensor.config.change_flags(floatX="float64"):
+        bound = BoundCenteredSensitivity.bind(raw, _observations())
+        expected = BoundAdditiveSensitivity.bind_weights(bound, weights)
+        reordered = BoundAdditiveSensitivity.bind_weights(bound, permuted)
+    xr.testing.assert_identical(reordered.bc_centering_weights, expected.bc_centering_weights)
+
+
 @pytest.mark.parametrize("coordinate", [False, True])
 def test_replacing_weights_rejects_axes_shared_with_other_data(coordinate):
     """Replacement must not silently delete extra variables or auxiliary coordinates."""
