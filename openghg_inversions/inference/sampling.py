@@ -12,6 +12,7 @@ from openghg_inversions._pymc_config import configure_pytensor
 
 configure_pytensor()
 
+import json
 from collections.abc import Mapping, Sequence
 from copy import copy
 from typing import Any, ClassVar, Literal, cast
@@ -24,6 +25,8 @@ from pymc.util import get_random_generator  # type: ignore[import-untyped]
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.postprocessing.contracts import resolve_predictive_names
+
+from .convergence import posterior_convergence_check
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
 
@@ -250,6 +253,9 @@ class RhimeSampler:
         nuts_sampler: PyMC NUTS backend name.
         progressbar: Whether PyMC progress output should be shown.
         sample_kwargs: Extra keyword arguments forwarded to ``pm.sample``.
+            ``compute_convergence_checks`` defaults to ``False`` because the
+            sampler assesses retained draws after burn slicing. Set it to
+            ``True`` to also run PyMC's convergence checks.
             Nested containers and NumPy option arrays are copied; opaque
             runtime objects and xarray/Dask values are borrowed.
             Posterior ``var_names`` overrides are invalid because sampling
@@ -394,6 +400,16 @@ class RhimeSampler:
                 arrays plus one state's intermediate values. Other backends,
                 explicit traces or callbacks, transformed-variable requests
                 and empty retained groups use the ordinary recording path.
+
+        Returns:
+            Sampled trace with requested predictive groups, after burn slicing
+            and registered-coordinate restoration. Its ``sampler_convergence``
+            attribute contains a JSON convergence report from
+            :func:`~openghg_inversions.inference.convergence.posterior_convergence_check`
+            using ArviZ's default thresholds. The report assesses the model's free
+            random variables, whose names are saved as JSON in
+            ``sampler_convergence_variables``. Assessment is eager; a failed or
+            incomplete convergence report does not prevent returning the trace.
         """
         _validate_idata_options(self.sample_kwargs, label="sample_kwargs")
         sample_kwargs = _copy_sampler_options(self.sample_kwargs or {})
@@ -414,6 +430,8 @@ class RhimeSampler:
             # Conversion and automatic likelihood otherwise coexist with the
             # warmup-plus-draw backend buffers inside pm.sample's return path.
             idata_kwargs["log_likelihood"] = False
+        # Assess the retained samples after burn slicing instead of repeating PyMC's pre-burn checks.
+        sample_kwargs.setdefault("compute_convergence_checks", False)
         sample_kwargs.setdefault("progressbar", self.progressbar)
         sample_kwargs.setdefault("cores", self.chains)
         if not isinstance(self.sample_prior_predictive, bool | int | np.integer) or self.sample_prior_predictive < 0:
@@ -497,6 +515,19 @@ class RhimeSampler:
             "rhime.sampler.coord_restore",
             timer_seconds(timing_start),
             restored=registry is not None,
+        )
+
+        variable_names = [variable.name for variable in model.free_RVs]
+        trace.attrs["sampler_convergence_variables"] = json.dumps(variable_names)
+        timing_start = timer_start()
+        _, convergence = posterior_convergence_check(trace, variable_names=variable_names)
+        trace.attrs["sampler_convergence"] = json.dumps(convergence, sort_keys=True)
+        log_timing(
+            "rhime.sampler.convergence",
+            timer_seconds(timing_start),
+            status=convergence["status"],
+            message=convergence["message"],
+            **convergence["measured_values"],
         )
         return trace
 
