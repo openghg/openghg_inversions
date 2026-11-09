@@ -313,6 +313,7 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.components.warn_constant_offset_confounding
    openghg_inversions.models.boundary.MultiplicativeChoice
    openghg_inversions.models.boundary.MultiplicativeBoundary
+   openghg_inversions.models.boundary.CenteredMultiplicativeBoundary
    openghg_inversions.models.boundary.AdditiveChoice
    openghg_inversions.models.boundary.AdditiveBoundary
    openghg_inversions.models.boundary.AnomalyScalingChoice

@@ -107,9 +107,11 @@ class Anomalies:
 
     With a basis, contrast coefficients ``z`` are sampled as
     ``bc_anomaly_latent``, the state anomalies are ``bc_anomaly = B z`` and
-    the block design is ``M B``. Independent anomalies are sampled directly
-    on the states, with block design ``M``. When nothing can be sampled, zero
-    anomalies are recorded instead, so replay needs no policy.
+    the block sensitivity is ``M B``. Independent anomalies are sampled directly
+    on the states, with block sensitivity ``M``. When nothing can be sampled,
+    zero anomalies are registered once as model data instead of recorded with
+    every draw; output readers broadcast them over the draws, so replay needs
+    no policy.
 
     Attributes:
         structure: Selected additive anomaly formulation.
@@ -137,7 +139,8 @@ class Anomalies:
             registered: The family's registered sensitivity.
 
         Returns:
-            No corrections when nothing is sampled. Otherwise one: the state
+            No corrections when nothing is sampled; the zero anomalies are then
+            model data. Otherwise one: the state
             anomalies, their response ``mu_bc_anomaly``, the affine block and
             the sampled coefficients.
 
@@ -153,8 +156,10 @@ class Anomalies:
             registered.register(weights, "bc_centering_weights")
         mass = data.H_bc_mass
         if not self.sampled:
-            pm.Deterministic(f"{prefix}bc_anomaly", pt.zeros((mass.sizes["bc_region"],)), dims=state_dim)
-            pm.Deterministic(f"{prefix}mu_bc_anomaly", pt.zeros((mass.sizes[output_dim],)), dims=output_dim)
+            # Constant zeros: the same roles as sampled anomalies, stored once rather than per draw.
+            units = registered.data.bc_reference.attrs["units"]
+            registered.register(xr.zeros_like(mass.sum(output_dim)).assign_attrs(units=units), "bc_anomaly")
+            registered.register(xr.zeros_like(mass.sum("bc_region")).assign_attrs(units=units), "mu_bc_anomaly")
             return []
         basis = anomaly_basis(self.structure, mass.bc_region, weights)
         if basis is None:
@@ -177,7 +182,7 @@ class Anomalies:
 
         Returns:
             Unprefixed roles and units. The anomaly state and contribution are
-            always declared, as sampled values or recorded zeros.
+            always declared, as sampled values or constant zeros.
         """
         roles = {"boundary_correction_anomaly": "bc_anomaly", "boundary_anomaly_concentration": "mu_bc_anomaly"}
         units = {name: concentration_units for name in ("bc_anomaly_scale", "bc_anomaly", "mu_bc_anomaly")}
