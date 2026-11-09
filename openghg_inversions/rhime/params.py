@@ -10,10 +10,11 @@ defaults; scientific callable signatures do not define the external schema.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
-from typing import Any, get_args, get_type_hints
+from typing import Any, Literal, get_args, get_type_hints
 
 from openghg_inversions.basis.boundary import BOUNDARY_BASIS_ALGORITHMS, boundary_basis
 from openghg_inversions.rhime._resources import resolve_resource_paths
@@ -57,6 +58,26 @@ class DataConfig:
         bc_basis_split_height: Finite twelve-region split in the curtains'
             native height-coordinate units; no unit conversion or vertical
             datum is assumed. Ignored by NESW and by exact files.
+
+    Region classes, required when generating with
+    ``basis_algorithm="region_constrained"`` and rejected otherwise. Generated
+    labels never cross class boundaries. With ``fix_basis_outer_regions``, the
+    classes subdivide only the fixed outer map's inner region and ``nbasis``
+    counts inner regions.
+
+    Attributes:
+        region_classes_source: ``"landsea"`` reads ``country`` from
+            ``landsea_path`` or the domain's packaged land/sea map; ``"file"``
+            reads ``region_classes_variable`` from ``region_classes_path``,
+            such as a raw multiclass country map or a direct mask.
+        region_classes_path: Exact NetCDF class file for the ``"file"`` source.
+        region_classes_variable: Two-dimensional class variable in that file.
+        region_classes_unmapped_values: Class values, such as an ocean code,
+            left outside every generated region (label ``0``), like missing
+            cells.
+        region_allocation: Distribute ``nbasis`` across classes by total
+            ``"weight"`` or by mapped ``"area"``.
+        min_regions_per_class: Minimum automatic budget per non-empty class.
     """
 
     site_options: SiteOptions
@@ -86,6 +107,12 @@ class DataConfig:
     bc_input: str | None = None
     basis_algorithm: str | None = "weighted"
     nbasis: int = 100
+    region_classes_source: Literal["landsea", "file"] | None = None
+    region_classes_path: Path | None = None
+    region_classes_variable: str | None = None
+    region_classes_unmapped_values: tuple[float, ...] = ()
+    region_allocation: Literal["weight", "area"] = "weight"
+    min_regions_per_class: int = 1
     filters: str | list[str | None] | dict[str, str | None | list[str | None]] | None = None
     fix_basis_outer_regions: bool = False
     averaging_error: bool = True
@@ -155,6 +182,7 @@ class DataConfig:
         if (remaining.get("basis_path") is None and remaining.get("basis_partition_path") is None
                 and remaining.get("basis_partition_paths") is None and basis_algorithm not in allowed):
             raise ValueError(f"`basis_algorithm` must be one of {allowed!r}; got {basis_algorithm!r}.")
+        remaining.update(_resolve_region_class_options(remaining, basis_algorithm=basis_algorithm))
         if remaining.get("use_bc", cls.use_bc) and remaining.get("bc_basis_paths") is None:
             bc_algorithm = remaining.get("bc_basis_algorithm", cls.bc_basis_algorithm)
             if bc_algorithm not in BOUNDARY_BASIS_ALGORITHMS:
@@ -188,6 +216,70 @@ class DataConfig:
         params = {name: getattr(self, name) for name in self.option_names() - site_names}
         params.update({name: getattr(self.site_options, name) for name in site_names})
         return params
+
+
+def _resolve_region_class_options(params: Mapping[str, Any], *, basis_algorithm: Any) -> dict[str, Any]:
+    """Validate region-class choices without reading files.
+
+    Args:
+        params: Data options after path resolution.
+        basis_algorithm: Selected generation algorithm.
+
+    Returns:
+        Normalized region-class options present in ``params``.
+
+    Raises:
+        ValueError: If the source, its file selection, the unmapped values or
+            the allocation choices are invalid, or region classes are selected
+            for another algorithm.
+    """
+    source = params.get("region_classes_source")
+    path = params.get("region_classes_path")
+    variable = params.get("region_classes_variable")
+    resolved: dict[str, Any] = {}
+    if source not in (None, "landsea", "file"):
+        raise ValueError(f"`region_classes_source` must be 'landsea', 'file' or None; got {source!r}.")
+    if source == "file":
+        if path is None:
+            raise ValueError("`region_classes_source = 'file'` requires `region_classes_path`.")
+        if not isinstance(variable, str) or not variable.strip():
+            raise ValueError("`region_classes_source = 'file'` requires a non-empty `region_classes_variable`.")
+    elif path is not None or variable is not None:
+        raise ValueError(
+            "`region_classes_path` and `region_classes_variable` require `region_classes_source = 'file'`."
+        )
+    if source is not None and basis_algorithm != "region_constrained":
+        raise ValueError(
+            "`region_classes_source` applies only to `basis_algorithm = 'region_constrained'`; "
+            f"got {basis_algorithm!r}."
+        )
+    generating = all(params.get(name) is None for name in (
+        "basis_path", "basis_partition_path", "basis_partition_paths"))
+    if generating and basis_algorithm == "region_constrained" and source is None:
+        raise ValueError(
+            "`basis_algorithm = 'region_constrained'` requires `region_classes_source` "
+            "('landsea' or 'file')."
+        )
+    if "region_classes_unmapped_values" in params:
+        values = params["region_classes_unmapped_values"]
+        if not isinstance(values, list | tuple) or any(
+            isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value)
+            for value in values
+        ):
+            raise ValueError(
+                "`region_classes_unmapped_values` must be a list of finite numbers; "
+                f"got {values!r}."
+            )
+        resolved["region_classes_unmapped_values"] = tuple(float(value) for value in values)
+    allocation = params.get("region_allocation", "weight")
+    if allocation not in ("weight", "area"):
+        raise ValueError(f"`region_allocation` must be 'weight' or 'area'; got {allocation!r}.")
+    if "min_regions_per_class" in params:
+        minimum = _coerce_int_option("min_regions_per_class", params["min_regions_per_class"])
+        if minimum < 0:
+            raise ValueError("`min_regions_per_class` must be non-negative.")
+        resolved["min_regions_per_class"] = minimum
+    return resolved
 
 
 @dataclass(frozen=True, kw_only=True)

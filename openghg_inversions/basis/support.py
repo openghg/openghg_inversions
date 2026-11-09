@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
 import xarray as xr
 
 from openghg_inversions.utils import read_netcdfs
@@ -96,6 +97,64 @@ def resolve_basis_support_maps(
         )
         outer = load_basis_support_map(path, "region")
     return {"landsea_classes": landsea, "outer_regions": outer}
+
+
+def load_region_classes(
+    path: str | Path,
+    variable: str,
+    *,
+    unmapped_values: Sequence[float] = (),
+) -> xr.DataArray:
+    """Eagerly read and check a region-class map for constrained basis fitting.
+
+    Each distinct non-null value is one class: a land/sea map, a raw multiclass
+    country or region map, or a direct mask. Grid alignment to the weighting
+    flux belongs to fitting, which accepts a map on a larger grid containing it.
+
+    Args:
+        path: Exact NetCDF file, without directory discovery.
+        variable: Two-dimensional class variable to select.
+        unmapped_values: Class values to replace with missing values, leaving
+            those cells outside every generated region.
+
+    Returns:
+        In-memory class map with file and variable attributes; selected
+        unmapped values are missing.
+
+    Raises:
+        FileNotFoundError: If ``path`` is not an existing file.
+        ValueError: If the file cannot be read, lacks ``variable``, or the
+            variable is not a two-dimensional numeric map with at least one
+            mapped cell.
+    """
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Region-class file not found: {path}")
+    try:
+        dataset = xr.open_dataset(path, decode_coords="all")
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"Could not read region-class file {path}: {exc}") from exc
+    with dataset:
+        if variable not in dataset.data_vars:
+            raise ValueError(
+                f"Region-class file {path} has no variable {variable!r}; "
+                f"available variables: {sorted(map(str, dataset.data_vars))!r}."
+            )
+        classes = dataset[variable].load()
+        classes.attrs = {**dataset.attrs, **classes.attrs}
+    if classes.ndim != 2 or not np.issubdtype(classes.dtype, np.number):
+        raise ValueError(
+            f"Region-class variable {variable!r} in {path} must be a two-dimensional numeric map; "
+            f"got dims {classes.dims!r} and dtype {classes.dtype}."
+        )
+    if unmapped_values:
+        classes = classes.where(~classes.isin(list(unmapped_values)))
+    if not bool(classes.notnull().any()):
+        raise ValueError(
+            f"Region-class variable {variable!r} in {path} has no mapped cells "
+            f"after excluding unmapped values {tuple(unmapped_values)!r}."
+        )
+    return classes
 
 
 def load_basis_partition(path: str | Path) -> xr.DataArray:

@@ -291,6 +291,70 @@ before acquisition. Replace it with ``country_file`` for reporting,
 regions. Reporting maps remain explicit: ``domain`` never selects a reporting
 ``country_file``. See :doc:`legacy_and_migration` for the migration schedule.
 
+.. _region-constrained-basis-classes:
+
+Region-constrained basis classes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``basis_algorithm = "region_constrained"`` fits basis regions separately inside
+each class of a class map, so no region crosses a class boundary. Generating
+with this algorithm requires ``region_classes_source``; selecting a source
+with any other algorithm fails during configuration. A selected saved basis
+(``basis_path`` or a partition) bypasses generation, so the class map is then
+not read.
+
+``region_classes_source = "landsea"``
+   Reads the ``country`` variable from ``landsea_path``, or from the domain's
+   packaged land/sea map when ``landsea_path`` is omitted. Land and sea are two
+   classes.
+``region_classes_source = "file"``
+   Reads ``region_classes_variable`` from the exact NetCDF file
+   ``region_classes_path``. Use this for a raw multiclass country or region map,
+   where each distinct value is one class, or for a direct mask. Both options
+   are required.
+
+Each distinct non-missing value is a class. ``region_classes_unmapped_values``
+lists class values, such as an ocean code, that are treated like missing cells:
+they stay outside every generated region and receive basis label ``0``.
+``region_allocation`` distributes ``nbasis`` across classes by total basis
+``"weight"`` (the default) or by mapped ``"area"``, and
+``min_regions_per_class`` (default ``1``) sets the minimum budget for each
+non-empty class.
+
+.. code-block:: ini
+
+   [INPUT.BASIS_CASE]
+   basis_algorithm = "region_constrained"
+   nbasis = 100
+   region_classes_source = "file"
+   region_classes_path = "/data/maps/country_EUROPE.nc"
+   region_classes_variable = "country"
+   region_classes_unmapped_values = [-1]
+   region_allocation = "weight"
+
+The same names are flat ``RhimeConfig.from_params`` options, so ``run-rhime``,
+``run-rhime-multisector``, staged preparation and Python callers share one
+route. ``rhime.preparation.resolve_basis_inputs(config.data)`` loads the map
+before acquisition and passes it to ``prepare_basis`` as ``region_classes``.
+The result is the same basis as calling ``prepare_basis(region_classes=...)``
+directly with that map, after the unmapped values are made missing. The map
+may cover a larger grid than the flux; fitting selects the flux grid.
+
+Missing or unreadable files, an absent variable (the error lists the
+available variables), a variable that is not a two-dimensional numeric map,
+or a map with no mapped cells fail before acquisition.
+
+For fixed InTEM outer regions with independent inner classes, also set
+``fix_basis_outer_regions = True``, with ``outer_regions_path`` or the packaged
+outer map. Each outer region stays one fixed basis region. The class map
+subdivides only the inner region, and ``nbasis`` counts the inner regions; the
+total state count also includes the fixed outer regions.
+
+Nested inner domains do not inherit the outer class map, so an inner basis
+cannot yet be region-constrained. Selecting and grouping individual countries
+from one country map (#325) is not yet configurable: prepare a class file
+with the grouped values and select it with ``region_classes_source = "file"``.
+
 .. _twelve-region-boundary-basis:
 
 Twelve-region lateral boundary basis

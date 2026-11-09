@@ -741,7 +741,9 @@ def inner_data_config(
 
     Stores and the basis target inherit outer values when omitted. The inner
     basis defaults to quadtree, has independent resources and no boundary
-    component. Relative resource paths resolve from the current directory.
+    component. Outer region-class maps describe the outer grid and are not
+    inherited, so the inner basis cannot yet be region-constrained.
+    Relative resource paths resolve from the current directory.
     An omitted ``inner_nbasis`` still means automatic total-budget allocation
     when passed to :func:`prepare_nested_rhime_inputs`.
 
@@ -768,6 +770,8 @@ def inner_data_config(
         flux_store=inner_flux_store or outer_data.flux_store,
         flux_domain=inner_flux_domain,
         use_bc=False, bc_input=None, bc_basis_paths=None, fix_basis_outer_regions=False,
+        region_classes_source=None, region_classes_path=None, region_classes_variable=None,
+        region_classes_unmapped_values=(),
         basis_algorithm=inner_basis_algorithm if inner_basis_algorithm is not None else "quadtree",
         nbasis=outer_data.nbasis if inner_nbasis is None else inner_nbasis,
     )
