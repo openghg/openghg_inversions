@@ -2839,11 +2839,12 @@ def test_public_rhime_runners_follow_named_stage_order(
         calls.append("retrieve")
         return merged
 
-    def filter_observations(actual: Any, site_options: Any, *, filters: Any) -> Any:
+    def filter_observations(actual: Any, site_options: Any, *, filters: Any, filter_options: Any) -> Any:
         """Record public filtering and site alignment."""
         assert set(actual) == set(merged.site_data)
         assert site_options is merged.site_options
         assert filters is config.data.filters
+        assert filter_options is config.data.filter_options
         calls.append("filter")
         return filtered, site_options
 
@@ -5939,7 +5940,7 @@ def test_canonical_preparation_filters_sites_before_basis_generation(
             acquisition=AcquisitionFacts(),
         )
 
-    def fake_filtering(fp_data: dict, filters: object) -> dict:
+    def fake_filtering(fp_data: dict, filters: object, filter_options: object = None) -> dict:
         nonlocal filtering_calls
         filtering_calls += 1
         assert filters == ["keep-middle"]
@@ -6174,7 +6175,7 @@ def test_canonical_preparation_filters_multisector_sites_before_basis_generation
             acquisition=AcquisitionFacts(),
         )
 
-    def fake_filtering(fp_data: dict, filters: object) -> dict:
+    def fake_filtering(fp_data: dict, filters: object, filter_options: object = None) -> dict:
         assert filters == {"TAC": ["keep-last"]}
         assert "H" not in fp_data["TAC"]
         return {"TAC": fp_data["TAC"].isel(time=[2])}
@@ -6263,7 +6264,7 @@ def test_canonical_preparation_filters_loaded_basis_before_sensitivity(
         captured_basis_times = tuple(site_data["TAC"].time.values)
         return basis_functions
 
-    def fake_filtering(fp_data: dict, filters: object) -> dict:
+    def fake_filtering(fp_data: dict, filters: object, filter_options: object = None) -> dict:
         nonlocal filtering_calls
         filtering_calls += 1
         assert filters == ["keep-middle"]
