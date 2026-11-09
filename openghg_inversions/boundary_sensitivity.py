@@ -87,7 +87,13 @@ def _expand_boundary_periods(
     anchor_time: DatetimeLike | None,
     observation_labels: xr.DataArray | None,
 ) -> xr.Dataset:
-    """Select scientific rows and apply one period mask to all boundary operands."""
+    """Select scientific rows and apply one period mask to all boundary operands.
+
+    A datetime ``time`` coordinate along the observations is computed once if
+    lazy, because period labels are interval-start timestamps (the first time
+    when ``frequency`` is None). Without one, the single period is labelled
+    ``'whole_window'``.
+    """
     normalise_frequency(frequency)
     if observation_labels is not None:
         raw = raw.sel({observation_dim: observation_labels.transpose(observation_dim)})
@@ -312,8 +318,9 @@ def align_boundary_operands(
         contains ``bc_curtain`` and ``bc_period``. Units, representation and
         scalar ``bc_reference`` are preserved. Outputs are marked expanded and
         must not be passed through raw validation or expansion again. Borrowed
-        payloads stay lazy and unchanged; frequency-based expansion materializes
-        a lazy auxiliary time coordinate once to construct the period mask.
+        payloads stay lazy and unchanged; expansion materializes a lazy
+        auxiliary time coordinate once, whenever one is present, to label the
+        periods (even with no frequency, since the label is the first time).
 
     Raises:
         ValueError: If raw operands or period settings are invalid, or required
