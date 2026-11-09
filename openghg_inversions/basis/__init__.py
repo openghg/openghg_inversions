@@ -20,6 +20,7 @@ product blocks. They are low-level inputs to
 the centred reduced likelihood or unresolved covariance.
 """
 
+from .boundary import BoundaryBasis, boundary_basis, nesw_basis, twelve_region_basis
 from ._functions import (
     basis_weights_from_data,
     bucket_basis_from_weights,
@@ -59,6 +60,10 @@ from .covariance_products import (
 )
 
 __all__ = [
+    "BoundaryBasis",
+    "boundary_basis",
+    "nesw_basis",
+    "twelve_region_basis",
     "basis_weights_from_data",
     "basis_functions_from_flat_basis",
     "AffineFluxMap",

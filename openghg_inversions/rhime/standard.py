@@ -25,6 +25,7 @@ from dask.base import unpack_collections
 import pandas as pd
 import xarray as xr
 
+from openghg_inversions.basis.boundary import BoundaryBasis, nesw_basis
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.inversion_data import MergedData, PreparedInputs
 from openghg_inversions.models.components import (
@@ -412,7 +413,7 @@ def prepare_standard(
     domain: str, start_date: str, flux_sources: tuple[str, ...],
     averaging_error: bool, filters: Any, basis_algorithm: str | None, nbasis: int,
     fix_basis_outer_regions: bool, use_bc: bool,
-    basis_inputs: Mapping[str, Any], bc_basis: xr.Dataset | None = None,
+    basis_inputs: Mapping[str, Any], bc_basis: BoundaryBasis = nesw_basis,
 ) -> PreparedInputs:
     """Prepare observations and sensitivities from supplied scientific resources.
 
@@ -428,7 +429,7 @@ def prepare_standard(
         use_bc: Construct boundary-condition sensitivities.
         merged_data: Borrowed acquired observations, transport and current flux.
         basis_inputs: Selected operator path or loaded partition and support maps.
-        bc_basis: Loaded boundary-condition basis, when selected.
+        bc_basis: Loaded boundary-condition basis or coordinate-based basis builder.
 
     Returns:
         Retained backend-neutral inputs and their current native-flux binding.
