@@ -127,7 +127,14 @@ class Anomalies:
     sampled: bool
 
     def weights(self, data: xr.Dataset) -> xr.DataArray | None:
-        """Normalized centering weights of materialized bound data for weighted anomalies, else ``None``."""
+        """Normalize the centering weights that weighted anomalies use.
+
+        Args:
+            data: Materialized bound sensitivity.
+
+        Returns:
+            Normalized weights for the ``"weighted"`` structure, else ``None``.
+        """
         if self.structure != "weighted":
             return None
         return normalize_centering_weights(data.bc_centering_weights)

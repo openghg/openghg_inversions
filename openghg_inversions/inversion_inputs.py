@@ -126,6 +126,26 @@ def make_period_calendar(
     Time metadata must be materialized by the caller's binding boundary. Gaps
     retain their calendar spacing; the earliest occupied interval has ordinal
     zero, while start labels retain the actual fixed-duration anchor.
+
+    Args:
+        time: Eager datetime values, one per observation. The result keeps its
+            dimensions and coordinates.
+        freq: ``None`` for a single period starting at the earliest time,
+            ``"monthly"`` for calendar months, or a positive fixed duration
+            accepted by :func:`normalise_frequency`.
+        anchor_time: Optional start of the fixed-duration grid. By default the
+            grid starts at the earliest time. Ignored for ``None`` and
+            ``"monthly"``.
+
+    Returns:
+        ``(ordinal, starts)``, both shaped like ``time``. ``ordinal`` holds
+        integer period indices with the earliest occupied period at zero.
+        ``starts`` holds each row's period start as ``datetime64[ns]``: the
+        earliest time for ``None``, the first of the month for ``"monthly"``,
+        and the anchored interval start for fixed durations.
+
+    Raises:
+        ValueError: If ``freq`` is invalid or ``anchor_time`` is ``NaT``.
     """
     frequency = normalise_frequency(freq)
     resolved_anchor = pd.Timestamp(anchor_time) if anchor_time is not None else None
@@ -158,6 +178,20 @@ def make_freq_indicator(
     *,
     anchor_time: DatetimeLike | None = None,
 ) -> xr.DataArray:
+    """Return ordinal period indices for each time (see :func:`make_period_calendar`).
+
+    Args:
+        time: Eager datetime values, one per observation.
+        freq: ``"monthly"`` or a positive fixed duration.
+        anchor_time: Optional start of the fixed-duration grid.
+
+    Returns:
+        Integer period indices shaped like ``time``, with the earliest occupied
+        period at zero.
+
+    Raises:
+        ValueError: If ``freq`` or ``anchor_time`` is invalid.
+    """
     return make_period_calendar(time, freq, anchor_time=anchor_time)[0]
 
 
