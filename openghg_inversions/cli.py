@@ -262,10 +262,10 @@ def _diagnose_command(args: argparse.Namespace) -> None:
         sample_manifest=args.sample_manifest,
         output_dir=_stage_output_dir(args),
         check_output=args.check_output,
-        max_rhat=args.max_rhat,
-        min_bulk_ess=args.min_bulk_ess,
-        min_tail_ess=args.min_tail_ess,
-        max_divergences=args.max_divergences,
+        rhat_max=args.rhat_max,
+        ess_min_ratio=args.ess_min_ratio,
+        ess_threshold=args.ess_threshold,
+        bfmi_threshold=args.bfmi_threshold,
         stage=args.check_stage,
     )
     print(json.dumps(result, sort_keys=True))
@@ -366,10 +366,10 @@ def build_parser(*, prog: str = "rhime") -> argparse.ArgumentParser:
         help="Optional saved sampling context",
     )
     diagnose_parser.add_argument("--check-output")
-    diagnose_parser.add_argument("--max-rhat", type=float, default=1.01)
-    diagnose_parser.add_argument("--min-bulk-ess", type=float, default=400)
-    diagnose_parser.add_argument("--min-tail-ess", type=float, default=400)
-    diagnose_parser.add_argument("--max-divergences", type=int, default=0)
+    diagnose_parser.add_argument("--rhat-max", type=float)
+    diagnose_parser.add_argument("--ess-min-ratio", type=float)
+    diagnose_parser.add_argument("--ess-threshold", type=int)
+    diagnose_parser.add_argument("--bfmi-threshold", type=float)
     diagnose_parser.add_argument("--check-stage", default=os.environ.get("STAGE", "posterior"))
     diagnose_parser.add_argument("--strict", action="store_true", help="Exit nonzero when the check fails")
     diagnose_parser.set_defaults(func=_diagnose_command)
