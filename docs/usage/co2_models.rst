@@ -199,7 +199,13 @@ Common boundary mean and centred additive anomalies
 
 Store the complete averaging weights on ``(bc_curtain, bc_period)`` with
 units ``"1"``. Period labels are the actual interval start timestamps returned
-by the same calendar that constructs the transport mask. For example::
+by the same calendar that constructs the transport mask: with no frequency, the
+single label is the earliest selected observation time, and a period that has
+no observations has no state and so no weight. Labels must match the fit's
+periods exactly, so compute ``period_starts`` with
+:func:`~openghg_inversions.inversion_inputs.make_period_calendar` on the
+selected observation times, using the choice's ``frequency`` and
+``anchor_time`` and taking the sorted unique start labels. For example::
 
     weights = xr.DataArray(
         values,
@@ -208,8 +214,8 @@ by the same calendar that constructs the transport mask. For example::
         attrs={"units": "1"},
     )
 
-Keep every curtain/period weight, including unobserved states; unequal,
-nonseparable weights are supported. Raw spatial preparation stays independent
+Keep every curtain weight for every occupied period, including states whose
+activity is fixed; unequal, nonseparable weights are supported. Raw spatial preparation stays independent
 of fit periods. ``AdditiveChoice.bind`` binds raw operands and stacks the
 weights once per channel and fit. Exact labelled alignment rejects a different
 calendar before evaluating numerical payloads. Builders receive this bound

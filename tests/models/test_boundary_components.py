@@ -207,7 +207,7 @@ def test_additive_rejects_mismatched_period_labels(double_precision):
                            coords={"bc_curtain": ["north", "south"],
                                    "bc_period": pd.to_datetime(["2020-01-02", "2020-02-02"])},
                            attrs={"units": "1"})
-    with pytest.raises(ValueError, match="align"):
+    with pytest.raises(ValueError, match=r"do not align.*Missing from the weights.*2020-01-01.*unexpected.*2020-01-02"):
         AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 2., "monthly").bind(
             observations, _centered(data, weights),
         )

@@ -25,7 +25,27 @@ _QUANTITY_ROLES = {
 
 
 def restore_absolute_predictives(trace: xr.DataTree) -> xr.DataTree:
-    """Restore centered y once, using only retained trace constants and labels."""
+    """Restore centered y once, using only retained trace constants and labels.
+
+    For each of ``observed_data``, ``prior_predictive``, ``posterior_predictive``
+    and ``predictions`` that holds ``y``, adds the retained
+    ``boundary_reference_shift`` (from ``constant_data``, or
+    ``predictions_constant_data`` for predictions) and marks ``y`` as
+    ``absolute-v1``. Groups without a retained shift, or already restored, are
+    left unchanged, so the call is idempotent.
+
+    Args:
+        trace: Fitted trace with sample coordinates already restored. It is
+            modified in place.
+
+    Returns:
+        The same trace, with ``boundary_representation`` set to
+        ``"centered-v1"`` when any shift was found.
+
+    Raises:
+        KeyError: If the shift lacks a label present in ``y``.
+        ValueError: If the remaining labels do not align exactly.
+    """
     for name in ("observed_data", "prior_predictive", "posterior_predictive", "predictions"):
         if name not in trace.children or "y" not in trace[name]:
             continue
@@ -51,7 +71,18 @@ def restore_absolute_predictives(trace: xr.DataTree) -> xr.DataTree:
 
 @dataclass(frozen=True)
 class BoundaryOutputFacts:
-    """Validated current fitted names and optional additive zero-anomaly policy."""
+    """Validated fitted names and optional additive zero-anomaly policy for one channel.
+
+    Attributes:
+        roles: Scientific quantity (for example ``"concentration"`` or
+            ``"correction"``) mapped to its fitted variable name.
+        constants: The trace's ``constant_data`` group, which holds saved scale
+            and weight facts and any quantities that are not sampled.
+        weights: Positive centering weights of an additive boundary, or
+            ``None`` when the boundary has no weighted anomaly policy.
+        zero_anomaly: Whether the anomalies are identically zero, because the
+            scale is zero or there is a single state, so they are not sampled.
+    """
 
     roles: Mapping[str, str]
     constants: xr.Dataset
@@ -68,6 +99,22 @@ def decode_boundary_facts(
     Small fitted scale/weight facts are materialized here. Draws stay borrowed;
     no preparation, model construction or calendar calculation is performed.
     Earlier internal posterior formats require preparation and sampling again.
+
+    Args:
+        trace: Fitted trace carrying ``rhime_variable_roles`` and, when a
+            boundary was fitted, ``rhime_boundary_format_version``.
+        roles: Optional role mapping that replaces the one stored in the
+            trace attributes.
+        channels: Channel prefixes to decode; ``("",)`` for an unprefixed
+            single-channel model, or names such as ``("co2", "o2")``.
+
+    Returns:
+        Facts keyed by channel, omitting channels with no boundary roles.
+
+    Raises:
+        ValueError: If roles are malformed, the saved boundary format is not
+            the current version, or the saved scale, weights or roles are
+            missing or inconsistent with the zero-anomaly policy.
     """
     if roles is None:
         roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
@@ -120,6 +167,20 @@ def reconstruct_boundary(
 
     The supplied draw group determines sample labels and sizes independently
     for prior and posterior. Constants broadcast only over this group's draws.
+
+    Args:
+        facts: Decoded facts for one channel from :func:`decode_boundary_facts`.
+        draws: Prior or posterior draw group holding the sampled quantities.
+
+    Returns:
+        Scientific quantities by name. Zero anomalies omitted from the draws
+        are returned as zeros, and ``reference`` is broadcast like
+        ``concentration``.
+
+    Raises:
+        ValueError: If a declared role is missing from the draws and constants,
+            the weights do not align with the correction, or the saved
+            quantities needed for the anomaly policy are absent.
     """
     result = {}
     for quantity, name in facts.roles.items():

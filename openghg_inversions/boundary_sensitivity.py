@@ -86,7 +86,13 @@ def _expand_boundary_periods(
     anchor_time: DatetimeLike | None,
     observation_labels: xr.DataArray | None,
 ) -> xr.Dataset:
-    """Select scientific rows and apply one period mask to all boundary operands."""
+    """Select scientific rows and apply one period mask to all boundary operands.
+
+    A datetime ``time`` coordinate along the observations is computed once if
+    lazy, because period labels are interval-start timestamps (the first time
+    when ``frequency`` is None). Without one, the single period is labelled
+    ``'whole_window'``.
+    """
     normalise_frequency(frequency)
     if observation_labels is not None:
         raw = raw.sel({observation_dim: observation_labels.transpose(observation_dim)})
