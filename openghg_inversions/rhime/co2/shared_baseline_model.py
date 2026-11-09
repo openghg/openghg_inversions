@@ -211,7 +211,8 @@ def build_shared_co2_model(
         ):
             if variable not in prepared or not prepared.sizes[dimension]:
                 continue
-            design = prepared[variable].assign_coords({dimension: prepared[dimension].copy(deep=False)})
+            # A shallow copy lets the coordinate attrs change without touching the borrowed input.
+            design = prepared[variable].copy(deep=False)
             design[dimension].attrs = {"units": "1", "prior": "independent standard normal"}
             pattern = add_linear_component(
                 prepare_linear_sensitivity(design, prune_zero_columns=False),
@@ -317,7 +318,8 @@ def build_shared_co2_cached_sigma_model(
         ):
             if variable not in prepared or not prepared.sizes[dimension]:
                 continue
-            design = prepared[variable].assign_coords({dimension: prepared[dimension].copy(deep=False)})
+            # A shallow copy lets the coordinate attrs change without touching the borrowed input.
+            design = prepared[variable].copy(deep=False)
             design[dimension].attrs = {"units": "1", "prior": "independent standard normal"}
             pattern = add_linear_component(
                 prepare_linear_sensitivity(design, prune_zero_columns=False),
@@ -405,7 +407,10 @@ def reconstruct_shared_baseline(
         sample_dim = str(coefficient.dims[-1])
         if not coefficient.get_index(sample_dim).equals(p.get_index(dimension)):
             raise ValueError("Posterior pattern labels must match the bound baseline.")
-        coefficient = coefficient.rename({sample_dim: dimension}).assign_coords({dimension: p[dimension]})
+        coefficient = coefficient.rename({sample_dim: dimension})
+        # Replace the whole sample index, levels included, with the baseline's labels.
+        stale = [name for name in coefficient.coords if dimension in coefficient[name].dims]
+        coefficient = coefficient.drop_vars(stale).assign_coords(p[dimension].coords)
         return xr.dot(operator, coefficient, dim=dimension)
 
     if p.sizes["bc_pattern_term"]:
