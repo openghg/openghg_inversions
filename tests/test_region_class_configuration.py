@@ -215,3 +215,62 @@ def test_directly_constructed_configuration_without_classes_fails_clearly():
     config = RhimeConfig.from_params(_params(basis_algorithm="quadtree"), multisector=False)
     with pytest.raises(ValueError, match="requires `region_classes_source`"):
         resolve_basis_inputs(replace(config.data, basis_algorithm="region_constrained"))
+
+
+def test_nested_inner_basis_uses_its_own_region_classes(tmp_path):
+    from openghg_inversions.rhime.nested import inner_data_config
+
+    path = _write_classes(tmp_path)
+    outer = RhimeConfig.from_params(
+        _params(basis_algorithm="region_constrained", region_classes_source="landsea",
+                region_allocation="area", min_regions_per_class=2),
+        multisector=False,
+    ).data
+    inherited = inner_data_config(outer, inner_domain="6km")
+    assert inherited.basis_algorithm == "quadtree"
+    assert inherited.region_classes_source is None
+    assert (inherited.region_allocation, inherited.min_regions_per_class) == ("weight", 1)
+
+    inner = inner_data_config(
+        outer, inner_domain="6km", inner_basis_algorithm="region_constrained", inner_nbasis=5,
+        inner_region_classes_source="file", inner_region_classes_path=str(path),
+        inner_region_classes_variable="country_id", inner_region_classes_unmapped_values=[-1],
+        inner_region_allocation="area",
+    )
+    assert inner.region_classes_path == path
+    configured = _prepare(resolve_basis_inputs(inner), basis_algorithm="region_constrained", nbasis=5)
+    with xr.open_dataset(path) as dataset:
+        classes = dataset["country_id"].load()
+    direct = _prepare({}, basis_algorithm="region_constrained", nbasis=5,
+                      region_classes=classes.where(classes != -1), region_allocation="area")
+    xr.testing.assert_equal(configured.flat_basis(), direct.flat_basis())
+
+
+@pytest.mark.parametrize(("options", "message"), [
+    ({"inner_basis_algorithm": "region_constrained"}, "requires `region_classes_source`"),
+    ({"inner_region_classes_source": "landsea"}, "applies only to"),
+    ({"inner_basis_algorithm": "region_constrained", "inner_region_classes_source": "file",
+      "inner_region_classes_variable": "country"}, "requires `region_classes_path`"),
+    ({"inner_basis_algorithm": "region_constrained", "inner_region_classes_source": "landsea",
+      "inner_region_allocation": "population"}, "`region_allocation` must be"),
+])
+def test_invalid_inner_region_class_options_fail_before_acquisition(monkeypatch, options, message):
+    from openghg_inversions.rhime import nested
+
+    config = RhimeConfig.from_params(_params(output_format="none"), multisector=False)
+    monkeypatch.setattr(nested, "acquire_merged_data", lambda *a, **k: pytest.fail("acquired"))
+    with pytest.raises(ValueError, match=message):
+        nested.run_nested(config=config, inner_domain="6km", **options)
+
+
+def test_nested_inner_region_class_file_is_loaded_before_acquisition(tmp_path, monkeypatch):
+    from openghg_inversions.rhime import nested
+
+    config = RhimeConfig.from_params(_params(output_format="none"), multisector=False)
+    monkeypatch.setattr(nested, "acquire_merged_data", lambda *a, **k: pytest.fail("acquired"))
+    with pytest.raises(FileNotFoundError, match="Region-class file not found"):
+        nested.run_nested(
+            config=config, inner_domain="6km", inner_basis_algorithm="region_constrained",
+            inner_region_classes_source="file", inner_region_classes_path=str(tmp_path / "missing.nc"),
+            inner_region_classes_variable="country",
+        )

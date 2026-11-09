@@ -183,6 +183,27 @@ weighted generation needs one; support-map selection fails for missing files
 or unsupported domains before acquisition. If no inner basis file or algorithm
 is specified, the inner grid uses the quadtree algorithm.
 
+Countries of interest usually lie in the inner domain, so the inner basis can
+be region-constrained on its own grid. Region classes are never inherited
+between grids. The inner options mirror the outer
+:ref:`region-class options <region-constrained-basis-classes>`:
+``inner_region_classes_source`` (``"landsea"`` uses ``inner_landsea_path`` or
+the inner domain's packaged map), ``inner_region_classes_path``,
+``inner_region_classes_variable``, ``inner_region_classes_unmapped_values``,
+``inner_region_allocation`` and ``inner_min_regions_per_class``. Invalid
+choices and files fail before acquisition.
+
+.. code-block:: ini
+
+   [INPUT.NESTED_DOMAIN]
+   inner_domain = "6km"
+   inner_basis_algorithm = "region_constrained"
+   inner_nbasis = 80
+   inner_region_classes_source = "file"
+   inner_region_classes_path = "/data/maps/country_EUROPE-6km.nc"
+   inner_region_classes_variable = "country"
+   inner_region_classes_unmapped_values = [-1]
+
 The returned ``NestedOutput`` exposes an outer and an inner ``InversionOutput``
 view. They borrow one sampled trace and retain their separate native bases:
 

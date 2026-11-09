@@ -350,8 +350,9 @@ outer map. Each outer region stays one fixed basis region. The class map
 subdivides only the inner region, and ``nbasis`` counts the inner regions; the
 total state count also includes the fixed outer regions.
 
-Nested inner domains do not inherit the outer class map, so an inner basis
-cannot yet be region-constrained. Selecting and grouping individual countries
+Nested runs select the inner grid's classes independently with
+``inner_basis_algorithm = "region_constrained"`` and the ``inner_region_*``
+options; see :doc:`nested_domains`. Selecting and grouping individual countries
 from one country map (#325) is not yet configurable: prepare a class file
 with the grouped values and select it with ``region_classes_source = "file"``.
 
