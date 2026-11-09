@@ -24,6 +24,6 @@ random_seed = 12345
 # Optional centred additive boundary corrections (observation concentration units).
 # Requires native centered operands and explicit bc_centering_weights; replaces BC scaling.
 # [model.boundary]
-# enabled = true
+# type = "additive"
 # anomaly_scale = 0.5
 # mean_shift_prior = { pdf = "normal", mu = 0.0, sigma = 0.5 }

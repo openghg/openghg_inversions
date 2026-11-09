@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal, cast
+from typing import Any, ClassVar, Literal, cast
 
 import numpy as np
 import pymc as pm
@@ -72,6 +72,8 @@ class AnomalyScalingChoice:
             an unknown or non-finite reference, ``mean_by_period`` without a
             mean prior or frequency, or an invalid frequency or anchor.
     """
+
+    kind: ClassVar[str] = "anomaly_scaling"
 
     mean_prior: Mapping[str, Any] | None
     scale_sd: float
@@ -234,7 +236,7 @@ class AnomalyScalingBoundary(CenteredBoundary):
         """
         reference = self.choice.reference
         return self._outputs(
-            "anomaly_scaling", prefix,
+            prefix,
             # The shared anomaly roles carry the dimensionless scalings v and
             # their contribution A' v through boundary reconstruction.
             roles={"boundary_correction_anomaly": "bc_scaling", "boundary_anomaly_concentration": "mu_bc_scaling"},

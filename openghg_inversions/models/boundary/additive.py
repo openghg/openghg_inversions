@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, get_args
+from typing import Any, ClassVar, get_args
 
 import numpy as np
 import pymc as pm
@@ -90,6 +90,8 @@ class AdditiveChoice:
             required, ``mean_by_period`` without a mean prior or frequency,
             or an invalid frequency or anchor.
     """
+
+    kind: ClassVar[str] = "additive"
 
     mean_prior: Mapping[str, Any] | None
     anomaly_scale: float
@@ -283,7 +285,7 @@ class AdditiveBoundary(CenteredBoundary):
         concentration_units = self.concentration_units
         anomalies = self.anomalies.outputs(concentration_units)
         return self._outputs(
-            "additive", prefix,
+            prefix,
             roles={"boundary_correction": "bc_correction", **anomalies.roles},
             units={"bc_correction": concentration_units, **anomalies.units},
             metadata={"boundary_anomalies": self.choice.anomalies},

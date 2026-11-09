@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 import pytensor.tensor as pt
 import xarray as xr
@@ -84,6 +84,8 @@ class MultiplicativeChoice:
         ValueError: On construction, for an invalid frequency or anchor.
     """
 
+    kind: ClassVar[str] = "multiplicative"
+
     prior: Mapping[str, Any]
     activity: StateActivity | None = None
     frequency: str | None = None
@@ -98,45 +100,59 @@ class MultiplicativeChoice:
         """No mean shift: scaling the whole sensitivity already moves the boundary mean."""
         return MeanShift(None)
 
-    def bind(
-        self, observations: xr.DataArray, sensitivity: xr.DataArray | RawCenteredSensitivity,
-    ) -> MultiplicativeBoundary | CenteredMultiplicativeBoundary:
-        """Bind prepared absolute or centered sensitivity to one fit's rows and periods.
+    def bind(self, observations: xr.DataArray, sensitivity: RawCenteredSensitivity) -> CenteredMultiplicativeBoundary:
+        """Bind prepared centered sensitivity to one fit's rows and periods.
 
         Args:
             observations: One channel's observations with its observation axis
                 first. Its labels select and order the sensitivity rows; its
                 ``time`` values assign rows to boundary periods.
-            sensitivity: Absolute ``H_bc`` in concentration units, or raw
-                centered sensitivity, on the raw ``nmeasure`` or ``time`` axis.
-                A Dataset is centered sensitivity; a DataArray is absolute. Absolute
-                sensitivity already expanded to periods is accepted only without
-                a ``frequency`` or ``anchor_time``.
+            sensitivity: Raw centered sensitivity on the raw ``nmeasure`` or
+                ``time`` axis.
 
         Returns:
-            :class:`MultiplicativeBoundary` holding ``H_bc``, or
-            :class:`CenteredMultiplicativeBoundary` holding ``H_bc_anomaly``,
-            ``H_bc_mass`` and the scalar ``bc_reference``, on
-            ``(observation, state)``. Raw spatial sensitivity and any explicit
-            calendar give a ``bc_region`` state index with
-            ``(bc_curtain, bc_period)`` levels; unmarked absolute sensitivity
-            without a calendar keeps its own state labels. Numerical payloads
-            stay borrowed and lazy.
+            The bound boundary, holding ``H_bc_anomaly``, ``H_bc_mass`` on
+            ``(observation, bc_region)``, where ``bc_region`` indexes
+            ``(bc_curtain, bc_period)`` states, and the scalar
+            ``bc_reference``. Numerical payloads stay borrowed and lazy.
 
         Raises:
-            ValueError: If centered sensitivity is bound without float64
-                PyTensor, periods or indexed timestamps conflict with the
-                observations, or a calendar override is requested for
-                already-expanded absolute sensitivity.
+            ValueError: If PyTensor is not configured for float64, or periods or
+                indexed timestamps conflict with the observations.
         """
-        if isinstance(sensitivity, xr.Dataset):
-            return CenteredMultiplicativeBoundary(self, BoundCenteredSensitivity.bind(
-                sensitivity, observations, frequency=self.frequency, anchor_time=self.anchor_time,
-            ))
-        absolute = bind_boundary_sensitivity(
+        return CenteredMultiplicativeBoundary(self, BoundCenteredSensitivity.bind(
+            sensitivity, observations, frequency=self.frequency, anchor_time=self.anchor_time,
+        ))
+
+    def bind_absolute(self, observations: xr.DataArray, sensitivity: xr.DataArray) -> MultiplicativeBoundary:
+        """Bind prepared absolute sensitivity ``H_bc`` to one fit's rows and periods.
+
+        Only the multiplicative family scales absolute sensitivity; see
+        :func:`~openghg_inversions.models.boundary.bind_prepared`.
+
+        Args:
+            observations: As for :meth:`bind`.
+            sensitivity: Absolute ``H_bc`` in concentration units on the raw
+                ``nmeasure`` or ``time`` axis. Sensitivity already expanded to
+                periods is accepted only without a ``frequency`` or
+                ``anchor_time``.
+
+        Returns:
+            The bound boundary, holding ``H_bc`` on ``(observation, state)``.
+            Raw spatial sensitivity and any explicit calendar give a
+            ``bc_region`` state index with ``(bc_curtain, bc_period)`` levels;
+            unmarked sensitivity without a calendar keeps its own state
+            labels. The payload stays borrowed and lazy.
+
+        Raises:
+            ValueError: If periods or indexed timestamps conflict with the
+                observations, or a calendar override is requested for
+                already-expanded sensitivity.
+        """
+        bound = bind_boundary_sensitivity(
             sensitivity, observations, frequency=self.frequency, anchor_time=self.anchor_time,
         )
-        return MultiplicativeBoundary(self, absolute.rename("H_bc").to_dataset())
+        return MultiplicativeBoundary(self, bound.rename("H_bc").to_dataset())
 
 
 def _add_scaling(choice: MultiplicativeChoice, sensitivity: xr.DataArray, *, output_dim: str, prefix: str,
@@ -251,7 +267,7 @@ class MultiplicativeBoundary:
         if concentration_units is not None:
             units.update(mu_bc=concentration_units, hbc=concentration_units)
         metadata = {
-            "boundary_formulation": "multiplicative",
+            "boundary_formulation": self.choice.kind,
             "bc_frequency": self.choice.frequency,
             "bc_anchor_time": None if self.choice.anchor_time is None else str(self.choice.anchor_time),
         }
@@ -345,7 +361,7 @@ class CenteredMultiplicativeBoundary(CenteredBoundary):
             applied to both role keys and graph names; metadata is unprefixed.
         """
         roles, units = _multiplicative_roles()
-        return self._outputs("multiplicative", prefix, roles=roles, units=units, metadata={})
+        return self._outputs(prefix, roles=roles, units=units, metadata={})
 
 
 __all__ = [

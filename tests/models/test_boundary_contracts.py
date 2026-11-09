@@ -259,7 +259,7 @@ def test_unweighted_families_share_the_centered_contract_without_weights():
 def test_absolute_multiplicative_route_keeps_its_own_layout():
     """Absolute transport is bound without centered assumptions."""
     absolute = _raw_on_nmeasure().H_bc_anomaly.rename("H_bc")
-    bound = MultiplicativeChoice({"pdf": "lognormal", "mu": 0.0, "sigma": 0.1}).bind(_observations(), absolute)
+    bound = MultiplicativeChoice({"pdf": "lognormal", "mu": 0.0, "sigma": 0.1}).bind_absolute(_observations(), absolute)
     assert set(bound.data.data_vars) == {"H_bc"}
     assert isinstance(bound, MultiplicativeBoundary)
     with pytest.raises(ValueError, match="missing keys.*H_bc_anomaly"):
