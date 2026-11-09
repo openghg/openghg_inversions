@@ -208,7 +208,7 @@ def test_likelihood_representation_keeps_absolute_mean_without_shifts() -> None:
 
 
 def test_likelihood_representation_sums_centered_contributions_against_shifted_observations() -> None:
-    observations = xr.DataArray([209_301.0, 209_402.0], dims="nmeasure")
+    observations = xr.DataArray([209_301.0, 209_402.0], dims="nmeasure", attrs={"units": "ppm"})
     flux = pt.as_tensor_variable(np.array([1.0, 2.0]))
     centered = pt.as_tensor_variable(np.array([1e-9, -2e-9]))
     shift = xr.DataArray([209_300.0, 209_400.0], dims="nmeasure")
@@ -220,7 +220,7 @@ def test_likelihood_representation_sums_centered_contributions_against_shifted_o
 
     # The small centered signal survives because the shift is never subtracted from the mean.
     np.testing.assert_array_equal(mean.eval(), [1.0 + 1e-9, 2.0 - 2e-9])
-    xr.testing.assert_identical(translated, observations - shift)
+    xr.testing.assert_identical(translated, (observations - shift).assign_attrs(units="ppm"))
     np.testing.assert_array_equal(model["boundary_reference_shift"].eval(), shift.values)
 
 
