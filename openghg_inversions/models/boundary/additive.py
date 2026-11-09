@@ -201,10 +201,10 @@ class AdditiveBoundary(CenteredBoundary):
         return Anomalies(self.choice.anomalies, self.choice.anomaly_scale, self.has_anomalies)
 
     def anomaly_factor(self) -> xr.DataArray | None:
-        """Observation-space anomaly design scaled to standard-normal coordinates.
+        """Observation-space anomaly sensitivity scaled to standard-normal coordinates.
 
-        The design stays lazy with the sensitivity, so it can be combined with
-        other designs before joint materialization.
+        The result stays lazy with the bound sensitivity, so it can be
+        combined with other sensitivities before joint materialization.
 
         Returns:
             ``s M B`` in concentration units: on ``(observation,
@@ -222,8 +222,8 @@ class AdditiveBoundary(CenteredBoundary):
             return None
         basis = anomaly_basis(anomalies.structure, self.data.bc_region, anomalies.weights(self.data))
         mass = self.data.H_bc_mass
-        design = mass if basis is None else xr.dot(mass, basis, dim="bc_region")
-        return (design * anomalies.scale).assign_attrs(units=self.concentration_units)
+        sensitivity = mass if basis is None else xr.dot(mass, basis, dim="bc_region")
+        return (sensitivity * anomalies.scale).assign_attrs(units=self.concentration_units)
 
     def add(self, *, output_dim: str = "nmeasure", prefix: str = "", owner: str | None = "bc") -> AffineConcentrationTerm:
         """Add the mean shift, anomalies and boundary concentration to the current model.
