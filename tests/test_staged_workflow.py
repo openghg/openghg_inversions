@@ -12,10 +12,9 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.cli import build_parser
-from openghg_inversions.rhime.requests import load_params
+from openghg_inversions.cli import build_parser, main
 from openghg_inversions.inversion_data import PreparedInputs
-from openghg_inversions.inference import diagnostics as inference_diagnostics
+from openghg_inversions.rhime.requests import load_params
 from openghg_inversions.rhime.stages import (
     CONVERGENCE_CHECK_NAME,
     diagnose_rhime_stage,
@@ -147,7 +146,10 @@ def test_diagnostics_emit_issue_667_convergence_signals(
 ) -> None:
     rng = np.random.default_rng(42)
     posterior = xr.Dataset(
-        {"x": (("chain", "draw", "region"), rng.normal(size=(4, 500, 2)))},
+        {
+            "x": (("chain", "draw", "region"), rng.normal(size=(4, 500, 2))),
+            "epsilon": (("chain", "draw", "nmeasure"), np.ones((4, 500, 20))),
+        },
         coords={"chain": range(4), "draw": range(500), "region": ["north", "south"]},
     )
     diverging = np.zeros((4, 500), dtype=bool)
@@ -159,6 +161,7 @@ def test_diagnostics_emit_issue_667_convergence_signals(
             coords={"chain": range(4), "draw": range(500)},
         ),
     )
+    idata.attrs["sampler_convergence_variables"] = json.dumps(["x"])
     posterior_path = tmp_path / "posterior.nc"
     save_trace(idata, posterior_path)
     engines: list[str | None] = []
@@ -175,121 +178,61 @@ def test_diagnostics_emit_issue_667_convergence_signals(
     assert result["name"] == CONVERGENCE_CHECK_NAME
     assert result["status"] == "fail"
     assert result["measured_values"]["chains"] == 4
+    assert result["measured_values"]["assessed_variables"] == ["x"]
     assert result["measured_values"]["draws_per_chain"] == 500
     assert result["measured_values"]["divergences"] == 1
-    assert result["measured_values"]["divergences_by_chain"] == [0, 0, 1, 0]
-    assert result["measured_values"]["max_rhat_variable"] is not None
-    assert result["measured_values"]["min_bulk_ess_variable"] is not None
-    assert result["measured_values"]["min_tail_ess_variable"] is not None
+    assert result["measured_values"]["arviz_has_errors"] is True
+    assert result["thresholds"] == {"policy": "arviz.diagnose defaults"}
     assert Path(result["artifact_paths"][0]).is_file()
     assert engines == [None]
 
 
-def test_diagnostics_preserve_threshold_edge_values(
+@pytest.mark.parametrize(("strict", "raises"), [(False, False), (True, True)])
+def test_diagnose_cli_prints_json_and_strict_failure_exit(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    strict: bool,
+    raises: bool,
 ) -> None:
-    """Unrounded diagnostics just beyond convergence thresholds must fail."""
-
-    idata = make_trace(
-        posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((2, 4)))}),
-        sample_stats=xr.Dataset({"diverging": (("chain", "draw"), np.zeros((2, 4), dtype=bool))}),
-    )
-    posterior_path = tmp_path / "posterior.nc"
-    save_trace(idata, posterior_path)
-
-    def fake_summary(*args: object, **kwargs: object) -> xr.Dataset:
-        """Return diagnostic values that default ArviZ rounding can hide."""
-        assert kwargs["round_to"] == "none"
-        return xr.Dataset(
-            {"x": ("metric", [1.0101, 399.99, 399.99])},
-            coords={"metric": ["r_hat", "ess_bulk", "ess_tail"]},
-        )
-
-    monkeypatch.setattr(inference_diagnostics.az, "summary", fake_summary)
-
-    result = diagnose_rhime_stage(posterior=posterior_path, output_dir=tmp_path / "diagnose")
-
-    assert result["status"] == "fail"
-    assert result["measured_values"]["max_rhat"] == 1.0101
-    assert result["measured_values"]["min_bulk_ess"] == 399.99
-    assert result["measured_values"]["min_tail_ess"] == 399.99
-
-
-@pytest.mark.parametrize(("finite_rhat", "expected_status"), [(1.0, "unknown"), (1.2, "fail")])
-def test_diagnostics_preserve_finite_failures_when_one_metric_is_nonfinite(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    finite_rhat: float,
-    expected_status: str,
-) -> None:
-
-    idata = make_trace(
-        posterior=xr.Dataset(
-            {"x": (("chain", "draw", "region"), np.ones((2, 4, 2)))},
-            coords={"chain": range(2), "draw": range(4), "region": ["known", "undefined"]},
-        ),
-        sample_stats=xr.Dataset(
-            {"diverging": (("chain", "draw"), np.zeros((2, 4), dtype=bool))},
-            coords={"chain": range(2), "draw": range(4)},
-        ),
-    )
-    posterior_path = tmp_path / "posterior.nc"
-    save_trace(idata, posterior_path)
-    summary = xr.Dataset(
-        {
-            "x": (
-                ("metric", "region"),
-                [[finite_rhat, np.nan], [800.0, 800.0], [700.0, 700.0]],
-            )
-        },
-        coords={"metric": ["r_hat", "ess_bulk", "ess_tail"], "region": ["known", "undefined"]},
-    )
-    monkeypatch.setattr(inference_diagnostics.az, "summary", lambda *args, **kwargs: summary)
-
-    result = diagnose_rhime_stage(posterior=posterior_path, output_dir=tmp_path / "diagnose")
-
-    assert result["status"] == expected_status
-    assert result["measured_values"]["max_rhat"] == finite_rhat
-    assert result["measured_values"]["unassessable_rhat"] == ["x,region=undefined"]
-    assert "max_rhat" in result["message"]
-
-
-def test_diagnostics_handle_unassessable_scalar_metric(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-
-    idata = make_trace(
-        posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((2, 4)))}),
-        sample_stats=xr.Dataset({"diverging": (("chain", "draw"), np.zeros((2, 4), dtype=bool))}),
-    )
-    posterior_path = tmp_path / "posterior.nc"
-    save_trace(idata, posterior_path)
+    """The CLI always prints CheckResult JSON and opts into failure exits."""
+    result = {
+        "schema_version": 1,
+        "name": "sampler-convergence",
+        "status": "fail",
+        "producer": "openghg_inversions",
+        "measured_values": {},
+        "thresholds": {},
+        "message": "failed",
+        "artifact_paths": [],
+        "stage": "posterior",
+    }
     monkeypatch.setattr(
-        inference_diagnostics.az,
-        "summary",
-        lambda *args, **kwargs: xr.Dataset(
-            {"x": ("metric", [np.nan, 800.0, 700.0])},
-            coords={"metric": ["r_hat", "ess_bulk", "ess_tail"]},
-        ),
+        "openghg_inversions.rhime.stages.diagnose_rhime_stage",
+        lambda **kwargs: result,
     )
+    args = ["diagnose", "--posterior", "posterior.nc", "--output-dir", "diagnostics"]
+    if strict:
+        args.append("--strict")
 
-    result = diagnose_rhime_stage(posterior=posterior_path, output_dir=tmp_path / "diagnose")
+    if raises:
+        with pytest.raises(SystemExit, match="1"):
+            main(args)
+    else:
+        main(args)
 
-    assert result["status"] == "unknown"
-    assert result["measured_values"]["unassessable_rhat"] == ["x"]
+    assert json.loads(capsys.readouterr().out) == result
 
 
 @pytest.mark.parametrize(
     "thresholds",
     [
-        {"max_rhat": np.nan},
-        {"max_rhat": np.inf},
-        {"max_rhat": 0.99},
-        {"min_bulk_ess": np.nan},
-        {"min_tail_ess": -1.0},
-        {"max_divergences": -1},
+        {"rhat_max": np.nan},
+        {"rhat_max": np.inf},
+        {"rhat_max": 0.99},
+        {"ess_min_ratio": np.nan},
+        {"bfmi_threshold": -1.0},
+        {"ess_threshold": -1},
+        {"ess_threshold": 2.5},
     ],
 )
 def test_diagnostics_reject_invalid_thresholds_before_loading(
@@ -390,46 +333,6 @@ def test_co2_stage_override_paths_use_invocation_directory(tmp_path, monkeypatch
     assert Co2PreparationConfig.from_params(loaded).preparation_arguments()["prepared_path"] == tmp_path / "selected.nc"
     assert resolve_co2_output(loaded)["output"].country_file == tmp_path / "country.nc"
     assert overrides["prepared_inputs"]["path"] == "selected.nc"
-
-
-@pytest.mark.parametrize("ordinary,sigma,expected", [
-    ([False, True], None, 1),
-    (None, [True, False], 1),
-    ([False, True], [True, False], 2),
-    ([True, False], [True, False], 1),
-    (None, None, None),
-])
-def test_diagnostics_count_any_nuts_divergence_and_strict_cli(
-    tmp_path, monkeypatch, ordinary, sigma, expected,
-):
-    from openghg_inversions.cli import main
-
-    stats = {
-        name: (("chain", "draw"), [flags])
-        for name, flags in (("diverging", ordinary), ("sigma_nuts_diverging", sigma))
-        if flags is not None
-    }
-    idata = make_trace(
-        posterior=xr.Dataset({"x": (("chain", "draw"), [[0.0, 1.0]])}),
-        sample_stats=xr.Dataset(stats),
-    )
-    posterior = tmp_path / "posterior.nc"
-    save_trace(idata, posterior)
-    monkeypatch.setattr(inference_diagnostics.az, "summary", lambda *args, **kwargs: xr.Dataset(
-        {"x": ("metric", [1.0, 800.0, 700.0])},
-        coords={"metric": ["r_hat", "ess_bulk", "ess_tail"]},
-    ))
-    result = diagnose_rhime_stage(posterior=posterior, output_dir=tmp_path / "diagnose")
-    assert result["measured_values"]["divergences"] == expected
-    assert result["measured_values"]["divergences_by_chain"] == ([expected] if expected is not None else None)
-    assert result["status"] == ("fail" if expected else "unknown")
-    args = ["diagnose", "--posterior", str(posterior), "--output-dir", str(tmp_path / "cli"), "--strict"]
-    if expected:
-        with pytest.raises(SystemExit) as caught:
-            main(args)
-        assert caught.value.code == 1
-    else:
-        main(args)
 
 
 @pytest.mark.parametrize("model", ["standard", "multisector", "co2", "co2_o2"])
