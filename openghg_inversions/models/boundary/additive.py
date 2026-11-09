@@ -109,7 +109,17 @@ class AdditiveChoice:
             # Period starts from the fit calendar are nanosecond timestamps.
             weights = weights.assign_coords(bc_period=periods.as_unit("ns"))
         weights = weights.stack(bc_region=("bc_curtain", "bc_period"))
-        xr.align(data.H_bc_anomaly, weights, join="exact", copy=False, exclude={str(observations.dims[0])})
+        try:
+            xr.align(data.H_bc_anomaly, weights, join="exact", copy=False, exclude={str(observations.dims[0])})
+        except ValueError as exc:
+            bound, given = set(data.indexes["bc_region"]), set(weights.indexes["bc_region"])
+            raise ValueError(
+                "Centering-weight labels do not align with the bound boundary states. Weights must be "
+                "labelled by every (bc_curtain, bc_period) state of this fit's calendar, where bc_period is "
+                "the interval start (the first selected observation time when there is no frequency). "
+                f"Missing from the weights: {sorted(bound - given, key=str)[:5]}; "
+                f"unexpected in the weights: {sorted(given - bound, key=str)[:5]}."
+            ) from exc
         # Labels match exactly, so the bound state index is reused for the weights.
         return AdditiveBoundary(self, data.assign(bc_centering_weights=weights.variable))
 
