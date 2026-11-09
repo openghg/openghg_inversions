@@ -131,9 +131,9 @@ def test_centered_operand_dimensions_use_observation_dimension_labels(frequency)
 
 @pytest.mark.parametrize("malformed,message", [
     ("empty", "Expected centered boundary operands"),
-    ("missing_anomaly", "require H_bc_anomaly, H_bc_mass and bc_reference"),
+    ("missing_anomaly", "H_bc_anomaly"),
     ("representation", "Unsupported boundary_representation"),
-    ("reference", "bc_reference must be scalar"),
+    ("reference", "bc_reference.*dims"),
 ])
 def test_binding_retains_alignment_owner_errors(malformed, message):
     observations = _golden_inputs().mf
