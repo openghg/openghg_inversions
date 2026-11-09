@@ -12,6 +12,12 @@ Repository plans retain delivery history, proposals, research, and validation ev
 
 - OPE-152: the [fixed-OU likelihood and cached quadratic explanation](../development/fixed_ou_likelihood.rst) is maintained in the developer guide. The [evidence index](../development/fixed_ou_evidence.rst) preserves immutable links to the dated reports, scripts, timing tables and research proposals removed from the current tree.
 
+## Later delivery records
+
+| Record | Status / maintained explanation | Owning issues |
+| --- | --- | --- |
+| [Validation-library evaluation and delivery](validation_prototype_followup.md) | Retain the dated 20 October research and the 9 November delivery update. PR #905 adopts merged-input schema validation for standard/multisector preparation and generates its reference; the configuration proposal remains separate. Supported behavior is documented in [customising RHIME](../usage/customising_rhime.rst) and the [generated schema reference](../reference/merged_input_schemas.rst). | [#665](https://github.com/openghg/openghg_inversions/issues/665), [#818](https://github.com/openghg/openghg_inversions/issues/818), [#1031](https://github.com/openghg/openghg_inversions/issues/1031); merge status: [#905](https://github.com/openghg/openghg_inversions/pull/905) |
+
 ## Inventory and remaining cleanup
 
 This inventory accounts for all 28 Markdown records present at `devel` revision `42a32f62` on 12 October 2026. **The dispositions below are proposed follow-up work, except for the three records already in `archive/`.** This first slice extracts numerical ownership explanation and corrects the strongest status/authority conflicts. It does not move the other plans or claim their remaining tasks are delivered.

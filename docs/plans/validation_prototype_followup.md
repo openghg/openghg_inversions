@@ -1,32 +1,49 @@
-# Validation prototype follow-up
+# Validation-library evaluation and delivery record
 
 **Date:** 20 October 2026
 
-**Status:** research and experimental implementation scope; not an adopted capability or serialization policy
+**Status:** dated research with a delivery update below; PR #905 adopts merged-input validation for standard and multisector preparation. Configuration and serialization proposals remain separate.
 
 **Baseline:** `devel` at `b87f315fb29b80085ea3c5358787a0a2e93c2ff2`
 
-This note keeps the research, prototype boundaries and related issue priorities
-together. It records the choices to exercise in two prototypes, rather than
-commissioning a general validation framework or claiming that the outstanding
-issues are implemented. The earlier [validation-library research](validation_library_research.md)
+The original 20 October sections below preserve the research, prototype
+boundaries and related issue priorities. They record the choices evaluated in
+two prototypes; the delivery update distinguishes what #905 adopts from the
+remaining work. The earlier [validation-library research](validation_library_research.md)
 contains the package comparison and its limitations; it remains dated research.
 Maintained guidance is [validation and xarray](../development/validation_and_xarray.rst),
 [numerical array ownership](../development/numerical_array_ownership.rst) and
 [RHIME model development](../development/rhime_model_development.rst).
 
-The #905 comparison refresh integrates `devel` at `eaa5d7c23` (6 November 2026).
+## Delivery update — 9 November 2026
+
+PR [#905](https://github.com/openghg/openghg_inversions/pull/905) adopts
+`xarray-validate` at every standard and multisector merged-input preparation
+boundary, including staged runs and package-acquired inputs. It also generates
+the schema reference and removes the blanket eager filter retry for #818.
+The PR owns merge status; this record does not claim it has already landed.
+Nested and CO2 preparation retain their existing validation paths.
+
+The #905 refresh integrates `devel` at `eaa5d7c23` (6 November 2026).
 The baseline and issue map below remain dated research. Current public handoffs
 are `MergedData` and `PreparedInputs`; retired names are not restored. Native
 flux validation preserves the explicit surface route's compatible-unit conversion
 in `resolve_runtime_flux`, while the legacy route keeps its canonical-scale
-requirement. This integration does not adopt the prototype for production.
+requirement. Independently supplied sites and error/response/ordinary-BC fields
+with inconsistent concentration numerical scales are rejected before filtering;
+the validator does not convert their values. Maintained usage and schema details
+are in [customising RHIME](../usage/customising_rhime.rst) and the
+[generated schema reference](../reference/merged_input_schemas.rst).
 
 [Issue #1031](https://github.com/openghg/openghg_inversions/issues/1031) now
 tracks adoption of schema-bearing static xarray contracts, starting with
 centered boundary data. Its specification, producer and consumer work are
-scoped in #1032, #1033 and #1034. This prototype supplies the schema-library
-evaluation; it does not yet implement those typed contracts.
+scoped in #1032, #1033 and #1034, with implementation in #1037 and #1038.
+The merged-input validation in #905 does not implement those typed contracts.
+
+The remaining sections preserve the original 20 October proposals and issue
+map. Their prototype language records that evaluation stage, not the delivery
+status of #905. The separate configuration comparison remains #906.
 
 ## Landed baseline
 

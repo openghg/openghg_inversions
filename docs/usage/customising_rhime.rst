@@ -216,8 +216,8 @@ input identities default to unknown without replacing supplied identities.
 Validate customised merged arrays
 ---------------------------------
 
-This branch prototypes an ``xarray-validate`` schema at the acquired-data
-boundary. ``MergedData`` contains ordinary borrowed ``xr.Dataset`` sites.
+Standard and multisector preparation use ``xarray-validate`` schemas at the
+acquired-data boundary. ``MergedData`` contains ordinary borrowed ``xr.Dataset`` sites.
 Construction checks the dataset containers, selector labels and provenance
 labels. ``validate_for_preparation`` separately compares known acquisition
 facts with a request. Neither operation computes numerical arrays.
@@ -225,6 +225,11 @@ facts with a request. Neither operation computes numerical arrays.
 ``prepare_standard`` and ``prepare_multisector`` call
 ``merged.validate_scientific_inputs`` before deriving errors or filtering.
 Their full runners and saved preparation commands use these same functions.
+These checks apply to every standard and multisector preparation, whether the
+data was acquired by the package or supplied by the caller. Nested-domain and
+CO2-family preparation retain their existing validation paths and do not call
+this merged-input validator. Typed centered-boundary contracts are a separate
+application of the schema library.
 The :doc:`generated merged-input schema reference </reference/merged_input_schemas>`
 lists required variables, dimensions, dtypes, coordinates and attributes for
 selected standard, multisector, ordinary-BC and centered-BC variants. Its tables
@@ -256,6 +261,11 @@ units: native flux resolution converts these before combining sources. Validatio
 checks their compatibility without converting or executing them. Inventory and
 observation times are independent. For other routes, convert externally supplied
 quantities with Pint before entering preparation when their scales differ.
+
+This validation tightens the handling of independently supplied inputs: sites
+with different observation numerical scales, and explicit error, response or
+ordinary-BC units at a different scale, now fail before filtering. These values
+are not implicitly converted. Equal-scale expressions remain interchangeable.
 
 Inspect or apply the concrete site schema explicitly during customisation::
 
