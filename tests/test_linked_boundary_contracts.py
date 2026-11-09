@@ -7,7 +7,9 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.models import registered_model
-from openghg_inversions.models.boundary import BoundAdditiveSensitivity, BoundCenteredSensitivity, MultiplicativeChoice
+from openghg_inversions.models.boundary import (
+    BoundAdditiveSensitivity, BoundCenteredSensitivity, MultiplicativeBoundary,
+)
 from openghg_inversions.rhime.co2.co2_o2_model import pad_linked_boundary
 from boundary_test_utils import bound_linked_model_arguments
 from test_co2_o2_additive_boundary import _additive_inputs
@@ -100,7 +102,7 @@ def test_padding_supports_absolute_multiplicative_transport():
         **kwargs, "boundary_sensitivity": {"co2": absolute}, "bc_prior": {"co2": {"pdf": "lognormal", "mu": 0.0, "sigma": 0.1}},
     })
     bound = arguments["boundary"]["co2"]
-    assert isinstance(bound.choice, MultiplicativeChoice) and not bound.centered
+    assert isinstance(bound, MultiplicativeBoundary)
     padded = pad_linked_boundary(bound, arguments["observations"], "co2")
     assert padded.data.H_bc.dims == (arguments["observations"].dims[0], "bc_state")
     assert padded.data.indexes["bc_state"].equals(bound.data.indexes["bc_state"])

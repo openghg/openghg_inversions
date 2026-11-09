@@ -81,9 +81,10 @@ def test_additive_public_build_save_reload_and_reconstruction(tmp_path, cached, 
     assert replay.constant_data.bc_anomaly_scale.item() == pytest.approx(anomaly_scale)
     assert replay.constant_data.bc_anomaly_scale.attrs["units"] == "ppm"
     if anomaly_scale == 0:
+        for name in ("bc_anomaly", "mu_bc_anomaly"):
+            np.testing.assert_array_equal(replay.constant_data[name], 0.0)
         for group in ("prior", "posterior"):
-            np.testing.assert_array_equal(replay[group]["bc_anomaly"], 0.0)
-            np.testing.assert_array_equal(replay[group]["mu_bc_anomaly"], 0.0)
+            assert "bc_anomaly" not in replay[group] and "mu_bc_anomaly" not in replay[group]
             np.testing.assert_array_equal(components[f"boundary_anomaly_{group}"], 0.0)
             np.testing.assert_array_equal(components[f"boundary_anomaly_contribution_{group}"], 0.0)
     assert np.abs(replay.prior_predictive.y - replay.prior.modelled_concentration).max() < 5.0
