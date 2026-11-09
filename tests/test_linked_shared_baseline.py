@@ -366,3 +366,13 @@ def test_linked_prior_label_order_is_part_of_identity(dimension):
     frozen["o2"] = replace(frozen["o2"], data=frozen["o2"].data.isel({dimension: slice(None, None, -1)}))
     with pytest.raises(ValueError, match="identical"):
         _linked_inputs(frozen, base.observations, _independent_error(base), aggregation_error=base.aggregation_error)
+
+
+def test_linked_inputs_require_row_observation_units():
+    """A missing per-row unit coordinate is a validation error, not an AttributeError."""
+    import openghg_inversions.rhime.co2.linked_shared_baseline_model as recipe
+
+    frozen, base, _ = case()
+    observations = base.observations.drop_vars("observation_units")
+    with pytest.raises(ValueError, match="observation_units"):
+        recipe._linked_inputs(frozen, observations, _independent_error(base), aggregation_error=base.aggregation_error)

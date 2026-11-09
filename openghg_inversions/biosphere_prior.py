@@ -37,7 +37,13 @@ class BiospherePrior:
     positive_prior: CorrelatedLognormalPrior | None
 
     def to_dataset(self) -> xr.Dataset:
-        """Return the labelled serialization payload, including baseline moments."""
+        """Return the labelled serialization payload, including baseline moments.
+
+        Returns:
+            The stored Dataset itself, not a copy: baseline and calibrated
+            moments, selectors, functionals and policy metadata, in the layout
+            :meth:`from_dataset` reads.
+        """
         return self.data
 
     @classmethod
@@ -55,6 +61,13 @@ class BiospherePrior:
         Returns:
             Validated frozen prior with the saved covariance as its sampling target;
             no regression, calibration target, or transport preparation is repeated.
+
+        Raises:
+            ValueError: If the schema, family or policy is unsupported, a stored
+                array has the wrong dimensions or non-finite values, the GPP/TER
+                weights, selector or units are invalid, the stored metadata is
+                inconsistent, or the saved moments do not preserve the protected
+                covariance rows or the net-functional covariance.
         """
         if data.attrs.get("biosphere_prior_schema") != "openghg_inversions.biosphere_prior/v1":
             raise ValueError("Unsupported biosphere-prior schema; prepare again.")
@@ -140,6 +153,17 @@ class BiospherePrior:
         Calibrate the full prior first. This supports enhancement-only inputs
         whose retained operators and aggregation covariance were prepared
         separately. It does not regenerate a transport reduction.
+
+        Args:
+            labels: State labels to select, in the order wanted.
+
+        Returns:
+            Lognormal prior with the calibrated arithmetic mean and covariance
+            restricted to ``labels``.
+
+        Raises:
+            ValueError: If the prior is Gaussian, or the labels are duplicated
+                or not in the full state.
         """
         if self.positive_prior is None:
             raise ValueError("This selection requires the lognormal family.")

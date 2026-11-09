@@ -149,3 +149,22 @@ def test_prior_posterior_and_predictive_axes_remain_independent(saved):
         native_observed = _native_channel(prepared.observations, channel, str(h.dims[0]))
         expected = expected.assign_coords(native_observed.coords)
         xr.testing.assert_allclose(values.physical_ff_posterior, expected)
+
+
+def test_in_memory_preparation_with_extra_row_coordinates_matches_its_saved_snapshot(saved):
+    """Snapshots keep only consumed row coordinates, so extra observation metadata must not break products."""
+    from dataclasses import replace
+
+    from openghg_inversions.rhime.co2.shared_outputs import validate_shared_baseline_trace
+
+    prepared, trace = saved
+    extended = {}
+    for channel, bound in prepared.shared_baseline.items():
+        row = bound.data.attrs["native_observation_dim"]
+        inlet = xr.DataArray(["10m"] * bound.data.sizes[row], dims=row)
+        extended[channel] = replace(bound, data=bound.data.assign_coords(inlet=inlet))
+    validate_shared_baseline_trace(trace, replace(prepared, shared_baseline=extended))
+    changed = {**extended, "co2": replace(extended["co2"], data=extended["co2"].data.assign(
+        bc_reference_shift=extended["co2"].data.bc_reference_shift + 1.0))}
+    with pytest.raises(ValueError, match="differs from the preparation"):
+        validate_shared_baseline_trace(trace, replace(prepared, shared_baseline=changed))

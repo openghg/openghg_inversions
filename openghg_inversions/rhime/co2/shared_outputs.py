@@ -58,7 +58,11 @@ def validate_shared_baseline_trace(trace: xr.DataTree, prepared: Co2O2PreparedIn
         if prepared is not None:
             if channel not in prepared.shared_baseline:
                 raise ValueError("Linked shared outputs require a shared-baseline preparation.")
-            if not trace.children[name].to_dataset(inherit=False).identical(prepared.shared_baseline[channel].data):
+            # The saved snapshot keeps only consumed row coordinates; compare like with like.
+            from .shared_preparation import _consumed_coordinates
+            native_rows = (str(prepared.co2_sensitivity.dims[0]), str(prepared.o2_sensitivity.dims[0]))
+            expected = _consumed_coordinates(prepared.shared_baseline[channel].data, native_rows=native_rows)
+            if not trace.children[name].to_dataset(inherit=False).identical(expected):
                 raise ValueError(f"Saved {channel} shared baseline differs from the preparation.")
         frozen = trace.children[name].to_dataset(inherit=False)
         from .shared_preparation import SHARED_SNAPSHOT_SCHEMA

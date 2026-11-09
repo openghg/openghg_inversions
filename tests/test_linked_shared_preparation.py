@@ -519,3 +519,24 @@ def test_snapshot_rejects_changed_stored_reference_with_equal_physical_boundary(
     np.testing.assert_allclose(frozen.bc_prescribed_centered + frozen.bc_reference_shift, frozen.physical_bc_prior)
     with pytest.raises(ValueError, match="stored reference values must match"):
         Co2O2PreparedInputs.from_datatree(tree)
+
+
+def test_reduced_operator_identity_allows_summation_order_roundoff():
+    """Chunked and eager sums of many mixed-sign terms agree only to summation roundoff."""
+    from openghg_inversions.rhime.co2.shared_preparation import _same_array
+
+    rng = np.random.default_rng(0)
+    h = xr.DataArray(rng.normal(size=(4, 3000)), dims=("row", "state"))
+    mean = xr.DataArray(rng.lognormal(size=3000), dims="state")
+    eager = xr.dot(h, mean, dim="state")
+    chunked = xr.dot(h.chunk(state=500), mean.chunk(state=500), dim="state").compute()
+    scale = xr.dot(abs(h), abs(mean), dim="state")
+    for _ in range(20):
+        order = rng.permutation(3000)
+        reordered = xr.dot(h.isel(state=order), mean.isel(state=order), dim="state")
+        _same_array(reordered, eager, "complete_prior_concentration", roundoff=(scale, 3000))
+    _same_array(chunked, eager, "complete_prior_concentration", roundoff=(scale, 3000))
+    with pytest.raises(ValueError, match="values must match"):
+        _same_array(eager * (1 + 1e-9), eager, "complete_prior_concentration", roundoff=(scale, 3000))
+    with pytest.raises(ValueError, match="values must match"):
+        _same_array(chunked, eager.copy(data=eager.data + 1e-15), "flux_sensitivity")

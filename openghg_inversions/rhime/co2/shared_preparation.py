@@ -184,8 +184,22 @@ def _native_raw_boundary(raw: xr.Dataset, row: str, observations: xr.DataArray) 
 
 
 def _same_array(
-    left: xr.DataArray, right: xr.DataArray, name: Hashable, *, allow_roundoff: bool = False,
+    left: xr.DataArray, right: xr.DataArray, name: Hashable, *, roundoff: tuple[xr.DataArray, int] | None = None,
 ) -> None:
+    """Require equal labels and values; reduced operators may differ by summation roundoff.
+
+    Args:
+        left: Saved array.
+        right: Recomputed array.
+        name: Name used in error messages.
+        roundoff: For reduced operators, ``(scale, terms)``: the sum of the
+            absolute values of the summed terms on ``right``'s axes, and how
+            many terms each element sums. ``None`` requires exact equality.
+
+    Raises:
+        ValueError: If labels, coordinates or values differ beyond the allowed
+            roundoff.
+    """
     if left.dims != right.dims or left.sizes != right.sizes or any(
         (dim in left.indexes) != (dim in right.indexes)
         or (dim in left.indexes and not left.indexes[dim].equals(right.indexes[dim])) for dim in left.dims
@@ -194,9 +208,14 @@ def _same_array(
     if not isinstance(left.data, DaskArray) and not isinstance(right.data, DaskArray):
         if not left.variable.equals(right.variable):
             # Dask and NumPy reductions may accumulate the same operands in a
-            # different order. Direct scientific input identities remain exact.
-            tolerance = 32 * np.finfo(np.float64).eps
-            if not allow_roundoff or not np.allclose(left.data, right.data, rtol=tolerance, atol=tolerance):
+            # different order; two orders of an n-term sum differ by at most about
+            # 2 n eps times the sum of absolute terms. Direct input identities remain exact.
+            if roundoff is None:
+                raise ValueError(f"Shared baseline {name} values must match.")
+            scale, terms = roundoff
+            eps = np.finfo(np.float64).eps
+            allowed = 2 * max(terms, 1) * eps * np.asarray(scale.transpose(*right.dims).data) + 32 * eps * np.abs(right.data)
+            if not np.all(np.abs(np.asarray(left.data) - np.asarray(right.data)) <= allowed):
                 raise ValueError(f"Shared baseline {name} values must match.")
     for coordinate in right.coords:
         if coordinate not in left.coords:
@@ -254,9 +273,28 @@ def _validate_operator_identity(
                     physical_bc_prior=anomaly + shift)
     expected["physical_prior_baseline"] = fixed + anomaly + shift + physical_outer
     expected["complete_prior_concentration"] = fixed + anomaly + shift + xr.dot(h, prior.mean, dim=dim)
+    # Absolute-term sums bound the roundoff of each reduced operator.
+    outer_scale = xr.dot(abs(h.where(outer, 0)), abs(prior.mean), dim=dim)
+    fixed_scale = abs(fixed) + outer_scale
+    if multi:
+        fixed_scale = fixed_scale + xr.dot(abs(centered.where(sampled, 0)), abs(prior.mean), dim=dim)
+    bc_scale = (abs(bound.H_bc_anomaly) + abs(bound.bc_reference - value.reference) * abs(bound.H_bc_mass)
+                + abs(value.reference) * abs(bound.H_bc_mass)).sum("bc_region", skipna=False)
+    shift_scale = abs(shift)
+    states, regions = h.sizes[dim], bound.sizes["bc_region"]
+    roundoff = {
+        "physical_outer_prior": (outer_scale, states),
+        "fixed_prior_contribution": (fixed_scale, states + 1),
+        "bc_prescribed_centered": (bc_scale, 2 * regions),
+        "bc_reference_shift": (shift_scale, regions),
+        "physical_bc_prior": (bc_scale, 2 * regions),
+        "physical_prior_baseline": (abs(fixed) + bc_scale + outer_scale, states + 2 * regions + 1),
+        "complete_prior_concentration": (
+            abs(fixed) + bc_scale + xr.dot(abs(h), abs(prior.mean), dim=dim), states + 2 * regions + 1,
+        ),
+    }
     for name, array in expected.items():
-        _same_array(value[name], array, name,
-                    allow_roundoff=name != "flux_sensitivity")
+        _same_array(value[name], array, name, roundoff=roundoff.get(name))
 
 
 def _validate_shared_baseline(prepared: Co2O2PreparedInputs, *, numerical: bool) -> None:
@@ -399,15 +437,20 @@ def _validate_shared_baseline(prepared: Co2O2PreparedInputs, *, numerical: bool)
 _Array = TypeVar("_Array", xr.DataArray, xr.Dataset)
 
 
-def _dense_consumed(value: _Array, *, native_rows: tuple[str, ...] = ()) -> _Array:
-    """Select scientific coordinates before the named eager boundary."""
+def _consumed_coordinates(value: _Array, *, native_rows: tuple[str, ...] = ()) -> _Array:
+    """Keep only the row coordinates the recipe consumes and saves, without computing."""
     coordinates = {"site", "time", "observation_units", "observation_units_cov"}
     rows = {"observation", "observation_cov", "nmeasure", "time",
             value.attrs.get("native_observation_dim"), *native_rows}
-    value = value.drop_vars([
+    return value.drop_vars([
         name for name, coordinate in value.coords.items()
         if name not in value.indexes and name not in coordinates and rows.intersection(coordinate.dims)
     ])
+
+
+def _dense_consumed(value: _Array, *, native_rows: tuple[str, ...] = ()) -> _Array:
+    """Select scientific coordinates before the named eager boundary."""
+    value = _consumed_coordinates(value, native_rows=native_rows)
     return cast(_Array, value.map(to_dense, keep_attrs=True) if isinstance(value, xr.Dataset) else to_dense(value))
 
 

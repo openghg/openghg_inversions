@@ -133,9 +133,10 @@ class AnomalyScalingChoice:
         else:
             shift = float(self.reference) - stored
         # Recentring keeps the bound layout and units: the shift is a scalar.
+        # Assign variables so the Dataset keeps its own state index and level coordinates.
         recentred = data.assign(
-            H_bc_anomaly=(anomaly - shift * mass).assign_attrs(anomaly.attrs),
-            bc_reference=(stored + shift).assign_attrs(stored.attrs),
+            H_bc_anomaly=(anomaly - shift * mass).assign_attrs(anomaly.attrs).variable,
+            bc_reference=(stored + shift).assign_attrs(stored.attrs).variable,
         )
         return AnomalyScalingBoundary(self, cast(BoundCenteredSensitivity, recentred))
 
