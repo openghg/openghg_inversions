@@ -132,6 +132,10 @@ Missing or unreadable selected files fail before acquisition.
 default without exact paths. Explicit ``bc_basis_paths`` take precedence, leaving
 the algorithm inactive. NESW uses acquired directional contributions without
 reading a BC basis file. ``use_bc=False`` bypasses BC basis resolution and loading.
+For twelve lateral regions, select ``"bc_basis_algorithm": "twelve-region"``
+and optionally ``"bc_basis_split_height": 3000.0``; saved preparation retains
+both options. See :ref:`twelve-region-boundary-basis` for native units, exact
+partition rules and the public Python basis constructor.
 Staged commands accept canonical resource names; see :doc:`legacy_and_migration`
 for historical selector replacements.
 
@@ -413,17 +417,49 @@ Readiness checks finite evidence, not scientific plausibility. See
 .. _staged-convergence-check:
 
 ``rhime diagnose --posterior posterior.nc --output-dir ...`` independently
-reports maximum R-hat, minimum bulk/tail ESS, divergences and unassessable
-variables. ``--sample-manifest`` optionally supplies descriptive run context.
-For a current sample manifest, omit ``--posterior`` to use its recorded posterior
-reference; an explicit posterior path takes precedence.
-Defaults are maximum R-hat 1.01, minimum bulk/tail ESS 400 and zero divergences.
-Available metrics exceeding a threshold yield ``fail``; missing metrics yield
-``unknown`` when none fails; otherwise the result is ``pass``. Neither check
-repairs missing evidence or performs posterior inference. ``--strict`` makes
-``fail`` exit nonzero. Both write schema-version-1 check JSON with producer
-``openghg_inversions``; ``--check-output`` and ``--check-stage`` select its path
-and stage label.
+assesses retained samples with ``arviz.diagnose`` and writes a detailed ArviZ
+summary to ``posterior-diagnostics.nc``. ``--sample-manifest`` optionally supplies
+descriptive run context. For a current sample manifest, omit ``--posterior`` to
+use its recorded posterior reference; an explicit posterior path takes precedence.
+
+ArviZ owns the warning policy: R-hat, effective sample size (ESS), divergences,
+and, when available, tree depth and energy Bayesian fraction of missing
+information (E-BFMI). Its defaults include maximum R-hat 1.01, minimum bulk ESS
+of 100 times the chain count, a minimum bulk/tail ESS-to-sample-count ratio of
+0.001, and minimum E-BFMI 0.3. Override these using ``--rhat-max``,
+``--ess-threshold``, ``--ess-min-ratio`` and ``--bfmi-threshold``. These replace
+the former ``--max-rhat``, ``--min-bulk-ess``, ``--min-tail-ess`` and
+``--max-divergences`` options; any divergence is now an ArviZ-reported problem.
+The JSON records the ArviZ version and any explicit threshold overrides.
+
+An ArviZ-reported problem yields ``fail``. Otherwise, missing divergence flags,
+non-finite summary diagnostics, absent posterior variables/draws or a single
+chain yield ``unknown``; a complete assessment with no reported problems yields
+``pass``. Ordinary and cached-amplitude NUTS divergence flags are combined so a
+retained draw counts once when either step diverges. Missing tree-depth or energy
+statistics alone does not make the assessment incomplete. These checks flag
+problems for investigation; they do not establish convergence or repair samples.
+``--strict`` makes ``fail`` exit nonzero.
+
+Both readiness and staged diagnosis write schema-version-1 CheckResult JSON
+with producer ``openghg_inversions``; ``--check-output`` and ``--check-stage``
+select its path and stage label. ``openghg-run record-check`` consumes this
+envelope unchanged. Its ``measured_values`` object now contains the assessed
+variables, chain/draw counts, ArviZ version and error flag, total divergences and
+unavailable-assessment reasons. Compact extrema, coordinate labels and per-chain
+divergence counts are no longer included; use the detailed summary and saved
+trace for investigation. Consumers should treat measurements and thresholds as
+producer-defined JSON objects rather than require particular metric keys.
+
+New ``RhimeSampler`` traces preserve the same plain assessment as JSON in
+``sampler_convergence``, without a CheckResult envelope. The sampler also stores
+its sampled model free-variable names in ``sampler_convergence_variables``
+after burn slicing and coordinate restoration. Diagnosis uses this list to
+exclude deterministic posterior outputs. Older traces without the attribute
+fall back to all posterior variables, including deterministics.
+``measured_values.assessed_variables`` records the variables actually assessed.
+To record a saved trace in ``openghg-run``, run staged ``diagnose`` and pass its
+CheckResult JSON file to ``record-check``.
 
 Other families and migration
 ----------------------------
