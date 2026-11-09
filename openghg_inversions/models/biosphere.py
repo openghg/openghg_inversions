@@ -120,6 +120,16 @@ def annotate_biosphere_prior(trace: Any, calibration: BiospherePrior | None) -> 
 
     Works with both ArviZ InferenceData and the recipe's DataTree trace. This
     explicit output boundary should also be called after direct PyMC sampling.
+
+    Args:
+        trace: ArviZ InferenceData or DataTree trace, updated in place.
+        calibration: Calibrated prior to record, or ``None`` to leave the trace
+            unchanged.
+
+    Returns:
+        The same trace, with a ``biosphere_prior`` group, the calibration report
+        attribute and updated ``rhime_model_metadata`` when ``calibration`` is
+        given.
     """
     if calibration is not None:
         metadata = json.loads(trace.attrs.get("rhime_model_metadata", "{}"))
