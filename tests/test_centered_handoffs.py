@@ -140,6 +140,12 @@ def test_saved_raw_periods_prior_predictive_save_reopen(tmp_path, linked, center
         from openghg_inversions.rhime.co2.co2_runner import materialize_co2_inputs, build_co2_from_materialized
         inputs, priors = materialize_co2_inputs(prepared_inputs=reopened, **options)
         rebuilt = build_co2_from_materialized(inputs, prepared_inputs=reopened, priors=priors, **options)
+        if centered:
+            # The model builder owns the centered-likelihood rule; the runner defers to it.
+            options = {name: value for name, value in options.items() if name != "no_model_error"}
+            options["likelihood_builder"] = lambda *args, **kwargs: None
+            with pytest.raises(ValueError, match="built-in fixed-OU.*custom"):
+                build_co2_from_materialized(inputs, prepared_inputs=reopened, priors=priors, **options)
     point = rebuilt.model.initial_point()
     for name in (("co2_bc", "o2_bc") if linked else ("bc",)):
         assert point[name].size == 2
