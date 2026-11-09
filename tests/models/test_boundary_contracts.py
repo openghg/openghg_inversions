@@ -15,6 +15,7 @@ from openghg_inversions.models.boundary import (
     AdditiveChoice,
     BoundAdditiveSensitivity,
     BoundCenteredSensitivity,
+    MultiplicativeBoundary,
     MultiplicativeChoice,
     RawCenteredSensitivity,
     validate_centering_weights,
@@ -260,7 +261,7 @@ def test_absolute_multiplicative_route_keeps_its_own_layout():
     absolute = _raw_on_nmeasure().H_bc_anomaly.rename("H_bc")
     bound = MultiplicativeChoice({"pdf": "lognormal", "mu": 0.0, "sigma": 0.1}).bind(_observations(), absolute)
     assert set(bound.data.data_vars) == {"H_bc"}
-    assert not bound.centered
+    assert isinstance(bound, MultiplicativeBoundary)
     with pytest.raises(ValueError, match="missing keys.*H_bc_anomaly"):
         BoundCenteredSensitivity.validate(bound.data)
 

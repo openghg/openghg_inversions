@@ -309,8 +309,9 @@ reject reversed observation rows before reading lazy cache payloads, and accept
 independent coefficient blocks with different labels on identically named axes.
 The cached conversion aligns only observation rows; it does not align separate
 coefficient axes. Independent curtain corrections replay through the same
-scientific correction role. Unsampled additive anomalies are recorded as zero
-deterministics, so replay reads every declared role from the saved draws.
+scientific correction role. Unsampled additive anomalies are registered as
+zero model data, so replay reads every declared role from the saved draws or
+constants.
 
 For a new family, scientific tests belong with its component in
 ``tests/models/test_boundary_components.py`` and its configuration in
@@ -331,7 +332,7 @@ The review check is that this module list does not grow to include likelihood,
 cache, sampler or output modules. Those consumers operate on the shared affine
 result and the component's declarations through the existing ``OutputContract``.
 The pure saved-boundary decoder/reconstructor reads fitted scientific facts,
-including the zero anomalies recorded for mean-only fits, from saved draws and
+including the constant zero anomalies of mean-only fits, from saved draws and
 constants. Prior and posterior groups retain independent sample sizes;
 replay neither builds a graph nor chooses a new period calendar.
 
@@ -438,6 +439,15 @@ Source selection and state grouping should remain plainly named operations on
 labelled values and retained artifacts. Resolutions, partitions, sources, and
 observation channels need explicit labels. Variable suffixes or positions alone
 cannot preserve those scientific meanings.
+
+Record each declared quantity where its values vary. A ``pm.Deterministic``
+is saved with every draw, so use it for quantities that depend on sampled
+variables. A quantity that is fixed for the fit, such as the boundary
+reference or zero anomalies that are not sampled, belongs in model data
+(``constant_data``), stored once. Keep its role either way, so output readers
+need no policy, and broadcast constants over the draws where they are read.
+This is not a ban on deterministics: selecting which sampled deterministics to
+record is a separate choice.
 
 Postprocessing needs quantity meaning as well as arrays. Small scientific-role
 mappings can connect a model's local names to real output consumers without

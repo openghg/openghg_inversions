@@ -162,10 +162,10 @@ class AnomalyScalingBoundary(CenteredBoundary):
     data: BoundCenteredSensitivity
 
     def anomaly_factor(self) -> xr.DataArray:
-        """Observation-space anomaly design scaled to standard-normal coordinates.
+        """Observation-space anomaly sensitivity scaled to standard-normal coordinates.
 
-        The design stays lazy with the sensitivity, so it can be combined with
-        other designs before joint materialization.
+        The result stays lazy with the bound sensitivity, so it can be
+        combined with other sensitivities before joint materialization.
 
         Returns:
             ``s A'`` on ``(observation, bc_region)`` in concentration units.
