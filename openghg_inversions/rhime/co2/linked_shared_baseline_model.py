@@ -95,6 +95,8 @@ def _linked_inputs(
          for channel, value in prepared.items()},
         to_dense(observations), to_dense(independent_error_sd), aggregation, to_dense_tree(dict(priors or {})),
     )
+    if "observation_units" not in observations.coords:
+        raise ValueError("Linked observations require a per-row observation_units coordinate.")
     bound = {}
     for channel in ("co2", "o2"):
         p = prepared[channel]
@@ -217,7 +219,8 @@ def build_shared_co2_o2_model(
             if frozen.sizes["bc_pattern_term"]:
                 dimension = "bc_pattern_term"
                 design = _pad_channel_design(frozen.bc_pattern_centered, observations, channel)
-                design = design.assign_coords({dimension: frozen[dimension].copy(deep=False)})
+                # Padding keeps the pattern labels; copy so the attrs stay local to this design.
+                design = design.copy(deep=False)
                 design[dimension].attrs = {"units": "1", "prior": "independent standard normal"}
                 pattern = add_linear_component(
                     prepare_linear_sensitivity(design, output_dim=output_dim, prune_zero_columns=False),
@@ -337,7 +340,8 @@ def build_shared_co2_o2_cached_sigma_model(
             if frozen.sizes["bc_pattern_term"]:
                 dimension = "bc_pattern_term"
                 design = _pad_channel_design(frozen.bc_pattern_centered, observations, channel)
-                design = design.assign_coords({dimension: frozen[dimension].copy(deep=False)})
+                # Padding keeps the pattern labels; copy so the attrs stay local to this design.
+                design = design.copy(deep=False)
                 design[dimension].attrs = {"units": "1", "prior": "independent standard normal"}
                 pattern = add_linear_component(
                     prepare_linear_sensitivity(design, output_dim=output_dim, prune_zero_columns=False),
