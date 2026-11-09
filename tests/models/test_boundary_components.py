@@ -17,7 +17,7 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.rhime.co2 import co2_runner
 from openghg_inversions.models.boundary import (
-    AdditiveBoundary, AdditiveChoice, AnomalyScalingChoice, BoundCenteredSensitivity, MultiplicativeBoundary,
+    AdditiveBoundary, AdditiveChoice, AnomalyScalingChoice, BoundCenteredSensitivity, CenteredMultiplicativeBoundary,
     MultiplicativeChoice,
 )
 from boundary_test_utils import raw_transport
@@ -101,7 +101,7 @@ def test_centered_affine_keeps_fixed_activity_and_physical_coefficients(double_p
     bound = MultiplicativeChoice(
         {"pdf": "normal", "mu": 1., "sigma": .1}, StateActivity(active=np.array(active), fixed_value=2.),
     ).bind(observations, raw_transport(data))
-    assert isinstance(bound, MultiplicativeBoundary)
+    assert isinstance(bound, CenteredMultiplicativeBoundary)
     with registered_model():
         result = bound.add(owner="boundary")
         difference = result.likelihood_contribution - _affine_expression(result)
@@ -454,7 +454,7 @@ def test_boundary_metadata_uses_choice_facts_without_evaluating_lazy_inputs(doub
         bound = MultiplicativeChoice(prior, frequency="10D", anchor_time="2020-01-01").bind(observations, transport)
         expected = {"boundary_formulation": "multiplicative", "bc_frequency": "10D", "bc_anchor_time": "2020-01-01"}
         if kind == "centered":
-            expected["boundary_representation"] = "centered-v1"
+            expected.update(boundary_representation="centered-v1", boundary_mean="none")
     operator_name = "H_bc" if kind == "absolute" else "H_bc_anomaly"
     operator = bound.data[operator_name]
 

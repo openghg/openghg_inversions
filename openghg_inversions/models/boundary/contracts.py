@@ -1,6 +1,6 @@
 """Static contracts for centered boundary sensitivity before and after binding.
 
-Centered sensitivity represents the absolute boundary design as ``A + c M``:
+Centered sensitivity represents the absolute boundary sensitivity as ``A + c M``:
 the concentration anomaly ``A`` (``H_bc_anomaly``), the dimensionless mass
 ``M`` (``H_bc_mass``) and a scalar reference ``c`` (``bc_reference``). Values
 annotated with these contracts are ordinary :class:`xarray.Dataset` objects;
@@ -152,7 +152,7 @@ def normalize_centering_weights(weights: xr.DataArray) -> xr.DataArray:
         ValueError: If weights are lazy, empty, non-finite or not positive.
     """
     if is_dask_collection(weights.data):
-        raise ValueError("Materialize bc_centering_weights before forming a weighted anomaly design.")
+        raise ValueError("Materialize bc_centering_weights before forming a weighted anomaly sensitivity.")
     if not weights.size or not np.isfinite(weights.values).all() or not (weights.values > 0).all():
         raise ValueError("bc_centering_weights must be finite and strictly positive.")
     scaled = weights / weights.max()
