@@ -508,6 +508,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
 </ul>
 </details></li>
+<li class="toctree-l1"><a class="reference internal" href="merged_input_schemas.html">Merged-input schemas</a></li>
 </ul>
 </div>
 </nav></div>
@@ -809,6 +810,8 @@ Import both values from
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data</span></code>. See the
 <a class="reference internal" href="../usage/surface_preparation.html#surface-centered-boundary-contract"><span class="std std-ref">centered boundary contract</span></a> for
 operands and supported model routes.</p>
+<p>The <a class="reference internal" href="merged_input_schemas.html"><span class="doc">merged-input schema reference</span></a> is generated
+from the metadata validators used before standard and multisector preparation.</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.SiteOptions" title="openghg_inversions.inversion_data.SiteOptions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.SiteOptions</span></code></a></p></td>
@@ -843,6 +846,12 @@ operands and supported model routes.</p>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.MergedData.validate_for_preparation" title="openghg_inversions.inversion_data.MergedData.validate_for_preparation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.MergedData.validate_for_preparation</span></code></a></p></td>
 <td><p>Reject supplied data with known facts conflicting with preparation.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.MergedData.site_schema" title="openghg_inversions.inversion_data.MergedData.site_schema"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.MergedData.site_schema</span></code></a></p></td>
+<td><p>Describe one acquired site before errors, filtering and basis projection.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.MergedData.validate_scientific_inputs" title="openghg_inversions.inversion_data.MergedData.validate_scientific_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.MergedData.validate_scientific_inputs</span></code></a></p></td>
+<td><p>Validate acquired arrays for selected preparation without execution.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.MergedData.with_site_data" title="openghg_inversions.inversion_data.MergedData.with_site_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.MergedData.with_site_data</span></code></a></p></td>
 <td><p>Replace retained site datasets with their selectors and provenance.</p></td>

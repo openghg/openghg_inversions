@@ -508,6 +508,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
 </ul>
 </details></li>
+<li class="toctree-l1"><a class="reference internal" href="merged_input_schemas.html">Merged-input schemas</a></li>
 </ul>
 </div>
 </nav></div>
@@ -667,6 +668,108 @@ to a runner. Missing facts remain unknown.</p></li>
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.acquisition.MergedData.platform">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">platform</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.15)"><span class="pre">None</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.acquisition.MergedData.platform" title="Link to this definition">#</a></dt>
 <dd><p>Retained observation platforms aligned to sites.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.acquisition.MergedData.site_schema">
+<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">site_schema</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">split_by_sectors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">require_footprints</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">grid_dims</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('lat',</span> <span class="pre">'lon')</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">concentration_units</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_sources</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">boundary_representation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.acquisition.MergedData.site_schema" title="Link to this definition">#</a></dt>
+<dd><p>Describe one acquired site before errors, filtering and basis projection.</p>
+<p>Named dimension permutations and extra variables/attributes are accepted.
+Missing error, response and ordinary-BC unit attributes inherit the mf
+numerical convention; explicit attributes must have the same scale. This
+checks metadata only, permits empty sites and missing payload values, and
+never supplies attributes or converts values. Grid order is latitude then
+longitude for the ordinary two-dimensional footprint grid.</p>
+<p>Custom callbacks express uncertainty alternatives and unit/source relations;
+those checks are not included by xarray-validate’s schema export.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>split_by_sectors</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Select a source-resolved response instead of a total response.</p></li>
+<li><p><strong>require_footprints</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Require raw footprints for generated basis weights.</p></li>
+<li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Require all four directional boundary contributions.</p></li>
+<li><p><strong>grid_dims</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>]</em>) – Native spatial axis names, latitude then longitude.</p></li>
+<li><p><strong>concentration_units</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional reference scale for mf. None checks the
+site’s units without comparing them to another site’s scale.</p></li>
+<li><p><strong>flux_sources</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – Optional authoritative set of sector response labels.
+None allows any valid source labels, retaining their order.</p></li>
+<li><p><strong>boundary_representation</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Acquired boundary metadata. <code class="docutils literal notranslate"><span class="pre">centered-v1</span></code>
+selects directional anomaly/mass operands and a scalar reference.
+Their unit and scientific checks remain with boundary projection.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Metadata schema accepting extra variables, attributes and coordinates.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>DatasetSchema</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.acquisition.MergedData.validate_scientific_inputs">
+<span class="sig-name descname"><span class="pre">validate_scientific_inputs</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">split_by_sectors</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">require_footprints</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_sources</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">grid_dims</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('lat',</span> <span class="pre">'lon')</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.acquisition.MergedData.validate_scientific_inputs" title="Link to this definition">#</a></dt>
+<dd><p>Validate acquired arrays for selected preparation without execution.</p>
+<p>Unlike acquisition-fact compatibility, this checks the per-site schema,
+conditional responses/BCs/footprints and native inventory flux. Centered
+boundaries retain anomaly/mass/reference operands; their units and
+scientific invariants remain with boundary projection. Errors
+identify <code class="docutils literal notranslate"><span class="pre">site_data[site]</span></code> or <code class="docutils literal notranslate"><span class="pre">flux_data[source]</span></code> and the offending
+variable. Dimension permutations, independent site time axes, empty
+sites, missing observations and arbitrary extension fields are allowed.</p>
+<p><code class="docutils literal notranslate"><span class="pre">mf</span></code> needs explicit concentration units, shared in numerical scale
+across sites. Absent error/response/ordinary-BC units inherit that convention;
+explicit units must match its scale. Native flux requires units with
+the scale of <code class="docutils literal notranslate"><span class="pre">mol</span> <span class="pre">m-2</span> <span class="pre">s-1</span></code>; the explicit surface route also accepts
+compatible scaled units for conversion by native flux resolution.
+No values or metadata are converted or
+changed. Numerical missing-value policy remains with later owners.</p>
+<p>Call this once when entering preparation, after external customization
+and before error derivation/filtering. Locally constructed subsequent
+stages trust that boundary. <code class="docutils literal notranslate"><span class="pre">boundary_data</span></code> is retrieval provenance;
+directional site contributions are the consumed BC input.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>split_by_sectors</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Select the standard or source-resolved response.</p></li>
+<li><p><strong>require_footprints</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Require raw footprints when fitting basis weights.</p></li>
+<li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Require acquired directional boundary contributions.</p></li>
+<li><p><strong>flux_sources</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>]</em>) – Selected source identities, including the first source
+used for basis-design weights. All retained inventories are checked.</p></li>
+<li><p><strong>grid_dims</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>]</em>) – Native spatial axis names, latitude then longitude.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the requested layout or a site’s/source’s scientific
+    metadata violates its contract. Dataset failures include the
+    site/source path and variable or coordinate location.</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
@@ -1072,6 +1175,8 @@ against this record’s resolved uppercase site labels.</p></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.MergedData.sites"><code class="docutils literal notranslate"><span class="pre">MergedData.sites</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.MergedData.averaging_period"><code class="docutils literal notranslate"><span class="pre">MergedData.averaging_period</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.MergedData.platform"><code class="docutils literal notranslate"><span class="pre">MergedData.platform</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.MergedData.site_schema"><code class="docutils literal notranslate"><span class="pre">MergedData.site_schema()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.MergedData.validate_scientific_inputs"><code class="docutils literal notranslate"><span class="pre">MergedData.validate_scientific_inputs()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.MergedData.validate_for_preparation"><code class="docutils literal notranslate"><span class="pre">MergedData.validate_for_preparation()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.MergedData.with_site_data"><code class="docutils literal notranslate"><span class="pre">MergedData.with_site_data()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.MergedData.from_options"><code class="docutils literal notranslate"><span class="pre">MergedData.from_options()</span></code></a></li>

@@ -464,6 +464,33 @@ target. These are site-wide presentation choices controlled by
 <code class="docutils literal notranslate"><span class="pre">add_module_names</span></code> in <code class="docutils literal notranslate"><span class="pre">docs/conf.py</span></code>. Change those settings only when the
 whole API reference should adopt a different style.</p>
 </section>
+<section id="generate-schema-references">
+<h2>Generate schema references<a class="headerlink" href="#generate-schema-references" title="Link to this heading">#</a></h2>
+<p>Use <code class="docutils literal notranslate"><span class="pre">schema-reference</span></code> to document a live <code class="docutils literal notranslate"><span class="pre">xarray-validate</span></code> schema factory:</p>
+<div class="highlight-rst notranslate"><div class="highlight"><pre><span></span><span class="p">..</span> <span class="ow">schema-reference</span><span class="p">::</span> openghg_inversions.inversion_data._merged_schema:merged_site_schema
+   <span class="nc">:kwargs:</span> {"split_by_sectors": false, "require_footprints": false, "use_bc": false}
+</pre></div>
+</div>
+<p>The import path uses <code class="docutils literal notranslate"><span class="pre">module:factory</span></code> syntax. Class-owned factories use
+<code class="docutils literal notranslate"><span class="pre">module:Contract.schema</span></code> with the same JSON keyword options. This directive
+requires a Dataset or DataArray schema, not a particular contract class or
+registry. It imports trusted repository code during the build but never calls
+validators or reads scientific data. Imports and factories must themselves be
+free of numerical execution. Sphinx tracks the factory module as a dependency
+for incremental rebuilds.</p>
+<p><code class="docutils literal notranslate"><span class="pre">scripts/schema_docs.py</span></code> reuses the library’s serialization and supplements
+dtype families and alternatives, Python attribute type names and callback
+docstrings. <code class="docutils literal notranslate"><span class="pre">describe_schema</span></code> returns a JSON-compatible documentation view;
+<code class="docutils literal notranslate"><span class="pre">render_schema</span></code> turns that view into tables. Keep callback descriptions beside
+their validation logic. An undocumented callback is listed with an explicit
+missing-description notice rather than silently omitted. Keep dynamic selections
+in the directive’s keyword options and scientific workflow explanations in the
+surrounding page. Changing schemas regenerates the tables during the build;
+there is no generated reference file to maintain or commit.</p>
+<p>This view does not reconstruct executable checks. Numerical requirements owned
+by later materialization or graph operations must be explained separately from
+structural guarantees. YAML or JSON dumps of the view have the same scope.</p>
+</section>
 <section id="regenerate-module-pages">
 <h2>Regenerate module pages<a class="headerlink" href="#regenerate-module-pages" title="Link to this heading">#</a></h2>
 <p>The detailed module pages in <code class="docutils literal notranslate"><span class="pre">docs/reference/openghg_inversions.*.rst</span></code> are
@@ -631,6 +658,7 @@ site trees for recovery if a legacy workflow accidentally replaces the site.</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#update-the-hand-maintained-api-reference">Update the hand-maintained API reference</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#generate-schema-references">Generate schema references</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#regenerate-module-pages">Regenerate module pages</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#build-and-check-the-documentation">Build and check the documentation</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#review-a-pull-request-preview">Review a pull-request preview</a></li>
