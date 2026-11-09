@@ -278,7 +278,8 @@ resolved data, not ``bc_basis_case`` or ``bc_basis_directory`` discovery options
 
 ``bc_basis_algorithm="NESW"`` selects the built-in calculation and is the
 canonical default. It uses acquired directional boundary contributions without
-reading a basis file; scientific calls receive ``bc_basis=None``. Exact
+reading a basis file; scientific calls receive the ``nesw_basis`` builder,
+which is also their default. Exact
 ``bc_basis_paths`` take precedence over the algorithm, whose value is then
 inactive. Selected files fail on read errors rather than falling back to NESW.
 ``use_bc=False`` skips BC basis resolution and loading, including selected files.
@@ -289,6 +290,75 @@ before acquisition. Replace it with ``country_file`` for reporting,
 ``landsea_path`` for land/sea classes, or ``outer_regions_path`` for fixed outer
 regions. Reporting maps remain explicit: ``domain`` never selects a reporting
 ``country_file``. See :doc:`legacy_and_migration` for the migration schedule.
+
+.. _twelve-region-boundary-basis:
+
+Twelve-region lateral boundary basis
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Select ``bc_basis_algorithm="twelve-region"`` to divide each native N/E/S/W
+curtain into two lower horizontal halves and one upper region. The same options
+work in Python run parameters or the ``[INPUT.BASIS_CASE]`` INI section::
+
+   bc_basis_algorithm = "twelve-region"
+   bc_basis_split_height = 3000.0
+
+``bc_basis_split_height`` is a finite number in the native ``height`` coordinate's
+units; it defaults to 3000. No unit conversion or vertical-datum conversion is
+performed. Inspect the acquired coordinate metadata before choosing a physical
+threshold. With a height coordinate in kilometres, a 3 km split requires
+``bc_basis_split_height=3.0``.
+
+The default follows the archived feasibility prototype's native-coordinate
+threshold of 3000. The prototype's height coordinate had no units or AGL/ASL
+datum metadata; its physical interpretation remains unverified. Motivation
+comes from the lower/upper boundary distinction in
+`Arnold et al. (2018), section 2.6 <https://acp.copernicus.org/articles/18/13305/2018/>`_
+and the 3 km division in
+`Manning et al. (2021), section 2.3 <https://acp.copernicus.org/articles/21/12739/2021/>`_.
+This twelve-region geometry is an adaptation: Manning describes eleven
+boundaries and a 3 km above-ground division. This selector does not implement
+that exact InTEM scheme or establish an above-ground datum for NAME inputs.
+
+For each direction, cells with ``height < bc_basis_split_height`` are lower;
+equality belongs to the upper region. The horizontal split is the arithmetic
+midpoint of the minimum and maximum native coordinate centres, rather than the
+middle array index. On north/south curtains use longitude: ``lower_first`` is
+west of the midpoint and ``lower_second`` includes the midpoint and everything
+east. On east/west curtains use latitude: ``lower_first`` is south and
+``lower_second`` includes the midpoint and everything north. Ascending and
+descending axes follow the same geographic assignment. All native lateral
+heights above the split are retained, with no 8 km cutoff and no top boundary.
+Each curtain cell has exactly one unit mask; no overlap or uncovered cells occur.
+A coarse grid or a split outside the height range can leave some regions empty.
+
+Region order is ``n_lower_first``, ``n_lower_second``, ``n_upper``, then the same
+three suffixes for ``e``, ``s``, and ``w``. Coordinate values and their attributes
+are retained. Basis and projected sensitivity attributes record the geometry
+and split height, native coordinate units/datum (``unspecified`` when absent),
+and horizontal midpoints; saved preparation retains this provenance.
+
+For direct scientific preparation, build a serializable basis from the native
+site curtain coordinates and pass it through the existing projection route:
+
+.. code-block:: python
+
+   from openghg_inversions.basis import twelve_region_basis
+   from openghg_inversions.basis._helpers import bc_sensitivity
+
+   basis = twelve_region_basis(site_dataset, split_height=3000.0)
+   projected = bc_sensitivity({"SITE": site_dataset}, bc_basis=basis)["SITE"]
+   basis.to_netcdf("twelve-region-basis.nc")
+
+The configured selector builds each site's geometry on its acquired grid.
+It applies the same masks to absolute ``H_bc`` or centered anomaly/mass operands
+``H_bc_anomaly`` and ``H_bc_mass``. The scalar concentration reference
+``bc_reference`` is preserved. Summing each parent's three columns recovers its
+NESW column; normalized mass sums to one across all twelve regions. Geometry
+is independent of ``bc_freq`` and the chosen prior. Independent child
+coefficients change prior covariance; tying each parent's children recovers
+the NESW response. File selection still takes precedence and ``use_bc=False``
+still bypasses basis preparation.
 
 Site selectors and retained observations
 ----------------------------------------
