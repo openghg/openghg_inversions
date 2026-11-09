@@ -48,10 +48,15 @@ The classes have the following distinct roles.
        restriction :math:`\Pi`. The calculation derives its covariance-natural
        prolongation :math:`U_*`.
    * - ``PreserveBucketProlongation``
-     - Current strategy implementation. It uses
+     - Default compatibility strategy. It uses
        :math:`U_{\mathrm{bucket}}` to derive the compatible authoritative
        restriction :math:`\Pi_U`; the calculation still derives :math:`U_*` from
        that returned restriction.
+   * - ``SuppliedRestriction``
+     - Supplied-:math:`\Pi`-first strategy. The caller defines a physical
+       restriction independently of :math:`B`; the strategy checks its labels,
+       values, and LogNormal admissibility, and records that provenance on the
+       returned restriction.
    * - ``RetainedProjection``
      - Frozen value dataclass returned by a strategy. It carries
        :math:`\Pi` and the strategy identifier; it is not a protocol, and its
@@ -131,7 +136,7 @@ this lift is :math:`\operatorname{E}[x\mid\alpha]`. Without Gaussianity it is
 the linear-Bayes lift determined by the first two moments.
 
 In general, :math:`U_*`, :math:`U_{\mathrm{bucket}}`, and
-:math:`\Pi^\mathsf{T}` are different operators. The initial strategy preserves
+:math:`\Pi^\mathsf{T}` are different operators. The default strategy preserves
 the established bucket-scaling interpretation by choosing
 
 .. math::
@@ -147,6 +152,41 @@ calculation's generic derivation :math:`U_* = B\Pi^\mathsf{T}C_\alpha^{-1}`, not
 from a strategy-supplied lift. The projection returns :math:`C_\alpha`,
 :math:`H U_*`, :math:`H B \Pi^\mathsf{T}`, and either dense
 :math:`H B H^\mathsf{T}` or its diagonal.
+
+Supplied physical restriction
+-----------------------------
+
+``SuppliedRestriction`` accepts a labelled :math:`\Pi` with dimensions
+``(state_dim, *native_dims)``, including an explicit native source dimension
+for source-blocked covariance. Its retained labels must equal the basis
+prolongation's labels in the same order, its native coordinates must align
+exactly, and its values must be finite and real. Full row rank is checked by
+the positive-definite factorization of :math:`C_\alpha`. The calculation then
+derives
+
+.. math::
+
+   C_\alpha = \Pi B \Pi^\mathsf{T},
+   \qquad
+   U_* = B \Pi^\mathsf{T} C_\alpha^{-1},
+   \qquad
+   H_\alpha = H U_*,
+
+so :math:`\Pi U_* = I` and :math:`B\Pi^\mathsf{T} = U_* C_\alpha`. The
+strategy is policy-neutral: it neither builds nor prefers a particular
+weighting. Absolute-flux-weighted regional means and signed flux-total
+restrictions are both supplied by the caller.
+
+For positive native scaling :math:`x`, the retained scaling
+:math:`\alpha = \Pi x` is guaranteed positive only when :math:`\Pi` is
+nonnegative with positive weight in every row. With
+``retained_distribution="lognormal"`` the strategy refuses a signed restriction
+or an all-zero row; the Gaussian default accepts them. The derived lift
+:math:`U_*` may be signed in either case, because it is a linear conditional
+mean rather than a positive scaling map. The returned restriction records
+``restriction_source="supplied"``, the declared retained distribution, and the
+``nonnegative``, ``row_normalized``, and ``lognormal_admissible`` diagnostics.
+Durable persistence of this record belongs to the artifact-I/O layer.
 
 The retained solve also records a cheap LAPACK reciprocal 1-norm condition
 estimate while its Cholesky factor is already available. A restriction whose
@@ -204,11 +244,20 @@ Memory use and lazy inputs
 The structured covariance action stores axis factors rather than dense native
 :math:`B`, but the product calculation is otherwise eager. Callers may pass a
 related sensitivity and canonical basis prolongation with sparse or Dask-backed
-data; ``project_native_covariance`` densifies them where needed and computes
-them together. A custom restriction may also remain sparse or Dask-backed
-until it is selected, when it is computed and densified once. The resulting
-restriction is then reused across retained-state
-right-hand-side blocks, avoiding repeated execution of its lazy graph. For
+data; ``project_native_covariance`` computes them together, densifying
+:math:`H` and leaving a sparse prolongation sparse for the strategy to densify
+if its method requires it. A custom restriction may also remain sparse or
+Dask-backed until it is selected, when it is computed once. A sparse
+restriction stays sparse; only one retained-state right-hand-side block at a
+time is densified before applying :math:`B`. The computed restriction is reused
+across those blocks, avoiding repeated execution of its lazy graph.
+
+For the January production shape, :math:`d = 361` retained rows over
+:math:`N = 96\,768` native source cells, a dense float64 restriction would need
+about 279 MB. The source-blocked sparse restriction stores one weight per native
+cell, and each densified block of 64 rows needs about 50 MB. The dense outputs
+:math:`B\Pi^\mathsf{T}` and :math:`U_*` remain about 279 MB each, because a
+non-local covariance makes them dense. For
 native size :math:`N`, retained size
 :math:`d`, and observation count :math:`M`, important dense storage includes
 :math:`M N` for :math:`H`, :math:`N d` for each native-by-retained array,
@@ -244,7 +293,9 @@ within exactly one source and one active region. This physical restriction is
 chosen independently of :math:`B`; the covariance then determines
 :math:`C_\alpha` and :math:`U_*`. The prototype also supports a distinct
 signed-flux-total policy, but that is not the current 14-site production
-setting. Both policies require a supplied-:math:`\Pi`-first strategy.
+setting; it remains an alternative policy that a caller can supply to
+``SuppliedRestriction``. Both policies use the supplied-:math:`\Pi`-first
+strategy.
 
 .. list-table::
    :header-rows: 1
@@ -262,11 +313,12 @@ setting. Both policies require a supplied-:math:`\Pi`-first strategy.
    * - Choose a physical restriction :math:`\Pi` first, then derive its
        covariance-natural lift. Current 14-site production uses the
        absolute-prior-flux-weighted regional mean above.
-     - Deliberate difference
-     - The current default strategy is compatibility-oriented: it uses
-       :math:`U_{\mathrm{bucket}}` internally to derive :math:`\Pi_U`. The
-       strategy interface itself is Pi-first, so later policies may supply a
-       physical restriction directly.
+     - Faithful port
+     - ``SuppliedRestriction`` accepts the same physical :math:`\Pi` and
+       reproduces the prototype's :math:`C_\alpha`, :math:`H_\alpha`, and
+       unresolved observation covariance for separable and class-blocked
+       covariance. The default strategy remains the compatibility-oriented
+       ``PreserveBucketProlongation``.
    * - Cross-source covariance, arbitrary reporting functionals :math:`Q`,
        :math:`B_\perp` products, coherent likelihood reduction, reconstruction,
        and covariance approximation

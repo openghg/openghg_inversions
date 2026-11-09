@@ -56,6 +56,7 @@ from .covariance_products import (
     PreserveBucketProlongation,
     RetainedProjection,
     RetainedProjectionStrategy,
+    SuppliedRestriction,
     project_native_covariance,
 )
 
@@ -81,6 +82,7 @@ __all__ = [
     "PreserveBucketProlongation",
     "RetainedProjection",
     "RetainedProjectionStrategy",
+    "SuppliedRestriction",
     "make_basis_functions",
     "prepare_basis",
     "packaged_basis_support_path",

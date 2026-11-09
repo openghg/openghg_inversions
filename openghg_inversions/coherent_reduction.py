@@ -116,11 +116,11 @@ def reduce_native_gaussian(
     )
     dense_mean = to_dense(mean)
     dense_sensitivity = to_dense(sensitivity)
-    dense_prolongation = to_dense(prolongation)
+    # Sparse U stays sparse; the projection strategy densifies it if needed.
     mean_data, sensitivity_data, prolongation_data = compute(
         dense_mean.data,
         dense_sensitivity.data,
-        dense_prolongation.data,
+        prolongation.data,
     )
     mean = mean.copy(data=mean_data)
     sensitivity = sensitivity.copy(data=sensitivity_data)

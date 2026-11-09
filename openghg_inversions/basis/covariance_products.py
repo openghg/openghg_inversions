@@ -5,14 +5,16 @@ sensitivity ``H`` and basis prolongation ``U``; basis operators own any source
 expansion. Their payloads may remain sparse or Dask-backed until the named
 projection boundary, where related arrays are materialized together. Custom
 restrictions are likewise materialized once and reused by all retained-state
-RHS blocks.
+RHS blocks. Sparse ``U`` and ``Pi`` payloads stay sparse after
+materialization; the kernel densifies only bounded retained-state RHS blocks.
 
 For native covariance ``B`` and retained restriction ``Pi``, the kernel returns
 ``C_alpha = Pi B Pi.T``, ``H U_*``, ``H B Pi.T``, and ``H B H.T`` (or its
 diagonal). Strategies return authoritative ``Pi``; the kernel derives
 ``B Pi.T``, ``C_alpha``, and ``U_* = B Pi.T C_alpha^-1``. The default strategy
 preserves bucket prolongation by deriving
-``Pi_U = (U.T B^-1 U)^-1 U.T B^-1``. The kernel trusts the covariance action's
+``Pi_U = (U.T B^-1 U)^-1 U.T B^-1``. :class:`SuppliedRestriction` instead
+uses a caller-defined physical ``Pi`` chosen independently of ``B``. The kernel trusts the covariance action's
 real self-adjoint positive-definite semantics and compatible inverse rather
 than globally certifying a matrix-free operator. Durable artifact identity and
 persistence are intentionally deferred to the artifact-I/O layer.
@@ -26,6 +28,7 @@ from typing import assert_never, Literal, Protocol
 from dask.base import compute
 import numpy as np
 from scipy.linalg import cho_factor, cho_solve
+from sparse import COO, SparseArray  # type: ignore[import-untyped]
 # scipy-stubs 1.15.3 omits the runtime LAPACK wrappers, including dpocon.
 from scipy.linalg.lapack import dpocon  # type: ignore[attr-defined]
 import xarray as xr
@@ -35,11 +38,12 @@ from openghg_inversions._labelled_matrices import (
     renamed_column_coordinates,
     to_column_axis,
 )
-from openghg_inversions.array_ops import to_dense
+from openghg_inversions.array_ops import require_unique_index, same_index, to_dense
 from openghg_inversions.native_covariance import InvertibleNativeCovarianceAction
 
 
 MIN_RETAINED_RECIPROCAL_CONDITION = float(np.sqrt(np.finfo(np.float64).eps))
+ROW_NORMALIZATION_TOLERANCE = 1e-12
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -72,8 +76,9 @@ class RetainedProjectionStrategy(Protocol):
 
         Args:
             covariance: Labelled native covariance action.
-            basis_prolongation: Dimensionless basis ``U`` with dimensions
-                ``(*native_dims, state_dim)``.
+            basis_prolongation: Eager dimensionless basis ``U`` with
+                dimensions ``(*native_dims, state_dim)``. Its payload may be
+                sparse.
             native_dims: Ordered native covariance dimensions.
             state_dim: Retained-state dimension.
 
@@ -113,7 +118,7 @@ class PreserveBucketProlongation:
         Raises:
             ValueError: If ``U`` is invalid or lacks full column rank.
         """
-        prolongation = basis_prolongation
+        prolongation = to_dense(basis_prolongation)
         state_column_dim = matrix_column_dim(
             state_dim,
             {str(name) for name in (*prolongation.dims, *prolongation.coords)},
@@ -176,12 +181,128 @@ class PreserveBucketProlongation:
 
 
 @dataclass(frozen=True, slots=True, eq=False)
+class SuppliedRestriction:
+    """Use a caller-supplied physical restriction ``Pi`` as retained coordinates.
+
+    The restriction defines ``alpha = Pi x`` before, and independently of, the
+    native covariance ``B``. The product kernel then derives
+    ``C_alpha = Pi B Pi.T``, the covariance-natural lift
+    ``U_* = B Pi.T C_alpha^-1``, and ``H_alpha = H U_*``. The strategy is
+    policy-neutral: absolute-flux-weighted regional means, signed flux-total
+    restrictions, and other physical restrictions are all constructed by the
+    caller.
+
+    A LogNormal retained scaling ``alpha = Pi x`` is positive for every
+    positive native scaling ``x`` only when ``Pi`` is nonnegative with a
+    positive weight in each row. ``retained_distribution="lognormal"``
+    therefore refuses a signed restriction or an all-zero row; the derived lift
+    ``U_*`` may still be signed because it is a linear conditional mean, not a
+    positive scaling map. Row normalization is recorded, not required, because
+    preserving a mean-one scaling is a policy choice of the caller.
+
+    Attributes:
+        restriction: Dimensionless ``Pi`` with dimensions exactly
+            ``(state_dim, *native_dims)`` in any order. It may be NumPy,
+            ``sparse`` or Dask-backed; a sparse payload must have zero fill
+            value and is kept sparse. Its state labels must match the basis
+            prolongation's retained labels exactly, including order.
+        retained_distribution: Retained-state prior family used to decide
+            admissibility. ``"gaussian"`` accepts any finite real full-row-rank
+            restriction.
+        name: Stable strategy identifier recorded with the products.
+    """
+
+    restriction: xr.DataArray
+    retained_distribution: Literal["gaussian", "lognormal"] = "gaussian"
+    name: str = "supplied_restriction"
+
+    def projection(
+        self,
+        covariance: InvertibleNativeCovarianceAction,
+        basis_prolongation: xr.DataArray,
+        *,
+        native_dims: tuple[str, ...],
+        state_dim: str,
+    ) -> RetainedProjection:
+        """Validate and return the supplied restriction with provenance.
+
+        Full row rank is established by the kernel's positive-definite
+        factorization of ``C_alpha``, which is equivalent for positive-definite
+        ``B``.
+
+        Args:
+            covariance: Native covariance action; unused because ``Pi`` is
+                chosen independently of ``B``.
+            basis_prolongation: Eager canonical prolongation supplying the
+                authoritative native and retained-state labels.
+            native_dims: Ordered native dimensions.
+            state_dim: Retained-state dimension.
+
+        Returns:
+            The materialized restriction, with sparse payloads kept sparse and
+            attributes recording its supplied provenance and admissibility.
+
+        Raises:
+            ValueError: If dimensions, labels, or values are invalid, or the
+                restriction is not admissible for a LogNormal retained state.
+        """
+        del covariance
+        expected_dims = {state_dim, *native_dims}
+        if set(self.restriction.dims) != expected_dims or self.restriction.ndim != len(expected_dims):
+            raise ValueError(
+                f"Supplied restriction must have dimensions {(state_dim, *native_dims)!r}; "
+                f"got {self.restriction.dims!r}"
+            )
+        restriction = self.restriction.transpose(state_dim, *native_dims)
+        state_index = require_unique_index(restriction, state_dim, name="Supplied restriction")
+        expected_index = require_unique_index(basis_prolongation, state_dim, name="Basis prolongation")
+        if not same_index(state_index, expected_index):
+            raise ValueError(
+                f"Supplied restriction {state_dim!r} labels must match the basis "
+                "prolongation's retained labels in the same order"
+            )
+        # Exact alignment rejects missing, extra, or reordered native cells.
+        restriction, _ = xr.align(restriction, basis_prolongation, join="exact", copy=False)
+        restriction = _materialize_restriction(restriction)
+        nonnegative, row_sums = _restriction_row_diagnostics(restriction, state_dim=state_dim)
+        positive_rows = bool(np.all(row_sums > 0.0))
+        lognormal_admissible = nonnegative and positive_rows
+        if self.retained_distribution == "lognormal":
+            if not nonnegative:
+                raise ValueError(
+                    "A LogNormal retained state requires a nonnegative restriction; "
+                    "a signed Pi can map positive native scalings to nonpositive "
+                    "retained scalings"
+                )
+            if not positive_rows:
+                raise ValueError(
+                    "A LogNormal retained state requires positive weight in every restriction row"
+                )
+        elif self.retained_distribution != "gaussian":
+            assert_never(self.retained_distribution)
+        row_normalized = bool(np.all(np.abs(row_sums - 1.0) <= ROW_NORMALIZATION_TOLERANCE))
+        restriction = restriction.rename("restriction").assign_attrs(
+            mathematical_name="Pi",
+            definition="supplied",
+            strategy=self.name,
+            restriction_source="supplied",
+            retained_distribution=self.retained_distribution,
+            nonnegative=nonnegative,
+            row_normalized=row_normalized,
+            lognormal_admissible=lognormal_admissible,
+            units="1",
+        )
+        return RetainedProjection(restriction=restriction, strategy=self.name)
+
+
+@dataclass(frozen=True, slots=True, eq=False)
 class NativeCovarianceProducts:
     """Labelled in-memory product blocks induced by one retained restriction.
 
     Attributes:
         restriction: Dimensionless ``Pi`` with dimensions
-            ``(state_dim, *native_dims)``.
+            ``(state_dim, *native_dims)``. It is eager; a sparse payload
+            selected by the strategy remains sparse.
         prolongation: Derived dimensionless covariance-natural ``U_*`` with
             dimensions ``(*native_dims, state_dim)``.
         state_covariance: Positive-definite dimensionless ``C_alpha`` with
@@ -270,10 +391,11 @@ def project_native_covariance(
         copy=False,
     )
     dense_sensitivity = to_dense(sensitivity)
-    dense_prolongation = to_dense(prolongation)
+    # Sparse U is only needed by the strategy; strategies densify it if their
+    # numerical method requires a dense payload.
     sensitivity_data, prolongation_data = compute(
         dense_sensitivity.data,
-        dense_prolongation.data,
+        prolongation.data,
     )
     sensitivity = sensitivity.copy(data=sensitivity_data)
     prolongation = prolongation.copy(data=prolongation_data)
@@ -373,12 +495,12 @@ def _apply_restriction_blocks(
     column_dim: str,
     rhs_block_size: int,
 ) -> xr.DataArray:
-    """Apply covariance to explicit dense retained-state RHS blocks."""
+    """Apply covariance to retained-state RHS blocks, densifying one block at a time."""
     blocks: list[xr.DataArray] = []
     for start in range(0, restriction.sizes[state_dim], rhs_block_size):
         sliced = restriction.isel({state_dim: slice(start, start + rhs_block_size)})
         rhs = to_column_axis(
-            sliced,
+            to_dense(sliced),
             row_dim=state_dim,
             column_dim=column_dim,
             leading_dims=native_dims,
@@ -399,7 +521,7 @@ def _restriction_product_blocks(
     """Form ``Pi B Pi.T`` from the already materialized restriction."""
     blocks: list[xr.DataArray] = []
     for start in range(0, restriction.sizes[state_dim], rhs_block_size):
-        rows = restriction.isel({state_dim: slice(start, start + rhs_block_size)})
+        rows = to_dense(restriction.isel({state_dim: slice(start, start + rhs_block_size)}))
         blocks.append(xr.dot(rows, b_pi_t, dim=list(native_dims)))
     return xr.concat(blocks, dim=state_dim).transpose(state_dim, column_dim)
 
@@ -517,13 +639,52 @@ def _prepare_projection(
         join="exact",
         copy=False,
     )
-    dense_restriction = to_dense(restriction)
-    (restriction_data,) = compute(dense_restriction.data)
-    restriction = restriction.copy(data=restriction_data)
-    values = np.asarray(restriction.values)
-    if np.iscomplexobj(values) or not np.all(np.isfinite(values)):
-        raise ValueError("Projection strategy restriction must contain finite real values")
+    restriction = _materialize_restriction(restriction)
     return replace(projection, restriction=restriction)
+
+
+def _materialize_restriction(restriction: xr.DataArray) -> xr.DataArray:
+    """Compute ``Pi`` once, keep sparse storage sparse, and require finite real values.
+
+    Args:
+        restriction: Labelled restriction whose payload may be NumPy, sparse,
+            or Dask-backed with either chunk type.
+
+    Returns:
+        An eager restriction whose payload is a NumPy array or a zero-fill
+        :class:`sparse.COO` array.
+
+    Raises:
+        ValueError: If a sparse payload has nonzero fill value or any stored
+            value is complex or non-finite.
+    """
+    (data,) = compute(restriction.data)
+    if isinstance(data, SparseArray):
+        data = COO(data)
+        if data.fill_value != 0:
+            raise ValueError("A sparse restriction must use a zero fill value")
+        stored = data.data
+    else:
+        data = np.asarray(data)
+        stored = data
+    if np.iscomplexobj(stored) or not np.all(np.isfinite(stored)):
+        raise ValueError("Projection strategy restriction must contain finite real values")
+    return restriction.copy(data=data)
+
+
+def _restriction_row_diagnostics(
+    restriction: xr.DataArray,
+    *,
+    state_dim: str,
+) -> tuple[bool, np.ndarray]:
+    """Return whether eager ``Pi`` is nonnegative and its row sums, without densifying."""
+    data = restriction.data
+    stored = data.data if isinstance(data, COO) else np.asarray(data)
+    native_axes = tuple(axis for axis, dim in enumerate(restriction.dims) if dim != state_dim)
+    row_sums = data.sum(axis=native_axes)
+    if isinstance(row_sums, SparseArray):
+        row_sums = row_sums.todense()
+    return bool(np.all(stored >= 0.0)), np.asarray(row_sums, dtype=np.float64)
 
 
 def _derive_covariance_natural_prolongation(
