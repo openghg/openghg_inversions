@@ -141,7 +141,7 @@ def test_real_oco2_store_prepares_time_resolved_multisector_columns(
     assert np.isfinite(prior_corrections).all().item()
     assert bool(((full_column > 400.0) & (full_column < 450.0)).all())
     assert inputs["mf"].attrs["units"] == "1e-06"
-    assert inputs["H_bc"].attrs["satellite_column_bc_scale"].startswith("Applied to satellite rows")
+    assert "satellite_column_bc_scale" not in inputs["H_bc"].attrs
     assert np.isfinite(inputs["H_bc"]).all().item()
 
     assert prepared.site_metadata.site.values.tolist() == ["OCO2-EASTASIA"]

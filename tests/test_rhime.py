@@ -1829,11 +1829,6 @@ def test_assemble_inputs_preserves_borrowed_site_datasets(
         return _minimal_output_inv_inputs()
 
     monkeypatch.setattr(rhime_preparation, "make_inv_inputs", make_inputs)
-    monkeypatch.setattr(
-        rhime_preparation,
-        "scale_satellite_boundary_sensitivity_to_column_signal",
-        lambda inputs, **kwargs: inputs,
-    )
     monkeypatch.setattr(rhime_preparation, "_warn_for_nan_inputs", lambda *args, **kwargs: None)
 
     setup = rhime_public.RhimeConfig.from_params(
@@ -5327,11 +5322,11 @@ def test_multisector_site_preparation_keeps_gathered_source_state() -> None:
     ]
 
 
-def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
+def test_rhime_preparation_assembles_only_sites_retained_after_filtering(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """RHIME scaling receives preserved footprint provenance after filtering."""
-    satellite_data = _site_dataset([2.0]).assign_attrs(footprint_max_level=17)
+    """Assembly receives the retained satellite site after a surface site is dropped."""
+    satellite_data = _site_dataset([2.0])
     merged = MergedData(
         site_data={"TAC": _site_dataset([]), "OCO2-EASTASIA": satellite_data},
         flux_data={"test-source": _fake_basis_functions().flux.to_dataset(name="flux")},
@@ -5347,7 +5342,7 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
         flux_data=merged.flux_data,
         site_options=merged.site_options.select_indices([1]),
     )
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     def retrieve(*, site_options: SiteOptions, **kwargs: object) -> MergedData:
         """Accept resolved requested selectors at the canonical acquisition seam."""
@@ -5366,17 +5361,13 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
         "build_sensitivities",
         lambda *args, **kwargs: {"OCO2-EASTASIA": satellite_data},
     )
-    monkeypatch.setattr(
-        rhime_preparation,
-        "make_inv_inputs",
-        lambda **kwargs: _minimal_prepared_inv_inputs(sites=("OCO2-EASTASIA",)),
-    )
 
-    def capture_scaling(inv_inputs: xr.Dataset, **kwargs: object) -> xr.Dataset:
+    def capture_assembly(**kwargs: Any) -> xr.Dataset:
+        """Capture the retained site data sent to canonical assembly."""
         captured.update(kwargs)
-        return inv_inputs
+        return _minimal_prepared_inv_inputs(sites=("OCO2-EASTASIA",))
 
-    monkeypatch.setattr(rhime_preparation, "scale_satellite_boundary_sensitivity_to_column_signal", capture_scaling)
+    monkeypatch.setattr(rhime_preparation, "make_inv_inputs", capture_assembly)
 
     prepare_inputs(
         species="co2",
@@ -5391,12 +5382,8 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
         use_bc=False,
     )
 
-    assert captured == {
-        "sites": ("OCO2-EASTASIA",),
-        "platform": ("satellite",),
-        "observation_max_level": (3,),
-        "footprint_max_level": (17,),
-    }
+    assert captured["sites"] == ["OCO2-EASTASIA"]
+    assert tuple(captured["fp_data"]) == ("OCO2-EASTASIA",)
 
 
 def test_canonical_preparation_uses_basis_sensitivity_without_legacy_side_channels(
@@ -5991,56 +5978,49 @@ def test_canonical_preparation_filters_sites_before_basis_generation(
     assert filtering_calls == 1
 
 
-def test_satellite_bc_sensitivity_is_scaled_to_corrected_column_signal() -> None:
-    """Satellite H_bc is reduced into the same OCO corrected-column space as mf."""
-    inv_inputs = xr.Dataset(
-        {
-            "H_bc": (
-                ("bc_region", "nmeasure"),
-                np.array([[100.0, 200.0], [300.0, 400.0]], dtype=float),
-            ),
-            "mf": ("nmeasure", np.array([50.0, 100.0], dtype=float)),
-            "mf_prior_factor": ("nmeasure", np.array([0.0, 0.0], dtype=float)),
-            "mf_prior_upper_level_factor": ("nmeasure", np.array([350.0, 300.0], dtype=float)),
-            "site": ("nmeasure", np.array(["OCO2-EASTASIA", "OCO2-EASTASIA"])),
-        }
+@pytest.mark.parametrize("footprint_max_level", [None, 3])
+@pytest.mark.parametrize("lazy", [False, True])
+def test_assembly_preserves_boundary_sensitivity_with_column_factors(
+    footprint_max_level: int | None, lazy: bool,
+) -> None:
+    """Mixed surface/satellite assembly preserves physical BCs and prior factors."""
+    site_data = {}
+    expected_boundary = np.array([[100.0, 200.0], [300.0, 400.0]])
+    for site in ("TAC", "OCO2-EASTASIA"):
+        dataset = _site_dataset([2.0, 3.0])
+        dataset["H"] = (("region", "time"), [[2.0, 3.0]])
+        dataset["H_bc"] = (
+            ("bc_region", "time"), expected_boundary.copy(), {"units": "1e-9"},
+        )
+        if site == "OCO2-EASTASIA":
+            dataset["mf_prior_factor"] = ("time", [5.0, 10.0])
+            dataset["mf_prior_upper_level_factor"] = ("time", [350.0, 300.0])
+            if footprint_max_level is not None:
+                dataset.attrs["footprint_max_level"] = footprint_max_level
+        site_data[site] = dataset.chunk({"time": 1}) if lazy else dataset
+
+    prepared = rhime_public.assemble_inputs(
+        site_data,
+        _fake_basis_functions(),
+        site_options=_site_options(
+            ["TAC", "OCO2-EASTASIA"],
+            averaging_period=["1H", "1H"],
+            platform=["surface", "satellite"],
+            max_level=[None, 3],
+        ),
+        domain="EASTASIA", start_date="2019-01-01", use_bc=True,
     )
 
-    result = rhime_preparation.scale_satellite_boundary_sensitivity_to_column_signal(
-        inv_inputs,
-        sites=["OCO2-EASTASIA"],
-        platform=["satellite"],
-    )
-
-    np.testing.assert_allclose(
-        result["H_bc"].values,
-        np.array([[12.5, 50.0], [37.5, 100.0]]),
-    )
-    assert "satellite_column_bc_scale" in result["H_bc"].attrs
-
-
-def test_surface_bc_sensitivity_is_not_scaled_by_column_factors() -> None:
-    """Non-satellite H_bc is unchanged even if similarly named diagnostics exist."""
-    inv_inputs = xr.Dataset(
-        {
-            "H_bc": (
-                ("bc_region", "nmeasure"),
-                np.array([[100.0, 200.0], [300.0, 400.0]], dtype=float),
-            ),
-            "mf": ("nmeasure", np.array([50.0, 100.0], dtype=float)),
-            "mf_prior_factor": ("nmeasure", np.array([0.0, 0.0], dtype=float)),
-            "mf_prior_upper_level_factor": ("nmeasure", np.array([350.0, 300.0], dtype=float)),
-            "site": ("nmeasure", np.array(["TAC", "TAC"])),
-        }
-    )
-
-    result = rhime_preparation.scale_satellite_boundary_sensitivity_to_column_signal(
-        inv_inputs,
-        sites=["TAC"],
-        platform=[None],
-    )
-
-    xr.testing.assert_identical(result["H_bc"], inv_inputs["H_bc"])
+    inputs = prepared.inv_inputs
+    for site in site_data:
+        actual = inputs.sel(nmeasure=inputs.site == site)
+        np.testing.assert_array_equal(actual.H_bc, expected_boundary)
+        assert actual.H_bc.attrs["units"] == "1e-9"
+        assert "satellite_column_bc_scale" not in actual.H_bc.attrs
+    satellite = inputs.sel(nmeasure=inputs.site == "OCO2-EASTASIA")
+    np.testing.assert_array_equal(satellite.mf_prior_factor, [5.0, 10.0])
+    np.testing.assert_array_equal(satellite.mf_prior_upper_level_factor, [350.0, 300.0])
+    np.testing.assert_array_equal(site_data["OCO2-EASTASIA"].H_bc, expected_boundary)
 
 
 @pytest.mark.parametrize("supplied_errors", [False, True])

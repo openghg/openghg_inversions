@@ -36,7 +36,6 @@ from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_s
 from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.basis.boundary import BoundaryBasis, boundary_basis, nesw_basis
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR, BasisFunctions
-from openghg_inversions.boundary_sensitivity import scale_satellite_boundary_sensitivity_to_column_signal
 from openghg_inversions.filters import filtering
 from openghg_inversions.inversion_data import MergedData, PreparedInputs, SiteOptions
 from openghg_inversions.inversion_data.observation_errors import prepare_observation_errors
@@ -237,15 +236,6 @@ def assemble_inputs(
             fp_data=owned_site_data,
             sites=list(site_options.sites),
         )
-    inv_inputs = scale_satellite_boundary_sensitivity_to_column_signal(
-        inv_inputs,
-        sites=site_options.sites,
-        platform=site_options.platform,
-        observation_max_level=site_options.max_level,
-        footprint_max_level=tuple(
-            owned_site_data[site].attrs.get("footprint_max_level") for site in site_options.sites
-        ),
-    )
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
     basis_source = basis_functions.basis_artifact_source or "generated"
     log_timing(

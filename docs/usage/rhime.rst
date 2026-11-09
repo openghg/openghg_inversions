@@ -183,12 +183,13 @@ The option may be a scalar or a list aligned to ``sites``. For CO2,
 OpenGHG's existing high-time-resolution convolution uses the resolved
 footprint and its residual contribution.
 
-Column preparation also retains retrieval prior-factor fields, aligns small
-satellite observation/footprint timestamp precision differences, and applies
-the existing corrected-column boundary-condition scaling to satellite rows.
-These steps apply before the same source-resolved basis projection used for
-surface multisector inversions. Use a modern output format for column data;
-legacy HBMCMC output formatting does not support column observations.
+Column preparation retains retrieval prior-factor fields and aligns small
+satellite observation/footprint timestamp precision differences. Observation
+and footprint maximum levels must match; boundary-condition sensitivity is
+used directly without additional column scaling. These steps apply before
+the same source-resolved basis projection used for surface multisector
+inversions. Use a modern output format for column data; legacy HBMCMC output
+formatting does not support column observations.
 
 Running Prepared Inputs
 -----------------------
