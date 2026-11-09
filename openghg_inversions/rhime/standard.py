@@ -433,8 +433,16 @@ def prepare_standard(
 
     Returns:
         Retained backend-neutral inputs and their current native-flux binding.
+
+    Raises:
+        ValueError: If acquired site or flux metadata fails scientific-input
+            schema validation before filtering.
     """
     preparation_start = timer_start()
+    merged_data.validate_scientific_inputs(
+        split_by_sectors=False, use_bc=use_bc, flux_sources=flux_sources,
+        require_footprints=basis_inputs.get("basis_path") is None and basis_inputs.get("basis_partition") is None,
+    )
     # Preparation works on per-site datasets; ``merged_data`` stays acquired data.
     filtered, site_options = filter_observations(
         merged_data.site_data, merged_data.site_options, filters=filters,

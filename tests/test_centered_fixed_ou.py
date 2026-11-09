@@ -1,5 +1,7 @@
 """Centered fixed-OU likelihoods preserve absolute means, densities and gradients."""
 
+from functools import wraps
+
 import numpy as np
 import pytensor
 import pytensor.tensor as pt
@@ -115,25 +117,44 @@ def test_linked_centered_fixed_ou_preserves_joint_density_and_full_gradient(fixe
     _assert_equivalent(stock, centered, cached)
 
 
-def test_direct_custom_likelihood_receives_centered_observations_and_mean():
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_direct_centered_custom_likelihood_is_rejected_before_construction(monkeypatch, wrapped):
+    """Reject callbacks and fixed-OU wrappers before binding or graph construction."""
+    from openghg_inversions.rhime.co2 import co2_model
+
     inputs = _inputs()
     operands = _operands(inputs.mf, 209300.)
-    seen = {}
+    seen = []
+    original_bind = co2_model.bind_boundary_operands
+    original_model = co2_model.registered_model
+
+    def bind(*args, **kwargs):
+        """Record any premature centered operand binding."""
+        seen.append("bind")
+        return original_bind(*args, **kwargs)
+
+    def model():
+        """Record any premature PyMC graph construction."""
+        seen.append("model")
+        return original_model()
 
     def likelihood(**kwargs):
-        seen.update(kwargs)
+        """Record callbacks that must remain uncalled for centered inputs."""
+        seen.append("callback")
         return add_fixed_ou_gaussian_likelihood(**kwargs, tau_hours=4., fixed_site_amplitudes=.3)
 
-    model = build_co2_model(inputs.H,
-        retained_prior=CorrelatedLognormalPrior(inputs.alpha_prior_mean, inputs.alpha_prior_covariance,
-                                               covariance_dim="region_cov"),
-        fixed_prior_contribution=inputs.fixed_prior_contribution, observations=inputs.mf,
-        observation_error=inputs.mf_error, aggregation_error=resolve_aggregation_error(inputs, "dense"),
-        boundary_operands=operands, likelihood_builder=likelihood)
-    xr.testing.assert_allclose(seen["observations"], inputs.mf - 209300.)
-    mean, absolute = model.compile_fn(model.replace_rvs_by_values([seen["mean"], model["modelled_concentration"]]),
-                                      inputs=model.value_vars, on_unused_input="ignore")(model.initial_point())
-    np.testing.assert_allclose(mean + 209300., absolute, rtol=1e-14)
+    monkeypatch.setattr(co2_model, "bind_boundary_operands", bind)
+    monkeypatch.setattr(co2_model, "registered_model", model)
+    if wrapped:
+        likelihood = wraps(add_fixed_ou_gaussian_likelihood)(likelihood)
+    with pytest.raises(ValueError, match="Centered.*built-in fixed-OU.*custom"):
+        build_co2_model(inputs.H,
+            retained_prior=CorrelatedLognormalPrior(inputs.alpha_prior_mean, inputs.alpha_prior_covariance,
+                                                   covariance_dim="region_cov"),
+            fixed_prior_contribution=inputs.fixed_prior_contribution, observations=inputs.mf,
+            observation_error=inputs.mf_error, aggregation_error=resolve_aggregation_error(inputs, "dense"),
+            boundary_operands=operands, likelihood_builder=likelihood)
+    assert seen == []
 
 
 @pytest.mark.parametrize("reference", [400., 209300.])
