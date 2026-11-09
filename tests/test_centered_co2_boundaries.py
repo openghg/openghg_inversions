@@ -13,7 +13,7 @@ from openghg_inversions.models import StateActivity, get_coord_registry, restore
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.rhime.co2 import build_co2_model, Co2PreparedInputs, Co2O2PreparedInputs
-from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeBoundary, MultiplicativeChoice
+from openghg_inversions.models.boundary import AdditiveChoice, CenteredMultiplicativeBoundary, MultiplicativeChoice
 from openghg_inversions.postprocessing.boundary_outputs import restore_absolute_predictives
 from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2, annotate_co2_o2_trace
 from openghg_inversions.rhime.co2.co2_runner import (
@@ -615,7 +615,7 @@ def test_linked_composes_replaced_boundary_scientific_fields(monkeypatch, delta)
         boundary={channel: MultiplicativeChoice({"pdf": "normal", "mu": 1.0, "sigma": 0.2}) for channel in operands},
     )
     original = build_rhime_co2_o2(**options).model
-    original_component = MultiplicativeBoundary.add
+    original_component = CenteredMultiplicativeBoundary.add
     replacements = []
 
     def replacement(boundary, *args, **kwargs):
@@ -632,7 +632,7 @@ def test_linked_composes_replaced_boundary_scientific_fields(monkeypatch, delta)
             fixed_contribution=result.fixed_contribution + change,
         )
 
-    monkeypatch.setattr(MultiplicativeBoundary, "add", replacement)
+    monkeypatch.setattr(CenteredMultiplicativeBoundary, "add", replacement)
     alternative = build_rhime_co2_o2(**options).model
     assert len(replacements) == 2
     point = original.initial_point()

@@ -42,8 +42,9 @@ A *choice* (:class:`MultiplicativeChoice`, :class:`AdditiveChoice`,
 boundary options (priors, activity, anomaly structure and scale, reference
 and the boundary period calendar) before any arrays are attached.
 Configuration adapters produce choices. ``choice.bind(observations,
-sensitivity)`` returns the *bound* record (:class:`MultiplicativeBoundary`,
-:class:`AdditiveBoundary`, :class:`AnomalyScalingBoundary`), which pairs the
+sensitivity)`` returns the *bound* record (:class:`MultiplicativeBoundary` or
+:class:`CenteredMultiplicativeBoundary`, :class:`AdditiveBoundary`,
+:class:`AnomalyScalingBoundary`), which pairs the
 choice with borrowed labelled sensitivity aligned to one fit's observation
 rows and expanded to its boundary periods.
 
@@ -69,7 +70,8 @@ produces :class:`BoundCenteredSensitivity`, which every centered family
 consumes; and weighted additive anomalies extend it to
 :class:`BoundAdditiveSensitivity`. Every :class:`Choice` binds raw centered
 sensitivity; only :class:`MultiplicativeChoice` also accepts absolute
-``H_bc``, so the recipe input helpers that identify a prepared dataset's
+``H_bc``, binding it to :class:`MultiplicativeBoundary`, the one bound
+record that does not inherit :class:`~.centered.CenteredBoundary`, so the recipe input helpers that identify a prepared dataset's
 representation admit absolute sensitivity only for that family. Centered
 sensitivity keeps small anomalies after cancellation: likelihoods use
 observations shifted by the fixed ``c M 1``, while absolute outputs add it
@@ -93,6 +95,7 @@ from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models.boundary.additive import AdditiveBoundary, AdditiveChoice
 from openghg_inversions.models.boundary.anomaly_scaling import AnomalyScalingBoundary, AnomalyScalingChoice
 from openghg_inversions.models.boundary.multiplicative import (
+    CenteredMultiplicativeBoundary,
     MultiplicativeBoundary,
     MultiplicativeChoice,
     centered_boundary_expression,
@@ -162,6 +165,7 @@ __all__ = [
     "BoundAdditiveSensitivity",
     "Bound",
     "BoundCenteredSensitivity",
+    "CenteredMultiplicativeBoundary",
     "Choice",
     "Outputs",
     "MultiplicativeBoundary",

@@ -389,8 +389,9 @@ contribution included once in ``modelled_concentration`` and the likelihood.
 Public concentration products broadcast the fixed reference over requested
 draws. The additive model has no sampled boundary-scaling output.
 With zero anomaly scale or one boundary state, ``bc_anomaly`` and
-``mu_bc_anomaly`` are recorded as zeros; the total correction remains the
-common mean in every state.
+``mu_bc_anomaly`` are stored once as zeros in ``constant_data`` and broadcast
+over the draws in public products; the total correction remains the common
+mean in every state.
 
 Linked CO2/O2 concentration scales
 """"""""""""""""""""""""""""""""""

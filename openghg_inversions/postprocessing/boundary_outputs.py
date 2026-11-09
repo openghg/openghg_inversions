@@ -13,7 +13,7 @@ from openghg_inversions.postprocessing.inversion_output import trace_group
 
 
 BOUNDARY_FORMAT_VERSION = 2
-"""Saved boundary trace format: version 2 records zero anomalies explicitly."""
+"""Saved boundary trace format: version 2 declares zero anomalies explicitly."""
 
 _QUANTITY_ROLES = {
     "concentration": "boundary_concentration",
@@ -101,16 +101,21 @@ def reconstruct_boundary(
     """Return stable scientific quantities from saved draws and constants.
 
     The supplied draw group determines sample labels and sizes independently
-    for prior and posterior. Constants broadcast only over this group's draws.
+    for prior and posterior. Constants, such as the fixed reference or zero
+    anomalies that were not sampled, broadcast over this group's
+    ``chain`` and ``draw`` only.
     """
+    # Leading sample dimensions, with the draw group's labels where it has them.
+    samples = {
+        dim: draws.coords[dim].values if dim in draws.coords else draws.sizes[dim]
+        for dim in ("chain", "draw") if dim in draws.dims
+    }
     result = {}
     for quantity, name in facts.roles.items():
         if name in draws:
             result[quantity] = draws[name]
         elif name in facts.constants:
-            result[quantity] = facts.constants[name]
+            result[quantity] = facts.constants[name].expand_dims(samples)
         else:
             raise ValueError(f"Boundary scientific outputs require role {_QUANTITY_ROLES[quantity]!r} in saved draws.")
-    if "reference" in result and "concentration" in result:
-        result["reference"] = result["reference"].broadcast_like(result["concentration"])
     return result

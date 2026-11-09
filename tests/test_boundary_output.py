@@ -27,23 +27,26 @@ def _trace() -> xr.DataTree:
         groups[group] = xr.Dataset({
             "bc_mean_shift": mean,
             "bc_correction": correction,
-            "bc_anomaly": xr.zeros_like(correction),
             "mu_bc_mean_shift": mean * response,
-            "mu_bc_anomaly": xr.zeros_like(mean * response),
             "mu_bc": 400.0 + mean * response,
         })
-    groups["constant_data"] = xr.Dataset({"mu_bc_reference": xr.DataArray([400.0, 400.0], dims="nmeasure")})
+    groups["constant_data"] = xr.Dataset({
+        "mu_bc_reference": xr.DataArray([400.0, 400.0], dims="nmeasure"),
+        "bc_anomaly": xr.DataArray([0.0, 0.0], dims="bc_region", coords={"bc_region": ["observed", "unobserved"]}),
+        "mu_bc_anomaly": xr.DataArray([0.0, 0.0], dims="nmeasure"),
+    })
     trace = xr.DataTree.from_dict(groups)
     trace.attrs.update(rhime_variable_roles=json.dumps(roles), rhime_boundary_format_version=2)
     return trace
 
 
-def test_mean_only_replay_reads_recorded_zero_anomalies_for_unequal_sample_sizes() -> None:
+def test_mean_only_replay_broadcasts_constant_zero_anomalies_for_unequal_sample_sizes() -> None:
     trace = _trace()
     original = trace.copy(deep=True)
     facts = decode_saved_boundaries(trace)[""]
     for group, count in (("prior", 7), ("posterior", 3)):
         result = reconstruct_boundary(facts, trace[group].to_dataset())
+        assert result["anomaly"].dims == ("chain", "draw", "bc_region")
         assert result["anomaly"].sizes == {"bc_region": 2, "chain": 1, "draw": count}
         np.testing.assert_array_equal(result["anomaly"], 0.0)
         np.testing.assert_array_equal(result["anomaly_contribution"], 0.0)
@@ -63,9 +66,9 @@ def test_old_boundary_posterior_fails_with_prepare_again(version) -> None:
 
 
 @pytest.mark.parametrize("missing", ["bc_anomaly", "mu_bc_anomaly"])
-def test_declared_anomalies_require_saved_draws(missing: str) -> None:
+def test_declared_anomalies_require_saved_draws_or_constants(missing: str) -> None:
     trace = _trace()
-    del trace["posterior"][missing]
+    del trace["constant_data"][missing]
     with pytest.raises(ValueError, match="require role 'boundary_.*' in saved draws"):
         reconstruct_boundary(decode_saved_boundaries(trace)[""], trace.posterior.to_dataset())
 
@@ -114,8 +117,10 @@ def test_independent_corrections_replay_through_existing_scientific_roles(
             assert components[f"{name}_{group}"].attrs["units"] == "ppm"
         for name in ("flux_scale", "boundary_scale"):
             assert components[f"{name}_{group}"].attrs["units"] == "1"
+        boundary = components[f"boundary_{group}"]
         xr.testing.assert_allclose(
-            components[f"boundary_{group}"],
-            components[f"boundary_reference_{group}"] + components[f"boundary_anomaly_contribution_{group}"],
+            boundary,
+            (components[f"boundary_reference_{group}"] + components[f"boundary_anomaly_contribution_{group}"])
+            .transpose(*boundary.dims),
         )
     xr.testing.assert_identical(trace, before)
