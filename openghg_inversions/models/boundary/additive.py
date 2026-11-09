@@ -1,8 +1,7 @@
 """Additive boundary corrections with weighted-centred anomalies.
 
 The additive boundary replaces fitted multiplicative scales. With centered
-transport ``A``, ``M`` and ``c`` (:class:`~.operands.CenteredOperands`; see
-:doc:`/usage/centered_boundary_conditions`) its absolute contribution is
+transport ``A``, ``M`` and ``c`` (:class:`~.operands.CenteredOperands`) its absolute contribution is
 ``A 1 + c M 1 + M (m 1 + d)``: a scalar common mean shift ``m`` plus anomalies
 ``d`` with zero weighted mean, both in observation concentration units. The
 likelihood omits the fixed ``c M 1``. Anomalies use the non-redundant normal
