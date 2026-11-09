@@ -15,6 +15,7 @@ from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
 from typing import Any, get_args, get_type_hints
 
+from openghg_inversions.basis.boundary import BOUNDARY_BASIS_ALGORITHMS, boundary_basis
 from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
@@ -44,6 +45,18 @@ class DataConfig:
     External options enter through ``from_params``. Ordinary option containers
     are owned; numerical payloads remain borrowed. Direct construction expects
     resolved values and does not copy or execute scientific work.
+
+    Boundary-condition basis selection, when ``use_bc`` is true:
+
+    Attributes:
+        bc_basis_paths: Exact labelled BC basis files. When set, they take
+            precedence and ``bc_basis_algorithm`` is inactive.
+        bc_basis_algorithm: Built-in basis used without files: ``"NESW"``
+            (one region per whole curtain) or ``"twelve-region"`` (two lower
+            horizontal halves and one upper region per curtain).
+        bc_basis_split_height: Finite twelve-region split in the curtains'
+            native height-coordinate units; no unit conversion or vertical
+            datum is assumed. Ignored by NESW and by exact files.
     """
 
     site_options: SiteOptions
@@ -68,6 +81,7 @@ class DataConfig:
     basis_partition_paths: tuple[Path, ...] | None = None
     bc_basis_paths: tuple[Path, ...] | None = None
     bc_basis_algorithm: str | None = "NESW"
+    bc_basis_split_height: float = 3000.0
     outer_regions_path: Path | None = None
     bc_input: str | None = None
     basis_algorithm: str | None = "weighted"
@@ -141,10 +155,18 @@ class DataConfig:
         if (remaining.get("basis_path") is None and remaining.get("basis_partition_path") is None
                 and remaining.get("basis_partition_paths") is None and basis_algorithm not in allowed):
             raise ValueError(f"`basis_algorithm` must be one of {allowed!r}; got {basis_algorithm!r}.")
-        bc_algorithm = remaining.get("bc_basis_algorithm", cls.bc_basis_algorithm)
-        if (remaining.get("use_bc", cls.use_bc) and remaining.get("bc_basis_paths") is None
-                and (not isinstance(bc_algorithm, str) or bc_algorithm != "NESW")):
-            raise ValueError(f"`bc_basis_algorithm` must be 'NESW' without selected files; got {bc_algorithm!r}.")
+        if remaining.get("use_bc", cls.use_bc) and remaining.get("bc_basis_paths") is None:
+            bc_algorithm = remaining.get("bc_basis_algorithm", cls.bc_basis_algorithm)
+            if bc_algorithm not in BOUNDARY_BASIS_ALGORITHMS:
+                raise ValueError(
+                    f"`bc_basis_algorithm` must be one of {BOUNDARY_BASIS_ALGORITHMS!r} without selected files; "
+                    f"got {bc_algorithm!r}."
+                )
+            try:
+                boundary_basis(bc_algorithm, split_height=remaining.get(
+                    "bc_basis_split_height", cls.bc_basis_split_height))
+            except ValueError as exc:
+                raise ValueError(f"`bc_basis_split_height`: {exc}") from exc
         remaining["sites"] = as_list(remaining["sites"])
         site_options = SiteOptions.from_inputs(**{
             f.name: remaining.pop(f.name) for f in fields(SiteOptions) if f.name in remaining
