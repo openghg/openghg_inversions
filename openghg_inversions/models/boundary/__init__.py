@@ -33,9 +33,7 @@ configuration to a saved trace:
    * - Handoffs: what recipes and outputs receive
      - :class:`~openghg_inversions.models.components.AffineConcentrationTerm`
        from ``add``, :class:`Outputs` from ``outputs``
-     - ``openghg_inversions.models.components``, ``outputs``; saved
-       outputs are decoded by
-       :mod:`openghg_inversions.postprocessing.boundary_outputs`
+     - ``openghg_inversions.models.components``, ``outputs``
 
 A *choice* (:class:`MultiplicativeChoice`, :class:`AdditiveChoice`,
 :class:`AnomalyScalingChoice`) is one resolved selection of the user's
@@ -50,8 +48,7 @@ rows and expanded to its boundary periods.
 
 A recipe binds each boundary once, materializes the bound record together
 with its other inputs (``dask.compute`` traverses these dataclasses, including
-choice priors; see :func:`~openghg_inversions.array_ops.to_dense_tree` and the
-joint-computation example in :doc:`/development/rhime_model_development`), then calls
+choice priors; see :func:`~openghg_inversions.array_ops.to_dense_tree`), then calls
 ``boundary.add(...)`` inside its registered model. ``add`` is the affine
 counterpart of :func:`~openghg_inversions.models.components.add_linear_component`:
 it registers the sensitivity, adds the sampled corrections and returns an
@@ -71,8 +68,7 @@ consumes; and weighted additive anomalies extend it to
 :class:`BoundAdditiveSensitivity`. Every :class:`Choice` binds raw centered
 sensitivity; only :class:`MultiplicativeChoice` also accepts absolute
 ``H_bc``, binding it to :class:`MultiplicativeBoundary`, the one bound
-record that does not inherit :class:`~.centered.CenteredBoundary`, so the recipe input helpers that identify a prepared dataset's
-representation admit absolute sensitivity only for that family. Centered
+record that does not inherit :class:`~.centered.CenteredBoundary`. Centered
 sensitivity keeps small anomalies after cancellation: likelihoods use
 observations shifted by the fixed ``c M 1``, while absolute outputs add it
 back. Centered graphs need a float64 PyTensor process
@@ -130,16 +126,41 @@ class Bound(Protocol):
     __dataclass_fields__: ClassVar[dict[str, Any]]
 
     @property
-    def data(self) -> xr.Dataset: ...
+    def data(self) -> xr.Dataset:
+        """Borrowed sensitivity bound to this fit's observation rows and states."""
+        ...
 
     @property
-    def observation_dim(self) -> str: ...
+    def observation_dim(self) -> str:
+        """Observation dimension leading every observation-aligned variable."""
+        ...
 
     def add(
         self, *, output_dim: str = ..., prefix: str = ..., owner: str | None = ...,
-    ) -> AffineConcentrationTerm: ...
+    ) -> AffineConcentrationTerm:
+        """Add the boundary's states and concentration to the current PyMC model.
 
-    def outputs(self, prefix: str = ...) -> Outputs: ...
+        Args:
+            output_dim: Observation dimension registered by the model.
+            prefix: Prefix for graph variable names.
+            owner: Namespace for component-owned state coordinates, or ``None``
+                for local names.
+
+        Returns:
+            The boundary's concentration term.
+        """
+        ...
+
+    def outputs(self, prefix: str = ...) -> Outputs:
+        """Declare roles, units and metadata of the graph ``add`` builds.
+
+        Args:
+            prefix: Graph-name prefix used for ``add``.
+
+        Returns:
+            The declarations, available before sampling.
+        """
+        ...
 
 
 @runtime_checkable
@@ -149,12 +170,31 @@ class Choice(Protocol):
     __dataclass_fields__: ClassVar[dict[str, Any]]
 
     @property
-    def frequency(self) -> str | None: ...
+    def frequency(self) -> str | None:
+        """Boundary-period frequency (``"monthly"`` or a fixed duration), or ``None`` for one period."""
+        ...
 
     @property
-    def anchor_time(self) -> DatetimeLike | None: ...
+    def anchor_time(self) -> DatetimeLike | None:
+        """Optional start of the fixed-duration period grid."""
+        ...
 
-    def bind(self, observations: xr.DataArray, sensitivity: RawCenteredSensitivity) -> Bound: ...
+    def bind(self, observations: xr.DataArray, sensitivity: RawCenteredSensitivity) -> Bound:
+        """Bind prepared sensitivity to one fit's observations and periods.
+
+        Args:
+            observations: Observations of the fit, supplying row labels and
+                times.
+            sensitivity: Raw centered sensitivity; only
+                :class:`MultiplicativeChoice` also accepts absolute ``H_bc``.
+
+        Returns:
+            The bound boundary.
+
+        Raises:
+            ValueError: If the sensitivity or period settings are invalid.
+        """
+        ...
 
 
 __all__ = [
