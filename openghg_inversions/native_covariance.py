@@ -162,6 +162,7 @@ class SeparableExponentialCovariance:
     """
 
     __slots__ = (
+        "_class_boxes",
         "_class_labels",
         "_class_masks",
         "_correlation_length",
@@ -243,6 +244,7 @@ class SeparableExponentialCovariance:
         self._longitude_cholesky = cho_factor(longitude_factor, lower=True)
         self._class_labels = class_labels
         self._class_masks = class_masks
+        self._class_boxes = _class_bounding_boxes(class_masks)
 
     @property
     def latitude(self) -> BorrowedDataArray:
@@ -472,6 +474,10 @@ class SeparableExponentialCovariance:
     def _apply_matrix(self, matrix: np.ndarray) -> np.ndarray:
         """Apply the configured covariance to native-first right-hand sides.
 
+        Class blocks are applied on each class's bounding box. Cells outside a
+        class are zeroed before and after its block, so restricting the
+        separable factors to the bounding box is exact.
+
         Args:
             matrix: Eager array shaped ``(latitude, longitude, rhs)``.
 
@@ -481,10 +487,15 @@ class SeparableExponentialCovariance:
         if len(self._class_masks) <= 1:
             return self._apply_separable(matrix)
         result = np.zeros_like(matrix, dtype=np.result_type(matrix.dtype, np.float64))
-        for mask in self._class_masks:
-            masked = matrix * mask[..., np.newaxis]
-            result += self._apply_separable(masked) * mask[..., np.newaxis]
-        return result
+        for lat_slice, lon_slice, local_mask in self._class_boxes:
+            masked = matrix[lat_slice, lon_slice] * local_mask[..., np.newaxis]
+            applied = _apply_factors(
+                masked,
+                self._latitude_factor[lat_slice, lat_slice],
+                self._longitude_factor[lon_slice, lon_slice],
+            )
+            result[lat_slice, lon_slice] += applied * local_mask[..., np.newaxis]
+        return result * self.sigma**2
 
     def _apply_separable(self, matrix: np.ndarray) -> np.ndarray:
         """Apply the two one-dimensional covariance factors.
@@ -495,9 +506,7 @@ class SeparableExponentialCovariance:
         Returns:
             Separable covariance-applied values with the same shape.
         """
-        left_applied = np.einsum("ij,jkr->ikr", self._latitude_factor, matrix)
-        applied = np.einsum("ikr,lk->ilr", left_applied, self._longitude_factor)
-        return applied * self.sigma**2
+        return _apply_factors(matrix, self._latitude_factor, self._longitude_factor) * self.sigma**2
 
     def _solve_separable(self, matrix: np.ndarray) -> np.ndarray:
         """Solve the unblocked separable system using Cholesky factors.
@@ -771,6 +780,54 @@ def _positive_finite(value: float, name: str) -> float:
     if not np.isfinite(resolved) or resolved <= 0.0:
         raise ValueError(f"{name} must be finite and strictly positive")
     return resolved
+
+
+def _apply_factors(
+    matrix: np.ndarray, latitude_factor: np.ndarray, longitude_factor: np.ndarray
+) -> np.ndarray:
+    """Apply ``latitude_factor`` and ``longitude_factor`` along the first two axes.
+
+    The latitude step is one reshaped matrix product and the longitude step an
+    optimized ``einsum`` contraction, so both dispatch to BLAS (and its
+    threads). The previous unoptimized ``numpy.einsum`` contractions ran in
+    NumPy's own single-threaded loops and dominated native coherent reductions.
+
+    Args:
+        matrix: Array shaped ``(latitude, longitude, rhs)``.
+        latitude_factor: Square latitude factor matching axis 0.
+        longitude_factor: Square longitude factor matching axis 1.
+
+    Returns:
+        ``(latitude_factor kron longitude_factor) matrix`` with the input shape.
+    """
+    n_lat, n_lon, n_rhs = matrix.shape
+    latitude_applied = (latitude_factor @ matrix.reshape(n_lat, n_lon * n_rhs)).reshape(n_lat, n_lon, n_rhs)
+    return np.einsum("ikr,lk->ilr", latitude_applied, longitude_factor, optimize=True)
+
+
+def _class_bounding_boxes(
+    class_masks: tuple[np.ndarray, ...] | list[np.ndarray],
+) -> tuple[tuple[slice, slice, np.ndarray], ...]:
+    """Return each class mask's latitude/longitude bounding box and local mask.
+
+    Args:
+        class_masks: Boolean native-grid masks, one per class.
+
+    Returns:
+        One ``(latitude_slice, longitude_slice, local_mask)`` triple per
+        non-empty class.
+    """
+    boxes = []
+    for mask in class_masks:
+        mask = np.asarray(mask, dtype=bool)
+        rows = np.flatnonzero(mask.any(axis=1))
+        columns = np.flatnonzero(mask.any(axis=0))
+        if rows.size == 0:
+            continue
+        lat_slice = slice(int(rows[0]), int(rows[-1]) + 1)
+        lon_slice = slice(int(columns[0]), int(columns[-1]) + 1)
+        boxes.append((lat_slice, lon_slice, mask[lat_slice, lon_slice]))
+    return tuple(boxes)
 
 
 def _exponential_factor(coordinates: np.ndarray, length_scale: float) -> np.ndarray:
