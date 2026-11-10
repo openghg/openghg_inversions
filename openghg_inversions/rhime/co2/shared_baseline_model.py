@@ -55,9 +55,9 @@ def shared_model_payload(prepared: xr.Dataset, *, linked_identity: bool = False)
         moments and standardized pattern coordinates. No payload is computed.
     """
     if "bc_pattern_centered" not in prepared:
-        prepared = prepared.assign(bc_pattern_centered=(prepared.bc_pattern_raw - prepared.bc_pattern_mean).assign_attrs(
-            units=prepared.attrs["units"],
-        ))
+        # Assign the variable so the Dataset keeps its own pattern index and levels.
+        centered = (prepared.bc_pattern_raw - prepared.bc_pattern_mean).assign_attrs(units=prepared.attrs["units"])
+        prepared = prepared.assign(bc_pattern_centered=centered.transpose(*prepared.bc_pattern_raw.dims).variable)
     names = {
         "retained_mean", "retained_covariance", "flux_sensitivity",
         "fixed_prior_contribution", "bc_prescribed_centered", "bc_reference_shift", "delta_sd",

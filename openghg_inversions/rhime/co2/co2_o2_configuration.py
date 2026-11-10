@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.boundary import Choice, MultiplicativeChoice
@@ -219,6 +220,9 @@ class Co2O2ModelConfig:
             value = getattr(self, item.name)
             if isinstance(value, Mapping):
                 object.__setattr__(self, item.name, normalise_optional_mapping(value))
+        if self.boundary is not None:
+            # Direct construction meets the same one-calendar rule as configuration.
+            object.__setattr__(self, "boundary", normalise_optional_mapping(_shared_boundary_periods(self.boundary)))
 
     @classmethod
     def from_params(cls, config: Mapping[str, object]) -> Co2O2ModelConfig:
@@ -341,11 +345,12 @@ def _shared_boundary_periods(
     """Apply one boundary calendar to every enabled linked channel."""
     enabled = [choice for choice in choices.values() if choice is not None]
     frequencies = {normalise_frequency(choice.frequency) for choice in enabled if choice.frequency is not None}
-    anchors = {choice.anchor_time for choice in enabled if choice.anchor_time is not None}
+    # Anchors are compared as instants, so equivalent spellings agree.
+    anchors = {pd.Timestamp(choice.anchor_time) for choice in enabled if choice.anchor_time is not None}
     if len(frequencies) > 1 or len(anchors) > 1:
         raise ValueError("Linked boundary frequency and anchor_time must agree across channels.")
     frequency = next((choice.frequency for choice in enabled if choice.frequency is not None), None)
-    anchor_time = next(iter(anchors), None)
+    anchor_time = next((choice.anchor_time for choice in enabled if choice.anchor_time is not None), None)
     return {
         channel: None if choice is None else replace(choice, frequency=frequency, anchor_time=anchor_time)
         for channel, choice in choices.items()
