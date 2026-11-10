@@ -380,10 +380,7 @@ def _validate_serialized_header(tree: xr.DataTree) -> set[str]:
     if shared_nodes and shared_nodes != {"shared_baseline_co2", "shared_baseline_o2"}:
         raise ValueError("Shared baseline nodes must be a complete co2/o2 pair; prepare again.")
     from .shared_preparation import SHARED_SNAPSHOT_SCHEMA, _snapshot_bound
-    if shared_nodes:
-        from openghg_inversions.models.boundary import require_centered_precision
-
-        require_centered_precision()
+    # Loading builds no graph; model construction and materialization own the float64 requirement.
     for name in shared_nodes:
         if tree[name].attrs.get("shared_snapshot_schema") != SHARED_SNAPSHOT_SCHEMA:
             raise ValueError("Unsupported frozen shared baseline schema; prepare again.")
