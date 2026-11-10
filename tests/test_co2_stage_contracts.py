@@ -369,3 +369,23 @@ def test_full_run_ignores_unused_source_and_inactive_country(full_run_files, mon
             "outputs": {"output_format": "none", "save_trace": str(reconstruction), "country_file": str(reconstruction)},
         })
     assert reconstruction.read_bytes() == before
+
+
+@pytest.mark.parametrize("stage", ["sample", "prior"])
+def test_staged_request_file_is_protected_before_construction(full_run_files, tmp_path, monkeypatch, stage):
+    """A request file the CLI consumed cannot be deleted or overwritten by that stage's outputs."""
+    _, source, reconstruction, _ = full_run_files
+    destination = tmp_path / "check"
+    request = destination / ("prior-predictive-readiness.json" if stage == "prior" else "posterior.nc")
+    destination.mkdir()
+    request.write_bytes(b"consumed request must remain intact")
+    model = {"likelihood": {"kind": "additive_sigma", "no_model_error": True}}
+    monkeypatch.setattr(handoffs, "sample_co2_inference", lambda *a, **kw: pytest.fail("sampling reached"))
+    monkeypatch.setattr(handoffs, "build_co2_inference", lambda *a, **kw: pytest.fail("construction reached"))
+    prep = handoffs.prepare(prepared_path=source, affine_path=reconstruction, output_dir=tmp_path / "prepare", **FACTS)
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+        if stage == "sample":
+            handoffs.sample(prep, model=model, output_dir=destination, referenced=(request,))
+        else:
+            handoffs.prior_predictive(prep, model=model, output_dir=destination, referenced=(request,))
+    assert request.read_bytes() == b"consumed request must remain intact"

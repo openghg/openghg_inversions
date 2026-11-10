@@ -183,6 +183,11 @@ def _check_saved_family(args: argparse.Namespace) -> dict[str, Any] | None:
     return record
 
 
+def _request_files(args: argparse.Namespace) -> tuple[str, ...]:
+    """Return the request files this command consumed, for output protection."""
+    return tuple(str(path) for path in (getattr(args, "config", None), getattr(args, "params_file", None)) if path)
+
+
 def _prior_predictive_command(args: argparse.Namespace) -> None:
     """Run the prior-predictive readiness check for the selected family."""
     from openghg_inversions.rhime.stages import prior_predictive
@@ -197,7 +202,7 @@ def _prior_predictive_command(args: argparse.Namespace) -> None:
         params = _co2_o2_params(args)
         result = prior_linked(
             args.preparation_manifest, model=Co2O2ModelConfig.from_params(params),
-            random_seed=resolve_co2_o2_prior_seed(params), **common,
+            random_seed=resolve_co2_o2_prior_seed(params), referenced=_request_files(args), **common,
         )
     elif args.model == "co2":
         from openghg_inversions.rhime.co2.handoffs import prior_predictive as prior_co2
@@ -206,7 +211,7 @@ def _prior_predictive_command(args: argparse.Namespace) -> None:
 
         params = _co2_params(args)
         result = prior_co2(args.preparation_manifest, model=Co2ModelConfig.from_params(params),
-                           random_seed=resolve_co2_prior_seed(params), **common)
+                           random_seed=resolve_co2_prior_seed(params), referenced=_request_files(args), **common)
     elif args.model in {"standard", "multisector"}:
         if args.model == "multisector":
             from openghg_inversions.rhime.multisector_stages import prior_predictive
@@ -231,7 +236,7 @@ def _sample_command(args: argparse.Namespace) -> None:
         model = Co2O2ModelConfig.from_params(params)
         result = sample_linked(
             args.preparation_manifest, model=model, sampler=resolve_co2_o2_sampler(params, model=model),
-            output_dir=_stage_output_dir(args),
+            output_dir=_stage_output_dir(args), referenced=_request_files(args),
         )
         print(result)
     elif args.model == "co2":
@@ -242,7 +247,8 @@ def _sample_command(args: argparse.Namespace) -> None:
 
         params = _co2_params(args)
         result = sample_co2(args.preparation_manifest, model=Co2ModelConfig.from_params(params),
-                            sampling=params.get("sampling", {}), output_dir=_stage_output_dir(args))
+                            sampling=params.get("sampling", {}), output_dir=_stage_output_dir(args),
+                            referenced=_request_files(args))
         print(result)
     elif args.model in {"standard", "multisector"}:
         if args.model == "multisector":
@@ -285,7 +291,7 @@ def _postprocess_command(args: argparse.Namespace) -> None:
 
         params = _co2_o2_params(args)
         params["outputs"] = {**params.get("outputs", {}), "output_path": _stage_output_dir(args)}
-        postprocess_linked(args.sample_manifest, **resolve_co2_o2_output(params))
+        postprocess_linked(args.sample_manifest, referenced=_request_files(args), **resolve_co2_o2_output(params))
     elif args.model == "co2":
         from openghg_inversions.rhime.co2.handoffs import postprocess as postprocess_co2
 
@@ -293,7 +299,7 @@ def _postprocess_command(args: argparse.Namespace) -> None:
 
         params = _co2_params(args)
         params["outputs"] = {**params.get("outputs", {}), "output_path": _stage_output_dir(args)}
-        postprocess_co2(args.sample_manifest, **resolve_co2_output(params))
+        postprocess_co2(args.sample_manifest, referenced=_request_files(args), **resolve_co2_output(params))
     elif args.model in {"standard", "multisector"}:
         if args.model == "multisector":
             from openghg_inversions.rhime.multisector_stages import postprocess
