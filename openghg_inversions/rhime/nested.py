@@ -894,6 +894,7 @@ def prepare_nested_rhime_inputs(
     outer_basis_inputs: Mapping[str, Any], inner_basis_inputs: Mapping[str, Any],
     bc_basis: BoundaryBasis = nesw_basis,
     time_tolerance: str | pd.Timedelta | None = None,
+    filter_options: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> NestedRhimePreparedInputs:
     """Prepare two acquired native grids using explicit scientific choices.
 
@@ -912,6 +913,7 @@ def prepare_nested_rhime_inputs(
         flux_sources: Single source represented on both grids.
         averaging_error: Include variability when deriving observation errors.
         filters: Filters evaluated once on the outer observations.
+        filter_options: Keyword options for named observation filters.
         basis_algorithm: Outer basis-generation algorithm.
         inner_basis_algorithm: Inner basis-generation algorithm.
         nbasis: Outer target, or combined budget when both bases are generated
@@ -942,7 +944,7 @@ def prepare_nested_rhime_inputs(
     inner_data = _NestedDomainData(inner.site_data, inner.flux_data, inner.site_options)
     outer_data, inner_data = _retain_common_sites(outer_data, inner_data)
     outer_site_data, _ = filter_observations(
-        outer_data.site_data, outer_data.site_options, filters=filters,
+        outer_data.site_data, outer_data.site_options, filters=filters, filter_options=filter_options,
     )
     outer_filtered = outer_data.with_site_data(outer_site_data, context="Observation filtering")
     outer_filtered, inner_data = _retain_common_sites(outer_filtered, inner_data)
@@ -1404,7 +1406,7 @@ def run_nested(
         prepared = prepare_nested_rhime_inputs(
             outer_merged, inner_merged,
             **outer_data.select(
-                "domain", "start_date", "flux_sources", "averaging_error", "filters",
+                "domain", "start_date", "flux_sources", "averaging_error", "filters", "filter_options",
                 "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc",
             ),
             inner_domain=inner_data.domain, inner_basis_algorithm=inner_data.basis_algorithm,

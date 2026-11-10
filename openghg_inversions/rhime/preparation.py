@@ -60,6 +60,7 @@ def filter_observations(
     site_options: SiteOptions,
     *,
     filters: Any = None,
+    filter_options: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[dict[str, xr.Dataset], SiteOptions]:
     """Filter borrowed observations and drop empty sites with aligned selectors.
 
@@ -74,6 +75,8 @@ def filter_observations(
         filters: Filter name, list of names, or mapping from site names to
             filters accepted by :func:`openghg_inversions.filters.filtering`.
             ``None`` applies no filters. The caller's mapping is not modified.
+        filter_options: Keyword options for named filters, such as
+            ``{"local_influence": {"window_size": 5, "threshold": 0.15}}``.
 
     Returns:
         Retained per-site datasets in selector order, and the selectors aligned
@@ -81,7 +84,9 @@ def filter_observations(
 
     Raises:
         ValueError: If no sites remain after filtering.
-        KeyError: If a requested filter is unknown.
+        KeyError: If a requested filter, or a filter named in
+            ``filter_options``, is unknown.
+        TypeError: If ``filter_options`` names an option a filter does not accept.
     """
     if isinstance(filters, dict):
         # The filter implementation normalizes this working mapping.
@@ -99,6 +104,7 @@ def filter_observations(
             fp_data={site: dataset.copy() for site, dataset in ordered.items()},
             sites=site_options.sites,
             filters=filters,
+            filter_options=filter_options,
         )
         return retained, site_options.retain_sites(tuple(retained), context="Observation filtering")
 
@@ -296,10 +302,11 @@ def _apply_filters_and_drop_empty_sites(
     fp_data: dict,
     sites: Sequence[str],
     filters: Any,
+    filter_options: Mapping[str, Mapping[str, Any]] | None,
 ) -> dict:
     """Apply observation filters and remove empty site datasets."""
     if filters is not None:
-        fp_data = filtering(fp_data, filters)
+        fp_data = filtering(fp_data, filters, filter_options=filter_options)
 
     dropped_sites = []
     for site in sites:

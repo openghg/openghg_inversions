@@ -17,6 +17,7 @@ from typing import Any, ClassVar, get_args, get_type_hints
 
 from openghg_inversions.basis.boundary import BOUNDARY_BASIS_ALGORITHMS, boundary_basis
 from openghg_inversions.rhime._resources import resolve_resource_paths
+from openghg_inversions.filters import validate_filter_options
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
 from openghg_inversions.inversion_inputs import DatetimeLike
@@ -152,7 +153,11 @@ class DataConfig:
         basis_algorithm: Flux basis algorithm used when no basis file is
             selected: ``"quadtree"``, ``"weighted"`` or ``"region_constrained"``.
         nbasis: Requested number of flux basis regions.
-        filters: Observation filters, for all sites or keyed by site.
+        filters: Filter names, or per-site filter names, applied before
+            observation errors and basis construction.
+        filter_options: Keyword options for named filters, such as
+            ``{"local_influence": {"window_size": 5, "threshold": 0.15}}``.
+            Omitted options keep each filter's defaults.
         fix_basis_outer_regions: Whether outer regions are fixed from
             ``outer_regions_path`` during basis preparation.
         averaging_error: Whether observation averaging variability is added
@@ -188,6 +193,7 @@ class DataConfig:
     basis_algorithm: str | None = "weighted"
     nbasis: int = 100
     filters: str | list[str | None] | dict[str, str | None | list[str | None]] | None = None
+    filter_options: dict[str, dict[str, Any]] | None = None
     fix_basis_outer_regions: bool = False
     averaging_error: bool = True
     basis_output_path: Path | None = None
@@ -276,6 +282,8 @@ class DataConfig:
             f.name: remaining.pop(f.name) for f in fields(SiteOptions) if f.name in remaining
         })
         remaining["filters"] = _copy_option_containers(remaining.get("filters", cls.filters))
+        if remaining.get("filter_options") is not None:
+            remaining["filter_options"] = validate_filter_options(remaining["filter_options"])
         remaining["split_by_sectors"] = multisector
         return cls(site_options=site_options, bc_basis=bc_basis, flux_sources=tuple(flux_sources), **remaining)
 
