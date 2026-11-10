@@ -55,6 +55,9 @@ def require_centered_precision() -> None:
     operands rely on float64 to keep small anomalies after cancellation, so a
     float32 process would silently round them. This only reads the global
     configuration; set ``PYTENSOR_FLAGS=floatX=float64`` before starting Python.
+
+    Raises:
+        ValueError: If ``floatX`` is not float64.
     """
     if pytensor.config.floatX != "float64":
         raise ValueError("Centered boundaries require explicitly configured PyTensor floatX=float64.")
