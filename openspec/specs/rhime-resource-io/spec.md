@@ -150,24 +150,27 @@ Reporting SHALL use `country_file`; preparation SHALL use `landsea_path` or
 
 ### Requirement: Region-class maps are explicit preparation resources
 
-Generating a region-constrained basis SHALL require a configured class source.
-The source SHALL be either the requested domain's land/sea map, following the
-packaged-default rules above, or an exact selected file and variable. Request
-resolution SHALL validate these choices without opening scientific data. Runners
-SHALL load and check the selected map before acquisition. Scientific preparation
+A region-constrained basis SHALL be generated from a class map. The map SHALL
+be an exact selected file, or, when no file is selected, the requested domain's
+packaged land/sea map under the packaged-default rules above. When no variable
+is selected, the map's variable SHALL be inferred as for country files.
+Request resolution SHALL validate the selection without opening scientific
+data. Runners SHALL load the map before acquisition. Scientific preparation
 SHALL receive a labelled class map. Missing or unreadable files, absent
 variables and maps with no mapped classes SHALL fail before acquisition, without
 falling back to another map. Configured unmapped class values SHALL be treated
 like missing cells.
 
 Class maps SHALL be preparation resources, independent of the reporting
-`country_file`. A selected saved basis SHALL bypass class-map loading. In
-nested preparation, the outer and inner grids SHALL select their class maps
-independently, and the inner grid SHALL NOT inherit the outer selection.
+`country_file`. A selected saved basis SHALL leave a class-map selection
+inactive and SHALL NOT load it; generating with another algorithm SHALL reject
+a selection. In nested preparation, the outer and inner grids SHALL select
+their class maps independently, and the inner grid SHALL NOT inherit the outer
+selection.
 
 #### Scenario: Configured classes match direct preparation
 
-- **WHEN** a request selects a class file, variable and unmapped values for region-constrained generation
+- **WHEN** a request selects a class file and unmapped values for region-constrained generation
 - **THEN** the runner loads the map before acquisition
 - **AND** the generated basis equals direct preparation with that labelled map, after unmapped values are made missing
 

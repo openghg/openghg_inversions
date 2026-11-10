@@ -8,7 +8,6 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
-import numpy as np
 import xarray as xr
 
 from openghg_inversions.utils import read_netcdfs
@@ -101,19 +100,20 @@ def resolve_basis_support_maps(
 
 def load_region_classes(
     path: str | Path,
-    variable: str,
+    variable: str | None = None,
     *,
     unmapped_values: Sequence[float] = (),
 ) -> xr.DataArray:
-    """Eagerly read and check a region-class map for constrained basis fitting.
+    """Eagerly read a region-class map for constrained basis fitting.
 
-    Each distinct non-null value is one class: a land/sea map, a raw multiclass
-    country or region map, or a direct mask. Grid alignment to the weighting
-    flux belongs to fitting, which accepts a map on a larger grid containing it.
+    The map is read like a reporting country file, including its fallbacks for
+    known HDF5 backend problems. Grid alignment and shape checks belong to
+    fitting, which also accepts a map on a larger grid containing the flux grid.
 
     Args:
         path: Exact NetCDF file, without directory discovery.
-        variable: Two-dimensional class variable to select.
+        variable: Class variable to select. ``None`` selects ``country`` when
+            present, otherwise ``region``.
         unmapped_values: Class values to replace with missing values, leaving
             those cells outside every generated region.
 
@@ -123,30 +123,20 @@ def load_region_classes(
 
     Raises:
         FileNotFoundError: If ``path`` is not an existing file.
-        ValueError: If the file cannot be read, lacks ``variable``, or the
-            variable is not a two-dimensional numeric map with at least one
-            mapped cell.
+        OSError: If every backend fails to read the file.
+        KeyError: If the selected variable is absent.
+        ValueError: If no mapped cells remain after excluding unmapped values.
     """
+    from openghg_inversions._country_file import load_country_dataset
+
     path = Path(path)
     if not path.is_file():
-        raise FileNotFoundError(f"Region-class file not found: {path}")
-    try:
-        dataset = xr.open_dataset(path, decode_coords="all")
-    except (OSError, ValueError) as exc:
-        raise ValueError(f"Could not read region-class file {path}: {exc}") from exc
-    with dataset:
-        if variable not in dataset.data_vars:
-            raise ValueError(
-                f"Region-class file {path} has no variable {variable!r}; "
-                f"available variables: {sorted(map(str, dataset.data_vars))!r}."
-            )
-        classes = dataset[variable].load()
-        classes.attrs = {**dataset.attrs, **classes.attrs}
-    if classes.ndim != 2 or not np.issubdtype(classes.dtype, np.number):
-        raise ValueError(
-            f"Region-class variable {variable!r} in {path} must be a two-dimensional numeric map; "
-            f"got dims {classes.dims!r} and dtype {classes.dtype}."
-        )
+        raise FileNotFoundError(f"Region-class map not found: {path}")
+    dataset = load_country_dataset(path)
+    if variable is None:
+        variable = "country" if "country" in dataset or "region" not in dataset else "region"
+    classes = dataset[variable]
+    classes.attrs = {**dataset.attrs, **classes.attrs}
     if unmapped_values:
         classes = classes.where(~classes.isin(list(unmapped_values)))
     if not bool(classes.notnull().any()):

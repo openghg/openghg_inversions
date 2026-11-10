@@ -33,6 +33,7 @@ from .ini import read_rhime_ini
 from .params import (
     DataConfig,
     group_params,
+    RegionClassSelection,
     RhimeConfig,
     resolve_flux_sources,
 )
@@ -104,6 +105,7 @@ __all__ = [
     "assemble_inputs",
     "RhimeConfig",
     "DataConfig",
+    "RegionClassSelection",
     "group_params",
     "read_rhime_ini",
     "SectorSpec",

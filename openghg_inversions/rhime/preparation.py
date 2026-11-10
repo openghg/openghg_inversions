@@ -400,8 +400,9 @@ def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:
         Keyword arguments for :func:`openghg_inversions.basis.prepare_basis`:
         an optional exact ``basis_path`` or eager ``basis_partition``, plus
         eager support maps or None. Generating a region-constrained basis also
-        selects the configured class map and its allocation choices. Retained artifacts are checked for existence
-        here and loaded later by basis preparation. The request is not mutated.
+        loads the selected class map. Retained artifacts are checked for
+        existence here and loaded later by basis preparation. The request is
+        not mutated.
 
     Raises:
         ValueError: If mutually exclusive saved input forms are supplied.
@@ -443,39 +444,19 @@ def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:
 
 
 def _resolve_region_classes(data_config: Any) -> dict[str, Any]:
-    """Load the configured class map and select its allocation choices.
-
-    Args:
-        data_config: Resolved configuration generating a region-constrained basis.
-
-    Returns:
-        ``region_classes``, ``region_allocation`` and ``min_regions_per_class``
-        keyword arguments for :func:`openghg_inversions.basis.prepare_basis`.
-
-    Raises:
-        ValueError: If no class source is selected, or the selected map is invalid.
-        FileNotFoundError: If the selected file or packaged resource is missing.
-    """
+    """Load the selected class map, or the domain's packaged land/sea map."""
     from openghg_inversions.basis.support import load_region_classes, packaged_basis_support_path
 
-    source = data_config.region_classes_source
-    if source == "landsea":
-        path = data_config.landsea_path or packaged_basis_support_path("landsea", data_config.domain)
-        variable = "country"
-    elif source == "file":
-        path, variable = data_config.region_classes_path, data_config.region_classes_variable
+    selection = data_config.region_classes
+    if selection is None or selection.path is None:
+        path = packaged_basis_support_path("landsea", data_config.domain)
     else:
-        raise ValueError(
-            "`basis_algorithm = 'region_constrained'` requires `region_classes_source` "
-            f"('landsea' or 'file'); got {source!r}."
-        )
-    return {
-        "region_classes": load_region_classes(
-            path, variable, unmapped_values=data_config.region_classes_unmapped_values,
-        ),
-        "region_allocation": data_config.region_allocation,
-        "min_regions_per_class": data_config.min_regions_per_class,
-    }
+        path = selection.path
+    return {"region_classes": load_region_classes(
+        path,
+        None if selection is None else selection.variable,
+        unmapped_values=() if selection is None else selection.unmapped_values,
+    )}
 
 
 def acquire_merged_data(data_config: Any) -> MergedData:
