@@ -57,16 +57,19 @@ they are not generally transposes of one another.
 Preparing the exact result
 --------------------------
 
-Pass the native covariance, canonical basis prolongation, labelled native mean,
-and sensitivity through one operation:
+Pass the native covariance, a retained projection strategy, labelled native
+mean, and sensitivity through one operation. The bucket strategy holds a basis
+operator's canonical prolongation; ``SuppliedRestriction`` instead holds a
+physical restriction (see :doc:`native_covariance`):
 
 .. code-block:: python
 
+   from openghg_inversions.basis import PreserveBucketProlongation
    from openghg_inversions.coherent_reduction import reduce_native_gaussian
 
    reduction = reduce_native_gaussian(
        covariance=covariance,
-       basis_prolongation=basis_prolongation,
+       strategy=PreserveBucketProlongation(basis_prolongation),
        state_dim="state",
        native_mean=native_mean,
        native_sensitivity=native_sensitivity,
@@ -78,8 +81,9 @@ and sensitivity through one operation:
    effective_operator = reduction.effective_observation_operator
    unresolved_covariance = reduction.unresolved_observation_covariance
 
-Calling ``reduce_native_gaussian`` computes any Dask-backed mean, sensitivity,
-and basis-prolongation data. Related arrays are computed together, and the
+Calling ``reduce_native_gaussian`` computes any Dask-backed mean and
+sensitivity together, after the strategy's restriction has been checked
+against their native grid. The strategy computes its own inputs, and the
 returned xarray arrays are eager with explicit retained-state and observation
 labels.
 

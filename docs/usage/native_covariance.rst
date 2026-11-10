@@ -45,25 +45,30 @@ The classes have the following distinct roles.
        expansion needs a separate source-aware path.
    * - ``RetainedProjectionStrategy``
      - Pi-first policy interface that chooses the authoritative labelled
-       restriction :math:`\Pi`. The calculation derives its covariance-natural
+       restriction :math:`\Pi`. Each strategy owns the inputs that define
+       :math:`\Pi`; the calculation derives its covariance-natural
        prolongation :math:`U_*`.
    * - ``PreserveBucketProlongation``
-     - Default compatibility strategy. It uses
-       :math:`U_{\mathrm{bucket}}` to derive the compatible authoritative
+     - Compatibility strategy holding a basis operator's
+       :math:`U_{\mathrm{bucket}}`. It derives the compatible authoritative
        restriction :math:`\Pi_U`; the calculation still derives :math:`U_*` from
        that returned restriction.
    * - ``SuppliedRestriction``
-     - Supplied-:math:`\Pi`-first strategy. The caller defines a physical
-       restriction independently of :math:`B`; the strategy checks its labels,
+     - Supplied-:math:`\Pi`-first strategy holding a physical restriction
+       chosen independently of :math:`B`. It checks the restriction's labels,
        values, and LogNormal admissibility, and records that provenance on the
        returned restriction.
+   * - ``absolute_weighted_regional_mean_restriction``
+     - Builds the sparse source-blocked regional mean weighted by
+       :math:`|q|`, the production policy described below, for use with
+       ``SuppliedRestriction``.
    * - ``RetainedProjection``
      - Frozen value dataclass returned by a strategy. It carries
        :math:`\Pi` and the strategy identifier; it is not a protocol, and its
        contained xarray object remains mutable.
    * - ``project_native_covariance``
-     - Validates and combines :math:`H`, :math:`B`, basis geometry, and a
-       projection strategy.
+     - Validates and combines :math:`H`, :math:`B`, and a projection
+       strategy.
    * - ``NativeCovarianceProducts``
      - Frozen in-memory result dataclass containing the labelled product
        blocks. Its contained xarray objects remain mutable. Durable identity,
@@ -73,9 +78,11 @@ The data flow is:
 
 .. code-block:: text
 
-   BasisOperator ──> U_bucket ─┐
-                              ├─> RetainedProjectionStrategy
-   covariance action ──> B ───┘              │
+   BasisOperator ──> U_bucket ──> PreserveBucketProlongation ─┐
+   physical Pi ─────────────────> SuppliedRestriction ────────┤
+                                                              v
+   covariance action ──> B ───────────> RetainedProjectionStrategy
+                                             │
                                              v
                               RetainedProjection(Pi)
                                              │
@@ -158,9 +165,9 @@ Supplied physical restriction
 
 ``SuppliedRestriction`` accepts a labelled :math:`\Pi` with dimensions
 ``(state_dim, *native_dims)``, including an explicit native source dimension
-for source-blocked covariance. Its retained labels must equal the basis
-prolongation's labels in the same order, its native coordinates must align
-exactly, and its values must be finite and real. Full row rank is checked by
+for source-blocked covariance. Its unique state coordinate labels every
+retained product, its native coordinates must align exactly with :math:`H`,
+and its values must be finite and real. No basis prolongation is needed. Full row rank is checked by
 the positive-definite factorization of :math:`C_\alpha`. The calculation then
 derives
 
@@ -176,6 +183,15 @@ so :math:`\Pi U_* = I` and :math:`B\Pi^\mathsf{T} = U_* C_\alpha`. The
 strategy is policy-neutral: it neither builds nor prefers a particular
 weighting. Absolute-flux-weighted regional means and signed flux-total
 restrictions are both supplied by the caller.
+
+``absolute_weighted_regional_mean_restriction`` builds the current production
+policy from per-source integer region maps and signed per-cell weights
+:math:`q` (for example prior flux times cell area). Positive region labels are
+active; zero or negative labels mark inactive cells, which receive no weight.
+Each row is exactly nonnegative and sums to one by construction, so the result
+is admissible for a LogNormal retained state without any tolerance. Its
+retained state is a ``(source, region_in_source)`` MultiIndex using the actual
+region labels, and its payload is sparse with one weight per active cell.
 
 For positive native scaling :math:`x`, the retained scaling
 :math:`\alpha = \Pi x` is guaranteed positive only when :math:`\Pi` is
@@ -243,19 +259,22 @@ Memory use and lazy inputs
 
 The structured covariance action stores axis factors rather than dense native
 :math:`B`, but the product calculation is otherwise eager. Callers may pass a
-related sensitivity and canonical basis prolongation with sparse or Dask-backed
-data; ``project_native_covariance`` computes them together, densifying
-:math:`H` and leaving a sparse prolongation sparse for the strategy to densify
-if its method requires it. A custom restriction may also remain sparse or
-Dask-backed until it is selected, when it is computed once. A sparse
+sensitivity with sparse or Dask-backed data; ``project_native_covariance``
+densifies and computes it after checking the strategy's restriction against
+its native grid. A strategy materializes its own inputs:
+``PreserveBucketProlongation`` densifies its basis prolongation, whose values
+it needs. A restriction may remain sparse or Dask-backed until it is selected,
+when it is computed once. A sparse
 restriction stays sparse; only one retained-state right-hand-side block at a
 time is densified before applying :math:`B`. The computed restriction is reused
 across those blocks, avoiding repeated execution of its lazy graph.
 
 For the January production shape, :math:`d = 361` retained rows over
 :math:`N = 96\,768` native source cells, a dense float64 restriction would need
-about 279 MB. The source-blocked sparse restriction stores one weight per native
-cell, and each densified block of 64 rows needs about 50 MB. The dense outputs
+about 279 MB. The source-blocked sparse restriction stores at most one weight
+per native cell (the January production restriction has 51,806), and each
+densified block of 64 rows needs about 50 MB. ``observation_batch_size`` sets
+the size of these restriction blocks as well as the observation batches. The dense outputs
 :math:`B\Pi^\mathsf{T}` and :math:`U_*` remain about 279 MB each, because a
 non-local covariance makes them dense. For
 native size :math:`N`, retained size

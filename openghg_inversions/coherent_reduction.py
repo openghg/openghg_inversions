@@ -23,7 +23,8 @@ from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis.covariance_products import (
     NativeCovarianceProducts,
     RetainedProjectionStrategy,
-    project_native_covariance,
+    _native_covariance_products,
+    _resolve_projection,
 )
 from openghg_inversions.native_covariance import InvertibleNativeCovarianceAction
 
@@ -58,39 +59,38 @@ class CoherentGaussianReduction:
 def reduce_native_gaussian(
     *,
     covariance: InvertibleNativeCovarianceAction,
-    basis_prolongation: xr.DataArray,
+    strategy: RetainedProjectionStrategy,
     state_dim: str,
     native_mean: xr.DataArray,
     native_sensitivity: xr.DataArray,
     observation_dim: str,
     observation_batch_size: int = 64,
-    strategy: RetainedProjectionStrategy | None = None,
 ) -> CoherentGaussianReduction:
     """Prepare the exact centred Gaussian model for one ``B/H/Pi/m`` set.
 
-    This is a named eager numerical boundary. ``native_mean``,
-    ``native_sensitivity``, and ``basis_prolongation`` may be Dask-backed; their
-    payloads are materialized together so a shared graph is executed once.
-    Inputs are borrowed and are not mutated.
+    This is a named eager numerical boundary. ``native_mean`` and
+    ``native_sensitivity`` may be Dask-backed; their payloads are materialized
+    together so a shared graph is executed once. The strategy selects and
+    materializes ``Pi`` from its own inputs, and ``Pi`` is checked against the
+    native grid before the mean and sensitivity are computed. Inputs are
+    borrowed and are not mutated.
 
     The inputs must use the covariance action's native dimensions and carry
     exactly matching indexed coordinates on shared dimensions. Unit conversion
     belongs to the upstream OpenGHG/pint-xarray preparation boundary: ``m`` and
-    the basis describe dimensionless scaling, while ``H`` is already expressed
+    ``Pi`` describe dimensionless scaling, while ``H`` is already expressed
     in the desired observation units.
 
     Args:
         covariance: Invertible labelled native covariance action ``B``.
-        basis_prolongation: Canonical labelled basis prolongation used by the
-            retained projection strategy.
-        state_dim: Retained-state dimension shared by the prolongation and
-            restriction.
+        strategy: Authoritative retained restriction strategy, owning the
+            inputs that define ``Pi``.
+        state_dim: Retained-state dimension of ``Pi``.
         native_mean: Dimensionless native scaling mean ``m``.
         native_sensitivity: Native sensitivity ``H`` in canonical observation
             units.
         observation_dim: Observation dimension in ``native_sensitivity``.
         observation_batch_size: Covariance right-hand-side batch size.
-        strategy: Optional authoritative retained restriction strategy.
 
     Returns:
         The retained prior, centred effective forward model, and unresolved
@@ -101,40 +101,33 @@ def reduce_native_gaussian(
             inputs, or if covariance-product construction fails.
     """
     native_dims = tuple(covariance.native_dims)
+    if observation_batch_size <= 0:
+        raise ValueError("observation_batch_size must be positive")
     mean = native_mean.transpose(*native_dims)
     sensitivity = native_sensitivity.transpose(observation_dim, *native_dims)
-    prolongation = basis_prolongation.transpose(*native_dims, state_dim)
 
     # xr.dot uses an inner join by default, which could silently discard native
     # cells. Establish exact compatibility once before any eager computation.
-    mean, sensitivity, prolongation = xr.align(
-        mean,
-        sensitivity,
-        prolongation,
-        join="exact",
-        copy=False,
+    mean, sensitivity = xr.align(mean, sensitivity, join="exact", copy=False)
+    projection = _resolve_projection(
+        strategy,
+        covariance,
+        native_reference=sensitivity,
+        native_dims=native_dims,
+        state_dim=state_dim,
     )
-    dense_mean = to_dense(mean)
-    dense_sensitivity = to_dense(sensitivity)
-    # Sparse U stays sparse; the projection strategy densifies it if needed.
-    mean_data, sensitivity_data, prolongation_data = compute(
-        dense_mean.data,
-        dense_sensitivity.data,
-        prolongation.data,
-    )
+    mean_data, sensitivity_data = compute(to_dense(mean).data, to_dense(sensitivity).data)
     mean = mean.copy(data=mean_data)
     sensitivity = sensitivity.copy(data=sensitivity_data)
-    prolongation = prolongation.copy(data=prolongation_data)
 
-    products = project_native_covariance(
+    products = _native_covariance_products(
         covariance=covariance,
-        basis_prolongation=prolongation,
+        projection=projection,
+        sensitivity=sensitivity,
         state_dim=state_dim,
-        native_sensitivity=sensitivity,
         observation_dim=observation_dim,
         observation_covariance="dense",
-        observation_batch_size=observation_batch_size,
-        strategy=strategy,
+        batch_size=observation_batch_size,
     )
     return _reduce_native_covariance_products(
         products=products,

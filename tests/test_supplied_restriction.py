@@ -1,4 +1,4 @@
-"""Test the supplied-Pi-first retained projection strategy."""
+"""Test the supplied-Pi-first retained projection strategy and its Pi builder."""
 
 import tracemalloc
 
@@ -7,12 +7,14 @@ import pandas as pd
 import pytest
 import sparse
 import xarray as xr
+from dask import array as da
 
 from openghg_inversions.basis.covariance_products import (
     PreserveBucketProlongation,
     SuppliedRestriction,
     _apply_restriction_blocks,
     _prepare_projection,
+    absolute_weighted_regional_mean_restriction,
     project_native_covariance,
 )
 from openghg_inversions.coherent_reduction import reduce_native_gaussian
@@ -24,25 +26,25 @@ SOURCE_DIM = "native_source"
 NATIVE_DIMS = (SOURCE_DIM, "lat", "lon")
 LATITUDE = np.array([50.0, 51.0, 52.5])
 LONGITUDE = np.array([-2.0, -1.0, 0.5, 1.5])
-# Source-specific regions: GPP has three regions and FF two.
+# Source-specific regions; label 0 marks an inactive cell with no retained weight.
 REGIONS = {
-    "GPP": np.array([[1, 1, 2, 2], [1, 3, 3, 2], [3, 3, 3, 2]]),
-    "FF": np.array([[1, 1, 1, 2], [1, 1, 2, 2], [2, 2, 2, 2]]),
+    "GPP": np.array([[1, 1, 2, 2], [1, 3, 3, 2], [3, 3, 0, 2]]),
+    "FF": np.array([[4, 4, 4, 7], [4, 4, 7, 7], [0, 7, 7, 7]]),
 }
 CORRELATION_LENGTHS = {"GPP": 1.3, "FF": 0.8}
 SIGMAS = {"GPP": 0.7, "FF": 0.4}
 
 
 def _state_index() -> pd.MultiIndex:
-    """Return retained (source, region) labels in source-block order."""
+    """Return retained (source, region) labels in source order, then label order."""
     return pd.MultiIndex.from_tuples(
-        [(source, int(region)) for source in SOURCES for region in np.unique(REGIONS[source])],
-        names=("source", "region"),
+        [(source, int(region)) for source in SOURCES for region in np.unique(REGIONS[source]) if region > 0],
+        names=("source", "region_in_source"),
     )
 
 
-def _labelled(values, dims: tuple[str, ...], *, state: bool = False, observation: bool = False):
-    """Attach the shared native, state, and observation coordinates."""
+def _labelled(values, dims: tuple[str, ...], *, observation: bool = False) -> xr.DataArray:
+    """Attach the shared native and observation coordinates."""
     coords: dict[str, object] = {}
     if SOURCE_DIM in dims:
         coords[SOURCE_DIM] = list(SOURCES)
@@ -52,10 +54,39 @@ def _labelled(values, dims: tuple[str, ...], *, state: bool = False, observation
         coords["lon"] = LONGITUDE
     if observation:
         coords["observation"] = [f"site-{index}" for index in range(values.shape[0])]
-    array = xr.DataArray(values, dims=dims, coords=coords)
-    if state:
-        array = array.assign_coords(xr.Coordinates.from_pandas_multiindex(_state_index(), "state"))
-    return array
+    return xr.DataArray(values, dims=dims, coords=coords)
+
+
+def _regions() -> dict[str, xr.DataArray]:
+    """Return labelled integer region maps for each source."""
+    return {source: _labelled(labels, ("lat", "lon")) for source, labels in REGIONS.items()}
+
+
+def _flux_weights() -> xr.DataArray:
+    """Return signed ``q = prior flux * cell area``; GPP is mostly negative."""
+    rng = np.random.default_rng(31)
+    area = np.cos(np.deg2rad(LATITUDE))[:, None] * np.ones((1, LONGITUDE.size))
+    flux = np.stack([rng.normal(-0.3, 1.0, size=area.shape), rng.normal(2.0, 1.0, size=area.shape)])
+    return _labelled(flux * area, NATIVE_DIMS).assign_attrs(units="kg s-1")
+
+
+def _oracle_restriction(weights: np.ndarray) -> np.ndarray:
+    """Directly evaluate the absolute-weighted regional mean as a dense matrix."""
+    rows = []
+    for source_index, source in enumerate(SOURCES):
+        for region in np.unique(REGIONS[source]):
+            if region <= 0:
+                continue
+            row = np.zeros(weights.shape)
+            mask = REGIONS[source] == region
+            row[source_index] = np.abs(weights[source_index]) * mask
+            rows.append(row.reshape(-1) / row.sum())
+    return np.array(rows)
+
+
+def _restriction() -> xr.DataArray:
+    """Build the production-like source-blocked absolute-flux-weighted ``Pi``."""
+    return absolute_weighted_regional_mean_restriction(_regions(), _flux_weights())
 
 
 def _covariance(class_blocked: bool) -> tuple[IndependentSourceCovariance, np.ndarray]:
@@ -65,11 +96,7 @@ def _covariance(class_blocked: bool) -> tuple[IndependentSourceCovariance, np.nd
     class_values = np.array(
         [["land", "land", "sea", "sea"], ["land", "land", "land", "sea"], ["sea", "land", "sea", "sea"]]
     )
-    class_labels = xr.DataArray(
-        class_values,
-        dims=("lat", "lon"),
-        coords={"lat": LATITUDE, "lon": LONGITUDE},
-    )
+    class_labels = xr.DataArray(class_values, dims=("lat", "lon"), coords={"lat": LATITUDE, "lon": LONGITUDE})
     components = {}
     blocks = []
     for source in SOURCES:
@@ -95,36 +122,6 @@ def _covariance(class_blocked: bool) -> tuple[IndependentSourceCovariance, np.nd
     return IndependentSourceCovariance(components, source_dim=SOURCE_DIM), dense
 
 
-def _absolute_flux_weighted_restriction() -> xr.DataArray:
-    """Build a production-like sparse source-blocked absolute-flux-weighted mean.
-
-    ``q_si = prior_flux_si * area_i`` is signed; each row averages native scalings
-    within one source and region with weights ``|q_si| / sum_{j in r} |q_sj|``.
-    """
-    rng = np.random.default_rng(31)
-    area = np.cos(np.deg2rad(LATITUDE))[:, None] * np.ones((1, LONGITUDE.size))
-    state_index = _state_index()
-    shape = (len(state_index), len(SOURCES), LATITUDE.size, LONGITUDE.size)
-    values = np.zeros(shape)
-    for row, (source, region) in enumerate(state_index):
-        source_index = SOURCES.index(source)
-        flux = rng.normal(0.0, 1.0, size=area.shape) + (0.3 if source == "GPP" else 2.0)
-        weights = np.abs(flux * area) * (REGIONS[source] == region)
-        values[row, source_index] = weights / weights.sum()
-    return _labelled(sparse.COO.from_numpy(values), ("state", *NATIVE_DIMS), state=True).assign_attrs(
-        policy="absolute-flux-weighted regional mean"
-    )
-
-
-def _bucket_prolongation() -> xr.DataArray:
-    """Return the source-blocked bucket indicator ``U`` carrying retained labels."""
-    state_index = _state_index()
-    values = np.zeros((len(SOURCES), LATITUDE.size, LONGITUDE.size, len(state_index)))
-    for column, (source, region) in enumerate(state_index):
-        values[SOURCES.index(source), ..., column] = REGIONS[source] == region
-    return _labelled(values, (*NATIVE_DIMS, "state"), state=True)
-
-
 def _sensitivity() -> xr.DataArray:
     """Return a labelled native sensitivity with four observations."""
     rng = np.random.default_rng(1053)
@@ -139,19 +136,81 @@ def _flat(array: xr.DataArray, leading: str) -> np.ndarray:
     return data.reshape(data.shape[0], -1)
 
 
-def test_absolute_flux_weighted_fixture_is_a_source_blocked_mean() -> None:
-    """The fixture rows are nonnegative, single-source, and sum to one."""
-    restriction = _absolute_flux_weighted_restriction()
+def _project(strategy, *, class_blocked: bool = False, **options):
+    """Project the shared sensitivity with one strategy."""
+    covariance, _ = _covariance(class_blocked)
+    return project_native_covariance(
+        covariance=covariance,
+        strategy=strategy,
+        state_dim="state",
+        native_sensitivity=_sensitivity(),
+        observation_dim="observation",
+        **options,
+    )
+
+
+def _replace_values(restriction: xr.DataArray, edit) -> xr.DataArray:
+    """Return a copy of ``Pi`` whose dense values are changed by ``edit``."""
+    dense = restriction.data.todense()
+    edit(dense)
+    return restriction.copy(data=sparse.COO.from_numpy(dense))
+
+
+def test_builder_matches_direct_absolute_weighted_regional_mean() -> None:
+    """Rows are exact source-blocked regional means with inactive cells excluded."""
+    weights = _flux_weights()
+    restriction = _restriction()
     pi = _flat(restriction, "state")
 
-    assert np.all(pi >= 0.0)
-    np.testing.assert_allclose(pi.sum(axis=1), 1.0, rtol=0.0, atol=1e-14)
-    np.testing.assert_allclose(pi @ np.ones(pi.shape[1]), np.ones(pi.shape[0]), atol=1e-14)
+    assert isinstance(restriction.data, sparse.COO)
+    assert restriction.dims == ("state", *NATIVE_DIMS)
+    assert restriction.indexes["state"].equals(_state_index())
+    assert restriction.attrs["units"] == "1"
+    np.testing.assert_allclose(pi, _oracle_restriction(weights.values), rtol=1e-15, atol=0.0)
+    assert np.all(restriction.data.data > 0.0)
+    np.testing.assert_allclose(pi.sum(axis=1), 1.0, rtol=0.0, atol=1e-15)
+    np.testing.assert_allclose(pi @ np.ones(pi.shape[1]), np.ones(pi.shape[0]), atol=1e-15)
+    inactive = np.concatenate([REGIONS[source].reshape(-1) <= 0 for source in SOURCES])
+    assert not pi[:, inactive].any()
     for row, (source, region) in enumerate(restriction.indexes["state"]):
         support = restriction.isel(state=row).data.todense() > 0.0
         other_sources = [index for index, label in enumerate(SOURCES) if label != source]
         assert not support[other_sources].any()
         assert np.array_equal(support[SOURCES.index(source)], REGIONS[source] == region)
+
+
+def test_builder_materializes_lazy_inputs() -> None:
+    """Dask-backed region maps and weights give the same restriction."""
+    regions = {source: labels.chunk({"lat": 1}) for source, labels in _regions().items()}
+
+    lazy = absolute_weighted_regional_mean_restriction(regions, _flux_weights().chunk({"lon": 2}))
+
+    xr.testing.assert_identical(lazy, _restriction())
+
+
+@pytest.mark.parametrize("problem", ["float-labels", "source-order", "grid", "zero-region", "non-finite"])
+def test_builder_rejects_invalid_inputs(problem: str) -> None:
+    """Labels must be integers on the exact grid, in source order, with usable weights."""
+    regions = _regions()
+    weights = _flux_weights()
+    if problem == "float-labels":
+        regions["FF"] = regions["FF"].astype(float)
+        match = "integer region labels"
+    elif problem == "source-order":
+        regions = {"FF": regions["FF"], "GPP": regions["GPP"]}
+        match = "labels must equal the regions keys"
+    elif problem == "grid":
+        regions["GPP"] = regions["GPP"].isel(lon=slice(None, None, -1))
+        match = r"join='exact'|align"
+    elif problem == "zero-region":
+        weights = weights.where((weights[SOURCE_DIM] != "FF") | (regions["FF"] != 4), 0.0)
+        match = "Region 4 of source 'FF' has zero total"
+    else:
+        weights = weights.where((weights.lat != LATITUDE[0]) | (weights.lon != LONGITUDE[0]))
+        match = "finite real"
+
+    with pytest.raises(ValueError, match=match):
+        absolute_weighted_regional_mean_restriction(regions, weights)
 
 
 @pytest.mark.parametrize("class_blocked", [False, True], ids=["separable", "class-blocked"])
@@ -161,23 +220,18 @@ def test_supplied_restriction_products_match_dense_oracle(
     observation_covariance: str,
 ) -> None:
     """Products follow the supplied-Pi-first equations used by verification-games."""
-    covariance, dense_b = _covariance(class_blocked)
-    restriction = _absolute_flux_weighted_restriction()
-    sensitivity = _sensitivity()
+    _, dense_b = _covariance(class_blocked)
+    restriction = _restriction()
 
-    products = project_native_covariance(
-        covariance=covariance,
-        basis_prolongation=_bucket_prolongation(),
-        state_dim="state",
-        native_sensitivity=sensitivity,
-        observation_dim="observation",
+    products = _project(
+        SuppliedRestriction(restriction, retained_distribution="lognormal"),
+        class_blocked=class_blocked,
         observation_covariance=observation_covariance,
         observation_batch_size=3,
-        strategy=SuppliedRestriction(restriction, retained_distribution="lognormal"),
     )
 
     pi = _flat(restriction, "state")
-    h = _flat(sensitivity, "observation")
+    h = _flat(_sensitivity(), "observation")
     b_pi_t = dense_b @ pi.T
     c_alpha = pi @ b_pi_t
     u_star = np.linalg.solve(c_alpha, b_pi_t.T).T
@@ -200,23 +254,17 @@ def test_supplied_restriction_products_match_dense_oracle(
 
 def test_supplied_restriction_keeps_labels_provenance_and_sparse_storage() -> None:
     """The products carry the supplied sparse Pi, its labels, and admissibility record."""
-    covariance, _ = _covariance(class_blocked=False)
-    restriction = _absolute_flux_weighted_restriction()
+    restriction = _restriction()
+    strategy = SuppliedRestriction(restriction, retained_distribution="lognormal")
 
-    products = project_native_covariance(
-        covariance=covariance,
-        basis_prolongation=_bucket_prolongation(),
-        state_dim="state",
-        native_sensitivity=_sensitivity(),
-        observation_dim="observation",
-        strategy=SuppliedRestriction(restriction, retained_distribution="lognormal"),
-    )
+    result = _project(strategy).restriction
 
-    result = products.restriction
+    # Borrowed, not copied: the strategy reads the caller's array at projection time.
+    assert strategy.restriction is restriction
     assert isinstance(result.data, sparse.COO)
     assert result.dims == ("state", *NATIVE_DIMS)
     assert result.indexes["state"].equals(_state_index())
-    assert result.attrs["policy"] == "absolute-flux-weighted regional mean"
+    assert result.attrs["policy"] == "absolute-weighted regional mean"
     assert result.attrs["restriction_source"] == "supplied"
     assert result.attrs["retained_distribution"] == "lognormal"
     assert result.attrs["lognormal_admissible"] is True
@@ -226,31 +274,18 @@ def test_supplied_restriction_keeps_labels_provenance_and_sparse_storage() -> No
     assert "restriction_source" not in restriction.attrs
 
 
-def _signed_restriction() -> xr.DataArray:
-    """Return a signed variant of the fixture, as from a signed policy."""
-    restriction = _absolute_flux_weighted_restriction()
-    dense = restriction.data.todense()
-    dense[0, 0, 0, 0] = -dense[0, 0, 0, 0]
-    return restriction.copy(data=sparse.COO.from_numpy(dense))
-
-
 def test_signed_restriction_is_refused_for_lognormal_and_allowed_for_gaussian() -> None:
     """Only a nonnegative Pi guarantees positive retained scalings."""
-    covariance, _ = _covariance(class_blocked=False)
-    restriction = _signed_restriction()
-    options = {
-        "covariance": covariance,
-        "basis_prolongation": _bucket_prolongation(),
-        "state_dim": "state",
-        "native_sensitivity": _sensitivity(),
-        "observation_dim": "observation",
-    }
 
-    with pytest.raises(ValueError, match="LogNormal retained state requires a nonnegative"):
-        project_native_covariance(
-            **options, strategy=SuppliedRestriction(restriction, retained_distribution="lognormal")
-        )
-    products = project_native_covariance(**options, strategy=SuppliedRestriction(restriction))
+    def make_signed(values: np.ndarray) -> None:
+        """Flip one weight of the second retained row."""
+        values[1, 0, 0, 2] = -1e-18
+
+    restriction = _replace_values(_restriction(), make_signed)
+
+    with pytest.raises(ValueError, match=r"row \('GPP', 2\) has weight -1\.000e-18"):
+        _project(SuppliedRestriction(restriction, retained_distribution="lognormal"))
+    products = _project(SuppliedRestriction(restriction))
 
     assert products.restriction.attrs["lognormal_admissible"] is False
     assert products.restriction.attrs["nonnegative"] is False
@@ -258,60 +293,34 @@ def test_signed_restriction_is_refused_for_lognormal_and_allowed_for_gaussian() 
 
 def test_zero_row_is_refused_for_lognormal() -> None:
     """A LogNormal retained scaling needs positive weight in every row."""
-    covariance, _ = _covariance(class_blocked=False)
-    restriction = _absolute_flux_weighted_restriction()
-    dense = restriction.data.todense()
-    dense[1] = 0.0
+
+    def zero_row(values: np.ndarray) -> None:
+        """Remove every weight from one retained row."""
+        values[1] = 0.0
+
     strategy = SuppliedRestriction(
-        restriction.copy(data=sparse.COO.from_numpy(dense)),
+        _replace_values(_restriction(), zero_row),
         retained_distribution="lognormal",
     )
 
-    with pytest.raises(ValueError, match="positive weight in every"):
-        strategy.projection(
-            covariance,
-            _bucket_prolongation(),
-            native_dims=NATIVE_DIMS,
-            state_dim="state",
-        )
+    with pytest.raises(ValueError, match=r"positive weight in every restriction row; row \('GPP', 2\)"):
+        strategy.projection(_covariance(False)[0], native_dims=NATIVE_DIMS, state_dim="state")
 
 
 def test_admissible_restriction_permits_a_signed_conditional_lift() -> None:
     """The covariance-natural lift may be signed while Pi remains admissible."""
-    covariance, _ = _covariance(class_blocked=False)
-
-    products = project_native_covariance(
-        covariance=covariance,
-        basis_prolongation=_bucket_prolongation(),
-        state_dim="state",
-        native_sensitivity=_sensitivity(),
-        observation_dim="observation",
-        strategy=SuppliedRestriction(
-            _absolute_flux_weighted_restriction(),
-            retained_distribution="lognormal",
-        ),
-    )
+    products = _project(SuppliedRestriction(_restriction(), retained_distribution="lognormal"))
 
     assert float(products.prolongation.min()) < 0.0
 
 
-@pytest.mark.parametrize(
-    "change",
-    ["reordered-state", "renamed-state", "missing-dim", "reordered-native", "non-finite", "fill-value"],
-)
+@pytest.mark.parametrize("change", ["duplicate-state", "missing-dim", "reordered-native", "non-finite", "fill-value"])
 def test_supplied_restriction_rejects_invalid_labels_and_values(change: str) -> None:
-    """Supplied Pi must use exact labels, dimensions, and finite real values."""
-    covariance, _ = _covariance(class_blocked=False)
-    restriction = _absolute_flux_weighted_restriction()
-    if change == "reordered-state":
-        restriction = restriction.isel(state=slice(None, None, -1))
-        match = "labels must match"
-    elif change == "renamed-state":
-        index = _state_index().set_levels(["Gpp", "Ff"], level="source")
-        restriction = restriction.drop_vars(["state", "source", "region"]).assign_coords(
-            xr.Coordinates.from_pandas_multiindex(index, "state")
-        )
-        match = "labels must match"
+    """Supplied Pi must use unique labels, exact dimensions and grid, and finite real values."""
+    restriction = _restriction()
+    if change == "duplicate-state":
+        restriction = restriction.isel(state=[0, 0, 1])
+        match = "must be unique"
     elif change == "missing-dim":
         restriction = restriction.isel({SOURCE_DIM: 0}, drop=True)
         match = "must have dimensions"
@@ -319,101 +328,72 @@ def test_supplied_restriction_rejects_invalid_labels_and_values(change: str) -> 
         restriction = restriction.isel(lon=slice(None, None, -1))
         match = r"join='exact'|align"
     elif change == "non-finite":
-        dense = restriction.data.todense()
-        dense[0, 0, 0, 0] = np.nan
-        restriction = restriction.copy(data=sparse.COO.from_numpy(dense))
+        restriction = _replace_values(restriction, lambda values: values.__setitem__((0, 0, 0, 0), np.nan))
         match = "finite real"
     else:
-        restriction = restriction.copy(data=sparse.COO.from_numpy(restriction.data.todense(), fill_value=0.0))
         restriction = restriction.copy(data=sparse.full_like(restriction.data, 0.5))
         match = "zero fill value"
 
     with pytest.raises(ValueError, match=match):
-        SuppliedRestriction(restriction).projection(
-            covariance,
-            _bucket_prolongation(),
-            native_dims=NATIVE_DIMS,
-            state_dim="state",
-        )
+        _project(SuppliedRestriction(restriction))
 
 
 def test_redundant_supplied_restriction_is_rejected() -> None:
     """Duplicate retained rows fail the full-row-rank C_alpha factorization."""
-    covariance, _ = _covariance(class_blocked=False)
-    restriction = _absolute_flux_weighted_restriction()
-    dense = restriction.data.todense()
-    dense[1] = dense[0]
+
+    def duplicate_row(values: np.ndarray) -> None:
+        """Copy the first retained row into the second."""
+        values[1] = values[0]
 
     with pytest.raises(ValueError, match="positive definite|ill-conditioned"):
-        project_native_covariance(
-            covariance=covariance,
-            basis_prolongation=_bucket_prolongation(),
-            state_dim="state",
-            native_sensitivity=_sensitivity(),
-            observation_dim="observation",
-            strategy=SuppliedRestriction(restriction.copy(data=sparse.COO.from_numpy(dense))),
-        )
+        _project(SuppliedRestriction(_replace_values(_restriction(), duplicate_row)))
 
 
 def test_lazy_dense_supplied_restriction_matches_eager_sparse() -> None:
     """Storage and execution backend do not change the supplied-Pi products."""
-    covariance, _ = _covariance(class_blocked=True)
-    restriction = _absolute_flux_weighted_restriction()
+    restriction = _restriction()
     lazy_dense = restriction.copy(data=restriction.data.todense()).chunk({"state": 2})
-    options = {
-        "covariance": covariance,
-        "basis_prolongation": _bucket_prolongation(),
-        "state_dim": "state",
-        "native_sensitivity": _sensitivity(),
-        "observation_dim": "observation",
-    }
 
-    expected = project_native_covariance(**options, strategy=SuppliedRestriction(restriction))
-    actual = project_native_covariance(**options, strategy=SuppliedRestriction(lazy_dense))
+    expected = _project(SuppliedRestriction(restriction), class_blocked=True)
+    actual = _project(SuppliedRestriction(lazy_dense), class_blocked=True)
 
     assert isinstance(actual.restriction.data, np.ndarray)
     xr.testing.assert_allclose(actual.state_covariance, expected.state_covariance)
     xr.testing.assert_allclose(actual.prolongation, expected.prolongation)
 
 
-def test_sparse_basis_prolongation_matches_dense_for_bucket_strategy() -> None:
-    """A sparse U stays sparse to the strategy, which densifies it when required."""
-    covariance, _ = _covariance(class_blocked=False)
-    prolongation = _bucket_prolongation()
-    options = {
-        "covariance": covariance,
-        "state_dim": "state",
-        "native_sensitivity": _sensitivity(),
-        "observation_dim": "observation",
-        "strategy": PreserveBucketProlongation(),
-    }
-
-    expected = project_native_covariance(basis_prolongation=prolongation, **options)
-    actual = project_native_covariance(
-        basis_prolongation=prolongation.copy(data=sparse.COO.from_numpy(prolongation.values)),
-        **options,
+def test_bucket_strategy_accepts_sparse_and_lazy_prolongation() -> None:
+    """The bucket strategy materializes and densifies the U it owns."""
+    state_index = _state_index()
+    values = np.zeros((len(SOURCES), LATITUDE.size, LONGITUDE.size, len(state_index)))
+    for column, (source, region) in enumerate(state_index):
+        values[SOURCES.index(source), ..., column] = REGIONS[source] == region
+    prolongation = _labelled(values, (*NATIVE_DIMS, "state")).assign_coords(
+        xr.Coordinates.from_pandas_multiindex(state_index, "state")
     )
 
-    xr.testing.assert_allclose(actual.state_covariance, expected.state_covariance)
-    xr.testing.assert_allclose(actual.prolongation, expected.prolongation)
+    expected = _project(PreserveBucketProlongation(prolongation))
+    sparse_u = prolongation.copy(data=sparse.COO.from_numpy(values))
+    for candidate in (sparse_u, sparse_u.chunk({"lat": 1})):
+        actual = _project(PreserveBucketProlongation(candidate))
+        xr.testing.assert_allclose(actual.state_covariance, expected.state_covariance)
+        xr.testing.assert_allclose(actual.prolongation, expected.prolongation)
 
 
 def test_supplied_restriction_moments_and_monte_carlo_close() -> None:
     """Pi m and C_alpha are the declared moments of alpha = Pi x."""
     covariance, dense_b = _covariance(class_blocked=True)
-    restriction = _absolute_flux_weighted_restriction()
+    restriction = _restriction()
     rng = np.random.default_rng(40)
     mean_values = 1.0 + 0.1 * rng.normal(size=(len(SOURCES), LATITUDE.size, LONGITUDE.size))
-    native_mean = _labelled(mean_values, NATIVE_DIMS)
 
     reduction = reduce_native_gaussian(
         covariance=covariance,
-        basis_prolongation=_bucket_prolongation(),
+        strategy=SuppliedRestriction(restriction, retained_distribution="lognormal"),
         state_dim="state",
-        native_mean=native_mean,
+        native_mean=_labelled(mean_values, NATIVE_DIMS),
         native_sensitivity=_sensitivity(),
         observation_dim="observation",
-        strategy=SuppliedRestriction(restriction, retained_distribution="lognormal"),
     )
 
     pi = _flat(restriction, "state")
@@ -431,7 +411,6 @@ def test_supplied_restriction_moments_and_monte_carlo_close() -> None:
 def test_restriction_rhs_blocks_are_densified_one_block_at_a_time() -> None:
     """A sparse Pi reaches the covariance action only as bounded dense RHS blocks."""
     covariance, _ = _covariance(class_blocked=False)
-    restriction = _absolute_flux_weighted_restriction()
     seen: list[tuple[type, int]] = []
 
     class RecordingCovariance:
@@ -446,7 +425,7 @@ def test_restriction_rhs_blocks_are_densified_one_block_at_a_time() -> None:
 
     _apply_restriction_blocks(
         RecordingCovariance(),  # type: ignore[arg-type]
-        restriction,
+        _restriction(),
         native_dims=NATIVE_DIMS,
         state_dim="state",
         column_dim="state_cov",
@@ -457,70 +436,57 @@ def test_restriction_rhs_blocks_are_densified_one_block_at_a_time() -> None:
 
 
 def test_production_shape_restriction_stays_sparse_with_bounded_memory() -> None:
-    """The 361 x 96,768 production restriction is validated without densifying.
+    """The 361 x 96,768 production restriction is built and validated without densifying.
 
     A dense float64 restriction at this shape needs about 279 MB. The sparse
-    path stores one weight per native source cell, so validation and
-    canonicalization stay well below that bound.
+    path stores at most one weight per native source cell, so building,
+    validating, and preparing it stay well below that bound.
     """
     source_rows = {"GPP": 115, "TER": 115, "FF": 74, "ocean": 57}
     n_lat, n_lon = 168, 144
-    cells = n_lat * n_lon
-    assert len(source_rows) * cells == 96_768
+    assert len(source_rows) * n_lat * n_lon == 96_768
     rng = np.random.default_rng(361)
-    state_tuples = [(source, region) for source, count in source_rows.items() for region in range(count)]
-    state_index = pd.MultiIndex.from_tuples(state_tuples, names=("source", "region"))
+    coords = {"lat": np.linspace(-80.0, 80.0, n_lat), "lon": np.linspace(-180.0, 179.0, n_lon)}
 
     tracemalloc.start()
-    rows, sources, flat_cells, weights = [], [], [], []
-    first_row = 0
-    for source_index, count in enumerate(source_rows.values()):
-        region = rng.integers(0, count, size=cells)
-        region[:count] = np.arange(count)
-        q = np.abs(rng.normal(size=cells))
-        totals = np.bincount(region, weights=q, minlength=count)
-        rows.append(first_row + region)
-        sources.append(np.full(cells, source_index))
-        flat_cells.append(np.arange(cells))
-        weights.append(q / totals[region])
-        first_row += count
-    flat = np.concatenate(flat_cells)
-    coords = np.stack([np.concatenate(rows), np.concatenate(sources), flat // n_lon, flat % n_lon])
-    shape = (len(state_index), len(source_rows), n_lat, n_lon)
-    pi_data = sparse.COO(coords, np.concatenate(weights), shape=shape)
-    u_data = sparse.COO(coords[[1, 2, 3, 0]], np.ones(coords.shape[1]), shape=(*shape[1:], shape[0]))
-    native_coords = {
-        SOURCE_DIM: list(source_rows),
-        "lat": np.linspace(-80.0, 80.0, n_lat),
-        "lon": np.linspace(-180.0, 179.0, n_lon),
-    }
-    state_coords = xr.Coordinates.from_pandas_multiindex(state_index, "state")
-    restriction = xr.DataArray(pi_data, dims=("state", *NATIVE_DIMS), coords=native_coords).assign_coords(
-        state_coords
+    regions = {}
+    for source, count in source_rows.items():
+        # Region labels 1..count, with about 45% of cells inactive (label 0).
+        labels = rng.integers(1, count + 1, size=(n_lat, n_lon))
+        labels.reshape(-1)[:count] = np.arange(1, count + 1)
+        labels.reshape(-1)[count:][rng.random(n_lat * n_lon - count) < 0.45] = 0
+        regions[source] = xr.DataArray(labels, dims=("lat", "lon"), coords=coords)
+    weights = xr.DataArray(
+        rng.normal(size=(len(source_rows), n_lat, n_lon)),
+        dims=NATIVE_DIMS,
+        coords={SOURCE_DIM: list(source_rows), **coords},
     )
-    prolongation = xr.DataArray(u_data, dims=(*NATIVE_DIMS, "state"), coords=native_coords).assign_coords(
-        state_coords
-    )
-
+    restriction = absolute_weighted_regional_mean_restriction(regions, weights)
     projection = SuppliedRestriction(restriction, retained_distribution="lognormal").projection(
         None,  # type: ignore[arg-type]
-        prolongation,
         native_dims=NATIVE_DIMS,
         state_dim="state",
     )
+    lazy_sensitivity = xr.DataArray(
+        da.zeros((14, len(source_rows), n_lat, n_lon)),
+        dims=("observation", *NATIVE_DIMS),
+        coords={SOURCE_DIM: list(source_rows), **coords},
+    )
     prepared = _prepare_projection(
         projection,
-        native_reference=prolongation.isel(state=0, drop=True),
+        native_reference=lazy_sensitivity,
         native_dims=NATIVE_DIMS,
         state_dim="state",
     )
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
 
+    shape = (361, *weights.shape)
     dense_bytes = np.prod(shape) * np.dtype(np.float64).itemsize
     assert dense_bytes > 270e6
+    assert prepared.restriction.shape == shape
     assert isinstance(prepared.restriction.data, sparse.COO)
-    assert prepared.restriction.data.nnz == 96_768
+    assert 40_000 < prepared.restriction.data.nnz < 96_768
     assert prepared.restriction.attrs["row_normalized"] is True
     assert prepared.restriction.attrs["lognormal_admissible"] is True
     assert peak < 0.1 * dense_bytes

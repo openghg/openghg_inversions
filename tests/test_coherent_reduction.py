@@ -10,6 +10,7 @@ import xarray as xr
 from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis.covariance_products import (
     NativeCovarianceProducts,
+    PreserveBucketProlongation,
     project_native_covariance,
 )
 from openghg_inversions.basis.operators import BucketBasisOperator
@@ -82,7 +83,7 @@ def _raw_projected_problem() -> tuple[
     ).compute()
     products = project_native_covariance(
         covariance=covariance,
-        basis_prolongation=prolongation,
+        strategy=PreserveBucketProlongation(prolongation),
         state_dim="state",
         native_sensitivity=sensitivity,
         observation_dim="observation",
@@ -120,7 +121,7 @@ def test_exact_reduction_matches_dense_nonzero_mean_oracle() -> None:
     )
     result = reduce_native_gaussian(
         covariance=covariance,
-        basis_prolongation=prolongation,
+        strategy=PreserveBucketProlongation(prolongation),
         state_dim="state",
         native_mean=native_mean,
         native_sensitivity=sensitivity,
@@ -164,7 +165,7 @@ def test_exact_reduction_matches_dense_nonzero_mean_oracle() -> None:
     assert result == result
     assert result != reduce_native_gaussian(
         covariance=covariance,
-        basis_prolongation=prolongation,
+        strategy=PreserveBucketProlongation(prolongation),
         state_dim="state",
         native_mean=native_mean,
         native_sensitivity=sensitivity,
@@ -177,7 +178,7 @@ def test_centered_form_and_prior_predictive_covariance_are_coherent() -> None:
     products, native_mean, sensitivity, _, covariance, prolongation = _raw_projected_problem()
     result = reduce_native_gaussian(
         covariance=covariance,
-        basis_prolongation=prolongation,
+        strategy=PreserveBucketProlongation(prolongation),
         state_dim="state",
         native_mean=native_mean,
         native_sensitivity=sensitivity,
@@ -221,7 +222,7 @@ def test_observation_order_is_preserved() -> None:
 
     result = reduce_native_gaussian(
         covariance=covariance,
-        basis_prolongation=prolongation,
+        strategy=PreserveBucketProlongation(prolongation),
         state_dim="state",
         native_mean=native_mean,
         native_sensitivity=reordered,
@@ -257,7 +258,7 @@ def test_invalid_lazy_structure_fails_without_executing_payload() -> None:
     with pytest.raises(ValueError, match="Dimensions"):
         reduce_native_gaussian(
             covariance=covariance,
-            basis_prolongation=prolongation,
+            strategy=PreserveBucketProlongation(prolongation),
             state_dim="state",
             native_mean=lazy_mean,
             native_sensitivity=sensitivity,
@@ -290,7 +291,7 @@ def test_invalid_basis_grid_fails_without_executing_lazy_inputs() -> None:
     with pytest.raises(ValueError, match="join='exact'"):
         reduce_native_gaussian(
             covariance=covariance,
-            basis_prolongation=reordered_prolongation,
+            strategy=PreserveBucketProlongation(reordered_prolongation),
             state_dim="state",
             native_mean=lazy_mean,
             native_sensitivity=lazy_sensitivity,
@@ -300,16 +301,16 @@ def test_invalid_basis_grid_fails_without_executing_lazy_inputs() -> None:
 
 
 def test_related_lazy_inputs_materialize_one_shared_graph_once() -> None:
-    """The eager boundary jointly computes related mean, sensitivity, and basis."""
+    """The eager boundary jointly computes the related mean and sensitivity."""
     _, native_mean, sensitivity, _, covariance, prolongation = _raw_projected_problem()
     executions = 0
 
     @delayed
-    def produce_inputs() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Return all related native inputs from one recorded upstream task."""
+    def produce_inputs() -> tuple[np.ndarray, np.ndarray]:
+        """Return both related native inputs from one recorded upstream task."""
         nonlocal executions
         executions += 1
-        return native_mean.values, sensitivity.values, prolongation.values
+        return native_mean.values, sensitivity.values
 
     payload = produce_inputs()
     lazy_mean = native_mean.copy(
@@ -318,13 +319,10 @@ def test_related_lazy_inputs_materialize_one_shared_graph_once() -> None:
     lazy_sensitivity = sensitivity.copy(
         data=da.from_delayed(payload[1], shape=sensitivity.shape, dtype=sensitivity.dtype)
     )
-    lazy_prolongation = prolongation.copy(
-        data=da.from_delayed(payload[2], shape=prolongation.shape, dtype=prolongation.dtype)
-    )
 
     result = reduce_native_gaussian(
         covariance=covariance,
-        basis_prolongation=lazy_prolongation,
+        strategy=PreserveBucketProlongation(prolongation),
         state_dim="state",
         native_mean=lazy_mean,
         native_sensitivity=lazy_sensitivity,
@@ -345,7 +343,7 @@ def test_public_boundary_recomputes_products_when_sensitivity_changes_off_subspa
     )
     original = reduce_native_gaussian(
         covariance=covariance,
-        basis_prolongation=prolongation,
+        strategy=PreserveBucketProlongation(prolongation),
         state_dim="state",
         native_mean=native_mean,
         native_sensitivity=sensitivity,
@@ -358,7 +356,7 @@ def test_public_boundary_recomputes_products_when_sensitivity_changes_off_subspa
 
     changed = reduce_native_gaussian(
         covariance=covariance,
-        basis_prolongation=prolongation,
+        strategy=PreserveBucketProlongation(prolongation),
         state_dim="state",
         native_mean=native_mean,
         native_sensitivity=changed_sensitivity,
@@ -415,7 +413,7 @@ def test_nonlexical_multiindex_labels_survive_reduction() -> None:
 
     result = reduce_native_gaussian(
         covariance=covariance,
-        basis_prolongation=relabel(prolongation, "state", state_index),
+        strategy=PreserveBucketProlongation(relabel(prolongation, "state", state_index)),
         state_dim="state",
         native_mean=native_mean,
         native_sensitivity=relabel(sensitivity, "observation", observation_index),
