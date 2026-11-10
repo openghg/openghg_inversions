@@ -164,9 +164,25 @@ def bind_period_states(
     Observation labels own the row order and their auxiliary timestamps own
     period membership; indexed boundary times must match those timestamps.
     This check may compute a lazy timestamp coordinate, while numerical
-    payloads stay borrowed. Returns ``raw``'s variables on ``(observation,
-    bc_region)``, where ``bc_region`` is the ``(bc_curtain, bc_period)``
-    MultiIndex.
+    payloads stay borrowed.
+
+    Args:
+        raw: Raw spatial boundary data on ``bc_region`` and the ``time``,
+            ``nmeasure`` or native observation axis.
+        observations: One fit's observations with the observation axis first.
+        frequency: ``None`` for one period, ``"monthly"``, or a positive fixed
+            duration.
+        anchor_time: Optional start of the fixed-duration period grid.
+
+    Returns:
+        ``raw``'s variables on ``(observation, bc_region)``, where
+        ``bc_region`` is the ``(bc_curtain, bc_period)`` MultiIndex.
+
+    Raises:
+        ValueError: If the period settings are invalid, a frequency needs a
+            datetime ``time`` coordinate that is missing, or indexed boundary
+            times conflict with the observation timestamps.
+        KeyError: If an observation label is absent from ``raw``.
     """
     native_dim = str(observations.dims[0])
     raw_dim = native_dim if native_dim in raw.dims else ("time" if "time" in raw.dims else "nmeasure")

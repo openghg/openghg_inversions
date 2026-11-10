@@ -489,3 +489,29 @@ def test_labelled_period_mean_prior_shares_the_owned_period_axis(family, owner):
     assert period_dim.endswith("bc_mean_period") and (owner is None or period_dim.startswith(owner))
     assert model.named_vars_to_dims["co2_bc_mean_indicator"][1] == period_dim
     np.testing.assert_allclose(mean.owner.op.dist_params(mean.owner)[0].eval(), [0.0, 1.0])
+
+
+def test_additive_without_mean_prior_rejects_bound_states_with_nothing_to_sample(double_precision):
+    """One curtain per period leaves no period contrasts, so a prior-free choice would sample nothing."""
+    data, observations = _native_boundary()
+    one_curtain = raw_transport(data.sel(bc_region=["north"]))
+    choice = AdditiveChoice(None, 2.0, anomalies="period_contrasts")
+    with pytest.raises(ValueError, match="nothing|no anomaly coordinates|have none"):
+        choice.bind(observations, one_curtain)
+    assert choice.bind(observations, raw_transport(data)).has_anomalies
+
+
+@pytest.mark.parametrize("reference", ["stored", 390.0, "whole_window_transport_mean"])
+def test_anomaly_scaling_recentring_keeps_the_absolute_reference(double_precision, reference):
+    """Recentring changes A and c together, so A 1 + c M 1 is the same for every reference choice."""
+    data, observations = _native_boundary()
+    prior = {"pdf": "normal", "mu": 0., "sigma": 1.}
+    stored = AnomalyScalingChoice(prior, 0.1).bind(observations, raw_transport(data)).data
+    bound = AnomalyScalingChoice(prior, 0.1, reference=reference).bind(observations, raw_transport(data)).data
+
+    def absolute(values):
+        return (values.H_bc_anomaly + values.bc_reference * values.H_bc_mass).sum("bc_region")
+
+    xr.testing.assert_allclose(absolute(bound), absolute(stored), rtol=1e-14)
+    if reference == 390.0:
+        assert float(bound.bc_reference) == 390.0
