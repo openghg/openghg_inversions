@@ -99,7 +99,7 @@ def _expand_boundary_periods(
     if "time" not in raw.coords or raw.time.dims != (observation_dim,) or raw.time.dtype.kind != "M":
         raise ValueError("Boundary period expansion requires a datetime time coordinate along observations.")
     time = raw.time
-    if hasattr(time.data, "__dask_graph__"):
+    if time.chunks is not None:
         time = time.compute()
         raw = raw.assign_coords(time=(observation_dim, time.data))
     _, period = make_period_calendar(time, frequency, anchor_time=anchor_time)
@@ -143,7 +143,7 @@ def _select_native_boundary(
     time = observations.coords.get("time")
     if time is not None and time.dims == (native_dim,):
         if "time" in selected.indexes:
-            if hasattr(time.data, "__dask_graph__"):
+            if time.chunks is not None:
                 time = time.compute()
             if not np.array_equal(selected.time.data, time.data):
                 raise ValueError("Indexed boundary time labels conflict with native observation timestamps.")
