@@ -33,8 +33,8 @@ def test_omitted_and_explicit_nesw_preserve_directional_labels_and_lazy_inputs(m
             request = _params(use_bc=True, **selection)
             original = deepcopy(request)
             config = RhimeConfig.from_params(load_params(overrides=request), multisector=False)
-            assert config.data.bc_basis_algorithm == "NESW"
-            assert isinstance(config.data.bc_basis_algorithm, str)
+            assert config.data.bc_basis.algorithm == "NESW"
+            assert isinstance(config.data.bc_basis.algorithm, str)
             basis = resolve_bc_basis(config.data)
             assert basis is nesw_basis
             results.append(bc_sensitivity({"TAC": site}, bc_basis=basis)["TAC"].H_bc)
@@ -99,11 +99,11 @@ def test_bc_selection_survives_preparation_manifest_roundtrip(tmp_path, multisec
         prepared = PreparedInputs(inputs, basis, prepared.site_metadata)
     manifest = stage.save_preparation(prepared, data_config=config.data, output_dir=tmp_path / "saved")
     record = json.loads(manifest.read_text())
-    assert record["data"]["bc_basis_algorithm"] == config.data.bc_basis_algorithm
+    assert record["data"]["bc_basis_algorithm"] == config.data.bc_basis.algorithm
     loaded, data, _ = stage.load_preparation(manifest)
-    assert data.bc_basis_algorithm == config.data.bc_basis_algorithm
-    assert data.bc_basis_paths is None
-    assert data.bc_basis_split_height == config.data.bc_basis_split_height
+    assert data.bc_basis.algorithm == config.data.bc_basis.algorithm
+    assert data.bc_basis.paths is None
+    assert data.bc_basis.split_height == config.data.bc_basis.split_height
     xr.testing.assert_identical(loaded.inv_inputs, prepared.inv_inputs)
 
 
@@ -117,7 +117,7 @@ def test_nested_inner_preparation_keeps_bc_disabled_with_outer_file_selection(mo
     ), multisector=False).data
     inner = nested.inner_data_config(outer, inner_domain="6km")
     assert not inner.use_bc
-    assert inner.bc_basis_paths is None
+    assert inner.bc_basis.paths is None
     assert resolve_bc_basis(inner) is nesw_basis
     assert outer.use_bc
-    assert outer.bc_basis_paths == (tmp_path / "outer.nc",)
+    assert outer.bc_basis.paths == (tmp_path / "outer.nc",)

@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
-from typing import Any, get_args, get_type_hints
+from typing import Any, ClassVar, get_args, get_type_hints
 
 from openghg_inversions.basis.boundary import BOUNDARY_BASIS_ALGORITHMS, boundary_basis
 from openghg_inversions.rhime._resources import resolve_resource_paths
@@ -39,24 +39,127 @@ from openghg_inversions.rhime.specs import (
 
 
 @dataclass(frozen=True, kw_only=True)
+class BcBasisOptions:
+    """Boundary-condition basis selection, used only when BCs are enabled.
+
+    Each field's external option name is :attr:`OPTION_PREFIX` followed by the
+    field name, so INI files, JSON manifests and flat Python requests keep
+    ``bc_basis_paths``, ``bc_basis_algorithm`` and ``bc_basis_split_height``.
+    Direct construction expects resolved values and performs no validation.
+
+    Attributes:
+        paths: Exact labelled BC basis files. When set, they take precedence
+            and ``algorithm`` is inactive.
+        algorithm: Built-in basis used without files: ``"NESW"`` (one region
+            per whole curtain) or ``"twelve-region"`` (two lower horizontal
+            halves and one upper region per curtain).
+        split_height: Finite twelve-region split in the curtains' native
+            height-coordinate units; no unit conversion or vertical datum is
+            assumed. Ignored by NESW and by exact files.
+    """
+
+    OPTION_PREFIX: ClassVar[str] = "bc_basis_"
+
+    paths: tuple[Path, ...] | None = None
+    algorithm: str | None = "NESW"
+    split_height: float = 3000.0
+
+    @classmethod
+    def option_names(cls) -> frozenset[str]:
+        """External option names of this group's fields."""
+        return frozenset(cls.OPTION_PREFIX + f.name for f in fields(cls))
+
+    @classmethod
+    def option_annotations(cls) -> dict[str, Any]:
+        """Return field annotations keyed by external option name."""
+        hints = get_type_hints(cls)
+        return {cls.OPTION_PREFIX + f.name: hints[f.name] for f in fields(cls)}
+
+    @classmethod
+    def from_params(cls, params: Mapping[str, Any], *, active: bool) -> BcBasisOptions:
+        """Resolve this group from flat external options, ignoring other names.
+
+        The built-in algorithm and split height are validated only when the
+        selection is active and no exact files are selected, so disabled or
+        file-backed selections may carry inactive values.
+
+        Args:
+            params: Flat options with resolved filesystem paths.
+            active: Whether the data configuration uses BC inputs.
+
+        Returns:
+            The selection, with defaults for omitted options.
+
+        Raises:
+            ValueError: If an active built-in selection has an unknown
+                algorithm or an invalid split height.
+        """
+        values = {name: params[cls.OPTION_PREFIX + name] for name in (f.name for f in fields(cls))
+                  if cls.OPTION_PREFIX + name in params}
+        options = cls(**values)
+        if active and options.paths is None:
+            if options.algorithm not in BOUNDARY_BASIS_ALGORITHMS:
+                raise ValueError(
+                    f"`bc_basis_algorithm` must be one of {BOUNDARY_BASIS_ALGORITHMS!r} without selected files; "
+                    f"got {options.algorithm!r}."
+                )
+            try:
+                boundary_basis(options.algorithm, split_height=options.split_height)
+            except ValueError as exc:
+                raise ValueError(f"`bc_basis_split_height`: {exc}") from exc
+        return options
+
+    def to_params(self) -> dict[str, Any]:
+        """Return flat external options that :meth:`from_params` reads back, borrowing values."""
+        return {self.OPTION_PREFIX + f.name: getattr(self, f.name) for f in fields(self)}
+
+
+@dataclass(frozen=True, kw_only=True)
 class DataConfig:
     """Resolved acquisition and preparation choices, independent of inference.
 
     External options enter through ``from_params``. Ordinary option containers
     are owned; numerical payloads remain borrowed. Direct construction expects
-    resolved values and does not copy or execute scientific work.
-
-    Boundary-condition basis selection, when ``use_bc`` is true:
+    resolved values and does not copy or execute scientific work. Grouped
+    fields, such as ``bc_basis``, keep their flat external option names.
 
     Attributes:
-        bc_basis_paths: Exact labelled BC basis files. When set, they take
-            precedence and ``bc_basis_algorithm`` is inactive.
-        bc_basis_algorithm: Built-in basis used without files: ``"NESW"``
-            (one region per whole curtain) or ``"twelve-region"`` (two lower
-            horizontal halves and one upper region per curtain).
-        bc_basis_split_height: Finite twelve-region split in the curtains'
-            native height-coordinate units; no unit conversion or vertical
-            datum is assumed. Ignored by NESW and by exact files.
+        site_options: Per-site observation and footprint selectors.
+        species: Species name used for OpenGHG searches.
+        domain: Footprint domain.
+        start_date: Inclusive start of the inversion period.
+        end_date: Exclusive end of the inversion period.
+        flux_sources: OpenGHG flux ``source`` values, in model order.
+        split_by_sectors: Whether flux sources are kept as separate sectors
+            (multisector recipe) rather than combined.
+        bc_store: OpenGHG store searched for boundary conditions.
+        obs_store: OpenGHG store searched for observations.
+        footprint_store: OpenGHG store searched for footprints.
+        flux_store: OpenGHG store searched for fluxes.
+        flux_domain: Domain of the source flux dataset; ``None`` uses ``domain``.
+        fp_model: Footprint model name, when selecting among models.
+        fp_species: Footprint species, when it differs from ``species``.
+        calibration_scale: Observation calibration scale to convert to.
+        use_bc: Whether boundary-condition inputs are acquired and prepared.
+        basis_path: Exact retained ``BasisFunctions`` artifact.
+        basis_partition_path: Exact labelled flux basis partition file.
+        landsea_path: Land/sea class map used by basis preparation.
+        basis_partition_paths: Exact labelled partition files, sorted before
+            loading; mutually exclusive with the two singular basis paths.
+        bc_basis: Boundary-condition basis selection, used when ``use_bc`` is true.
+        outer_regions_path: Fixed outer-region map used by basis preparation.
+        bc_input: OpenGHG boundary-condition input name, when selecting among several.
+        basis_algorithm: Flux basis algorithm used when no basis file is
+            selected: ``"quadtree"``, ``"weighted"`` or ``"region_constrained"``.
+        nbasis: Requested number of flux basis regions.
+        filters: Observation filters, for all sites or keyed by site.
+        fix_basis_outer_regions: Whether outer regions are fixed from
+            ``outer_regions_path`` during basis preparation.
+        averaging_error: Whether observation averaging variability is added
+            to the observation uncertainty.
+        basis_output_path: Optional file at which the prepared basis is saved.
+        flux_non_finite_check: Non-finite flux handling: ``"lazy"`` keeps the
+            zero fill lazy; ``"count"`` computes exact non-finite counts.
     """
 
     site_options: SiteOptions
@@ -79,9 +182,7 @@ class DataConfig:
     basis_partition_path: Path | None = None
     landsea_path: Path | None = None
     basis_partition_paths: tuple[Path, ...] | None = None
-    bc_basis_paths: tuple[Path, ...] | None = None
-    bc_basis_algorithm: str | None = "NESW"
-    bc_basis_split_height: float = 3000.0
+    bc_basis: BcBasisOptions = BcBasisOptions()
     outer_regions_path: Path | None = None
     bc_input: str | None = None
     basis_algorithm: str | None = "weighted"
@@ -92,13 +193,25 @@ class DataConfig:
     basis_output_path: Path | None = None
     flux_non_finite_check: FluxNonFiniteCheck = "lazy"
 
+    # Fields whose external options are flattened from a nested group.
+    _GROUP_NAMES: ClassVar[frozenset[str]] = frozenset({"site_options", "bc_basis"})
 
     @classmethod
     def option_names(cls) -> frozenset[str]:
-        """External names declared by data and site-selector owners."""
-        return frozenset(f.name for f in fields(cls) if f.name != "site_options") | frozenset(
-            f.name for f in fields(SiteOptions)
-        )
+        """External names declared by data, site-selector and BC-basis owners."""
+        return (frozenset(f.name for f in fields(cls) if f.name not in cls._GROUP_NAMES)
+                | frozenset(f.name for f in fields(SiteOptions))
+                | BcBasisOptions.option_names())
+
+    @classmethod
+    def option_annotations(cls) -> dict[str, Any]:
+        """Return data-owned annotations keyed by external option name, for path resolution.
+
+        Site selectors are omitted because they declare no filesystem paths.
+        """
+        hints = get_type_hints(cls)
+        return ({f.name: hints[f.name] for f in fields(cls) if f.name not in cls._GROUP_NAMES}
+                | BcBasisOptions.option_annotations())
 
     @classmethod
     def required_option_names(cls) -> frozenset[str]:
@@ -106,7 +219,7 @@ class DataConfig:
         return frozenset(
             f.name for f in fields(cls)
             if f.default is MISSING and f.default_factory is MISSING
-            and f.name not in {"site_options", "flux_sources"}
+            and f.name not in cls._GROUP_NAMES | {"flux_sources"}
         ) | frozenset(SiteOptions.REQUIRED_INPUT_NAMES)
 
     @classmethod
@@ -129,7 +242,7 @@ class DataConfig:
                 explicit layout conflicts with the selected recipe.
         """
         remaining = normalise_rhime_params(params)
-        remaining = resolve_resource_paths(remaining, annotations=get_type_hints(cls), base_dir=Path.cwd())
+        remaining = resolve_resource_paths(remaining, annotations=cls.option_annotations(), base_dir=Path.cwd())
         unsupported = sorted(set(remaining) - cls.option_names())
         if unsupported:
             raise ValueError(f"Unsupported data parameter(s): {unsupported!r}")
@@ -155,25 +268,16 @@ class DataConfig:
         if (remaining.get("basis_path") is None and remaining.get("basis_partition_path") is None
                 and remaining.get("basis_partition_paths") is None and basis_algorithm not in allowed):
             raise ValueError(f"`basis_algorithm` must be one of {allowed!r}; got {basis_algorithm!r}.")
-        if remaining.get("use_bc", cls.use_bc) and remaining.get("bc_basis_paths") is None:
-            bc_algorithm = remaining.get("bc_basis_algorithm", cls.bc_basis_algorithm)
-            if bc_algorithm not in BOUNDARY_BASIS_ALGORITHMS:
-                raise ValueError(
-                    f"`bc_basis_algorithm` must be one of {BOUNDARY_BASIS_ALGORITHMS!r} without selected files; "
-                    f"got {bc_algorithm!r}."
-                )
-            try:
-                boundary_basis(bc_algorithm, split_height=remaining.get(
-                    "bc_basis_split_height", cls.bc_basis_split_height))
-            except ValueError as exc:
-                raise ValueError(f"`bc_basis_split_height`: {exc}") from exc
+        bc_basis = BcBasisOptions.from_params(remaining, active=remaining.get("use_bc", cls.use_bc))
+        for name in BcBasisOptions.option_names():
+            remaining.pop(name, None)
         remaining["sites"] = as_list(remaining["sites"])
         site_options = SiteOptions.from_inputs(**{
             f.name: remaining.pop(f.name) for f in fields(SiteOptions) if f.name in remaining
         })
         remaining["filters"] = _copy_option_containers(remaining.get("filters", cls.filters))
         remaining["split_by_sectors"] = multisector
-        return cls(site_options=site_options, flux_sources=tuple(flux_sources), **remaining)
+        return cls(site_options=site_options, bc_basis=bc_basis, flux_sources=tuple(flux_sources), **remaining)
 
     def select(self, *names: str) -> dict[str, Any]:
         """Return named direct attributes in a new dictionary, borrowing values."""
@@ -182,11 +286,12 @@ class DataConfig:
     def to_params(self) -> dict[str, Any]:
         """Return these choices as external options that :meth:`from_params` reads back.
 
-        Site selectors are flattened to their option names; values are borrowed.
+        Site selectors and BC-basis options are flattened to their option
+        names; values are borrowed.
         """
-        site_names = {f.name for f in fields(SiteOptions)}
-        params = {name: getattr(self, name) for name in self.option_names() - site_names}
-        params.update({name: getattr(self.site_options, name) for name in site_names})
+        params = {f.name: getattr(self, f.name) for f in fields(self) if f.name not in self._GROUP_NAMES}
+        params.update({f.name: getattr(self.site_options, f.name) for f in fields(SiteOptions)})
+        params.update(self.bc_basis.to_params())
         return params
 
 

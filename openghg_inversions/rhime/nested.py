@@ -23,7 +23,7 @@ from dataclasses import dataclass, field, replace
 from numbers import Integral
 import warnings
 from pathlib import Path
-from typing import Any, TypeVar, get_type_hints
+from typing import Any, TypeVar
 
 from dask import compute as dask_compute, is_dask_collection
 from dask.base import unpack_collections
@@ -760,14 +760,15 @@ def inner_data_config(
             "outer_regions_path": inner_outer_regions_path,
             "basis_output_path": inner_basis_output_path,
         },
-        annotations=get_type_hints(DataConfig), base_dir=Path.cwd(),
+        annotations=DataConfig.option_annotations(), base_dir=Path.cwd(),
     )
     return replace(
         outer_data, **basis_options,
         footprint_store=inner_footprint_store or outer_data.footprint_store,
         flux_store=inner_flux_store or outer_data.flux_store,
         flux_domain=inner_flux_domain,
-        use_bc=False, bc_input=None, bc_basis_paths=None, fix_basis_outer_regions=False,
+        use_bc=False, bc_input=None, bc_basis=replace(outer_data.bc_basis, paths=None),
+        fix_basis_outer_regions=False,
         basis_algorithm=inner_basis_algorithm if inner_basis_algorithm is not None else "quadtree",
         nbasis=outer_data.nbasis if inner_nbasis is None else inner_nbasis,
     )
@@ -1374,7 +1375,7 @@ def run_nested(
     time_tolerance = nested_options.pop("inner_time_tolerance", None)
     inner_basis_output_path = resolve_resource_paths(
         {"basis_output_path": nested_options.pop("inner_basis_output_path", None)},
-        annotations=get_type_hints(DataConfig), base_dir=Path.cwd(),
+        annotations=DataConfig.option_annotations(), base_dir=Path.cwd(),
     )["basis_output_path"]
 
     if config is None:

@@ -84,7 +84,7 @@ def load_params(
     if unsuitable:
         where = "" if phase_groups is None else " for this phase"
         raise ValueError(f"Unsupported RHIME parameter(s){where}: {sorted(unsuitable)!r}.")
-    annotations = get_type_hints(DataConfig) | get_type_hints(RhimeOutputSpec)
+    annotations = DataConfig.option_annotations() | get_type_hints(RhimeOutputSpec)
     result: dict[str, dict[str, Any]] = {group: {} for group in owners}
     for group in active:
         result[group] = resolve_resource_paths(

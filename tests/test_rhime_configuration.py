@@ -588,7 +588,7 @@ def test_resource_paths_follow_annotations_and_invocation_directory(tmp_path, mo
     config = rhime_params.RhimeConfig.from_params(options, multisector=False)
     assert config.data.basis_path == invocation / "override.nc"
     assert config.output.country_file == invocation / "country.nc"
-    assert config.data.bc_basis_paths == (invocation / "bc.nc",)
+    assert config.data.bc_basis.paths == (invocation / "bc.nc",)
     assert config.data.domain == "EUROPE"
     assert config.output.save_trace is True
     assert not {"fp_basis_case", "basis_directory", "bc_basis_case", "bc_basis_directory", "country_directory"} & {
@@ -620,7 +620,7 @@ def test_canonical_path_construction_does_not_load_resources(tmp_path, monkeypat
         multisector=False,
     )
     assert config.data.basis_path == tmp_path / "missing.nc"
-    assert config.data.bc_basis_paths == (tmp_path / "missing-bc.nc",)
+    assert config.data.bc_basis.paths == (tmp_path / "missing-bc.nc",)
     assert config.output.country_file == tmp_path / "missing-country.nc"
 
 
@@ -656,7 +656,7 @@ def test_canonical_paths_are_forwarded_without_conversion(tmp_path, monkeypatch)
             _request(basis_path=path, bc_basis_paths=paths, country_file=path), multisector=False,
         )
     assert config.data.basis_path is path
-    assert config.data.bc_basis_paths is paths
+    assert config.data.bc_basis.paths is paths
     assert config.output.country_file is path
 
 
@@ -694,7 +694,7 @@ def test_modern_templates_construct_without_legacy_translation(template):
     path = Path(__file__).resolve().parents[1] / "openghg_inversions/config/templates" / template
     decoded = read_rhime_ini(path)
     config = rhime_params.RhimeConfig.from_params({**decoded, **_request(sites=["TAC"])}, multisector=False)
-    assert config.data.bc_basis_paths is None
+    assert config.data.bc_basis.paths is None
 
 
 @pytest.mark.parametrize("name", ["xprior", "outputpath", "emissions_name", "emissions_store", "emissions_domain", "country_directory", "use_tracer"])
