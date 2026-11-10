@@ -90,7 +90,7 @@ def test_sample_ignores_inactive_preparation_and_outputs(tmp_path, monkeypatch):
     manifest.write_text(json.dumps({"schema": "openghg_inversions.co2_o2.prepare"}))
     calls = []
 
-    def sample(preparation, *, model, sampler, output_dir):
+    def sample(preparation, *, model, sampler, output_dir, referenced=()):
         calls.append((preparation, model, sampler.draws))
         return output_dir / "sample-manifest.json"
 
