@@ -59,7 +59,7 @@ from .outputs import (
     _define_derived_output_filename,
 )
 from .ini import read_rhime_ini
-from .params import DataConfig, RhimeConfig
+from .params import DataConfig, RegionClassSelection, RhimeConfig
 from .preparation import (
     resolve_bc_basis,
     acquire_merged_data,
@@ -736,12 +736,17 @@ def inner_data_config(
     inner_landsea_path: str | Path | None = None,
     inner_outer_regions_path: str | Path | None = None,
     inner_basis_output_path: str | Path | None = None,
+    inner_region_classes: RegionClassSelection | Mapping[str, Any] | None = None,
 ) -> DataConfig:
     """Resolve the native inner acquisition and basis choices from an outer request.
 
     Stores and the basis target inherit outer values when omitted. The inner
     basis defaults to quadtree, has independent resources and no boundary
-    component. Relative resource paths resolve from the current directory.
+    component. Region classes are never inherited, because the outer map
+    describes the outer grid: ``inner_region_classes`` selects the inner grid's
+    :class:`~openghg_inversions.rhime.params.RegionClassSelection`, or a mapping
+    of its options, for a region-constrained inner basis.
+    Relative resource paths resolve from the current directory.
     An omitted ``inner_nbasis`` still means automatic total-budget allocation
     when passed to :func:`prepare_nested_rhime_inputs`.
 
@@ -749,6 +754,10 @@ def inner_data_config(
         A new configuration without mutating ``outer_data`` or opening files.
         Use :func:`~openghg_inversions.rhime.preparation.resolve_basis_inputs`
         to load its selected resources.
+
+    Raises:
+        ValueError: If the inner region-class selection is invalid, or is
+            selected while generating the inner basis with another algorithm.
     """
     basis_options = resolve_resource_paths(
         {
@@ -762,12 +771,16 @@ def inner_data_config(
         },
         annotations=get_type_hints(DataConfig), base_dir=Path.cwd(),
     )
+    region_classes = (
+        None if inner_region_classes is None else RegionClassSelection.from_params(inner_region_classes)
+    )
     return replace(
         outer_data, **basis_options,
         footprint_store=inner_footprint_store or outer_data.footprint_store,
         flux_store=inner_flux_store or outer_data.flux_store,
         flux_domain=inner_flux_domain,
         use_bc=False, bc_input=None, bc_basis_paths=None, fix_basis_outer_regions=False,
+        region_classes=region_classes,
         basis_algorithm=inner_basis_algorithm if inner_basis_algorithm is not None else "quadtree",
         nbasis=outer_data.nbasis if inner_nbasis is None else inner_nbasis,
     )
@@ -1306,6 +1319,7 @@ _NESTED_PARAMETER_NAMES = frozenset(
         "inner_landsea_path",
         "inner_outer_regions_path",
         "inner_basis_output_path",
+        "inner_region_classes",
         "inner_time_tolerance",
         "inner_x_prior",
     }

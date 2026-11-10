@@ -98,6 +98,55 @@ def resolve_basis_support_maps(
     return {"landsea_classes": landsea, "outer_regions": outer}
 
 
+def load_region_classes(
+    path: str | Path,
+    variable: str | None = None,
+    *,
+    unmapped_values: Sequence[float] = (),
+) -> xr.DataArray:
+    """Eagerly read a region-class map for constrained basis fitting.
+
+    The map is read like a reporting country file, including its fallbacks for
+    known HDF5 backend problems. Grid alignment and shape checks belong to
+    fitting, which also accepts a map on a larger grid containing the flux grid.
+
+    Args:
+        path: Exact NetCDF file, without directory discovery.
+        variable: Class variable to select. ``None`` selects ``country`` when
+            present, otherwise ``region``.
+        unmapped_values: Class values to replace with missing values, leaving
+            those cells outside every generated region.
+
+    Returns:
+        In-memory class map with file and variable attributes; selected
+        unmapped values are missing.
+
+    Raises:
+        FileNotFoundError: If ``path`` is not an existing file.
+        OSError: If every backend fails to read the file.
+        KeyError: If the selected variable is absent.
+        ValueError: If no mapped cells remain after excluding unmapped values.
+    """
+    from openghg_inversions._country_file import load_country_dataset
+
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Region-class map not found: {path}")
+    dataset = load_country_dataset(path)
+    if variable is None:
+        variable = "country" if "country" in dataset or "region" not in dataset else "region"
+    classes = dataset[variable]
+    classes.attrs = {**dataset.attrs, **classes.attrs}
+    if unmapped_values:
+        classes = classes.where(~classes.isin(list(unmapped_values)))
+    if not bool(classes.notnull().any()):
+        raise ValueError(
+            f"Region-class variable {variable!r} in {path} has no mapped cells "
+            f"after excluding unmapped values {tuple(unmapped_values)!r}."
+        )
+    return classes
+
+
 def load_basis_partition(path: str | Path) -> xr.DataArray:
     """Read an exact selected labelled partition with variable ``basis``.
 

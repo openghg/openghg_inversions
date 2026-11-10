@@ -148,6 +148,38 @@ Reporting SHALL use `country_file`; preparation SHALL use `landsea_path` or
 - **AND** the reporting country definition remains the explicitly selected file
 - **AND** an explicit preparation path overrides only its corresponding packaged default
 
+### Requirement: Region-class maps are explicit preparation resources
+
+A region-constrained basis SHALL be generated from a class map. The map SHALL
+be an exact selected file, or, when no file is selected, the requested domain's
+packaged land/sea map under the packaged-default rules above. When no variable
+is selected, the map's variable SHALL be inferred as for country files.
+Request resolution SHALL validate the selection without opening scientific
+data. Runners SHALL load the map before acquisition. Scientific preparation
+SHALL receive a labelled class map. Missing or unreadable files, absent
+variables and maps with no mapped classes SHALL fail before acquisition, without
+falling back to another map. Configured unmapped class values SHALL be treated
+like missing cells.
+
+Class maps SHALL be preparation resources, independent of the reporting
+`country_file`. A selected saved basis SHALL leave a class-map selection
+inactive and SHALL NOT load it; generating with another algorithm SHALL reject
+a selection. In nested preparation, the outer and inner grids SHALL select
+their class maps independently, and the inner grid SHALL NOT inherit the outer
+selection.
+
+#### Scenario: Configured classes match direct preparation
+
+- **WHEN** a request selects a class file and unmapped values for region-constrained generation
+- **THEN** the runner loads the map before acquisition
+- **AND** the generated basis equals direct preparation with that labelled map, after unmapped values are made missing
+
+#### Scenario: Region-constrained inner basis
+
+- **WHEN** a nested request selects region classes only for the inner grid
+- **THEN** the inner basis is constrained by the inner map
+- **AND** the outer basis neither reads nor inherits that map
+
 ### Requirement: Explicit partition collections have deterministic ordering
 
 Configured runners SHALL accept `basis_partition_paths` and nested

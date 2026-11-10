@@ -291,6 +291,58 @@ before acquisition. Replace it with ``country_file`` for reporting,
 regions. Reporting maps remain explicit: ``domain`` never selects a reporting
 ``country_file``. See :doc:`legacy_and_migration` for the migration schedule.
 
+.. _region-constrained-basis-classes:
+
+Region-constrained basis classes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``basis_algorithm = "region_constrained"`` fits basis regions separately inside
+each class of a class map, so no region crosses a class boundary. Each distinct
+non-missing map value is one class. ``region_classes`` selects the map with up
+to three options:
+
+``path``
+   Exact NetCDF class map, such as a land/sea map, a raw multiclass country or
+   region map, or a direct mask. When omitted, the domain's packaged land/sea
+   map is used, as for ``weighted`` generation.
+``variable``
+   Class variable in the map. When omitted, ``country`` is read if present,
+   otherwise ``region``, as for reporting country files.
+``unmapped_values``
+   Class values, such as an ocean code, treated like missing cells: they stay
+   outside every generated region and receive basis label ``0``.
+
+.. code-block:: ini
+
+   [INPUT.BASIS_CASE]
+   basis_algorithm = "region_constrained"
+   nbasis = 100
+   region_classes = {"path": "/data/maps/country_EUROPE.nc", "unmapped_values": [-1]}
+
+Omit ``region_classes`` entirely to constrain by the packaged land/sea map.
+From Python, pass the same mapping or a ``rhime.RegionClassSelection``. The
+standard, multisector, staged and Python routes share the option:
+``rhime.preparation.resolve_basis_inputs(config.data)`` reads the map before
+acquisition and passes it to ``prepare_basis`` as ``region_classes``. The
+result is the same basis as calling ``prepare_basis(region_classes=...)``
+directly with that map, after the unmapped values are made missing. The map
+may cover a larger grid than the flux; fitting selects the flux grid.
+
+A selection is rejected when generating with another algorithm, and is
+inactive when a saved basis (``basis_path`` or a partition) is selected, so one
+file can switch between generating and loading. Unknown options and invalid
+values fail during configuration. A missing or unreadable map, an absent
+variable, or a map with no mapped cells fails before acquisition.
+
+For fixed InTEM outer regions with independent inner classes, also set
+``fix_basis_outer_regions = True``, with ``outer_regions_path`` or the packaged
+outer map. Each outer region stays one fixed basis region. The class map
+subdivides only the inner region, and ``nbasis`` counts the inner regions; the
+total state count also includes the fixed outer regions.
+
+Nested runs select the inner grid's classes independently with
+``inner_region_classes``; see :doc:`nested_domains`.
+
 .. _twelve-region-boundary-basis:
 
 Twelve-region lateral boundary basis

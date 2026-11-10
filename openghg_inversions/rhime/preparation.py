@@ -399,8 +399,10 @@ def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:
     Returns:
         Keyword arguments for :func:`openghg_inversions.basis.prepare_basis`:
         an optional exact ``basis_path`` or eager ``basis_partition``, plus
-        eager support maps or None. Retained artifacts are checked for existence
-        here and loaded later by basis preparation. The request is not mutated.
+        eager support maps or None. Generating a region-constrained basis also
+        loads the selected class map. Retained artifacts are checked for
+        existence here and loaded later by basis preparation. The request is
+        not mutated.
 
     Raises:
         ValueError: If mutually exclusive saved input forms are supplied.
@@ -436,7 +438,25 @@ def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:
         fix_outer_regions=data_config.fix_basis_outer_regions and not loading,
         landsea_path=landsea_path, outer_regions_path=outer_path,
     ))
+    if not loading and data_config.basis_algorithm == "region_constrained":
+        selected.update(_resolve_region_classes(data_config))
     return selected
+
+
+def _resolve_region_classes(data_config: Any) -> dict[str, Any]:
+    """Load the selected class map, or the domain's packaged land/sea map."""
+    from openghg_inversions.basis.support import load_region_classes, packaged_basis_support_path
+
+    selection = data_config.region_classes
+    if selection is None or selection.path is None:
+        path = packaged_basis_support_path("landsea", data_config.domain)
+    else:
+        path = selection.path
+    return {"region_classes": load_region_classes(
+        path,
+        None if selection is None else selection.variable,
+        unmapped_values=() if selection is None else selection.unmapped_values,
+    )}
 
 
 def acquire_merged_data(data_config: Any) -> MergedData:

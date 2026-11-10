@@ -10,10 +10,11 @@ defaults; scientific callable signatures do not define the external schema.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
-from typing import Any, get_args, get_type_hints
+from typing import Any, ClassVar, get_args, get_type_hints
 
 from openghg_inversions.basis.boundary import BOUNDARY_BASIS_ALGORITHMS, boundary_basis
 from openghg_inversions.rhime._resources import resolve_resource_paths
@@ -39,6 +40,82 @@ from openghg_inversions.rhime.specs import (
 
 
 @dataclass(frozen=True, kw_only=True)
+class RegionClassSelection:
+    """Class map selected for region-constrained basis generation.
+
+    Each distinct non-missing map value is one class, and generated basis
+    regions never cross class boundaries. The map may be a land/sea map, a raw
+    multiclass country or region map, or a direct mask. External options enter
+    through ``from_params``; direct construction expects resolved values.
+    Selection is data-free: the application preparation boundary reads the map.
+
+    Attributes:
+        path: Exact NetCDF class map. ``None`` selects the domain's packaged
+            land/sea map.
+        variable: Class variable in the map. ``None`` reads ``country`` when
+            present, otherwise ``region``.
+        unmapped_values: Class values, such as an ocean code, treated like
+            missing cells: they stay outside every generated region and
+            receive basis label ``0``.
+    """
+
+    path: Path | None = None
+    variable: str | None = None
+    unmapped_values: tuple[float, ...] = ()
+
+    OPTION_NAMES: ClassVar[tuple[str, ...]] = ("path", "variable", "unmapped_values")
+
+    def __post_init__(self) -> None:
+        """Reject selections that cannot name a class map."""
+        if self.path is not None and not isinstance(self.path, Path):
+            raise ValueError(f"Region-class `path` must be a filesystem path; got {self.path!r}.")
+        if self.variable is not None and (not isinstance(self.variable, str) or not self.variable.strip()):
+            raise ValueError(f"Region-class `variable` must be a non-empty name; got {self.variable!r}.")
+        if not isinstance(self.unmapped_values, tuple) or any(
+            isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value)
+            for value in self.unmapped_values
+        ):
+            raise ValueError(
+                f"Region-class `unmapped_values` must be finite numbers; got {self.unmapped_values!r}."
+            )
+
+    @classmethod
+    def from_params(cls, params: RegionClassSelection | Mapping[str, Any]) -> RegionClassSelection:
+        """Resolve an external selection, such as an INI or JSON mapping.
+
+        Args:
+            params: Selection, or a mapping using the attribute names. Relative
+                paths resolve from the current directory; a list of unmapped
+                values is accepted.
+
+        Returns:
+            The given selection, or a new resolved selection.
+
+        Raises:
+            ValueError: If the value is not a mapping, names an unknown option or
+                holds an invalid value.
+        """
+        if isinstance(params, cls):
+            return params
+        if not isinstance(params, Mapping):
+            raise ValueError(_invalid_config_type_message("region_classes", "a mapping/dict", params))
+        unknown = sorted(set(params) - set(cls.OPTION_NAMES))
+        if unknown:
+            raise ValueError(
+                f"Unsupported region-class option(s): {unknown!r}; use {list(cls.OPTION_NAMES)!r}."
+            )
+        options = resolve_resource_paths(params, annotations=get_type_hints(cls), base_dir=Path.cwd())
+        values = options.get("unmapped_values", ())
+        if not isinstance(values, list | tuple):
+            raise ValueError(f"Region-class `unmapped_values` must be a list of numbers; got {values!r}.")
+        return cls(**{**options, "unmapped_values": tuple(values)})
+
+    def to_params(self) -> dict[str, Any]:
+        """Return the external mapping that :meth:`from_params` reads back."""
+        return {"path": self.path, "variable": self.variable, "unmapped_values": list(self.unmapped_values)}
+
+
+@dataclass(frozen=True, kw_only=True)
 class DataConfig:
     """Resolved acquisition and preparation choices, independent of inference.
 
@@ -46,9 +123,30 @@ class DataConfig:
     are owned; numerical payloads remain borrowed. Direct construction expects
     resolved values and does not copy or execute scientific work.
 
-    Boundary-condition basis selection, when ``use_bc`` is true:
-
     Attributes:
+        site_options: Site, averaging and inlet selectors aligned by site.
+        species: Species to acquire.
+        domain: Footprint domain.
+        start_date: Start of the inversion period.
+        end_date: End of the inversion period.
+        flux_sources: Ordered flux sources. The first weights generated bases.
+        split_by_sectors: Keep source-resolved sensitivities (multisector recipe).
+        bc_store: OpenGHG store holding boundary conditions.
+        obs_store: OpenGHG store holding observations.
+        footprint_store: OpenGHG store holding footprints.
+        flux_store: OpenGHG store holding fluxes.
+        flux_domain: Flux dataset domain; ``None`` uses ``domain``.
+        fp_model: Footprint model selector.
+        fp_species: Footprint species selector.
+        calibration_scale: Calibration scale for observations.
+        use_bc: Acquire boundary conditions and build their sensitivities.
+        basis_path: Exact retained basis artifact (.nc or .zarr). A selected
+            saved basis bypasses generation.
+        basis_partition_path: Exact labelled ``basis`` partition file.
+        landsea_path: Land/sea map for weighted generation; ``None`` selects the
+            domain's packaged map.
+        basis_partition_paths: Labelled partition files, sorted before loading;
+            the first supplies the reference coordinates.
         bc_basis_paths: Exact labelled BC basis files. When set, they take
             precedence and ``bc_basis_algorithm`` is inactive.
         bc_basis_algorithm: Built-in basis used without files: ``"NESW"``
@@ -57,6 +155,23 @@ class DataConfig:
         bc_basis_split_height: Finite twelve-region split in the curtains'
             native height-coordinate units; no unit conversion or vertical
             datum is assumed. Ignored by NESW and by exact files.
+        outer_regions_path: Fixed outer-region map; ``None`` selects the
+            domain's packaged map when outer regions are fixed.
+        bc_input: Boundary-condition input name.
+        basis_algorithm: Generation algorithm: ``"quadtree"``, ``"weighted"``
+            or ``"region_constrained"``.
+        nbasis: Requested generated regions. With fixed outer regions, this
+            counts the inner regions only.
+        region_classes: Class map for ``"region_constrained"`` generation;
+            ``None`` selects the domain's packaged land/sea map. A selection is
+            rejected when generating with another algorithm and is inactive
+            when a saved basis is selected.
+        filters: Observation filter choices.
+        fix_basis_outer_regions: Keep each outer region fixed and generate only
+            inside the inner region.
+        averaging_error: Include observation variability in observation errors.
+        basis_output_path: Exact destination for saving the prepared basis.
+        flux_non_finite_check: Non-finite flux policy: ``"lazy"`` or ``"count"``.
     """
 
     site_options: SiteOptions
@@ -86,12 +201,23 @@ class DataConfig:
     bc_input: str | None = None
     basis_algorithm: str | None = "weighted"
     nbasis: int = 100
+    region_classes: RegionClassSelection | None = None
     filters: str | list[str | None] | dict[str, str | None | list[str | None]] | None = None
     fix_basis_outer_regions: bool = False
     averaging_error: bool = True
     basis_output_path: Path | None = None
     flux_non_finite_check: FluxNonFiniteCheck = "lazy"
 
+    def __post_init__(self) -> None:
+        """Reject a class map selected for generation by another algorithm."""
+        generating = all(
+            value is None for value in (self.basis_path, self.basis_partition_path, self.basis_partition_paths)
+        )
+        if self.region_classes is not None and generating and self.basis_algorithm != "region_constrained":
+            raise ValueError(
+                "`region_classes` applies only when generating with "
+                f"`basis_algorithm = 'region_constrained'`; got {self.basis_algorithm!r}."
+            )
 
     @classmethod
     def option_names(cls) -> frozenset[str]:
@@ -155,6 +281,8 @@ class DataConfig:
         if (remaining.get("basis_path") is None and remaining.get("basis_partition_path") is None
                 and remaining.get("basis_partition_paths") is None and basis_algorithm not in allowed):
             raise ValueError(f"`basis_algorithm` must be one of {allowed!r}; got {basis_algorithm!r}.")
+        if remaining.get("region_classes") is not None:
+            remaining["region_classes"] = RegionClassSelection.from_params(remaining["region_classes"])
         if remaining.get("use_bc", cls.use_bc) and remaining.get("bc_basis_paths") is None:
             bc_algorithm = remaining.get("bc_basis_algorithm", cls.bc_basis_algorithm)
             if bc_algorithm not in BOUNDARY_BASIS_ALGORITHMS:
@@ -187,6 +315,8 @@ class DataConfig:
         site_names = {f.name for f in fields(SiteOptions)}
         params = {name: getattr(self, name) for name in self.option_names() - site_names}
         params.update({name: getattr(self.site_options, name) for name in site_names})
+        if self.region_classes is not None:
+            params["region_classes"] = self.region_classes.to_params()
         return params
 
 
