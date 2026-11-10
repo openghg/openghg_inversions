@@ -447,3 +447,19 @@ def test_nonunit_mass_absolute_predictives_and_snapshot_replay(native, tmp_path,
     for group in ("observed_data", "prior_predictive", "posterior_predictive", "predictions"):
         xr.testing.assert_identical(reopened[group].y, once[group].y)
     xr.testing.assert_identical(prepared.observations, native.observations)
+
+
+def test_shared_preparation_loads_without_float64_for_graph_free_products(native, tmp_path):  # noqa: F811
+    """Loading builds no graph, so it must not require the construction-time float64 setting."""
+    import pytensor
+
+    from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
+
+    prepared = prepare_linked_shared_inputs(native, **options(native))
+    path = tmp_path / "shared.nc"
+    prepared.save(path)
+    with pytensor.config.change_flags(floatX="float32"):
+        loaded = Co2O2PreparedInputs.load(path)
+        assert set(loaded.shared_baseline) == {"co2", "o2"}
+        with pytest.raises(ValueError, match="floatX=float64"):
+            build_linked_shared_workflow(loaded)

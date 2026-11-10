@@ -163,8 +163,13 @@ def prepare_linked_shared_inputs(
             value[f"native_{name}"] = raw[name]
         value.attrs["native_ratio_provenance"] = prepared.o2_sensitivity.attrs["oxidation_ratio_provenance"]
         value.attrs["native_sensitivity_units"] = getattr(prepared, f"{channel}_sensitivity").attrs.get("units", "")
-        value["original_outer"] = original_selector(outer)
-        value["original_sampled_outer"] = original_selector(sampled_outer)
+        for name, selector in (("original_outer", outer), ("original_sampled_outer", sampled_outer)):
+            selected = original_selector(selector)
+            if "original_state" in value.indexes and value.indexes["original_state"].equals(selected.indexes["original_state"]):
+                # The snapshot already owns these state labels (with any MultiIndex levels): assign values only.
+                value[name] = selected.variable
+            else:
+                value[name] = selected
         value.delta_sd.attrs["units"] = value.attrs["units"]
         frozen[channel] = replace(bound, data=value)
     return replace(prepared, shared_baseline=frozen)
