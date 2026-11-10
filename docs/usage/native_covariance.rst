@@ -190,8 +190,10 @@ policy from per-source integer region maps and signed per-cell weights
 active; zero or negative labels mark inactive cells, which receive no weight.
 Each row is exactly nonnegative and sums to one by construction, so the result
 is admissible for a LogNormal retained state without any tolerance. Its
-retained state is a ``(source, region_in_source)`` MultiIndex using the actual
-region labels, and its payload is sparse with one weight per active cell.
+retained state is a ``(source, region_in_source)`` MultiIndex that numbers each
+source's active regions ``0, 1, ...`` in ascending label order, as
+``MultiSourceBucketBasisOperator`` does. Its payload is sparse with one weight
+per active cell.
 
 For positive native scaling :math:`x`, the retained scaling
 :math:`\alpha = \Pi x` is guaranteed positive only when :math:`\Pi` is

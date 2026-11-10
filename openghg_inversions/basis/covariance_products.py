@@ -396,8 +396,10 @@ def absolute_weighted_regional_mean_restriction(
     Returns:
         Dimensionless sparse ``Pi`` with dimensions
         ``(state_dim, native_source_dim, *spatial_dims)``. The state
-        coordinate is a ``(source_dim, region_dim)`` MultiIndex in source order,
-        then ascending region label.
+        coordinate is a ``(source_dim, region_dim)`` MultiIndex in source order.
+        As in :class:`~openghg_inversions.basis.operators.MultiSourceBucketBasisOperator`,
+        each source's active regions are numbered ``0, 1, ...`` in ascending
+        label order; the map's label values carry no meaning in the result.
 
     Raises:
         ValueError: If no sources are given, source or spatial labels do not
@@ -457,7 +459,7 @@ def absolute_weighted_regional_mean_restriction(
         source_blocks.append(np.full(active_cells.size, source_index))
         cell_blocks.append(active_cells)
         value_blocks.append(absolute[active_cells] / totals[local_rows])
-        state_labels.extend((source, int(region)) for region in source_region_labels)
+        state_labels.extend((source, position) for position in range(source_region_labels.size))
     if not state_labels:
         raise ValueError("regions must contain at least one active (positive) region label")
 

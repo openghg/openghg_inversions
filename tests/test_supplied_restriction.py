@@ -17,6 +17,7 @@ from openghg_inversions.basis.covariance_products import (
     absolute_weighted_regional_mean_restriction,
     project_native_covariance,
 )
+from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.coherent_reduction import reduce_native_gaussian
 from openghg_inversions.native_covariance import SeparableExponentialCovariance
 from openghg_inversions.source_covariance import IndependentSourceCovariance
@@ -36,9 +37,9 @@ SIGMAS = {"GPP": 0.7, "FF": 0.4}
 
 
 def _state_index() -> pd.MultiIndex:
-    """Return retained (source, region) labels in source order, then label order."""
+    """Return retained labels: source order, then active regions numbered from zero."""
     return pd.MultiIndex.from_tuples(
-        [(source, int(region)) for source in SOURCES for region in np.unique(REGIONS[source]) if region > 0],
+        [(source, position) for source in SOURCES for position in range(np.unique(REGIONS[source][REGIONS[source] > 0]).size)],
         names=("source", "region_in_source"),
     )
 
@@ -176,7 +177,19 @@ def test_builder_matches_direct_absolute_weighted_regional_mean() -> None:
         support = restriction.isel(state=row).data.todense() > 0.0
         other_sources = [index for index, label in enumerate(SOURCES) if label != source]
         assert not support[other_sources].any()
-        assert np.array_equal(support[SOURCES.index(source)], REGIONS[source] == region)
+        active_labels = np.unique(REGIONS[source][REGIONS[source] > 0])
+        assert np.array_equal(support[SOURCES.index(source)], REGIONS[source] == active_labels[region])
+
+
+def test_builder_state_labels_match_multisource_bucket_operator() -> None:
+    """With every cell active, retained labels match the basis operator's numbering."""
+    regions = {source: labels.where(labels > 0, 9) for source, labels in _regions().items()}
+    operator = MultiSourceBucketBasisOperator(regions)
+
+    restriction = absolute_weighted_regional_mean_restriction(regions, _flux_weights())
+
+    assert restriction.indexes["state"].equals(operator.basis_matrix.indexes["state"])
+    assert restriction.indexes["state"].names == operator.basis_matrix.indexes["state"].names
 
 
 def test_builder_materializes_lazy_inputs() -> None:
@@ -283,7 +296,7 @@ def test_signed_restriction_is_refused_for_lognormal_and_allowed_for_gaussian() 
 
     restriction = _replace_values(_restriction(), make_signed)
 
-    with pytest.raises(ValueError, match=r"row \('GPP', 2\) has weight -1\.000e-18"):
+    with pytest.raises(ValueError, match=r"row \('GPP', 1\) has weight -1\.000e-18"):
         _project(SuppliedRestriction(restriction, retained_distribution="lognormal"))
     products = _project(SuppliedRestriction(restriction))
 
@@ -303,7 +316,7 @@ def test_zero_row_is_refused_for_lognormal() -> None:
         retained_distribution="lognormal",
     )
 
-    with pytest.raises(ValueError, match=r"positive weight in every restriction row; row \('GPP', 2\)"):
+    with pytest.raises(ValueError, match=r"positive weight in every restriction row; row \('GPP', 1\)"):
         strategy.projection(_covariance(False)[0], native_dims=NATIVE_DIMS, state_dim="state")
 
 
@@ -367,7 +380,8 @@ def test_bucket_strategy_accepts_sparse_and_lazy_prolongation() -> None:
     state_index = _state_index()
     values = np.zeros((len(SOURCES), LATITUDE.size, LONGITUDE.size, len(state_index)))
     for column, (source, region) in enumerate(state_index):
-        values[SOURCES.index(source), ..., column] = REGIONS[source] == region
+        active_labels = np.unique(REGIONS[source][REGIONS[source] > 0])
+        values[SOURCES.index(source), ..., column] = REGIONS[source] == active_labels[region]
     prolongation = _labelled(values, (*NATIVE_DIMS, "state")).assign_coords(
         xr.Coordinates.from_pandas_multiindex(state_index, "state")
     )
