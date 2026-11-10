@@ -50,7 +50,7 @@ import pandas as pd
 import xarray as xr
 from dask.array.core import Array as DaskArray
 from sparse import COO, SparseArray
-from xarray.core.common import DataWithCoords, is_chunked_array  # type: ignore
+from xarray.core.common import DataWithCoords
 
 # type for xr.Dataset *or* xr.DataArray
 DataSetOrArray = TypeVar("DataSetOrArray", bound=DataWithCoords)
@@ -224,7 +224,7 @@ def sparse_xr_dot(
         xr.Dataset or xr.DataArray: containing the result of matrix/tensor multiplication.
             The type that is returned will be the same as the type of `da2`.
     """
-    if isinstance(da1.data, SparseArray) and not is_chunked_array(da1):  # type: ignore
+    if isinstance(da1.data, SparseArray):
         da1 = da1.chunk()
 
     if isinstance(da2, xr.DataArray):
