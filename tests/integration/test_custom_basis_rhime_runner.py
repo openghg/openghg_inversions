@@ -234,7 +234,7 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
     monkeypatch.setattr(
         custom_basis_runner,
         "filter_observations",
-        lambda actual, site_options, *, filters: (filtered, filtered_options),
+        lambda actual, site_options, *, filters, filter_options: (filtered, filtered_options),
     )
     monkeypatch.setattr(
         custom_basis_runner,

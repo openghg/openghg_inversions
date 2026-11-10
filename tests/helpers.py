@@ -232,7 +232,7 @@ def prepare_inputs(**params):
     bc_basis = preparation.resolve_bc_basis(data)
     merged = preparation.acquire_merged_data(data)
     filtered, site_options = preparation.filter_observations(
-        merged.site_data, merged.site_options, filters=data.filters,
+        merged.site_data, merged.site_options, filters=data.filters, filter_options=data.filter_options,
     )
     filtered = preparation.prepare_observation_errors(filtered, averaging_error=data.averaging_error)
     from openghg_inversions.native_flux import resolve_runtime_flux

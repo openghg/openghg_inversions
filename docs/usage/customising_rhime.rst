@@ -106,7 +106,8 @@ labelled arrays:
    bc_basis = resolve_bc_basis(config.data)
    merged = acquire_merged_data(config.data)
    filtered, site_options = filter_observations(
-       merged.site_data, merged.site_options, filters=config.data.filters,
+       merged.site_data, merged.site_options,
+       filters=config.data.filters, filter_options=config.data.filter_options,
    )
    filtered = prepare_observation_errors(
        filtered, averaging_error=config.data.averaging_error,

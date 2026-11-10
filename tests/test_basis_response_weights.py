@@ -395,5 +395,5 @@ def test_response_only_prepare_basis_matches_direct_weights():
 def test_local_influence_reports_missing_raw_footprints():
     """Response-only sites cannot use local_influence without ``fp`` or a cached local ratio."""
     site = _response_only_merged(False).site_data["TAC"]
-    with pytest.raises(ValueError, match="local_influence filter requires the raw footprint 'fp'"):
+    with pytest.raises(ValueError, match="local_influence filter needs a cached .* or a raw footprint 'fp'"):
         local_influence(site)
