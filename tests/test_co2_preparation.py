@@ -15,7 +15,11 @@ import xarray as xr
 
 from openghg_inversions._labelled_matrices import renamed_column_coordinates
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.coherent_reduction import CoherentGaussianReduction
+from openghg_inversions.coherent_reduction import (
+    CoherentGaussianReduction,
+    marginalise_low_information_states,
+)
+from openghg_inversions.models import StateActivity
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.rhime.co2 import Co2PreparedInputs, prepare_co2_inputs
 from openghg_inversions.rhime.co2 import (
@@ -349,6 +353,54 @@ def test_co2_prepared_inputs_round_trip(
     assert restored.aggregation_error_mode == representation
     assert restored.provenance == prepared.provenance
     xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
+
+
+def test_prepare_co2_inputs_records_information_threshold(tmp_path: Path) -> None:
+    """Marginalised states are saved, deactivated, held at the prior and round-trip."""
+    canonical = _canonical_inputs()
+    canonical = PreparedInputs(
+        inv_inputs=canonical.inv_inputs.assign(state_is_active=("region", [True, True])),
+        basis_functions=canonical.basis_functions,
+        site_metadata=canonical.site_metadata,
+    )
+    reduction = _reduction(canonical)
+    variance = xr.DataArray(
+        [0.01, 0.04, 0.09],
+        dims="observation",
+        coords={"observation": reduction.observation_intercept.indexes["observation"]},
+        attrs={"units": "ppm**2"},
+    )
+    selection = marginalise_low_information_states(
+        reduction, observation_variance=variance, policy=StateActivity(min_information=5.0)
+    )
+    np.testing.assert_array_equal(selection.marginalised.values, [False, True])
+
+    prepared = prepare_co2_inputs(
+        canonical, selection.reduction, aggregation_error_rank=None, information_selection=selection
+    )
+    inputs = prepared.inv_inputs
+    np.testing.assert_allclose(inputs["state_information"], selection.information)
+    np.testing.assert_array_equal(inputs["state_information_marginalised"], [False, True])
+    np.testing.assert_array_equal(inputs["state_is_active"], [True, False])
+    np.testing.assert_allclose(inputs["state_fixed_value"], [1.0, 0.9])
+    np.testing.assert_array_equal(inputs["H"].values[:, 1], 0.0)
+    np.testing.assert_allclose(
+        np.diag(inputs["aggregation_error_covariance"].values)
+        - np.diag(reduction.unresolved_observation_covariance.values),
+        inputs["aggregation_error_variance_increase"].values,
+    )
+    record = prepared.provenance["information_threshold"]
+    assert record["n_marginalised"] == 1
+    assert record["marginalised_states"][0]["state"] == 2
+
+    path = tmp_path / "co2-information.nc"
+    prepared.save(path)
+    restored = Co2PreparedInputs.load(path)
+    assert restored.provenance == prepared.provenance
+    xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
+
+    with pytest.raises(ValueError, match="supplied coherent reduction"):
+        prepare_co2_inputs(canonical, reduction, information_selection=selection)
 
 
 def test_prepare_co2_inputs_rejects_conflicting_projection_strategy() -> None:
