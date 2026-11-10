@@ -314,12 +314,17 @@ def test_standalone_co2_matches_linked_co2_boundary_equation_and_marginal_densit
         np.testing.assert_allclose(single_logp, expected, atol=1e-10)
 
 
-def test_linked_additive_rejects_permuted_weight_labels():
+def test_linked_additive_binds_permuted_weight_labels_by_label():
+    """Weights carrying the bound labels in another order give the same model."""
     with pytensor.config.change_flags(floatX="float64"):
         kwargs = _additive_inputs()
+        model = build_co2_o2_model(**bound_linked_model_arguments({**kwargs}))
         kwargs["bc_centering_weights"]["o2"] = kwargs["bc_centering_weights"]["o2"].isel(bc_curtain=[2, 0, 1])
-        with pytest.raises(ValueError, match="align"):
-            build_co2_o2_model(**bound_linked_model_arguments({**kwargs}))
+        permuted = build_co2_o2_model(**bound_linked_model_arguments({**kwargs}))
+        point = model.initial_point()
+        np.testing.assert_allclose(permuted.compile_logp()(point), model.compile_logp()(point), rtol=1e-12)
+        np.testing.assert_array_equal(permuted["o2_bc_centering_weights"].get_value(),
+                                      model["o2_bc_centering_weights"].get_value())
 
 
 @pytest.mark.parametrize("cached", [False, True])
