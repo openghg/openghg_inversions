@@ -618,6 +618,7 @@ defaults; scientific callable signatures do not define the external schema.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">basis_algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'weighted'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">nbasis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">filters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">filter_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">fix_basis_outer_regions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">averaging_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">basis_output_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -630,18 +631,23 @@ defaults; scientific callable signatures do not define the external schema.</p>
 <p>External options enter through <code class="docutils literal notranslate"><span class="pre">from_params</span></code>. Ordinary option containers
 are owned; numerical payloads remain borrowed. Direct construction expects
 resolved values and does not copy or execute scientific work.</p>
-<p>Boundary-condition basis selection, when <code class="docutils literal notranslate"><span class="pre">use_bc</span></code> is true:</p>
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>bc_basis_paths</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>pathlib.Path</em></a><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>) – Exact labelled BC basis files. When set, they take
-precedence and <code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm</span></code> is inactive.</p></li>
+<li><p><strong>bc_basis_paths</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>pathlib.Path</em></a><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>) – Exact labelled BC basis files. When <code class="docutils literal notranslate"><span class="pre">use_bc</span></code> is true
+and these are set, they take precedence and <code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm</span></code>
+is inactive.</p></li>
 <li><p><strong>bc_basis_algorithm</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Built-in basis used without files: <code class="docutils literal notranslate"><span class="pre">&quot;NESW&quot;</span></code>
 (one region per whole curtain) or <code class="docutils literal notranslate"><span class="pre">&quot;twelve-region&quot;</span></code> (two lower
 horizontal halves and one upper region per curtain).</p></li>
 <li><p><strong>bc_basis_split_height</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a>) – Finite twelve-region split in the curtains’
 native height-coordinate units; no unit conversion or vertical
 datum is assumed. Ignored by NESW and by exact files.</p></li>
+<li><p><strong>filters</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.15)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.15)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em><em>]</em><em>] </em><em>| </em><em>None</em>) – Filter names, or per-site filter names, applied before
+observation errors and basis construction.</p></li>
+<li><p><strong>filter_options</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><em>Any</em><em>]</em><em>] </em><em>| </em><em>None</em>) – Keyword options for named filters, such as
+<code class="docutils literal notranslate"><span class="pre">{&quot;local_influence&quot;:</span> <span class="pre">{&quot;window_size&quot;:</span> <span class="pre">5,</span> <span class="pre">&quot;threshold&quot;:</span> <span class="pre">0.15}}</span></code>.
+Omitted options keep each filter’s defaults.</p></li>
 </ul>
 </dd>
 </dl>

@@ -577,7 +577,8 @@
 <p>Functions for filtering data.</p>
 <p>All filters are accessed and applied to data via the <cite>filtering</cite> function.</p>
 <p>New filters are registered using <cite>&#64;register_filter</cite>.
-A filter function should accept as arguments: an xr.Dataset, a bool called “keep_missing”</p>
+A filter function should accept as arguments: an xr.Dataset, a bool called “keep_missing”,
+and any keyword options that callers may supply through <code class="docutils literal notranslate"><span class="pre">filter_options</span></code>.</p>
 <p>To see the available filters call <cite>list_filters</cite>.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.filters.register_filter">
@@ -615,7 +616,7 @@ to the <cite>filtering_functions</cite> dictionary, under the key “my_new_filt
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.filters.filtering">
-<span class="sig-name descname"><span class="pre">filtering</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datasets_in</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filters</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.filtering" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">filtering</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datasets_in</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filters</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.filtering" title="Link to this definition">#</a></dt>
 <dd><p>Applies time filtering to all datasets in <cite>datasets_in</cite>.</p>
 <p>If <cite>filters</cite> is a list, the same filters are applied to all sites. If <cite>filters</cite> is a dict
 with site codes as keys, then the filters applied to each site depend on the list supplied
@@ -632,13 +633,47 @@ daytime observations with sufficiently high boundary-layer heights using
 or a dictionary of lists of the form  {&lt;site code&gt;: [filter1, filter2, …]}, with specific filters to
 be applied at each site. Use the <cite>list_filters</cite> function to list available filters.</p></li>
 <li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – if True, drop missing data</p></li>
+<li><p><strong>filter_options</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em><em>] </em><em>| </em><em>None</em>) – keyword options for named filters, applied wherever that
+filter runs; for example <code class="docutils literal notranslate"><span class="pre">{&quot;local_influence&quot;:</span> <span class="pre">{&quot;threshold&quot;:</span> <span class="pre">0.15}}</span></code>.
+Options for filters that are not requested are validated but unused.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>dict in same format as datasets_in, with filters applied</p>
 </dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a></p>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.15)"><strong>KeyError</strong></a> – If a requested filter, or a filter named in <code class="docutils literal notranslate"><span class="pre">filter_options</span></code>,
+    is not registered.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.15)"><strong>TypeError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">filter_options</span></code> names an option a filter does not accept.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.filters.validate_filter_options">
+<span class="sig-name descname"><span class="pre">validate_filter_options</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filter_options</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.validate_filter_options" title="Link to this definition">#</a></dt>
+<dd><p>Return owned filter options after checking them against filter signatures.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>filter_options</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em><em>] </em><em>| </em><em>None</em>) – Mapping from registered filter names to keyword options,
+or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>New mapping with owned option dictionaries; empty for <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.15)"><strong>KeyError</strong></a> – If a filter name is not registered.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.15)"><strong>TypeError</strong></a> – If an option is reserved or not accepted by the filter.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -723,23 +758,97 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 </dl>
 </dd></dl>
 
+<dl class="py data">
+<dt class="sig sig-object py" id="openghg_inversions.filters.LOCAL_RATIO_STANDARD_NAME">
+<span class="sig-name descname"><span class="pre">LOCAL_RATIO_STANDARD_NAME</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'local_ratio'</span></span><a class="headerlink" href="#openghg_inversions.filters.LOCAL_RATIO_STANDARD_NAME" title="Link to this definition">#</a></dt>
+<dd><p>Legacy <code class="docutils literal notranslate"><span class="pre">standard_name</span></code> of a cached 5×5 local-ratio variable.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.filters.local_ratio_name">
+<span class="sig-name descname"><span class="pre">local_ratio_name</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">window_size</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.local_ratio_name" title="Link to this definition">#</a></dt>
+<dd><p>Return the cached variable name for one square local-ratio window.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>window_size</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a>) – Positive odd number of grid cells along each window side.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Name of the form <code class="docutils literal notranslate"><span class="pre">local_ratio_{n}x{n}</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">window_size</span></code> is not a positive odd integer.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.filters.local_ratios">
+<span class="sig-name descname"><span class="pre">local_ratios</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">window_sizes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(5,)</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.local_ratios" title="Link to this definition">#</a></dt>
+<dd><p>Return lazy local-to-total footprint ratios for square release-point windows.</p>
+<p>For each observation, the ratio is the integrated footprint summed over the
+<code class="docutils literal notranslate"><span class="pre">n``×``n</span></code> grid cells centred on the release cell, divided by the
+footprint summed over the whole domain. The release cell is the grid cell
+whose centre is nearest to <code class="docutils literal notranslate"><span class="pre">release_lat</span></code>/<code class="docutils literal notranslate"><span class="pre">release_lon</span></code>; windows are
+clipped at the domain edge. The ratio is zero when the release point lies
+outside the grid or the whole-domain footprint sum is zero.</p>
+<p>Because the denominator is the whole-domain footprint, compute the ratios
+before any nested-domain masking or cropping of <code class="docutils literal notranslate"><span class="pre">fp</span></code>. The result can be
+merged into observation datasets so <a class="reference internal" href="#openghg_inversions.filters.local_influence" title="openghg_inversions.filters.local_influence"><code class="xref py py-func docutils literal notranslate"><span class="pre">local_influence()</span></code></a> runs without
+<code class="docutils literal notranslate"><span class="pre">fp</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Borrowed dataset with an integrated footprint <code class="docutils literal notranslate"><span class="pre">fp</span></code> on
+<code class="docutils literal notranslate"><span class="pre">lat</span></code>/<code class="docutils literal notranslate"><span class="pre">lon</span></code>/<code class="docutils literal notranslate"><span class="pre">time</span></code> and <code class="docutils literal notranslate"><span class="pre">release_lat</span></code>/<code class="docutils literal notranslate"><span class="pre">release_lon</span></code>
+aligned to <code class="docutils literal notranslate"><span class="pre">time</span></code>. It is not modified; Dask-backed inputs stay lazy.</p></li>
+<li><p><strong>window_sizes</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.15)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em>]</em>) – Positive odd window widths in grid cells.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dataset with one <code class="docutils literal notranslate"><span class="pre">local_ratio_{n}x{n}</span></code> variable on <code class="docutils literal notranslate"><span class="pre">time</span></code> per
+window size, sharing the input’s Dask graph when the input is lazy.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If a window size is invalid or the footprint grid has fewer
+    than two cells along <code class="docutils literal notranslate"><span class="pre">lat</span></code> or <code class="docutils literal notranslate"><span class="pre">lon</span></code>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.filters.local_influence">
-<span class="sig-name descname"><span class="pre">local_influence</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.local_influence" title="Link to this definition">#</a></dt>
-<dd><p>Subset for times when “local influence” is below threshold.</p>
-<p>Local influence expressed as a fraction of the sum of entire footprint domain.</p>
+<span class="sig-name descname"><span class="pre">local_influence</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">window_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.local_influence" title="Link to this definition">#</a></dt>
+<dd><p>Subset for times when “local influence” is at or below threshold.</p>
+<p>Local influence is the footprint in a <code class="docutils literal notranslate"><span class="pre">window_size``×``window_size</span></code> grid
+window around the release point, as a fraction of the whole-domain
+footprint. The filter reads a cached <code class="docutils literal notranslate"><span class="pre">local_ratio_{n}x{n}</span></code> series when
+present (or, for 5×5, a variable with <code class="docutils literal notranslate"><span class="pre">standard_name=&quot;local_ratio&quot;</span></code>), and
+otherwise computes it with <a class="reference internal" href="#openghg_inversions.filters.local_ratios" title="openghg_inversions.filters.local_ratios"><code class="xref py py-func docutils literal notranslate"><span class="pre">local_ratios()</span></code></a>. Only the ratio series is
+computed; other variables keep their storage.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
+<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – if True, keep removed times with missing <code class="docutils literal notranslate"><span class="pre">mf</span></code></p></li>
+<li><p><strong>window_size</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a>) – positive odd window width in grid cells</p></li>
+<li><p><strong>threshold</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a>) – largest local ratio retained, between zero and one</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>filtered dataset</p>
 </dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the window or threshold is invalid, or the ratio is
+    neither cached nor computable from <code class="docutils literal notranslate"><span class="pre">fp</span></code>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -763,7 +872,6 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
 </dd>
 </dl>
-<p>TODO: need way to pass pblh_threshold to filter</p>
 </dd></dl>
 
 <dl class="py function">
@@ -785,7 +893,6 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
 </dd>
 </dl>
-<p>TODO: need way to pass diff_threshold to filter</p>
 </dd></dl>
 
 <dl class="py function">
@@ -851,10 +958,14 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.register_filter"><code class="docutils literal notranslate"><span class="pre">register_filter()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.list_filters"><code class="docutils literal notranslate"><span class="pre">list_filters()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.filtering"><code class="docutils literal notranslate"><span class="pre">filtering()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.validate_filter_options"><code class="docutils literal notranslate"><span class="pre">validate_filter_options()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.daytime"><code class="docutils literal notranslate"><span class="pre">daytime()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.daytime9to5"><code class="docutils literal notranslate"><span class="pre">daytime9to5()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.nighttime"><code class="docutils literal notranslate"><span class="pre">nighttime()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.noon"><code class="docutils literal notranslate"><span class="pre">noon()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.LOCAL_RATIO_STANDARD_NAME"><code class="docutils literal notranslate"><span class="pre">LOCAL_RATIO_STANDARD_NAME</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.local_ratio_name"><code class="docutils literal notranslate"><span class="pre">local_ratio_name()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.local_ratios"><code class="docutils literal notranslate"><span class="pre">local_ratios()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.local_influence"><code class="docutils literal notranslate"><span class="pre">local_influence()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.pblh_min"><code class="docutils literal notranslate"><span class="pre">pblh_min()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.pblh_inlet_diff"><code class="docutils literal notranslate"><span class="pre">pblh_inlet_diff()</span></code></a></li>

@@ -846,11 +846,19 @@ values for an ordinary keyword call:</p>
     <span class="o">**</span><span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"species"</span><span class="p">,</span> <span class="s2">"domain"</span><span class="p">,</span> <span class="s2">"start_date"</span><span class="p">,</span> <span class="s2">"end_date"</span><span class="p">,</span> <span class="s2">"split_by_sectors"</span><span class="p">)</span>
 <span class="p">)</span>
 <span class="n">filtered</span><span class="p">,</span> <span class="n">site_options</span> <span class="o">=</span> <span class="n">filter_observations</span><span class="p">(</span>
-    <span class="n">merged</span><span class="o">.</span><span class="n">site_data</span><span class="p">,</span> <span class="n">merged</span><span class="o">.</span><span class="n">site_options</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"filters"</span><span class="p">)</span>
+    <span class="n">merged</span><span class="o">.</span><span class="n">site_data</span><span class="p">,</span> <span class="n">merged</span><span class="o">.</span><span class="n">site_options</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"filters"</span><span class="p">,</span> <span class="s2">"filter_options"</span><span class="p">)</span>
 <span class="p">)</span>
 <span class="n">filtered</span> <span class="o">=</span> <span class="n">prepare_observation_errors</span><span class="p">(</span><span class="n">filtered</span><span class="p">,</span> <span class="n">averaging_error</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">averaging_error</span><span class="p">)</span>
 </pre></div>
 </div>
+<p><code class="docutils literal notranslate"><span class="pre">filter_options</span></code> maps filter names to keyword options. For example,
+<code class="docutils literal notranslate"><span class="pre">filter_options</span> <span class="pre">=</span> <span class="pre">{&quot;local_influence&quot;:</span> <span class="pre">{&quot;window_size&quot;:</span> <span class="pre">5,</span> <span class="pre">&quot;threshold&quot;:</span> <span class="pre">0.15}}</span></code>
+selects the 5×5 window and 0.15 local-ratio threshold used in the WUR25
+verification-games campaign; omitted options keep each filter’s defaults
+(5×5 and 0.10 for <code class="docutils literal notranslate"><span class="pre">local_influence</span></code>). <code class="docutils literal notranslate"><span class="pre">local_influence</span></code> reads cached
+<code class="docutils literal notranslate"><span class="pre">local_ratio_{n}x{n}</span></code> series when present, so it can run without <code class="docutils literal notranslate"><span class="pre">fp</span></code>;
+compute them with <code class="docutils literal notranslate"><span class="pre">openghg_inversions.filters.local_ratios</span></code> on the
+whole-domain footprint, before any nested-domain masking.</p>
 <p><code class="docutils literal notranslate"><span class="pre">config.data.select(*names)</span></code> returns a fresh dictionary of the named attributes.
 Use <code class="docutils literal notranslate"><span class="pre">config.model</span></code> and <code class="docutils literal notranslate"><span class="pre">config.output</span></code> for their separate owners;
 <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code> has no global <code class="docutils literal notranslate"><span class="pre">select</span></code> API.
