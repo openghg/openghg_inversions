@@ -25,6 +25,7 @@ from openghg_inversions.rhime.co2.configuration import (
 )
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from tests.helpers import make_trace
 
 
@@ -502,7 +503,7 @@ def test_boundary_mean_shift_hyperprior_configuration(cached: bool, anomaly_scal
         config["sampling"] = {"nuts_sampler": "pymc"}
         config["likelihood"] = {"kind": "fixed_ou", "tau_hours": 24.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.0}}
     prior = {"pdf": "normal", "mu": 0.0, "sigma": 0.5}
-    config["model"] = {"boundary": {"mean_shift_prior": prior, "anomaly_scale": anomaly_scale}}
+    config["model"] = {"boundary": {"type": "additive", "mean_shift_prior": prior, "anomaly_scale": anomaly_scale}}
     arguments = Co2ModelConfig.from_params(config).model_arguments()
     assert arguments["boundary"] == AdditiveChoice(prior, anomaly_scale)
     config["model"]["boundary"]["enabled"] = False
@@ -510,20 +511,45 @@ def test_boundary_mean_shift_hyperprior_configuration(cached: bool, anomaly_scal
         Co2ModelConfig.from_params(config)
 
 
+_SHIFT = {"pdf": "normal", "mu": 0.0, "sigma": 0.5}
+
+
 @pytest.mark.parametrize("boundary, message", [
-    ({"mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.5}}, "together"),
-    ({"anomaly_scale": 0.3}, "together"),
-    ({"anomaly_scale": 0.0}, "together"),
-    ({"anomaly_scale": -0.1, "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.5}}, "non-negative"),
-    ({"anomaly_scale": float("nan")}, "finite"),
-    ({"anomaly_scale": float("inf")}, "finite"),
-    ({"anomaly_scale": float("-inf")}, "finite"),
-    ({"anomaly_scale": True}, "numeric"),
-    ({"anomaly_scale": 0.3, "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.5},
-      "prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}}, "cannot use"),
+    ({"mean_shift_prior": _SHIFT}, r"Missing required option model\.boundary\.anomaly_scale"),
+    ({"anomaly_scale": 0.3}, r"Missing required option model\.boundary\.mean_shift_prior"),
+    ({"anomaly_scale": -0.1, "mean_shift_prior": _SHIFT}, "non-negative"),
+    ({"anomaly_scale": float("nan"), "mean_shift_prior": _SHIFT}, "finite"),
+    ({"anomaly_scale": float("inf"), "mean_shift_prior": _SHIFT}, "finite"),
+    ({"anomaly_scale": float("-inf"), "mean_shift_prior": _SHIFT}, "finite"),
+    ({"anomaly_scale": True, "mean_shift_prior": _SHIFT}, "numeric"),
+    ({"anomaly_scale": 0.3, "mean_shift_prior": _SHIFT, "prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}},
+     r"Unknown configuration option\(s\): model\.boundary\.prior"),
 ])
-def test_centred_boundary_configuration_rejects_incomplete_or_scaling_options(boundary, message) -> None:
+def test_additive_boundary_configuration_rejects_incomplete_or_foreign_options(boundary, message) -> None:
+    config = _ordinary()
+    config["model"] = {"boundary": {"type": "additive", **boundary}}
+    with pytest.raises((ValueError, TypeError), match=message):
+        Co2ModelConfig.from_params(config)
+
+
+@pytest.mark.parametrize("boundary, message", [
+    ({"anomaly_scale": 0.3, "mean_shift_prior": _SHIFT}, r"model\.boundary\.anomaly_scale, model\.boundary\.mean_shift_prior"),
+    ({"type": "anomalies"}, r"model\.boundary\.type must be one of \['additive', 'multiplicative'\]"),
+    ({"type": 1}, "model.boundary.type"),
+    ({"enabled": False, "type": "multiplicative"}, "options require model.boundary.enabled=true"),
+])
+def test_boundary_type_is_explicit(boundary, message) -> None:
+    """Family options never select a family: without ``type`` the boundary is multiplicative."""
     config = _ordinary()
     config["model"] = {"boundary": boundary}
     with pytest.raises((ValueError, TypeError), match=message):
         Co2ModelConfig.from_params(config)
+
+
+def test_boundary_type_defaults_to_multiplicative() -> None:
+    config = _ordinary()
+    config["model"] = {"boundary": {"frequency": "monthly"}}
+    choice = Co2ModelConfig.from_params(config).model_arguments()["boundary"]
+    assert choice == MultiplicativeChoice(dict(DEFAULT_BC_PRIOR), frequency="monthly")
+    config["model"]["boundary"]["type"] = "multiplicative"
+    assert Co2ModelConfig.from_params(config).model_arguments()["boundary"] == choice

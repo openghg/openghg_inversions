@@ -446,7 +446,7 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
         boundary=MultiplicativeChoice(
             {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
             StateActivity(active=bc_active, fixed_value=bc_fixed),
-        ).bind(inputs["mf"], inputs["H_bc"]),
+        ).bind_absolute(inputs["mf"], inputs["H_bc"]),
     )
 
     value_vars = [cached.model.rvs_to_values[rv] for rv in cached.states]
@@ -883,7 +883,7 @@ def test_cached_state_dimensions_include_boundary_and_offset_coefficients(
         state_activity=StateActivity(active=np.asarray([True, False])),
         offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
         offset_freq=offset_freq,
-        boundary=MultiplicativeChoice({"pdf": "normal", "mu": 1.0, "sigma": 0.1}).bind(
+        boundary=MultiplicativeChoice({"pdf": "normal", "mu": 1.0, "sigma": 0.1}).bind_absolute(
             inputs["mf"], inputs["H_bc"]
         ),
     )
