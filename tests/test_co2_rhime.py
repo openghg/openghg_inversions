@@ -105,6 +105,12 @@ def _golden_inputs() -> xr.Dataset:
     return inputs
 
 
+def _timed_golden_inputs() -> xr.Dataset:
+    """Golden inputs with the observation times that boundary period binding requires."""
+    inputs = _golden_inputs()
+    return inputs.assign_coords(time=("nmeasure", pd.date_range("2020-01-01", periods=inputs.sizes["nmeasure"], freq="h")))
+
+
 def _production_boundary_inputs() -> xr.Dataset:
     """Small VG-shaped inner/outer flux and monthly NESW boundary input."""
     inputs = _golden_inputs().assign_coords(
@@ -1290,7 +1296,7 @@ def test_requested_facts_check_configuration_against_numerical_provenance() -> N
 @pytest.mark.parametrize("reference", [400.0, 200_000.0])
 def test_centered_additive_boundary_preserves_small_concentration_corrections(reference):
     """O2's large reference never scales the additive concentration uncertainty."""
-    inputs = _golden_inputs()
+    inputs = _timed_golden_inputs()
     anomaly = np.asarray([[0.2, -0.1], [0.3, 0.05]])
     mass = np.asarray([[0.7, 0.2], [0.1, 0.8]])
     operands = xr.Dataset({
@@ -1322,7 +1328,7 @@ def test_centered_additive_boundary_preserves_small_concentration_corrections(re
 
 @pytest.mark.parametrize(("operand", "value"), [("bc_reference", np.inf), ("bc_reference", np.nan), ("H_bc_mass", np.nan)])
 def test_centered_additive_boundary_rejects_nonfinite_reference(operand, value):
-    inputs = _golden_inputs()
+    inputs = _timed_golden_inputs()
     operands = xr.Dataset({
         "H_bc_anomaly": (("nmeasure", "bc_region"), [[.1], [.2]], {"units": "ppm"}),
         "H_bc_mass": (("nmeasure", "bc_region"), [[.7], [.9]], {"units": "1"}),
@@ -1350,7 +1356,7 @@ def test_multiplicative_boundary_binds_explicit_periods():
 
 def test_direct_centered_model_rejects_custom_likelihood():
     """A centered boundary accepts only the default or built-in fixed-OU likelihood."""
-    inputs = _golden_inputs()
+    inputs = _timed_golden_inputs()
     operands = xr.Dataset({
         "H_bc_anomaly": (("nmeasure", "bc_region"), [[.1], [.2]], {"units": "ppm"}),
         "H_bc_mass": (("nmeasure", "bc_region"), [[.7], [.9]], {"units": "1"}),
