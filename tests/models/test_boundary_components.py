@@ -233,7 +233,7 @@ def test_weighted_additive_binding_requires_centering_weights():
 def test_absolute_inputs_are_rejected_where_the_representation_is_identified(choice):
     data, observations = _native_boundary()
     inputs = xr.Dataset({"mf": observations, "H_bc": data.H_bc_anomaly})
-    with pytest.raises(ValueError, match="requires centered boundary operands; prepare them again"):
+    with pytest.raises(ValueError, match=f"The {choice.kind} boundary requires centered boundary operands; prepare again"):
         co2_runner._bind_co2_boundary(inputs, choice)
 
 

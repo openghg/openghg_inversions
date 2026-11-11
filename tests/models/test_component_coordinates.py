@@ -105,7 +105,7 @@ def _co2_model(sensitivity, boundary, bc_prior, *, partial_activity=False, cache
         **{"tau_hours": 6.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.5}} if cached else {},
         boundary=MultiplicativeChoice(
             bc_prior, StateActivity(active=np.array([True, False])) if partial_activity else None,
-        ).bind(observations, boundary),
+        ).bind_absolute(observations, boundary),
     )
     return result.model if cached else result
 

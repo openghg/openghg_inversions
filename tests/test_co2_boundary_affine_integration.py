@@ -106,12 +106,13 @@ def test_cached_lowering_keeps_independent_same_named_coefficient_axes(monkeypat
 
 def _record_binding(monkeypatch):
     calls = []
-    for family in (MultiplicativeChoice, AdditiveChoice):
-        def record(self, *args, _bind=family.bind, **kwargs):
+    for family, method in ((MultiplicativeChoice, "bind"), (MultiplicativeChoice, "bind_absolute"),
+                           (AdditiveChoice, "bind")):
+        def record(self, *args, _bind=getattr(family, method), **kwargs):
             calls.append(self)
             return _bind(self, *args, **kwargs)
 
-        monkeypatch.setattr(family, "bind", record)
+        monkeypatch.setattr(family, method, record)
     return calls
 
 

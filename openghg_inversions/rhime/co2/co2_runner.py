@@ -11,7 +11,7 @@ from collections import defaultdict
 from collections.abc import Collection, Mapping
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import xarray as xr
 from dask.array import Array
@@ -22,7 +22,7 @@ from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions.array_ops import to_dense_tree
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import PreparedInputs
-from openghg_inversions.models.boundary import Bound, Choice, MultiplicativeChoice, RawCenteredSensitivity
+from openghg_inversions.models.boundary import Bound, Choice, RawCenteredSensitivity, bind_prepared
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.models.scalar_sigma import (
@@ -308,22 +308,17 @@ def describe_co2_likelihood_kwargs(value: Any) -> Any:
 def _bind_co2_boundary(
     inputs: xr.Dataset, boundary: Choice | None,
 ) -> Bound | None:
-    """Bind a boundary choice once to the prepared absolute or centered transport.
+    """Bind a boundary choice once to the representation preparation recorded.
 
-    The prepared dataset identifies its representation here; absolute ``H_bc``
-    is bound only by choices that accept it. CO2 prepared inputs establish
-    :class:`RawCenteredSensitivity` for centered inputs when constructed or
-    loaded, so the dataset is annotated here without validating it again.
+    Centered inputs carry ``boundary_representation="centered-v1"``; their
+    metadata-only contract check computes nothing. Otherwise only absolute
+    ``H_bc`` is offered, and :func:`bind_prepared` checks the family accepts it.
     """
     if boundary is None:
         return None
-    if "H_bc_anomaly" in inputs:
-        return boundary.bind(inputs["mf"], cast(RawCenteredSensitivity, inputs))
-    if "H_bc" not in inputs:
-        raise ValueError("A boundary choice requires prepared H_bc or centered boundary operands.")
-    if not isinstance(boundary, MultiplicativeChoice):
-        raise ValueError(f"{type(boundary).__name__} requires centered boundary operands; prepare them again.")
-    return boundary.bind(inputs["mf"], inputs["H_bc"])
+    if inputs.attrs.get("boundary_representation") == "centered-v1":
+        return bind_prepared(boundary, inputs["mf"], centered=RawCenteredSensitivity.validate(inputs))
+    return bind_prepared(boundary, inputs["mf"], absolute=inputs.get("H_bc"))
 
 
 def _materialize_co2_inputs(
