@@ -686,11 +686,16 @@ options; options of another family are rejected rather than used to infer it:
     Scales absolute or centered boundary sensitivity, with an optional
     ``prior`` for the scaling states.
 ``"additive"``
-    Centred additive corrections, requiring centered preparation, with both
-    ``mean_shift_prior`` and a finite, nonnegative ``anomaly_scale``.
+    Centred additive corrections, requiring centered preparation, with a
+    finite, nonnegative ``anomaly_scale``, an optional ``anomalies`` structure
+    and an optional ``mean_shift_prior`` (with ``mean_by_period``); see
+    :doc:`configured_co2_priors`.
+``"anomaly_scaling"``
+    Scales the prescribed boundary anomaly about a ``reference``, requiring
+    centered preparation, with a positive dimensionless ``scale_sd`` and the
+    same optional mean shift options.
 
-A disabled boundary cannot specify a type, prior, anomaly scale or period
-choices.
+A disabled boundary cannot specify a type or any other boundary option.
 For raw reusable inputs, omitting ``frequency`` selects one period;
 ``"monthly"`` selects calendar months, and a positive fixed duration such as
 ``"2D"`` selects fixed-duration periods. ``anchor_time`` is accepted only with
