@@ -30,7 +30,7 @@ def _choice_record(choice: SharedBaselineChoice) -> dict[str, Any]:
     result: dict[str, Any] = dict(mode=choice.mode, delta_sd=choice.delta_sd)
     boundary = choice.boundary
     if boundary is not None:
-        options: dict[str, Any] = dict(mean_by_period=boundary.mean_by_period)
+        options: dict[str, Any] = dict(type=boundary.kind, mean_by_period=boundary.mean_by_period)
         if boundary.frequency is not None:
             options["frequency"] = boundary.frequency
         if boundary.anchor_time is not None:
