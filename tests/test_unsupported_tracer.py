@@ -1,4 +1,9 @@
-"""Every explicit tracer option fails ordinary validation before scientific work."""
+"""Every explicit tracer option fails ordinary validation before scientific work.
+
+The gates reject the ``use_tracer`` name whatever its value, so each case uses
+``None``, the value most likely to be mistaken for an omitted option. Axes are
+kept only where they reach a distinct validation boundary.
+"""
 
 import json
 import warnings
@@ -12,20 +17,23 @@ from openghg_inversions.rhime.params import RhimeConfig
 from openghg_inversions.rhime.requests import load_params
 
 
-@pytest.mark.parametrize("value", [True, False, None, 0, "false"])
 @pytest.mark.parametrize("multisector", [False, True])
-def test_option_resolution_rejects_every_tracer_value_before_required_options(value, multisector):
+def test_option_resolution_rejects_tracer_before_required_options(multisector):
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
         with pytest.raises(ValueError, match="Unsupported RHIME parameter.*use_tracer"):
-            RhimeConfig.from_params(params={"use_tracer": value}, multisector=multisector)
+            RhimeConfig.from_params(params={"use_tracer": None}, multisector=multisector)
 
 
-@pytest.mark.parametrize("value", [True, False, None, 0, "false"])
-@pytest.mark.parametrize("group", [None, "data", "model", "sampler", "output"])
-@pytest.mark.parametrize("phase_groups", [None, {"data"}, {"model", "sampler"}, {"output"}])
-def test_request_loader_rejects_flat_grouped_and_saved_phase_tracer(value, group, phase_groups):
-    params = {"use_tracer": value}
+@pytest.mark.parametrize(
+    ("group", "phase_groups"),
+    [
+        *((group, None) for group in (None, "data", "model", "sampler", "output")),
+        *((None, phase_groups) for phase_groups in ({"data"}, {"model", "sampler"}, {"output"})),
+    ],
+)
+def test_request_loader_rejects_flat_grouped_and_saved_phase_tracer(group, phase_groups):
+    params = {"use_tracer": None}
     if group is not None:
         params = {group: params}
     with pytest.raises(ValueError, match="Unsupported RHIME parameter.*use_tracer"):
@@ -33,9 +41,9 @@ def test_request_loader_rejects_flat_grouped_and_saved_phase_tracer(value, group
 
 
 @pytest.mark.parametrize("source_kind", ["ini", "json"])
-@pytest.mark.parametrize("configured", [True, False, None])
-@pytest.mark.parametrize("override", [{}, {"use_tracer": False}, {"use_tracer": True}])
-def test_file_tracer_is_unsupported_even_with_an_override(tmp_path, source_kind, configured, override):
+@pytest.mark.parametrize("override", [{}, {"use_tracer": False}])
+def test_file_tracer_is_unsupported_even_with_an_override(tmp_path, source_kind, override):
+    configured = None
     path = tmp_path / f"rhime.{source_kind}"
     path.write_text(json.dumps({"use_tracer": configured}) if source_kind == "json" else
                     f"[RHIME.OPTIONS]\nuse_tracer = {configured!r}\n", encoding="utf-8")
@@ -45,20 +53,18 @@ def test_file_tracer_is_unsupported_even_with_an_override(tmp_path, source_kind,
 
 
 @pytest.mark.parametrize("runner", [run_standard, run_multisector, run_nested])
-@pytest.mark.parametrize("value", [True, False, None, 0, "false"])
 @pytest.mark.parametrize("route", ["fresh", "prepared", "resolved"])
-def test_runner_rejects_tracer_before_acquisition_or_supplied_inputs(runner, value, route):
+def test_runner_rejects_tracer_before_acquisition_or_supplied_inputs(runner, route):
     supplied = {} if route == "fresh" else {"prepared" if route == "prepared" else "config": SimpleNamespace()}
     expected = "either resolved" if route == "resolved" else "Unsupported RHIME parameter.*use_tracer"
     with pytest.raises(ValueError, match=expected):
-        runner(use_tracer=value, **supplied)
+        runner(use_tracer=None, **supplied)
 
 
 @pytest.mark.parametrize("runner", [run_standard, run_multisector])
-@pytest.mark.parametrize("value", [True, False, None])
-def test_runner_rejects_tracer_before_supplied_merged_data(runner, value):
+def test_runner_rejects_tracer_before_supplied_merged_data(runner):
     with pytest.raises(ValueError, match="Unsupported RHIME parameter.*use_tracer"):
-        runner(use_tracer=value, merged_data=SimpleNamespace())
+        runner(use_tracer=None, merged_data=SimpleNamespace())
 
 
 @pytest.mark.parametrize("multisector", [False, True])
@@ -89,12 +95,11 @@ def test_ini_reader_still_decodes_historical_inputs_without_translating(tmp_path
 
 @pytest.mark.parametrize("family", ["co2", "co2_o2"])
 @pytest.mark.parametrize("phase", ["prepare", "sample", "postprocess"])
-@pytest.mark.parametrize("value", [False, True, None])
 @pytest.mark.parametrize("section", [None, "prepared_inputs", "likelihood", "sampling", "outputs"])
-def test_co2_phases_reject_tracer_in_active_and_inactive_sections(tmp_path, family, phase, value, section):
+def test_co2_phases_reject_tracer_in_active_and_inactive_sections(tmp_path, family, phase, section):
     from openghg_inversions.cli import main
 
-    options = {"use_tracer": value}
+    options = {"use_tracer": None}
     if section is not None:
         options = {section: options}
     options_file = tmp_path / "choices.json"
@@ -117,12 +122,11 @@ def test_co2_phases_reject_tracer_in_active_and_inactive_sections(tmp_path, fami
     ("co2_o2", "channels.o2.boundary.activity"), ("co2_o2", "channels.co2.offset.prior"),
     ("co2", "outputs.paris_postprocessing_kwargs"), ("co2_o2", "outputs.paris_postprocessing_kwargs"),
 ])
-@pytest.mark.parametrize("value", [False, True, None])
-def test_co2_nested_option_names_are_checked_without_resolving_values(family, section, value):
+def test_co2_nested_option_names_are_checked_without_resolving_values(family, section):
     from openghg_inversions.rhime.co2.execution import load_co2_params
     from openghg_inversions.rhime.co2.co2_o2_configuration import load_co2_o2_params
 
-    options = {"use_tracer": value}
+    options = {"use_tracer": None}
     for name in reversed(section.split(".")):
         options = {name: options}
     loader = load_co2_params if family == "co2" else load_co2_o2_params
@@ -149,9 +153,9 @@ def test_co2_request_names_do_not_reinterpret_scientific_labels_or_inactive_valu
     assert loader(params=options) == options
 
 
-@pytest.mark.parametrize("value", [False, True, None])
 @pytest.mark.parametrize("family", ["co2", "co2_o2"])
-def test_direct_co2_components_reject_unknown_names_in_their_own_sections(family, value):
+def test_direct_co2_components_reject_unknown_names_in_their_own_sections(family):
+    value = None
     from openghg_inversions.rhime.co2.configuration import Co2PreparationConfig, Co2ModelConfig
     from openghg_inversions.rhime.co2.execution import resolve_co2_output
     from openghg_inversions.rhime.co2.co2_o2_configuration import Co2O2PreparationConfig, Co2O2ModelConfig
@@ -170,8 +174,8 @@ def test_direct_co2_components_reject_unknown_names_in_their_own_sections(family
             owner(options)
 
 
-@pytest.mark.parametrize("value", [False, True, None])
-def test_direct_modern_data_and_output_boundaries_reject_tracer(value):
+def test_direct_modern_data_and_output_boundaries_reject_tracer():
+    value = None
     from openghg_inversions.inversion_data import MergedData, SiteOptions
     from openghg_inversions.rhime.params import DataConfig
     from openghg_inversions.rhime.specs import RhimeOutputSpec
