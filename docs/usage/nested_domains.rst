@@ -275,9 +275,9 @@ as lists, even for one synthetic site, so they retain the modern schema shape:
        save_inversion_output=False,
    )
 
-The existing satellite column boundary-condition scaling is applied once to
-the outer ``H_bc`` during normal RHIME assembly. ``H_inner`` contains only the
-fine-grid emissions response.
+The outer ``H_bc`` is used directly without additional satellite column
+scaling; observation and footprint maximum levels must match. ``H_inner``
+contains only the fine-grid emissions response.
 
 Prepared-input workflow
 -----------------------

@@ -135,12 +135,13 @@ leave this metadata unconstrained during the OpenGHG search. For several
 sites, ``platform``, ``max_level``, and ``time_resolved`` may be lists aligned
 with ``sites``.
 
-RHIME retains the column prior-factor fields, aligns small timestamp
-differences between satellite observations and footprints, and rescales
-boundary-condition sensitivity to the corrected column signal before model
-construction. The resulting emissions sensitivity has a source-resolved
-layout such as ``H(region, nmeasure, source)`` and is consumed by the same
-multisector model used for surface sites.
+RHIME retains the column prior-factor fields and aligns small timestamp
+differences between satellite observations and footprints. Observation and
+footprint maximum levels must match, so boundary-condition sensitivity is
+used directly without additional column scaling. The resulting emissions
+sensitivity has a source-resolved layout such as
+``H(region, nmeasure, source)`` and is consumed by the same multisector model
+used for surface sites.
 
 Inspecting and processing results
 ---------------------------------
@@ -161,10 +162,9 @@ canonical inputs before interpreting the posterior:
 
 For a shared basis, expect a distinct ``source`` dimension and one sensitivity
 slice per requested flux source. Satellite inputs should also contain finite
-``H_bc`` when boundary conditions are enabled. Its
-``satellite_column_bc_scale`` attribute records that column scaling was
-applied. Column runs retain ``mf_prior_factor`` and, when supplied,
-``mf_prior_upper_level_factor`` in ``inv_inputs``.
+``H_bc`` when boundary conditions are enabled. Column runs retain
+``mf_prior_factor`` and, when supplied, ``mf_prior_upper_level_factor`` in
+``inv_inputs``.
 
 The posterior contains one full scaling variable, ``x``, on a gathered state
 coordinate carrying the source and local state labels. Its blocks retain their
