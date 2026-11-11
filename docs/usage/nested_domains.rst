@@ -188,7 +188,8 @@ be region-constrained on its own grid. Set
 ``inner_basis_algorithm = "region_constrained"``; ``inner_region_classes``
 takes the same options as the outer
 :ref:`region_classes <region-constrained-basis-classes>`. When omitted, the
-inner domain's packaged land/sea map is used. Region classes are never
+inner land/sea map is used: ``inner_landsea_path`` when set, otherwise the
+inner domain's packaged map. Region classes are never
 inherited between grids. Invalid selections and maps fail before acquisition.
 
 .. code-block:: ini

@@ -107,7 +107,10 @@ def load_region_classes(
     """Eagerly read a region-class map for constrained basis fitting.
 
     The map is read like a reporting country file, including its fallbacks for
-    known HDF5 backend problems. Grid alignment and shape checks belong to
+    known HDF5 backend problems. The last-resort direct HDF5 reader requires
+    ``lat``, ``lon`` and ``name`` and exposes the class variable as ``country``,
+    so an explicit ``variable="region"`` or a map without ``name`` only reads
+    through the xarray backends. Grid alignment and shape checks belong to
     fitting, which also accepts a map on a larger grid containing the flux grid.
 
     Args:
@@ -135,6 +138,11 @@ def load_region_classes(
     dataset = load_country_dataset(path)
     if variable is None:
         variable = "country" if "country" in dataset or "region" not in dataset else "region"
+    if variable not in dataset.data_vars:
+        raise KeyError(
+            f"Region-class map {path} has no variable {variable!r}; "
+            f"available variables: {sorted(map(str, dataset.data_vars))!r}."
+        )
     classes = dataset[variable]
     classes.attrs = {**dataset.attrs, **classes.attrs}
     if unmapped_values:

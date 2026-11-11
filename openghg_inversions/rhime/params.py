@@ -50,8 +50,8 @@ class RegionClassSelection:
     Selection is data-free: the application preparation boundary reads the map.
 
     Attributes:
-        path: Exact NetCDF class map. ``None`` selects the domain's packaged
-            land/sea map.
+        path: Exact NetCDF class map. ``None`` selects the configuration's
+            ``landsea_path`` or, without one, the domain's packaged land/sea map.
         variable: Class variable in the map. ``None`` reads ``country`` when
             present, otherwise ``region``.
         unmapped_values: Class values, such as an ocean code, treated like
@@ -71,7 +71,11 @@ class RegionClassSelection:
             raise ValueError(f"Region-class `path` must be a filesystem path; got {self.path!r}.")
         if self.variable is not None and (not isinstance(self.variable, str) or not self.variable.strip()):
             raise ValueError(f"Region-class `variable` must be a non-empty name; got {self.variable!r}.")
-        if not isinstance(self.unmapped_values, tuple) or any(
+        if not isinstance(self.unmapped_values, tuple):
+            raise ValueError(
+                f"Region-class `unmapped_values` must be a tuple; got {type(self.unmapped_values).__name__}."
+            )
+        if any(
             isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value)
             for value in self.unmapped_values
         ):
@@ -143,8 +147,9 @@ class DataConfig:
         basis_path: Exact retained basis artifact (.nc or .zarr). A selected
             saved basis bypasses generation.
         basis_partition_path: Exact labelled ``basis`` partition file.
-        landsea_path: Land/sea map for weighted generation; ``None`` selects the
-            domain's packaged map.
+        landsea_path: Land/sea map for weighted generation, and the default
+            region-constrained class map; ``None`` selects the domain's
+            packaged map.
         basis_partition_paths: Labelled partition files, sorted before loading;
             the first supplies the reference coordinates.
         bc_basis_paths: Exact labelled BC basis files. When set, they take
@@ -163,7 +168,8 @@ class DataConfig:
         nbasis: Requested generated regions. With fixed outer regions, this
             counts the inner regions only.
         region_classes: Class map for ``"region_constrained"`` generation;
-            ``None`` selects the domain's packaged land/sea map. A selection is
+            ``None`` selects ``landsea_path`` or the domain's packaged land/sea
+            map. A selection is
             rejected when generating with another algorithm and is inactive
             when a saved basis is selected.
         filters: Observation filter choices.

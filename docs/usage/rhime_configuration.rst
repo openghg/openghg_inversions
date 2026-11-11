@@ -303,8 +303,9 @@ to three options:
 
 ``path``
    Exact NetCDF class map, such as a land/sea map, a raw multiclass country or
-   region map, or a direct mask. When omitted, the domain's packaged land/sea
-   map is used, as for ``weighted`` generation.
+   region map, or a direct mask. When omitted, the land/sea map is used, as for
+   ``weighted`` generation: ``landsea_path`` when set, otherwise the domain's
+   packaged map.
 ``variable``
    Class variable in the map. When omitted, ``country`` is read if present,
    otherwise ``region``, as for reporting country files.
@@ -319,7 +320,7 @@ to three options:
    nbasis = 100
    region_classes = {"path": "/data/maps/country_EUROPE.nc", "unmapped_values": [-1]}
 
-Omit ``region_classes`` entirely to constrain by the packaged land/sea map.
+Omit ``region_classes`` entirely to constrain by that land/sea map.
 From Python, pass the same mapping or a ``rhime.RegionClassSelection``. The
 standard, multisector, staged and Python routes share the option:
 ``rhime.preparation.resolve_basis_inputs(config.data)`` reads the map before

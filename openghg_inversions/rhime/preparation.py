@@ -444,14 +444,13 @@ def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:
 
 
 def _resolve_region_classes(data_config: Any) -> dict[str, Any]:
-    """Load the selected class map, or the domain's packaged land/sea map."""
+    """Load the selected class map, else ``landsea_path`` or the packaged land/sea map."""
     from openghg_inversions.basis.support import load_region_classes, packaged_basis_support_path
 
     selection = data_config.region_classes
-    if selection is None or selection.path is None:
-        path = packaged_basis_support_path("landsea", data_config.domain)
-    else:
-        path = selection.path
+    path = None if selection is None else selection.path
+    if path is None:
+        path = data_config.landsea_path or packaged_basis_support_path("landsea", data_config.domain)
     return {"region_classes": load_region_classes(
         path,
         None if selection is None else selection.variable,

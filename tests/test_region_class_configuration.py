@@ -11,6 +11,7 @@ import xarray as xr
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.basis.support import load_basis_support_map, packaged_basis_support_path
 from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.rhime._stage_artifacts import json_value
 from openghg_inversions.rhime.params import DataConfig, RegionClassSelection, RhimeConfig
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
 from openghg_inversions.rhime.requests import load_params
@@ -117,7 +118,7 @@ def test_saved_configuration_reproduces_the_class_selection(tmp_path):
     path = _write_classes(tmp_path)
     data = _config(basis_algorithm="region_constrained",
                    region_classes={"path": str(path), "variable": "country", "unmapped_values": [-1]}).data
-    restored = DataConfig.from_params(json.loads(json.dumps(data.to_params(), default=str)))
+    restored = DataConfig.from_params(json.loads(json.dumps(json_value(data.to_params()))))
     assert restored == data
 
 
@@ -129,6 +130,15 @@ def test_omitted_selection_uses_the_domain_land_sea_map():
         _config(basis_algorithm="region_constrained", region_classes={"unmapped_values": [0]}).data
     )
     xr.testing.assert_equal(masked["region_classes"], packaged.where(packaged != 0))
+
+
+def test_omitted_path_prefers_an_explicit_landsea_path(tmp_path):
+    path = _write_classes(tmp_path)
+    data = _config(basis_algorithm="region_constrained", landsea_path=str(path),
+                   region_classes={"unmapped_values": [-1]}).data
+    configured = _prepare(resolve_basis_inputs(data), basis_algorithm="region_constrained", nbasis=5)
+    direct = _direct(path, basis_algorithm="region_constrained", nbasis=5)
+    xr.testing.assert_equal(configured.flat_basis(), direct.flat_basis())
 
 
 def test_fixed_outer_regions_with_configured_inner_classes_match_direct_python(tmp_path):
@@ -177,7 +187,8 @@ def test_invalid_region_class_options_fail_during_configuration(options, message
 @pytest.mark.parametrize(("filename", "variable", "error", "message"), [
     ("missing.nc", None, FileNotFoundError, "Region-class map not found"),
     ("garbage.nc", None, OSError, "Unable to open country file"),
-    ("ocean.nc", "mask", KeyError, "mask"),
+    ("ocean.nc", "mask", KeyError, r"no variable 'mask'; available variables: \['country'\]"),
+    ("classless.nc", None, KeyError, r"no variable 'country'; available variables: \['other'\]"),
     ("ocean.nc", None, ValueError, "no mapped cells"),
 ])
 def test_invalid_region_class_files_fail_before_acquisition(tmp_path, monkeypatch, filename, variable,
@@ -186,6 +197,7 @@ def test_invalid_region_class_files_fail_before_acquisition(tmp_path, monkeypatc
 
     (tmp_path / "garbage.nc").write_text("not netcdf")
     xr.Dataset({"country": (("lat", "lon"), np.full((2, 2), -1.0))}).to_netcdf(tmp_path / "ocean.nc")
+    xr.Dataset({"other": (("lat", "lon"), np.ones((2, 2)))}).to_netcdf(tmp_path / "classless.nc")
     selection = {"path": str(tmp_path / filename), "unmapped_values": [-1]}
     if variable is not None:
         selection["variable"] = variable
@@ -232,6 +244,8 @@ def test_invalid_inner_region_classes_fail_before_acquisition(tmp_path, monkeypa
 def test_direct_selection_requires_resolved_values():
     with pytest.raises(ValueError, match="filesystem path"):
         RegionClassSelection(path="classes.nc")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="must be a tuple; got list"):
+        RegionClassSelection(unmapped_values=[-1.0])  # type: ignore[arg-type]
     config = _config(basis_algorithm="quadtree")
     with pytest.raises(ValueError, match="applies only when generating"):
         replace(config.data, region_classes=RegionClassSelection(path=Path("/maps/classes.nc")))

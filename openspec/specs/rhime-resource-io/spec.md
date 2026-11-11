@@ -151,8 +151,9 @@ Reporting SHALL use `country_file`; preparation SHALL use `landsea_path` or
 ### Requirement: Region-class maps are explicit preparation resources
 
 A region-constrained basis SHALL be generated from a class map. The map SHALL
-be an exact selected file, or, when no file is selected, the requested domain's
-packaged land/sea map under the packaged-default rules above. When no variable
+be an exact selected file, or, when no file is selected, the land/sea map
+selected under the packaged-default rules above: an explicit `landsea_path`,
+otherwise the requested domain's packaged land/sea map. When no variable
 is selected, the map's variable SHALL be inferred as for country files.
 Request resolution SHALL validate the selection without opening scientific
 data. Runners SHALL load the map before acquisition. Scientific preparation
