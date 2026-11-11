@@ -210,7 +210,7 @@ class Co2O2ModelConfig:
             if isinstance(value, Mapping):
                 object.__setattr__(self, item.name, normalise_optional_mapping(value))
         if self.boundary is not None:
-            # Direct construction meets the same one-calendar rule as configuration.
+            # The single owner of the one-calendar rule for parsed and direct construction.
             object.__setattr__(self, "boundary", normalise_optional_mapping(_shared_boundary_periods(self.boundary)))
 
     @classmethod
@@ -246,8 +246,6 @@ class Co2O2ModelConfig:
                 model.setdefault(key, {})[name] = value
             _reject_unknown(channel, f"channels.{name}")
         _reject_unknown(channels, "channels")
-        if "boundary" in model:
-            model["boundary"] = _shared_boundary_periods(model["boundary"])
         if errors and len(errors) != 2:
             raise ValueError("Configure independent_error_sd for both linked channels or omit it for both.")
         if units["co2"] != units["o2"]:

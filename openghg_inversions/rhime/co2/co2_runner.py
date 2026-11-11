@@ -52,7 +52,7 @@ from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.sigma import SigmaAlignment
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
-from .co2_model import _normalise_offset_args, build_co2_model
+from .co2_model import _build_co2_model, _normalise_offset_args
 from .co2_preparation import Co2PreparedInputs
 
 _CO2_SCIENTIFIC_INPUT_NAMES = (
@@ -426,7 +426,7 @@ def materialize_co2_inputs(
             "pass its options in likelihood_kwargs."
         )
     prepared = prepared_inputs
-    # Fail before materialization, which is expensive; build_co2_model owns the rule.
+    # Fail before materialization, which is expensive; the model builder owns the rule.
     if (boundary is not None and "H_bc_anomaly" in prepared.inv_inputs
             and likelihood_builder not in (None, add_fixed_ou_gaussian_likelihood)):
         raise ValueError("Centered runner replay supports the built-in fixed-OU likelihood, not custom callbacks.")
@@ -543,7 +543,7 @@ def build_co2_from_materialized(
         prior_covariance,
         covariance_dim=str(prior_covariance.dims[-1]),
     )
-    model = build_co2_model(
+    model = _build_co2_model(
         model_inputs["H"],
         retained_prior=retained_prior,
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],

@@ -18,7 +18,7 @@ from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 from .co2_cached_sigma_runner import (
     _sampler_for_cached_graph,
 )
-from .co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
+from .co2_o2_cached_sigma_model import _build_co2_o2_cached_sigma_model
 from .co2_o2_model import _validate_channel_offset_options
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .co2_o2_runner import (
@@ -135,7 +135,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     offset_prior = eager_priors["offset"]
     site_amplitude_prior = eager_priors["amplitude"]
     observations, fixed, co2, o2, error = materialized
-    cached = build_co2_o2_cached_sigma_model(
+    cached = _build_co2_o2_cached_sigma_model(
         observations=observations,
         fixed_prior_contribution=fixed,
         co2_sensitivity=co2,

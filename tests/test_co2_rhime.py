@@ -438,13 +438,13 @@ def test_co2_operations_persists_fixed_mismatch_manifest(
 
     _mock_materialization(monkeypatch, lambda *_args, **_kwargs: inputs)
     builder_kwargs: dict[str, Any] = {}
-    original_builder = co2_runner.build_co2_model
+    original_builder = co2_runner._build_co2_model
 
     def build_model(flux_sensitivity: xr.DataArray, **kwargs: Any) -> pm.Model:
         builder_kwargs.update(kwargs)
         return original_builder(flux_sensitivity, **kwargs)
 
-    monkeypatch.setattr(co2_runner, "build_co2_model", build_model)
+    monkeypatch.setattr(co2_runner, "_build_co2_model", build_model)
     sampled_models: list[pm.Model] = []
 
     def sample_model(built: Any, _sampler: Any) -> xr.DataTree:
@@ -1155,7 +1155,7 @@ def test_co2_eager_builder_rejects_lazy_selected_inputs_before_construction(monk
     def unexpected_construction(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("Lazy values must be rejected before constructing a graph.")
 
-    monkeypatch.setattr(co2_runner, "build_co2_model", unexpected_construction)
+    monkeypatch.setattr(co2_runner, "_build_co2_model", unexpected_construction)
     with pytest.raises(ValueError, match="must be materialized"):
         co2_runner.build_co2_from_materialized(inputs, boundary=None, prepared_inputs=prepared, priors={})
 

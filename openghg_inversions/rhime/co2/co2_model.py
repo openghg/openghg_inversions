@@ -191,6 +191,58 @@ def build_co2_model(
             without ``sigma_alignment``, or if a centered boundary is combined
             with a custom likelihood callback or wrapper.
     """
+    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, priors = dask_compute(
+        *to_dense_tree((
+            (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary,
+            {"sigma": sigma_prior, "offset": offset_prior, "fixed_mismatch": fixed_model_mismatch},
+        ))
+    )
+    sigma_prior, offset_prior = priors["sigma"], priors["offset"]
+    fixed_model_mismatch = priors["fixed_mismatch"]
+    return _build_co2_model(
+        flux_sensitivity,
+        retained_prior=retained_prior,
+        fixed_prior_contribution=fixed_prior_contribution,
+        observations=observations,
+        observation_error=observation_error,
+        aggregation_error=aggregation_error,
+        likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
+        sigma_alignment=sigma_alignment,
+        sigma_prior=sigma_prior,
+        fixed_model_mismatch=fixed_model_mismatch,
+        state_activity=state_activity,
+        boundary=boundary,
+        offset_prior=offset_prior,
+        offset_args=offset_args,
+    )
+
+
+def _build_co2_model(
+    flux_sensitivity: xr.DataArray,
+    *,
+    retained_prior: CorrelatedLognormalPrior,
+    fixed_prior_contribution: xr.DataArray,
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    aggregation_error: AggregationError,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
+    sigma_alignment: SigmaAlignment | None = None,
+    sigma_prior: PriorArgs | None = None,
+    fixed_model_mismatch: float | xr.DataArray | None = None,
+    state_activity: StateActivity | None = None,
+    boundary: Bound | None = None,
+    offset_prior: PriorArgs | None = None,
+    offset_args: Mapping[str, Any] | None = None,
+) -> pm.Model:
+    """Validate choices and construct the CO2 graph from eager inputs.
+
+    Materialization belongs to the caller: :func:`build_co2_model` computes
+    its arguments together, and the CO2 runner calls this after its own joint
+    materialization so already-eager arrays are not handled twice. Arguments
+    and errors are those of :func:`build_co2_model`.
+    """
     if (isinstance(boundary, CenteredBoundary)
             and likelihood_builder is not None
             and likelihood_builder is not add_fixed_ou_gaussian_likelihood):
@@ -211,14 +263,6 @@ def build_co2_model(
             "additive-sigma or fixed-mismatch options; pass its options in "
             "likelihood_kwargs."
         )
-    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, priors = dask_compute(
-        *to_dense_tree((
-            (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary,
-            {"sigma": sigma_prior, "offset": offset_prior, "fixed_mismatch": fixed_model_mismatch},
-        ))
-    )
-    sigma_prior, offset_prior = priors["sigma"], priors["offset"]
-    fixed_model_mismatch = priors["fixed_mismatch"]
     if offset_prior is not None:
         offset_prior = dict(offset_prior)
     offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)

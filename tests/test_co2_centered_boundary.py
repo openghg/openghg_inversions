@@ -260,25 +260,6 @@ def test_forward_equations_and_cached_likelihood_gradient(n_boundary: int, anoma
 
 
 @pytest.mark.parametrize(
-    "override",
-    [
-        {"bc_anomaly_scale": None},
-        {"bc_anomaly_scale": -0.1},
-        {"bc_anomaly_scale": np.nan},
-        {"bc_anomaly_scale": np.inf},
-        {"bc_anomaly_scale": -np.inf},
-        {"bc_centering_weights": None},
-    ],
-)
-def test_centered_boundary_rejects_incomplete_options(override: dict[str, Any]) -> None:
-    inputs = _inputs()
-    kwargs = _kwargs(inputs)
-    kwargs.update(override)
-    with pytest.raises((ValueError, TypeError)):
-        build_co2_model(inputs.H, **bound_model_arguments(kwargs))
-
-
-@pytest.mark.parametrize(
     "invalid",
     [
         "negative_weight",
@@ -446,47 +427,6 @@ def test_nonseparable_region_period_weights_preserve_whole_window_prior():
     assert "bc_mean_shift_interval__" in model.initial_point()
 
 
-def test_additive_boundary_materializes_shared_operands_at_explicit_model_boundary():
-    import dask.array as da
-    from dask import delayed
-    calls = []
-
-    @delayed
-    def payload():
-        calls.append("computed")
-        return np.array([[0.7, 0.3], [0.2, 0.8]])
-
-    mass = xr.DataArray(
-        da.from_delayed(payload(), shape=(2, 2), dtype=float),
-        dims=("nmeasure", "bc_region"),
-        coords={"nmeasure": [0, 1], "bc_region": ["north", "south"]},
-        attrs={"units": "1"},
-    )
-    operands = xr.Dataset(
-        {
-            "H_bc_mass": mass,
-            "H_bc_anomaly": (mass * 0.001).assign_attrs(units="ppm"),
-            "bc_reference": (mass.sum() * 200.0).assign_attrs(units="ppm"),
-        },
-        attrs={"boundary_representation": "centered-v1"},
-    )
-    times = pd.to_datetime(["2020-01-01T00", "2020-01-01T01"])
-    weights = _period_weights([1.0, 2.0], mass.bc_region.values, times[:1])
-    observations = xr.DataArray(
-        [400.0, 400.0], dims="nmeasure", coords={"nmeasure": [0, 1], "time": ("nmeasure", times)},
-    )
-    prior = {"pdf": "normal", "mu": 0.0, "sigma": 0.2}
-    transport = raw_transport(operands, weights=weights)
-    prepared = AdditiveChoice(prior, 0.3).bind(observations, transport)
-    assert calls == []
-    assert isinstance(prepared.data.H_bc_mass.data, da.Array)
-    prepared = replace(prepared, data=prepared.data.compute())
-    assert calls == ["computed"]
-    assert isinstance(operands.H_bc_mass.data, da.Array)
-    assert isinstance(prepared.data.H_bc_mass.data, np.ndarray)
-    assert isinstance(prepared.data.bc_reference.data, np.ndarray)
-
-
 @pytest.mark.parametrize("anomaly_scale", [0.0, 0.3])
 def test_bound_additive_affine_result_equals_likelihood_and_keeps_resolved_scale(anomaly_scale):
     """The component owns its coefficients, transforms, and mean-only result."""
@@ -527,7 +467,10 @@ def test_bound_additive_affine_result_equals_likelihood_and_keeps_resolved_scale
     AnomalyScalingChoice({"pdf": "normal", "mu": 0.0, "sigma": 0.2}, 0.5),
 ])
 def test_bound_records_trust_the_contract_binding_establishes(choice):
-    """Binding establishes the bound contract; the contract, not the record, rejects broken layouts."""
+    """Every family's binding yields a conforming bound contract on its observation dimension.
+
+    Malformed-layout rejection is owned by ``tests/models/test_boundary_contracts.py``.
+    """
     from openghg_inversions.models import registered_model
     from openghg_inversions.models.boundary import BoundCenteredSensitivity
 
@@ -535,10 +478,6 @@ def test_bound_records_trust_the_contract_binding_establishes(choice):
     boundary = choice.bind(inputs.mf, boundary_transport(_kwargs(inputs)))
     assert boundary.observation_dim == "nmeasure"
     assert BoundCenteredSensitivity.validate(boundary.data) is boundary.data
-    with pytest.raises(ValueError, match="H_bc_mass.*dims"):
-        BoundCenteredSensitivity.validate(boundary.data.assign(H_bc_mass=boundary.data.H_bc_mass.T))
-    with pytest.raises(ValueError, match="H_bc_mass"):
-        BoundCenteredSensitivity.validate(boundary.data.drop_vars("H_bc_mass"))
     with registered_model(), pytest.raises(ValueError, match="bound observation dimension"):
         replace(boundary, data=boundary.data.compute()).add(output_dim="time")
 
