@@ -410,6 +410,16 @@
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.models.boundary.html">openghg_inversions.models.boundary</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.additive.html">openghg_inversions.models.boundary.additive</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.additive_anomalies.html">openghg_inversions.models.boundary.additive_anomalies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.anomaly_scaling.html">openghg_inversions.models.boundary.anomaly_scaling</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.centered.html">openghg_inversions.models.boundary.centered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html">openghg_inversions.models.boundary.contracts</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html">openghg_inversions.models.boundary.multiplicative</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.outputs.html">openghg_inversions.models.boundary.outputs</a></li>
+</ul>
+</details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.cached_sigma.html">openghg_inversions.models.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html">openghg_inversions.models.components</a></li>
@@ -506,6 +516,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.source_covariance.html">openghg_inversions.source_covariance</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.xr_contracts.html">openghg_inversions.xr_contracts</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="merged_input_schemas.html">Merged-input schemas</a></li>
@@ -1195,6 +1206,90 @@ component boundary and when to copy a complete recipe instead.</p>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.centered_boundary.html#openghg_inversions.rhime.co2.centered_boundary.add_centered_boundary" title="openghg_inversions.rhime.co2.centered_boundary.add_centered_boundary"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.centered_boundary.add_centered_boundary</span></code></a></p></td>
 <td><p>Construct absolute and centered concentrations from one boundary state.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.ConcentrationTerm" title="openghg_inversions.models.ConcentrationTerm"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.ConcentrationTerm</span></code></a></p></td>
+<td><p>One concentration contribution in its absolute and likelihood forms.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.likelihood_representation" title="openghg_inversions.models.likelihood_representation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.likelihood_representation</span></code></a></p></td>
+<td><p>Choose the likelihood mean and observations for concentration terms.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.AffineBlock" title="openghg_inversions.models.AffineBlock"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.AffineBlock</span></code></a></p></td>
+<td><p>One labelled two-dimensional design and its physical coefficient vector.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.AffineConcentrationTerm" title="openghg_inversions.models.AffineConcentrationTerm"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.AffineConcentrationTerm</span></code></a></p></td>
+<td><p>Concentration term whose likelihood contribution is affine in its coefficients.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.warn_constant_offset_confounding" title="openghg_inversions.models.components.warn_constant_offset_confounding"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.components.warn_constant_offset_confounding</span></code></a></p></td>
+<td><p>Warn when an affine coefficient has the same constant response as offsets.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.MultiplicativeChoice" title="openghg_inversions.models.boundary.MultiplicativeChoice"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.MultiplicativeChoice</span></code></a></p></td>
+<td><p>Prior specification for multiplicative boundary scaling, before binding.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.MultiplicativeBoundary" title="openghg_inversions.models.boundary.MultiplicativeBoundary"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.MultiplicativeBoundary</span></code></a></p></td>
+<td><p>Multiplicative choice bound to one fit's borrowed absolute sensitivity.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.CenteredMultiplicativeBoundary" title="openghg_inversions.models.boundary.CenteredMultiplicativeBoundary"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.CenteredMultiplicativeBoundary</span></code></a></p></td>
+<td><p>Multiplicative choice bound to one fit's borrowed centered sensitivity.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AdditiveChoice" title="openghg_inversions.models.boundary.AdditiveChoice"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.AdditiveChoice</span></code></a></p></td>
+<td><p>Prior specification for additive boundary corrections, before binding.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AdditiveBoundary" title="openghg_inversions.models.boundary.AdditiveBoundary"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.AdditiveBoundary</span></code></a></p></td>
+<td><p>Additive choice bound to one fit's borrowed centered operands.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AnomalyScalingChoice" title="openghg_inversions.models.boundary.AnomalyScalingChoice"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.AnomalyScalingChoice</span></code></a></p></td>
+<td><p>Prior specification for anomaly-scaling boundary corrections, before binding.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AnomalyScalingBoundary" title="openghg_inversions.models.boundary.AnomalyScalingBoundary"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.AnomalyScalingBoundary</span></code></a></p></td>
+<td><p>Anomaly-scaling choice bound to one fit's borrowed centered operands.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.RawCenteredSensitivity" title="openghg_inversions.models.boundary.RawCenteredSensitivity"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.RawCenteredSensitivity</span></code></a></p></td>
+<td><p>Prepared centered boundary sensitivity on raw spatial boundary states.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundCenteredSensitivity" title="openghg_inversions.models.boundary.BoundCenteredSensitivity"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.BoundCenteredSensitivity</span></code></a></p></td>
+<td><p>Centered boundary sensitivity bound to one fit's rows and periods.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundAdditiveSensitivity" title="openghg_inversions.models.boundary.BoundAdditiveSensitivity"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.BoundAdditiveSensitivity</span></code></a></p></td>
+<td><p>Bound centered sensitivity with additive centering weights.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.validate_centering_weights" title="openghg_inversions.models.boundary.validate_centering_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.validate_centering_weights</span></code></a></p></td>
+<td><p>Check raw centering weights against the <code class="xref py py-class docutils literal notranslate"><span class="pre">RawCenteredSensitivity</span></code> layout, without reading values.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.RawCenteredSensitivity.with_centering_weights" title="openghg_inversions.models.boundary.RawCenteredSensitivity.with_centering_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.RawCenteredSensitivity.with_centering_weights</span></code></a></p></td>
+<td><p>Replace raw weights without aligning them to an obsolete weight calendar.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundCenteredSensitivity.bind" title="openghg_inversions.models.boundary.BoundCenteredSensitivity.bind"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.BoundCenteredSensitivity.bind</span></code></a></p></td>
+<td><p>Select one fit's observation rows and expand spatial states by period.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundCenteredSensitivity.reference_shift" title="openghg_inversions.models.boundary.BoundCenteredSensitivity.reference_shift"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.BoundCenteredSensitivity.reference_shift</span></code></a></p></td>
+<td><p>Check eager centered values once and calculate the fixed shift <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">M</span> <span class="pre">1</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundAdditiveSensitivity.bind_weights" title="openghg_inversions.models.boundary.BoundAdditiveSensitivity.bind_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.BoundAdditiveSensitivity.bind_weights</span></code></a></p></td>
+<td><p>Align raw centering weights exactly to bound states, giving the additive extension.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.normalize_centering_weights" title="openghg_inversions.models.boundary.normalize_centering_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.normalize_centering_weights</span></code></a></p></td>
+<td><p>Check materialized weights once and normalize their sum to one.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.xr_contracts.html#openghg_inversions.xr_contracts.xr_contract" title="openghg_inversions.xr_contracts.xr_contract"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.xr_contracts.xr_contract</span></code></a></p></td>
+<td><p>Declare an xarray contract type and add it to the registry.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Choice" title="openghg_inversions.models.boundary.Choice"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.Choice</span></code></a></p></td>
+<td><p>One resolved selection of a boundary family's options, before binding.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Bound" title="openghg_inversions.models.boundary.Bound"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.Bound</span></code></a></p></td>
+<td><p>A boundary choice bound to one fit's borrowed labelled sensitivity.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AbsoluteChoice" title="openghg_inversions.models.boundary.AbsoluteChoice"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.AbsoluteChoice</span></code></a></p></td>
+<td><p>A choice that can also bind absolute sensitivity <code class="docutils literal notranslate"><span class="pre">H_bc</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.bind_prepared" title="openghg_inversions.models.boundary.bind_prepared"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.bind_prepared</span></code></a></p></td>
+<td><p>Bind a choice to the one sensitivity representation that preparation produced.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Outputs" title="openghg_inversions.models.boundary.Outputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.Outputs</span></code></a></p></td>
+<td><p>Roles, units and metadata a bound boundary declares for its outputs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.to_dense_tree" title="openghg_inversions.array_ops.to_dense_tree"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.array_ops.to_dense_tree</span></code></a></p></td>
+<td><p>Apply <code class="xref py py-func docutils literal notranslate"><span class="pre">to_dense()</span></code> to every labelled array in a nested value.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_linked_linear_component" title="openghg_inversions.models.add_linked_linear_component"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.add_linked_linear_component</span></code></a></p></td>
 <td><p>Apply a prepared sensitivity to an already constructed linked state.</p></td>

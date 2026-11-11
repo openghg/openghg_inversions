@@ -410,6 +410,16 @@
 </ul>
 </details></li>
 <li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.models.boundary.html">openghg_inversions.models.boundary</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.additive.html">openghg_inversions.models.boundary.additive</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.additive_anomalies.html">openghg_inversions.models.boundary.additive_anomalies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.anomaly_scaling.html">openghg_inversions.models.boundary.anomaly_scaling</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.centered.html">openghg_inversions.models.boundary.centered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html">openghg_inversions.models.boundary.contracts</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html">openghg_inversions.models.boundary.multiplicative</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.outputs.html">openghg_inversions.models.boundary.outputs</a></li>
+</ul>
+</details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.cached_sigma.html">openghg_inversions.models.cached_sigma</a></li>
 <li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.models.components</a></li>
@@ -506,6 +516,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.source_covariance.html">openghg_inversions.source_covariance</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.xr_contracts.html">openghg_inversions.xr_contracts</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="merged_input_schemas.html">Merged-input schemas</a></li>
@@ -825,6 +836,170 @@ signal.</p>
 channel signals. The calling recipe owns those scientific choices.</p>
 </dd></dl>
 
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.ConcentrationTerm">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ConcentrationTerm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">likelihood_contribution</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_shift</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.ConcentrationTerm" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>One concentration contribution in its absolute and likelihood forms.</p>
+<p>Most terms enter the likelihood mean as their absolute <code class="docutils literal notranslate"><span class="pre">output</span></code>. A
+centered term instead contributes a small <code class="docutils literal notranslate"><span class="pre">likelihood_contribution</span></code>
+against observations translated by its fixed <code class="docutils literal notranslate"><span class="pre">observation_shift</span></code>;
+adding the shift back gives <code class="docutils literal notranslate"><span class="pre">output</span></code>. The translation changes no
+covariance, so both forms describe the same probability model. The shift
+is independent of inferred parameters: sampled boundary means and site
+biases remain in the likelihood contribution. This record does not
+require the contribution to be affine in its parameters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Variables<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>output</strong> (<em>pytensor.tensor.variable.TensorVariable</em>) – Absolute concentration contribution.</p></li>
+<li><p><strong>likelihood_contribution</strong> (<em>pytensor.tensor.variable.TensorVariable</em>) – This term’s contribution to the likelihood mean.</p></li>
+<li><p><strong>observation_shift</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>xarray.core.dataarray.DataArray</em></a><em> | </em><em>None</em>) – Labelled concentration subtracted from the
+observations, or <code class="docutils literal notranslate"><span class="pre">None</span></code> when the term enters absolutely.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.ConcentrationTerm.absolute">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">absolute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">fields</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.ConcentrationTerm.absolute" title="Link to this definition">#</a></dt>
+<dd><p>Describe a term whose likelihood contribution is its absolute output.</p>
+<p>Subclasses pass their additional keyword-only fields through <code class="docutils literal notranslate"><span class="pre">fields</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>output</strong> (<em>TensorVariable</em>) – Absolute concentration contribution, also used as the
+likelihood contribution.</p></li>
+<li><p><strong>**fields</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>) – Additional fields of the subclass.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The term, with no observation shift.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.15)"><em>Self</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.AffineBlock">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">AffineBlock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">design</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coefficients</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.AffineBlock" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>One labelled two-dimensional design and its physical coefficient vector.</p>
+<p>Rows follow the observation labels. Columns follow the matching one-
+dimensional physical coefficient expression in exactly that order. Each
+block retains its own design/coefficient units; blocks with different
+physical units remain separate until the numerical consumer lowers them.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Variables<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>design</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Labelled observation-by-coefficient matrix.</p></li>
+<li><p><strong>coefficients</strong> (<em>pytensor.tensor.variable.TensorVariable</em>) – One-dimensional physical coefficient expression, ordered
+like the design’s columns.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.AffineConcentrationTerm">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">AffineConcentrationTerm</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">output</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">likelihood_contribution</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">observation_shift</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fixed_contribution</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">blocks</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sampled_rvs</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.AffineConcentrationTerm" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#openghg_inversions.models.components.ConcentrationTerm" title="openghg_inversions.models.components.ConcentrationTerm"><code class="xref py py-class docutils literal notranslate"><span class="pre">ConcentrationTerm</span></code></a></p>
+<p>Concentration term whose likelihood contribution is affine in its coefficients.</p>
+<p>Fixed contribution plus design/coefficient products equals the term’s
+likelihood contribution. The fixed contribution is a labelled concentration
+vector in observation-row order. Physical coefficients may be transformed sampled
+variables; <code class="docutils literal notranslate"><span class="pre">sampled_rvs</span></code> contains the underlying sampled variables,
+distinct from those physical coefficient expressions. Numerical consumers
+concatenate blocks at their own boundary; every other consumer can treat
+the term as an ordinary <a class="reference internal" href="#openghg_inversions.models.components.ConcentrationTerm" title="openghg_inversions.models.components.ConcentrationTerm"><code class="xref py py-class docutils literal notranslate"><span class="pre">ConcentrationTerm</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Variables<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fixed_contribution</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Labelled concentration vector, in observation-row
+order, that does not depend on the coefficients.</p></li>
+<li><p><strong>blocks</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference internal" href="#openghg_inversions.models.components.AffineBlock" title="openghg_inversions.models.components.AffineBlock"><em>openghg_inversions.models.components.AffineBlock</em></a><em>, </em><em>...</em><em>]</em>) – Design/coefficient pairs whose products add to the fixed
+contribution.</p></li>
+<li><p><strong>sampled_rvs</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><em>pytensor.tensor.variable.TensorVariable</em><em>, </em><em>...</em><em>]</em>) – Underlying sampled variables of the coefficients.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.warn_constant_offset_confounding">
+<span class="sig-name descname"><span class="pre">warn_constant_offset_confounding</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">terms</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">drop_first</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rows</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">channel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.warn_constant_offset_confounding" title="Link to this definition">#</a></dt>
+<dd><p>Warn when an affine coefficient has the same constant response as offsets.</p>
+<p>Call after materialization, before adding unrestricted observation offsets.
+Any affine design column equal to one on every selected row (absolute
+tolerance 1e-12) is exactly confounded with an unrestricted constant
+offset: the likelihood identifies only their sum. Anchoring the first
+site’s offset (<code class="docutils literal notranslate"><span class="pre">drop_first</span></code>) removes that constant mode. Overlap with
+non-constant responses is not assessed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>terms</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference internal" href="#openghg_inversions.models.components.ConcentrationTerm" title="openghg_inversions.models.components.ConcentrationTerm"><em>ConcentrationTerm</em></a><em>]</em>) – Terms already added to the model; non-affine terms are skipped.</p></li>
+<li><p><strong>drop_first</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether the offsets exclude the first site’s constant.</p></li>
+<li><p><strong>rows</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><em>None</em>) – Optional boolean row selection, for one channel of a joint design.</p></li>
+<li><p><strong>channel</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional channel name for the warning message.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.likelihood_representation">
+<span class="sig-name descname"><span class="pre">likelihood_representation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">terms</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">observations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">modelled_mean</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.likelihood_representation" title="Link to this definition">#</a></dt>
+<dd><p>Choose the likelihood mean and observations for concentration terms.</p>
+<p>Without observation shifts this returns <code class="docutils literal notranslate"><span class="pre">modelled_mean</span></code> and the
+observations unchanged. Otherwise it sums the likelihood contributions
+directly, rather than subtracting a large shift from <code class="docutils literal notranslate"><span class="pre">modelled_mean</span></code>,
+which would lose small centered anomalies, and registers the total shift
+as model data <code class="docutils literal notranslate"><span class="pre">boundary_reference_shift</span></code> so replay can restore absolute
+predictions. Call it inside the active model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>terms</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference internal" href="#openghg_inversions.models.components.ConcentrationTerm" title="openghg_inversions.models.components.ConcentrationTerm"><em>ConcentrationTerm</em></a><em>]</em>) – Complete ordered decomposition of <code class="docutils literal notranslate"><span class="pre">modelled_mean</span></code>. Tensor
+contributions must follow the observations’ row order and use
+their concentration units. Shifts must have exactly the
+observations’ dimensions; those and indexed row labels are
+checked here.</p></li>
+<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Labelled observations in the contributions’ common units.</p></li>
+<li><p><strong>modelled_mean</strong> (<em>TensorVariable</em>) – Prebuilt absolute mean from those same term outputs,
+retaining the recipe’s summation grouping and deterministic name.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The likelihood mean and the translated observations, which keep the
+observations’ attributes.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If any shift’s dimensions differ from the observations’,
+    or indexed observation labels differ between observations and any
+    shift, or between shifts.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)">tuple</a>[<em>TensorVariable</em>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.components.add_state_vector">
 <span class="sig-name descname"><span class="pre">add_state_vector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">activity</span></span></em>, <em class="sig-param"><span class="positional-only-separator o"><abbr title="Positional-only parameter separator (PEP 570)"><span class="pre">/</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">var_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coordinate_owner</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.add_state_vector" title="Link to this definition">#</a></dt>
@@ -1078,6 +1253,14 @@ when several independent offset components share one model.</p></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.apply_linear_sensitivity"><code class="docutils literal notranslate"><span class="pre">apply_linear_sensitivity()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_linked_linear_component"><code class="docutils literal notranslate"><span class="pre">add_linked_linear_component()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_coherent_affine_component"><code class="docutils literal notranslate"><span class="pre">add_coherent_affine_component()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.ConcentrationTerm"><code class="docutils literal notranslate"><span class="pre">ConcentrationTerm</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.ConcentrationTerm.absolute"><code class="docutils literal notranslate"><span class="pre">ConcentrationTerm.absolute()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.AffineBlock"><code class="docutils literal notranslate"><span class="pre">AffineBlock</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.AffineConcentrationTerm"><code class="docutils literal notranslate"><span class="pre">AffineConcentrationTerm</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.warn_constant_offset_confounding"><code class="docutils literal notranslate"><span class="pre">warn_constant_offset_confounding()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.likelihood_representation"><code class="docutils literal notranslate"><span class="pre">likelihood_representation()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_state_vector"><code class="docutils literal notranslate"><span class="pre">add_state_vector()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_correlated_lognormal_state"><code class="docutils literal notranslate"><span class="pre">add_correlated_lognormal_state()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_correlated_lognormal_state_with_activity"><code class="docutils literal notranslate"><span class="pre">add_correlated_lognormal_state_with_activity()</span></code></a></li>

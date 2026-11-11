@@ -410,6 +410,16 @@
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.models.boundary.html">openghg_inversions.models.boundary</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.additive.html">openghg_inversions.models.boundary.additive</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.additive_anomalies.html">openghg_inversions.models.boundary.additive_anomalies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.anomaly_scaling.html">openghg_inversions.models.boundary.anomaly_scaling</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.centered.html">openghg_inversions.models.boundary.centered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html">openghg_inversions.models.boundary.contracts</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html">openghg_inversions.models.boundary.multiplicative</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.outputs.html">openghg_inversions.models.boundary.outputs</a></li>
+</ul>
+</details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.cached_sigma.html">openghg_inversions.models.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html">openghg_inversions.models.components</a></li>
@@ -506,6 +516,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.source_covariance.html">openghg_inversions.source_covariance</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.xr_contracts.html">openghg_inversions.xr_contracts</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="merged_input_schemas.html">Merged-input schemas</a></li>
@@ -806,6 +817,31 @@ Coordinates retain their original backends and are not computed.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.array_ops.to_dense_tree">
+<span class="sig-name descname"><span class="pre">to_dense_tree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.array_ops.to_dense_tree" title="Link to this definition">#</a></dt>
+<dd><p>Apply <a class="reference internal" href="#openghg_inversions.array_ops.to_dense" title="openghg_inversions.array_ops.to_dense"><code class="xref py py-func docutils literal notranslate"><span class="pre">to_dense()</span></code></a> to every labelled array in a nested value.</p>
+<p>Traverses Datasets, mappings, lists, tuples and dataclass instances, such
+as bound scientific components or prior arguments with array-valued
+parameters. Other leaves are returned unchanged. Dask graphs are preserved,
+so the caller can pass the result to one <code class="docutils literal notranslate"><span class="pre">dask.compute</span></code> call that
+materializes related arrays together. Inputs are not mutated.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>value</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>) – A labelled array, dataset, mapping, list, tuple, dataclass
+instance, or any other object.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A structure of the same shape with each labelled array densified;
+dataclass fields that are not <code class="docutils literal notranslate"><span class="pre">init</span></code> fields are not copied. Other
+leaves are returned as given.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1161,6 +1197,7 @@ installed on <cite>multi_dim</cite>.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.sparse_xr_dot"><code class="docutils literal notranslate"><span class="pre">sparse_xr_dot()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.align_sparse_lat_lon"><code class="docutils literal notranslate"><span class="pre">align_sparse_lat_lon()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.to_dense"><code class="docutils literal notranslate"><span class="pre">to_dense()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.to_dense_tree"><code class="docutils literal notranslate"><span class="pre">to_dense_tree()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.jax_to_numpy"><code class="docutils literal notranslate"><span class="pre">jax_to_numpy()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.force_align"><code class="docutils literal notranslate"><span class="pre">force_align()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.concat_data_arrays"><code class="docutils literal notranslate"><span class="pre">concat_data_arrays()</span></code></a></li>

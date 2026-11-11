@@ -1,0 +1,1010 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Boundary-condition operators &#8212; OpenGHG Inversions</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
+
+    <script src="../_static/documentation_options.js?v=1dba82e2"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/centered_boundary_conditions';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.21.0';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://openghg.github.io/openghg_inversions/versions.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = 'devel';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner =
+            false;
+        </script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Boundary correction structures" href="boundary_correction_structures.html" />
+    <link rel="prev" title="Surface CO₂/O₂ preparation pilot" href="surface_preparation.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="devel" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+<aside class="bd-header-announcement" aria-label="Announcement">
+  <div class="bd-header-announcement__content">Unreleased development documentation; use <a href="https://openghg.github.io/openghg_inversions/stable/">stable</a> for supported releases. <a href="https://openghg.github.io/openghg_inversions/versions/">All documentation versions</a>.</div>
+</aside>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">OpenGHG Inversions</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/index.html">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-2"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-2"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-2"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-2">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/index.html">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-3"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-3"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-3"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-3">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="multisector_inversions.html">Site and satellite multisector inversions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME terminology and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_configuration.html">Advanced RHIME configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
+<li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="nested_domain_model_family.html">Nested-domain model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="nested_domains.html">Run a nested-domain RHIME inversion</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="surface_preparation.html">Surface CO₂/O₂ preparation pilot</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Boundary-condition operators</a></li>
+<li class="toctree-l1"><a class="reference internal" href="boundary_correction_structures.html">Boundary correction structures</a></li>
+<li class="toctree-l1"><a class="reference internal" href="prepared_format_support.html">Prepared artifact format support</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+<li class="toctree-l2"><a class="reference internal" href="multisector_handoffs.html">Reuse a multisector preparation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="prior_predictive_checking.html">Prior predictive checking tutorial</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="retained_state_reconstruction.html">Linear retained-state reconstruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="affine_flux_map.html">Affine native-flux reconstruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="legacy_and_migration.html">Migrate from HBMCMC to RHIME</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Boundary-condition operators</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="boundary-condition-operators">
+<h1>Boundary-condition operators<a class="headerlink" href="#boundary-condition-operators" title="Link to this heading">#</a></h1>
+<p>Boundary conditions (BCs) contribute a transported concentration to each
+observation. First, we define the transport and basis operators for standard
+multiplicative BCs. Then we describe numerical centering and additive BC
+corrections in separate sections, before showing the current preparation
+calculations in pseudocode.</p>
+<p>These operators apply to any concentration field. Numerical accuracy needs
+particular care when the required absolute accuracy is small relative to the
+background concentration. For example, resolving ppm or smaller changes in
+O2 near 200,000 ppm requires retaining many significant digits. We explain
+both the effect of quantized footprint weights and the order of arithmetic
+operations below. See <a class="reference internal" href="surface_preparation.html"><span class="doc">Surface CO₂/O₂ preparation pilot</span></a> for the preparation workflow.</p>
+<section id="transport-concentrations-and-the-boundary-basis">
+<h2>Transport, concentrations and the boundary basis<a class="headerlink" href="#transport-concentrations-and-the-boundary-basis" title="Link to this heading">#</a></h2>
+<p>We distinguish boundary grid cells and native times from the states inferred
+by the model. A state may cover many cells and times, such as one curtain
+region over one month. Its coefficient is shared across those cells even
+when their supplied concentrations differ.</p>
+<p>We use <span class="math notranslate nohighlight">\(i=1,\ldots,N\)</span> for observations, <span class="math notranslate nohighlight">\(\ell=1,\ldots,L\)</span> for
+boundary cells at native times, and <span class="math notranslate nohighlight">\(j=1,\ldots,K\)</span> for model states.
+The native field contains concentrations on the boundary grid before
+observation averaging. Transport maps those concentrations to observations.
+Time selection, unit conversion and observation averaging must be consistent
+between the operators below.</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 15.0%" />
+<col style="width: 20.0%" />
+<col style="width: 65.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Symbol</p></th>
+<th class="head"><p>Shape and units</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(P\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(N\times L\)</span>, dimensionless</p></td>
+<td><p>Transport weights derived from <code class="docutils literal notranslate"><span class="pre">particle_locations_n/e/s/w</span></code>, including
+time selection and observation averaging.</p></td>
+</tr>
+<tr class="row-odd"><td><p><span class="math notranslate nohighlight">\(C^0\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(L\)</span>, concentration</p></td>
+<td><p>Supplied concentration at each boundary cell and native time.</p></td>
+</tr>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(B\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(L\times K\)</span>, dimensionless</p></td>
+<td><p>Basis mapping model-state coefficients to the native boundary grid.</p></td>
+</tr>
+<tr class="row-odd"><td><p><span class="math notranslate nohighlight">\(H_{bc}\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(N\times K\)</span>, concentration</p></td>
+<td><p>Transported supplied concentrations weighted by the basis.</p></td>
+</tr>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(M\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(N\times K\)</span>, dimensionless</p></td>
+<td><p>Transported basis functions without concentration factors.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The basis may contain binary or fractional values. A <strong>partition basis</strong> is
+the binary special case: <span class="math notranslate nohighlight">\(B_{\ell j}=1\)</span> when cell and time
+<span class="math notranslate nohighlight">\(\ell\)</span> belongs to state <span class="math notranslate nohighlight">\(j\)</span>, and zero otherwise. Each row has
+exactly one nonzero entry. For example, <code class="docutils literal notranslate"><span class="pre">(north,</span> <span class="pre">January)</span></code> and
+<code class="docutils literal notranslate"><span class="pre">(north,</span> <span class="pre">February)</span></code> are distinct states. A fractional basis can instead
+assign weights 0.25 and 0.75 from two neighbouring state coefficients to a
+cell. We call any basis satisfying <span class="math notranslate nohighlight">\(B\mathbf1=\mathbf1\)</span> a
+<strong>partition of unity</strong>; this includes both examples and preserves constant
+fields. Defining the field from coefficients and averaging concentrations
+into observation bins are separate operations.</p>
+<p>The built-in north/east/south/west (NESW) basis and complete partitions into
+disjoint regions partition unity. The current binary boundary-period expansion
+preserves this property: each observation belongs to exactly one fitted period.</p>
+<p>We aim to choose independent native basis columns, so that
+<span class="math notranslate nohighlight">\(\operatorname{rank}(B)=K\)</span>. Reducing redundant columns requires
+re-expressing the intended prior consistently, preserving its distribution
+over native fields. Even with independent columns, transport can give
+<span class="math notranslate nohighlight">\(\operatorname{rank}(PB)&lt;K\)</span>: distinct native fields may be
+indistinguishable to the observing network. Native basis independence and
+observation-space identifiability are separate scientific checks; the current
+projection code does not impose a rank check.</p>
+</section>
+<section id="standard-multiplicative-boundary-conditions">
+<h2>Standard multiplicative boundary conditions<a class="headerlink" href="#standard-multiplicative-boundary-conditions" title="Link to this heading">#</a></h2>
+<p>For dimensionless state coefficients <span class="math notranslate nohighlight">\(b\)</span>, the native boundary field is
+<span class="math notranslate nohighlight">\(\operatorname{diag}(C^0)Bb\)</span>. Its contribution to observations is</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}H_{bc} &amp;= P\operatorname{diag}(C^0)B, \\
+\mu_{bc} &amp;= H_{bc}b, \\
+H_{bc,ij} &amp;= \sum_\ell P_{i\ell}C^0_\ell B_{\ell j}.\end{split}\]</div>
+<p>For these partition-of-unity bases, <span class="math notranslate nohighlight">\(b=\mathbf1\)</span> gives the supplied
+native field and <span class="math notranslate nohighlight">\(H_{bc}\mathbf1=PC^0\)</span>.</p>
+<p>We also define the transported basis, or mass operator,</p>
+<div class="math notranslate nohighlight">
+\[M=PB,\qquad M_{ij}=\sum_\ell P_{i\ell}B_{\ell j}.\]</div>
+<p>The code name <code class="docutils literal notranslate"><span class="pre">H_bc_mass</span></code> refers to transport weight. For example,</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}M=\begin{pmatrix}0.7&amp;0.2&amp;0.1\\0.1&amp;0.3&amp;0.6\end{pmatrix}\end{split}\]</div>
+<p>means that a unit concentration assigned through the first basis state gives
+responses 0.7 and 0.1 at the two observations. For normalized, complete
+transport and a basis that partitions unity, <span class="math notranslate nohighlight">\(M\mathbf1=\mathbf1\)</span>.
+We retain the actual vector <span class="math notranslate nohighlight">\(M\mathbf1\)</span> in the centering equations.</p>
+</section>
+<section id="numerical-centering">
+<span id="boundary-numerical-centering"></span><h2>Numerical centering<a class="headerlink" href="#numerical-centering" title="Link to this heading">#</a></h2>
+<p>We choose a scalar reference concentration <span class="math notranslate nohighlight">\(c\)</span> in the same units as
+<span class="math notranslate nohighlight">\(C^0\)</span> and form the anomaly operator</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}A &amp;= P\operatorname{diag}(C^0-c\mathbf1)B, \\
+A_{ij} &amp;= \sum_\ell P_{i\ell}(C^0_\ell-c)B_{\ell j}, \\
+H_{bc} &amp;= A+cM.\end{split}\]</div>
+<p><code class="docutils literal notranslate"><span class="pre">H_bc_anomaly</span></code> stores <span class="math notranslate nohighlight">\(A\)</span>, <code class="docutils literal notranslate"><span class="pre">H_bc_mass</span></code> stores <span class="math notranslate nohighlight">\(M\)</span>, and
+<code class="docutils literal notranslate"><span class="pre">bc_reference</span></code> stores the provided <span class="math notranslate nohighlight">\(c\)</span>. The caller supplies the
+reference; preparation does not estimate it from the boundary field.</p>
+<section id="quantized-transport-weights-and-operation-order">
+<h3>Quantized transport weights and operation order<a class="headerlink" href="#quantized-transport-weights-and-operation-order" title="Link to this heading">#</a></h3>
+<p>Quantization of <code class="docutils literal notranslate"><span class="pre">particle_locations</span></code> when footprints are saved can change
+the sum of the stored weights. For a constant 200,000 ppm field and a basis
+that partitions unity, a total-weight error of <span class="math notranslate nohighlight">\(10^{-4}\)</span> gives a
+20 ppm error in the transported baseline. This error comes from the stored
+weights’ quantization, rather than ordinary float64 rounding during the
+subsequent calculation.</p>
+<p>The native producer checks that the total over all four curtains is finite,
+positive and within an explicitly justified tolerance of one, then normalizes
+them together. This corrects the total-weight defect under the assumption of
+complete boundary coverage. It does not reconstruct individual weights before
+quantization or correct other transport errors. Totals outside the supplied
+tolerance are rejected.</p>
+<p>After this normalization, we calculate each native anomaly as
+<code class="docutils literal notranslate"><span class="pre">mass</span> <span class="pre">*</span> <span class="pre">(concentration</span> <span class="pre">-</span> <span class="pre">reference)</span></code> before summation and observation
+averaging. Choosing <span class="math notranslate nohighlight">\(c\)</span> near the background keeps those native
+departures small. This ordering evaluates differences before the transport
+sums and avoids constructing <span class="math notranslate nohighlight">\(A\)</span> by subtracting two accumulated
+background terms. We use float64 to limit further rounding; it cannot recover
+precision lost from input concentrations before preparation.</p>
+</section>
+<section id="centered-observations-and-model-means">
+<h3>Centered observations and model means<a class="headerlink" href="#centered-observations-and-model-means" title="Link to this heading">#</a></h3>
+<p>We choose the fixed observation-space shift</p>
+<div class="math notranslate nohighlight">
+\[r=cM\mathbf1.\]</div>
+<p>For the same multiplicative coefficients <span class="math notranslate nohighlight">\(b\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[\mu_{bc}-r=Ab+cM(b-\mathbf1).\]</div>
+<p>We subtract <span class="math notranslate nohighlight">\(r\)</span> from observations and the total model mean. The
+likelihood residual is unchanged algebraically. This calculation retains the
+original BC coefficients and their prior, while evaluating departures around
+the chosen reference. We restore <span class="math notranslate nohighlight">\(r\)</span> once for absolute predictions.
+The identity holds whether or not <span class="math notranslate nohighlight">\(M\mathbf1=\mathbf1\)</span>.</p>
+<p>Normalization addresses the total defect in stored transport weights;
+forming native anomalies and centering the likelihood address the subsequent
+arithmetic. The required absolute accuracy relative to the background
+motivates these steps. Changing the concentration unit changes both numeric
+values and the required absolute tolerance by the same factor.</p>
+</section>
+</section>
+<section id="additive-boundary-corrections">
+<span id="boundary-additive-corrections"></span><h2>Additive boundary corrections<a class="headerlink" href="#additive-boundary-corrections" title="Link to this heading">#</a></h2>
+<p>An additive formulation keeps the projected baseline
+<span class="math notranslate nohighlight">\(H_{bc}\mathbf1\)</span> fixed and adds state corrections <span class="math notranslate nohighlight">\(d\)</span> in
+concentration units through native dimensionless transport <span class="math notranslate nohighlight">\(M=PB\)</span>.
+Because the basis partitions unity, the corrected field is <span class="math notranslate nohighlight">\(C=C^0+Bd\)</span>.
+With the example <span class="math notranslate nohighlight">\(M\)</span> above, a 1 ppm correction to the first state changes
+the first prediction by 0.7 ppm.
+For NESW, each state is one curtain and fitted period; the
+<a class="reference internal" href="#boundary-mean-anomaly-prior"><span class="std std-ref">prior for these corrections</span></a> is described below.</p>
+<p>The supported additive interfaces require native centered operands
+<code class="docutils literal notranslate"><span class="pre">H_bc_anomaly</span></code>, <code class="docutils literal notranslate"><span class="pre">H_bc_mass</span></code> and scalar <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code>. Numerical
+centering and the statistical prior remain separate scientific choices:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\mu_{bc} &amp;= H_{bc}\mathbf1+Md, \\
+\mu_{bc}-r &amp;= A\mathbf1+Md.\end{split}\]</div>
+<p>The anomaly operator <span class="math notranslate nohighlight">\(A\)</span> is signed and has concentration units, whereas
+<span class="math notranslate nohighlight">\(M\)</span> is dimensionless. Substituting <span class="math notranslate nohighlight">\(A\)</span> for <span class="math notranslate nohighlight">\(M\)</span> would change
+coefficient units and prior semantics. See <a class="reference internal" href="#boundary-numerical-centering"><span class="std std-ref">Numerical centering</span></a>
+for the required accuracy checks and order of arithmetic.</p>
+<section id="one-whole-window-correction-and-state-anomalies">
+<span id="boundary-mean-anomaly-prior"></span><h3>One whole-window correction and state anomalies<a class="headerlink" href="#one-whole-window-correction-and-state-anomalies" title="Link to this heading">#</a></h3>
+<p>The current additive prior writes</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}d_j &amp;= \delta+u_j, \\
+w^\mathsf{T}u &amp;= 0,\qquad w_j&gt;0,\qquad \sum_jw_j=1.\end{split}\]</div>
+<p>The scalar <span class="math notranslate nohighlight">\(\delta\)</span> is a constant correction to the boundary product
+over the entire inversion window. States <span class="math notranslate nohighlight">\(j=(\text{region},\text{period})\)</span>
+have anomalies that may vary between regions and periods. There is one
+weighted constraint over the whole window. Individual periods can have
+nonzero mean anomalies; we do not impose a zero mean within each period.
+For example, <span class="math notranslate nohighlight">\(u_{rt}=\gamma_t\)</span> gives the same anomaly to every region in
+period <span class="math notranslate nohighlight">\(t\)</span>. It is allowed when
+<span class="math notranslate nohighlight">\(\sum_t(\sum_rw_{rt})\gamma_t=0\)</span>, with individual <span class="math notranslate nohighlight">\(\gamma_t\)</span>
+potentially nonzero. Because the basis partitions unity, <span class="math notranslate nohighlight">\(\delta\)</span> gives
+a constant native concentration correction.</p>
+<p>The constraint removes the redundant direction internal to this decomposition:
+without it, a constant could be transferred between <span class="math notranslate nohighlight">\(\delta\)</span> and all
+<span class="math notranslate nohighlight">\(u_j\)</span> without changing <span class="math notranslate nohighlight">\(d\)</span>. It does not guarantee identifiability
+against site offsets, other boundary patterns or flux contributions after
+transport. Setting the additive <code class="docutils literal notranslate"><span class="pre">anomaly_scale</span></code> to 0 retains the scalar common correction
+and fixes every anomaly to zero, without sampling contrast variables.</p>
+<p>Independent priors on the <span class="math notranslate nohighlight">\(K\)</span> corrections <span class="math notranslate nohighlight">\(d_j\)</span> are a valid
+alternative scientific formulation. We use the mean-and-anomaly formulation
+to specify uncertainty in the common boundary correction separately from
+uncertainty in departures from it. The weighted structure gives
+<span class="math notranslate nohighlight">\(\delta\)</span> its scalar prior and makes it independent of the constrained
+Gaussian anomalies. Decomposing independent corrections into their mean and
+departures would generally give a different joint prior. See
+<a class="reference internal" href="boundary_correction_structures.html"><span class="doc">Boundary correction structures</span></a> for per-period contrasts, independent
+state anomalies, per-period mean shifts and anomaly scaling.</p>
+<p>A constant observation offset represents persistent bias in observations;
+the boundary correction describes bias in the supplied BC product. They enter
+the model through different components. If <span class="math notranslate nohighlight">\(M\mathbf1=\mathbf1\)</span>,
+both constant coefficients have the same observation-space direction, so
+the likelihood alone identifies their sum. Their distinct scientific roles
+do not resolve this exact confounding. Separate prior information or external
+constraints are needed to distinguish them in that case.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>With the default NESW basis, complete jointly normalized particle weights
+we know that <span class="math notranslate nohighlight">\(M\mathbf1=\mathbf1\)</span>.
+A global observation offset, or unrestricted site offsets, therefore
+duplicates the boundary mean’s constant direction.
+<a class="reference internal" href="../reference/openghg_inversions.models.components.html#openghg_inversions.models.components.warn_constant_offset_confounding" title="openghg_inversions.models.components.warn_constant_offset_confounding"><code class="xref py py-func docutils literal notranslate"><span class="pre">warn_constant_offset_confounding()</span></code></a>
+warns for this combination when an affine design column is one on every
+row. Model construction does not call it yet: a recipe adding
+unrestricted offsets must call it explicitly. This narrow check covers
+normalized surface preparation; it is not a general rank or
+identifiability test for arbitrary transport. Fixing one site’s offset or constraining site
+offsets to contrasts removes that one redundancy; BC anomalies can still
+reproduce site contrasts.</p>
+</div>
+</section>
+<section id="choosing-the-averaging-weights">
+<span id="boundary-averaging-weights"></span><h3>Choosing the averaging weights<a class="headerlink" href="#choosing-the-averaging-weights" title="Link to this heading">#</a></h3>
+<p>The positive weights <span class="math notranslate nohighlight">\(w\)</span> define which mean is assigned to
+<span class="math notranslate nohighlight">\(\delta\)</span>. Uniform state weights define an equal-state average. A
+physical average requires a declared measure on the native boundary grid.
+For corrections using basis <span class="math notranslate nohighlight">\(B\)</span>, let <span class="math notranslate nohighlight">\(a_\ell\geq0\)</span> be normalized
+native weights with <span class="math notranslate nohighlight">\(\sum_\ell a_\ell=1\)</span>, such as an explicitly
+specified curtain-area and duration measure. Because the basis partitions unity,
+choose</p>
+<div class="math notranslate nohighlight">
+\[w=B^\mathsf{T}a.\]</div>
+<p>Then <span class="math notranslate nohighlight">\(\sum_jw_j=1\)</span> and</p>
+<div class="math notranslate nohighlight">
+\[a^\mathsf{T}B(\delta\mathbf1+u)
+=\delta+w^\mathsf{T}u=\delta.\]</div>
+<p>Thus the state constraint represents the chosen native-field mean. The
+current interface requires every state weight to be strictly positive, so the
+native measure must give each retained correction state positive weight.</p>
+<p>The caller supplies these weights; preparation does not infer a native
+measure or basis geometry. Choosing weights for a mean constraint does not
+derive the full state prior from a native-field prior. That would also require
+a native covariance and a justified transformation to state coefficients.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Supplied bases are not checked for partition of unity. If
+<span class="math notranslate nohighlight">\(B\mathbf1\ne\mathbf1\)</span>, the multiplicative baseline is
+<span class="math notranslate nohighlight">\(P\operatorname{diag}(C^0)B\mathbf1\)</span>, and the common additive
+correction has native pattern <span class="math notranslate nohighlight">\(\delta B\mathbf1\)</span>.
+Also, <span class="math notranslate nohighlight">\(a^\mathsf{T}B\mathbf1\)</span> need not equal one, so the native-mean
+interpretation above must be reconsidered. The numerical centering identity
+<span class="math notranslate nohighlight">\(H_{bc}=A+cM\)</span> and shift <span class="math notranslate nohighlight">\(r=cM\mathbf1\)</span> still apply.</p>
+</div>
+</section>
+</section>
+<section id="what-the-current-surface-preparation-computes">
+<h2>What the current surface preparation computes<a class="headerlink" href="#what-the-current-surface-preparation-computes" title="Link to this heading">#</a></h2>
+<p>We now follow the actual calculations using labelled xarray curtain arrays.
+The blocks below are pseudocode. The mathematics is general; currently
+supported centered-input runners are listed in <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a>.</p>
+<section id="native-curtain-products">
+<h3>Native curtain products<a class="headerlink" href="#native-curtain-products" title="Link to this heading">#</a></h3>
+<p>The local <code class="docutils literal notranslate"><span class="pre">baseline_reference_sensitivities</span></code> kernel, called by
+<a class="reference internal" href="../reference/openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.prepare_surface_site" title="openghg_inversions.inversion_data.prepare_surface_site"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_surface_site()</span></code></a>, matches
+supplied concentrations to footprint timestamps within declared coverage
+intervals and converts concentrations and the reference to common units.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>require finite supplied concentrations and chosen reference
+for each native observation i:
+    total = sum(particle_locations[i, direction, cell]
+                over every cell on all four curtains)
+    require finite, nonnegative particle weights
+    require total &gt; 0 and abs(total - 1) &lt;= mass_tolerance
+
+    for each direction and cell:
+        mass = particle_locations[i, direction, cell] / total
+        anomaly = mass * (supplied_concentration[i, direction, cell] - c)
+        retain mass and anomaly on their labelled curtain grids
+</pre></div>
+</div>
+<p>The resulting arrays are <code class="docutils literal notranslate"><span class="pre">bc_mass_n/e/s/w</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_anomaly_n/e/s/w</span></code>,
+with scalar <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code>. The products use float64 arithmetic and preserve
+lazy payloads.</p>
+</section>
+<section id="observation-averaging-and-spatial-basis-projection">
+<h3>Observation averaging and spatial basis projection<a class="headerlink" href="#observation-averaging-and-spatial-basis-projection" title="Link to this heading">#</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">prepare_surface_site</span></code> averages the native mass and anomaly products onto
+the retained observation bins using the provider’s alignment operations.
+We average the products before spatial projection, using the same alignment
+for both operands.</p>
+<p><code class="docutils literal notranslate"><span class="pre">bc_sensitivity</span></code> then contracts them with the supplied spatial basis:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>for each retained observation i and spatial basis region k:
+    M_spatial[i, k] = sum(mass[i, direction, cell]
+                          * spatial_basis[i, direction, cell, k])
+    A_spatial[i, k] = sum(anomaly[i, direction, cell]
+                          * spatial_basis[i, direction, cell, k])
+    # Both sums cover every curtain and its spatial cells.
+</pre></div>
+</div>
+<p>Without a supplied basis, the four curtains become four regions. Supplied
+basis values can be fractional. A singleton basis time applies to every
+observation; multiple basis times must match retained timestamps. The outputs
+are <code class="docutils literal notranslate"><span class="pre">H_bc_mass</span></code> and <code class="docutils literal notranslate"><span class="pre">H_bc_anomaly</span></code> on spatial <code class="docutils literal notranslate"><span class="pre">bc_region</span></code> and observation
+axes, plus the unchanged scalar <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code>.</p>
+</section>
+<section id="temporal-state-construction">
+<h3>Temporal state construction<a class="headerlink" href="#temporal-state-construction" title="Link to this heading">#</a></h3>
+<p>At model binding,
+<a class="reference internal" href="../reference/openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundCenteredSensitivity.bind" title="openghg_inversions.models.boundary.BoundCenteredSensitivity.bind"><code class="xref py py-meth docutils literal notranslate"><span class="pre">bind()</span></code></a>
+assigns a fitted period from the retained observation timestamp.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>for each observation i:
+    p_i = 0 if frequency is None else period_containing(observation_time[i])
+    for each spatial region k and fitted period p:
+        j = state_label(k, p)
+        D = 1 if p == p_i else 0
+        M[i, j] = M_spatial[i, k] * D
+        A[i, j] = A_spatial[i, k] * D
+</pre></div>
+</div>
+<p>There is one period without a frequency; otherwise calendar-month or
+fixed-duration rules determine membership. The current mask is binary.
+It uses observation time rather than a particle’s boundary-exit time.
+The resulting <code class="docutils literal notranslate"><span class="pre">bc_region</span></code> MultiIndex has <code class="docutils literal notranslate"><span class="pre">bc_curtain</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_period</span></code>
+levels. <code class="docutils literal notranslate"><span class="pre">bc_period</span></code> contains each interval’s start timestamp, including the
+single interval when frequency is omitted. The labels and mask come from one
+calendar; ordinary nonboundary period indicators retain ordinal labels.
+Four spatial regions and three periods give <span class="math notranslate nohighlight">\(K=12\)</span> states.</p>
+<p>For this implementation we can write the basis in observation-row form.
+Let <span class="math notranslate nohighlight">\(q\)</span> label a curtain cell, <span class="math notranslate nohighlight">\(S_{iqk}\)</span> be the supplied spatial
+basis at retained observation <span class="math notranslate nohighlight">\(i\)</span>, and <span class="math notranslate nohighlight">\(D_{ip}\)</span> be the binary
+period mask above. Then</p>
+<div class="math notranslate nohighlight">
+\[B_{iq,(k,p)}=S_{iqk}D_{ip}.\]</div>
+<p>Boundary concentrations have already been selected and aligned to native
+footprint timestamps before observation averaging. This row-wise expression
+makes the retained observation’s temporal assignment explicit. The native
+rank discussion concerns independent basis functions over their full domain;
+it does not require each masked observation slice to have rank <span class="math notranslate nohighlight">\(K\)</span>.</p>
+<p>A future temporal basis could supply fractional weights. The operator
+identities would still hold when both operands use the same mapping; the
+current period interface implements the binary assignment shown above.</p>
+<p>The <a class="reference internal" href="surface_preparation.html#surface-centered-boundary-contract"><span class="std std-ref">centered preparation handoff</span></a>
+explains saving raw spatial operands and binding them to supported periods.
+The model then uses matrix–vector products of the observation/state
+operators, centers observations and model means for the likelihood, and
+restores absolute predictions through the supported trace annotation/replay
+path.</p>
+</section>
+<section id="guarantees-trusted-by-graph-construction">
+<h3>Guarantees trusted by graph construction<a class="headerlink" href="#guarantees-trusted-by-graph-construction" title="Link to this heading">#</a></h3>
+<p>Centered sensitivity carries static Dataset contracts from
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.contracts</span></code>; their docstrings are the
+canonical statement of each guarantee. Each guarantee has one owner, and later
+code trusts it rather than checking it again:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Guarantee</p></th>
+<th class="head"><p>Owner</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Raw variables, dimensions, unique indexes, units and weight layout</p></td>
+<td><p><a class="reference internal" href="../reference/openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.RawCenteredSensitivity.validate" title="openghg_inversions.models.boundary.RawCenteredSensitivity.validate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">validate()</span></code></a>
+at preparation and artifact loading (metadata only, no computation)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Observation-first <code class="docutils literal notranslate"><span class="pre">(observation,</span> <span class="pre">bc_region)</span></code> layout, curtain/period
+state index, scalar reference</p></td>
+<td><p><a class="reference internal" href="../reference/openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundCenteredSensitivity.bind" title="openghg_inversions.models.boundary.BoundCenteredSensitivity.bind"><code class="xref py py-meth docutils literal notranslate"><span class="pre">bind()</span></code></a>, by
+construction</p></td>
+</tr>
+<tr class="row-even"><td><p>Weights aligned to the bound states</p></td>
+<td><p><a class="reference internal" href="../reference/openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundAdditiveSensitivity.bind_weights" title="openghg_inversions.models.boundary.BoundAdditiveSensitivity.bind_weights"><code class="xref py py-meth docutils literal notranslate"><span class="pre">bind_weights()</span></code></a>,
+by exact label alignment</p></td>
+</tr>
+<tr class="row-odd"><td><p>Finite anomaly and reference; finite, non-negative, nonzero mass;
+the fixed shift <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">M</span> <span class="pre">1</span></code></p></td>
+<td><p><a class="reference internal" href="../reference/openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundCenteredSensitivity.reference_shift" title="openghg_inversions.models.boundary.BoundCenteredSensitivity.reference_shift"><code class="xref py py-meth docutils literal notranslate"><span class="pre">reference_shift()</span></code></a>,
+once at the start of <code class="docutils literal notranslate"><span class="pre">add</span></code> after the recipe’s joint materialization</p></td>
+</tr>
+<tr class="row-even"><td><p>Finite, strictly positive weights</p></td>
+<td><p><a class="reference internal" href="../reference/openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.normalize_centering_weights" title="openghg_inversions.models.boundary.normalize_centering_weights"><code class="xref py py-func docutils literal notranslate"><span class="pre">normalize_centering_weights()</span></code></a>,
+during graph construction after joint materialization; preparation,
+loading and saving do not scan weight values</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Bound records do not validate their data on construction or on
+<code class="docutils literal notranslate"><span class="pre">dataclasses.replace</span></code>. Code replacing <code class="docutils literal notranslate"><span class="pre">data</span></code> must preserve the contract;
+this revision provides no supported row transformation for bound records.</p>
+</section>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="surface_preparation.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Surface CO₂/O₂ preparation pilot</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="boundary_correction_structures.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Boundary correction structures</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#transport-concentrations-and-the-boundary-basis">Transport, concentrations and the boundary basis</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-multiplicative-boundary-conditions">Standard multiplicative boundary conditions</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#numerical-centering">Numerical centering</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#quantized-transport-weights-and-operation-order">Quantized transport weights and operation order</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#centered-observations-and-model-means">Centered observations and model means</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#additive-boundary-corrections">Additive boundary corrections</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#one-whole-window-correction-and-state-anomalies">One whole-window correction and state anomalies</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#choosing-the-averaging-weights">Choosing the averaging weights</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#what-the-current-surface-preparation-computes">What the current surface preparation computes</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#native-curtain-products">Native curtain products</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#observation-averaging-and-spatial-basis-projection">Observation averaging and spatial basis projection</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#temporal-state-construction">Temporal state construction</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#guarantees-trusted-by-graph-construction">Guarantees trusted by graph construction</a></li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/usage/centered_boundary_conditions.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

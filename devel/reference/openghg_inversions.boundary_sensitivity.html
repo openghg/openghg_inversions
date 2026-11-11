@@ -410,6 +410,16 @@
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.models.boundary.html">openghg_inversions.models.boundary</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.additive.html">openghg_inversions.models.boundary.additive</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.additive_anomalies.html">openghg_inversions.models.boundary.additive_anomalies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.anomaly_scaling.html">openghg_inversions.models.boundary.anomaly_scaling</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.centered.html">openghg_inversions.models.boundary.centered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html">openghg_inversions.models.boundary.contracts</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html">openghg_inversions.models.boundary.multiplicative</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.outputs.html">openghg_inversions.models.boundary.outputs</a></li>
+</ul>
+</details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.cached_sigma.html">openghg_inversions.models.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html">openghg_inversions.models.components</a></li>
@@ -506,6 +516,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.source_covariance.html">openghg_inversions.source_covariance</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.xr_contracts.html">openghg_inversions.xr_contracts</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="merged_input_schemas.html">Merged-input schemas</a></li>
@@ -679,28 +690,64 @@ auxiliary time coordinate once to label the periods.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.boundary_sensitivity.validate_boundary_operands">
-<span class="sig-name descname"><span class="pre">validate_boundary_operands</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">operands</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.boundary_sensitivity.validate_boundary_operands" title="Link to this definition">#</a></dt>
-<dd><p>Validate raw spatial centered operands before model-period expansion.</p>
+<dt class="sig sig-object py" id="openghg_inversions.boundary_sensitivity.bind_period_states">
+<span class="sig-name descname"><span class="pre">bind_period_states</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raw</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">observations</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">frequency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">anchor_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.boundary_sensitivity.bind_period_states" title="Link to this definition">#</a></dt>
+<dd><p>Select one fit’s rows of raw spatial boundary data and expand its states by period.</p>
+<p>Observation labels own the row order and their auxiliary timestamps own
+period membership; indexed boundary times must match those timestamps.
+This check may compute a lazy timestamp coordinate, while numerical
+payloads stay borrowed.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>operands</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Borrowed dataset with <code class="docutils literal notranslate"><span class="pre">boundary_representation='centered-v1'</span></code>,
-<code class="docutils literal notranslate"><span class="pre">H_bc_anomaly</span></code> and <code class="docutils literal notranslate"><span class="pre">H_bc_mass</span></code> on unique indexed <code class="docutils literal notranslate"><span class="pre">bc_region</span></code>
-and <code class="docutils literal notranslate"><span class="pre">time</span></code> or <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> dimensions, and scalar <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code>.
-Anomaly and reference share the exact concentration unit string;
-mass has units <code class="docutils literal notranslate"><span class="pre">'1'</span></code>. Optional <code class="docutils literal notranslate"><span class="pre">mf</span></code> has matching units. An
-absolute <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> diagnostic must be marked <code class="docutils literal notranslate"><span class="pre">unexpanded</span></code>.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>raw</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Raw spatial boundary data on <code class="docutils literal notranslate"><span class="pre">bc_region</span></code> and the <code class="docutils literal notranslate"><span class="pre">time</span></code>,
+<code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> or native observation axis.</p></li>
+<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – One fit’s observations with the observation axis first.</p></li>
+<li><p><strong>frequency</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – <code class="docutils literal notranslate"><span class="pre">None</span></code> for one period, <code class="docutils literal notranslate"><span class="pre">&quot;monthly&quot;</span></code>, or a positive fixed
+duration.</p></li>
+<li><p><strong>anchor_time</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional start of the fixed-duration period grid.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">raw</span></code>’s variables on <code class="docutils literal notranslate"><span class="pre">(observation,</span> <span class="pre">bc_region)</span></code>, where
+<code class="docutils literal notranslate"><span class="pre">bc_region</span></code> is the <code class="docutils literal notranslate"><span class="pre">(bc_curtain,</span> <span class="pre">bc_period)</span></code> MultiIndex.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the period settings are invalid, a frequency needs a
+    datetime <code class="docutils literal notranslate"><span class="pre">time</span></code> coordinate that is missing, or indexed boundary
+    times conflict with the observation timestamps.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.15)"><strong>KeyError</strong></a> – If an observation label is absent from <code class="docutils literal notranslate"><span class="pre">raw</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.boundary_sensitivity.validate_boundary_operands">
+<span class="sig-name descname"><span class="pre">validate_boundary_operands</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">operands</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.boundary_sensitivity.validate_boundary_operands" title="Link to this definition">#</a></dt>
+<dd><p>Detect raw centered operands and check their structure before period expansion.</p>
+<p>Centered sensitivity is present when any of <code class="docutils literal notranslate"><span class="pre">H_bc_anomaly</span></code>, <code class="docutils literal notranslate"><span class="pre">H_bc_mass</span></code>
+or <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code> exists or <code class="docutils literal notranslate"><span class="pre">boundary_representation</span></code> is
+<code class="docutils literal notranslate"><span class="pre">'centered-v1'</span></code>. Present operands must then satisfy
+<a class="reference internal" href="openghg_inversions.models.boundary.contracts.html#openghg_inversions.models.boundary.contracts.RawCenteredSensitivity" title="openghg_inversions.models.boundary.contracts.RawCenteredSensitivity"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawCenteredSensitivity</span></code></a>,
+whose docstring lists the structural guarantees.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>operands</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Borrowed dataset, possibly Dask-backed.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Whether centered operands are present. Accepted operands remain raw
-for period expansion at model binding.
-Timestamps are not required for a single period. Finite payload values
-are checked at the shared materialization boundary; this validator does
-not compute or mutate borrowed numerical arrays.</p>
+for period expansion at model binding. Finite payload values are
+checked at the shared materialization boundary; this does not compute
+or mutate borrowed numerical arrays.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If centered operands are incomplete, already expanded, or
-    have incompatible representation, dimensions, labels or units.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">boundary_representation</span></code> is unsupported, or centered
+    operands violate the raw centered sensitivity contract.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)">bool</a></p>
@@ -802,6 +849,7 @@ transform provenance.</p>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.boundary_sensitivity.align_boundary_operands"><code class="docutils literal notranslate"><span class="pre">align_boundary_operands()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.boundary_sensitivity.bind_period_states"><code class="docutils literal notranslate"><span class="pre">bind_period_states()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.boundary_sensitivity.validate_boundary_operands"><code class="docutils literal notranslate"><span class="pre">validate_boundary_operands()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.boundary_sensitivity.scale_satellite_boundary_sensitivity_to_column_signal"><code class="docutils literal notranslate"><span class="pre">scale_satellite_boundary_sensitivity_to_column_signal()</span></code></a></li>
 </ul>

@@ -410,6 +410,16 @@
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.models.boundary.html">openghg_inversions.models.boundary</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.additive.html">openghg_inversions.models.boundary.additive</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.additive_anomalies.html">openghg_inversions.models.boundary.additive_anomalies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.anomaly_scaling.html">openghg_inversions.models.boundary.anomaly_scaling</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.centered.html">openghg_inversions.models.boundary.centered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html">openghg_inversions.models.boundary.contracts</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html">openghg_inversions.models.boundary.multiplicative</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.outputs.html">openghg_inversions.models.boundary.outputs</a></li>
+</ul>
+</details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.cached_sigma.html">openghg_inversions.models.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html">openghg_inversions.models.components</a></li>
@@ -506,6 +516,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.source_covariance.html">openghg_inversions.source_covariance</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.xr_contracts.html">openghg_inversions.xr_contracts</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="merged_input_schemas.html">Merged-input schemas</a></li>
@@ -1093,7 +1104,14 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_model_data"><code class="docutils literal notranslate"><span class="pre">add_model_data()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_correlated_lognormal_state"><code class="docutils literal notranslate"><span class="pre">add_correlated_lognormal_state()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_correlated_lognormal_state_with_activity"><code class="docutils literal notranslate"><span class="pre">add_correlated_lognormal_state_with_activity()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.AffineBlock"><code class="docutils literal notranslate"><span class="pre">AffineBlock</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.AffineConcentrationTerm"><code class="docutils literal notranslate"><span class="pre">AffineConcentrationTerm</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.ConcentrationTerm"><code class="docutils literal notranslate"><span class="pre">ConcentrationTerm</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.ConcentrationTerm.absolute"><code class="docutils literal notranslate"><span class="pre">ConcentrationTerm.absolute()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_coherent_affine_component"><code class="docutils literal notranslate"><span class="pre">add_coherent_affine_component()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.likelihood_representation"><code class="docutils literal notranslate"><span class="pre">likelihood_representation()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_linked_linear_component"><code class="docutils literal notranslate"><span class="pre">add_linked_linear_component()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_linear_component"><code class="docutils literal notranslate"><span class="pre">add_linear_component()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.apply_linear_sensitivity"><code class="docutils literal notranslate"><span class="pre">apply_linear_sensitivity()</span></code></a></li>
@@ -1104,6 +1122,141 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.detect_zero_sensitivity"><code class="docutils literal notranslate"><span class="pre">detect_zero_sensitivity()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.prepare_linear_sensitivity"><code class="docutils literal notranslate"><span class="pre">prepare_linear_sensitivity()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.resolve_state_activity"><code class="docutils literal notranslate"><span class="pre">resolve_state_activity()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.boundary.html">openghg_inversions.models.boundary</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AbsoluteChoice"><code class="docutils literal notranslate"><span class="pre">AbsoluteChoice</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AbsoluteChoice.bind_absolute"><code class="docutils literal notranslate"><span class="pre">AbsoluteChoice.bind_absolute()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AdditiveBoundary"><code class="docutils literal notranslate"><span class="pre">AdditiveBoundary</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AdditiveBoundary.has_anomalies"><code class="docutils literal notranslate"><span class="pre">AdditiveBoundary.has_anomalies</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AdditiveBoundary.anomalies"><code class="docutils literal notranslate"><span class="pre">AdditiveBoundary.anomalies</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AdditiveBoundary.anomaly_factor"><code class="docutils literal notranslate"><span class="pre">AdditiveBoundary.anomaly_factor()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AdditiveBoundary.add"><code class="docutils literal notranslate"><span class="pre">AdditiveBoundary.add()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AdditiveBoundary.outputs"><code class="docutils literal notranslate"><span class="pre">AdditiveBoundary.outputs()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AdditiveChoice"><code class="docutils literal notranslate"><span class="pre">AdditiveChoice</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AdditiveChoice.mean_shift"><code class="docutils literal notranslate"><span class="pre">AdditiveChoice.mean_shift</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AdditiveChoice.bind"><code class="docutils literal notranslate"><span class="pre">AdditiveChoice.bind()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AnomalyScalingBoundary"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingBoundary</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AnomalyScalingBoundary.anomaly_factor"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingBoundary.anomaly_factor()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AnomalyScalingBoundary.add"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingBoundary.add()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AnomalyScalingBoundary.outputs"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingBoundary.outputs()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AnomalyScalingChoice"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingChoice</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AnomalyScalingChoice.mean_shift"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingChoice.mean_shift</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AnomalyScalingChoice.bind"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingChoice.bind()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundAdditiveSensitivity"><code class="docutils literal notranslate"><span class="pre">BoundAdditiveSensitivity</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundAdditiveSensitivity.schema"><code class="docutils literal notranslate"><span class="pre">BoundAdditiveSensitivity.schema()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundAdditiveSensitivity.validate"><code class="docutils literal notranslate"><span class="pre">BoundAdditiveSensitivity.validate()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundAdditiveSensitivity.bind_weights"><code class="docutils literal notranslate"><span class="pre">BoundAdditiveSensitivity.bind_weights()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Bound"><code class="docutils literal notranslate"><span class="pre">Bound</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Bound.data"><code class="docutils literal notranslate"><span class="pre">Bound.data</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Bound.observation_dim"><code class="docutils literal notranslate"><span class="pre">Bound.observation_dim</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Bound.add"><code class="docutils literal notranslate"><span class="pre">Bound.add()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Bound.outputs"><code class="docutils literal notranslate"><span class="pre">Bound.outputs()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundCenteredSensitivity"><code class="docutils literal notranslate"><span class="pre">BoundCenteredSensitivity</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundCenteredSensitivity.schema"><code class="docutils literal notranslate"><span class="pre">BoundCenteredSensitivity.schema()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundCenteredSensitivity.validate"><code class="docutils literal notranslate"><span class="pre">BoundCenteredSensitivity.validate()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundCenteredSensitivity.observation_dim"><code class="docutils literal notranslate"><span class="pre">BoundCenteredSensitivity.observation_dim()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundCenteredSensitivity.bind"><code class="docutils literal notranslate"><span class="pre">BoundCenteredSensitivity.bind()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundCenteredSensitivity.reference_shift"><code class="docutils literal notranslate"><span class="pre">BoundCenteredSensitivity.reference_shift()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.CenteredMultiplicativeBoundary"><code class="docutils literal notranslate"><span class="pre">CenteredMultiplicativeBoundary</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.CenteredMultiplicativeBoundary.add"><code class="docutils literal notranslate"><span class="pre">CenteredMultiplicativeBoundary.add()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.CenteredMultiplicativeBoundary.outputs"><code class="docutils literal notranslate"><span class="pre">CenteredMultiplicativeBoundary.outputs()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Choice"><code class="docutils literal notranslate"><span class="pre">Choice</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Choice.frequency"><code class="docutils literal notranslate"><span class="pre">Choice.frequency</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Choice.anchor_time"><code class="docutils literal notranslate"><span class="pre">Choice.anchor_time</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Choice.bind"><code class="docutils literal notranslate"><span class="pre">Choice.bind()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Outputs"><code class="docutils literal notranslate"><span class="pre">Outputs</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Outputs.prefixed"><code class="docutils literal notranslate"><span class="pre">Outputs.prefixed()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.MultiplicativeBoundary"><code class="docutils literal notranslate"><span class="pre">MultiplicativeBoundary</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.MultiplicativeBoundary.observation_dim"><code class="docutils literal notranslate"><span class="pre">MultiplicativeBoundary.observation_dim</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.MultiplicativeBoundary.add"><code class="docutils literal notranslate"><span class="pre">MultiplicativeBoundary.add()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.MultiplicativeBoundary.outputs"><code class="docutils literal notranslate"><span class="pre">MultiplicativeBoundary.outputs()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.MultiplicativeChoice"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.MultiplicativeChoice.mean_shift"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice.mean_shift</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.MultiplicativeChoice.bind"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice.bind()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.MultiplicativeChoice.bind_absolute"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice.bind_absolute()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.RawCenteredSensitivity"><code class="docutils literal notranslate"><span class="pre">RawCenteredSensitivity</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.RawCenteredSensitivity.schema"><code class="docutils literal notranslate"><span class="pre">RawCenteredSensitivity.schema()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.RawCenteredSensitivity.validate"><code class="docutils literal notranslate"><span class="pre">RawCenteredSensitivity.validate()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.RawCenteredSensitivity.with_centering_weights"><code class="docutils literal notranslate"><span class="pre">RawCenteredSensitivity.with_centering_weights()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.bind_prepared"><code class="docutils literal notranslate"><span class="pre">bind_prepared()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.centered_boundary_expression"><code class="docutils literal notranslate"><span class="pre">centered_boundary_expression()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.normalize_centering_weights"><code class="docutils literal notranslate"><span class="pre">normalize_centering_weights()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.require_centered_precision"><code class="docutils literal notranslate"><span class="pre">require_centered_precision()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.validate_centering_weights"><code class="docutils literal notranslate"><span class="pre">validate_centering_weights()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.additive.html">openghg_inversions.models.boundary.additive</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.additive.html#openghg_inversions.models.boundary.additive.AdditiveBoundary"><code class="docutils literal notranslate"><span class="pre">AdditiveBoundary</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.additive.html#openghg_inversions.models.boundary.additive.AdditiveChoice"><code class="docutils literal notranslate"><span class="pre">AdditiveChoice</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.additive_anomalies.html">openghg_inversions.models.boundary.additive_anomalies</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.additive_anomalies.html#openghg_inversions.models.boundary.additive_anomalies.Anomalies"><code class="docutils literal notranslate"><span class="pre">Anomalies</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.additive_anomalies.html#openghg_inversions.models.boundary.additive_anomalies.anomaly_basis"><code class="docutils literal notranslate"><span class="pre">anomaly_basis()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.additive_anomalies.html#openghg_inversions.models.boundary.additive_anomalies.period_contrast_basis"><code class="docutils literal notranslate"><span class="pre">period_contrast_basis()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.additive_anomalies.html#openghg_inversions.models.boundary.additive_anomalies.weighted_anomaly_basis"><code class="docutils literal notranslate"><span class="pre">weighted_anomaly_basis()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.anomaly_scaling.html">openghg_inversions.models.boundary.anomaly_scaling</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.anomaly_scaling.html#openghg_inversions.models.boundary.anomaly_scaling.AnomalyScalingBoundary"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingBoundary</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.anomaly_scaling.html#openghg_inversions.models.boundary.anomaly_scaling.AnomalyScalingChoice"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingChoice</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.centered.html">openghg_inversions.models.boundary.centered</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.centered.html#openghg_inversions.models.boundary.centered.CenteredBoundary"><code class="docutils literal notranslate"><span class="pre">CenteredBoundary</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.centered.html#openghg_inversions.models.boundary.centered.CenteredChoice"><code class="docutils literal notranslate"><span class="pre">CenteredChoice</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.centered.html#openghg_inversions.models.boundary.centered.Correction"><code class="docutils literal notranslate"><span class="pre">Correction</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.centered.html#openghg_inversions.models.boundary.centered.MeanShift"><code class="docutils literal notranslate"><span class="pre">MeanShift</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.centered.html#openghg_inversions.models.boundary.centered.RegisteredSensitivity"><code class="docutils literal notranslate"><span class="pre">RegisteredSensitivity</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html">openghg_inversions.models.boundary.contracts</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html#openghg_inversions.models.boundary.contracts.BoundAdditiveSensitivity"><code class="docutils literal notranslate"><span class="pre">BoundAdditiveSensitivity</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html#openghg_inversions.models.boundary.contracts.BoundCenteredSensitivity"><code class="docutils literal notranslate"><span class="pre">BoundCenteredSensitivity</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html#openghg_inversions.models.boundary.contracts.RawCenteredSensitivity"><code class="docutils literal notranslate"><span class="pre">RawCenteredSensitivity</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html#openghg_inversions.models.boundary.contracts.normalize_centering_weights"><code class="docutils literal notranslate"><span class="pre">normalize_centering_weights()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html#openghg_inversions.models.boundary.contracts.require_centered_precision"><code class="docutils literal notranslate"><span class="pre">require_centered_precision()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html#openghg_inversions.models.boundary.contracts.validate_centering_weights"><code class="docutils literal notranslate"><span class="pre">validate_centering_weights()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html">openghg_inversions.models.boundary.multiplicative</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html#openghg_inversions.models.boundary.multiplicative.CenteredMultiplicativeBoundary"><code class="docutils literal notranslate"><span class="pre">CenteredMultiplicativeBoundary</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html#openghg_inversions.models.boundary.multiplicative.MultiplicativeBoundary"><code class="docutils literal notranslate"><span class="pre">MultiplicativeBoundary</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html#openghg_inversions.models.boundary.multiplicative.MultiplicativeChoice"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html#openghg_inversions.models.boundary.multiplicative.centered_boundary_expression"><code class="docutils literal notranslate"><span class="pre">centered_boundary_expression()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.outputs.html">openghg_inversions.models.boundary.outputs</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.outputs.html#openghg_inversions.models.boundary.outputs.Outputs"><code class="docutils literal notranslate"><span class="pre">Outputs</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html#openghg_inversions.models.additive_sigma.add_additive_sigma_likelihood"><code class="docutils literal notranslate"><span class="pre">add_additive_sigma_likelihood()</span></code></a></li>
 </ul>
@@ -1140,6 +1293,14 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.apply_linear_sensitivity"><code class="docutils literal notranslate"><span class="pre">apply_linear_sensitivity()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.add_linked_linear_component"><code class="docutils literal notranslate"><span class="pre">add_linked_linear_component()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.add_coherent_affine_component"><code class="docutils literal notranslate"><span class="pre">add_coherent_affine_component()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.ConcentrationTerm"><code class="docutils literal notranslate"><span class="pre">ConcentrationTerm</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.ConcentrationTerm.absolute"><code class="docutils literal notranslate"><span class="pre">ConcentrationTerm.absolute()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.AffineBlock"><code class="docutils literal notranslate"><span class="pre">AffineBlock</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.AffineConcentrationTerm"><code class="docutils literal notranslate"><span class="pre">AffineConcentrationTerm</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.warn_constant_offset_confounding"><code class="docutils literal notranslate"><span class="pre">warn_constant_offset_confounding()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.likelihood_representation"><code class="docutils literal notranslate"><span class="pre">likelihood_representation()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.add_state_vector"><code class="docutils literal notranslate"><span class="pre">add_state_vector()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.add_correlated_lognormal_state"><code class="docutils literal notranslate"><span class="pre">add_correlated_lognormal_state()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.add_correlated_lognormal_state_with_activity"><code class="docutils literal notranslate"><span class="pre">add_correlated_lognormal_state_with_activity()</span></code></a></li>
@@ -1151,6 +1312,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.component_coords"><code class="docutils literal notranslate"><span class="pre">component_coords()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.add_model_data"><code class="docutils literal notranslate"><span class="pre">add_model_data()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.add_component_data"><code class="docutils literal notranslate"><span class="pre">add_component_data()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.sanitize_coords_for_pymc"><code class="docutils literal notranslate"><span class="pre">sanitize_coords_for_pymc()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.CoordRegistry"><code class="docutils literal notranslate"><span class="pre">CoordRegistry</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.CoordRegistry.add"><code class="docutils literal notranslate"><span class="pre">CoordRegistry.add()</span></code></a></li>
@@ -2000,6 +2162,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.sparse_xr_dot"><code class="docutils literal notranslate"><span class="pre">sparse_xr_dot()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.align_sparse_lat_lon"><code class="docutils literal notranslate"><span class="pre">align_sparse_lat_lon()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.to_dense"><code class="docutils literal notranslate"><span class="pre">to_dense()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.to_dense_tree"><code class="docutils literal notranslate"><span class="pre">to_dense_tree()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.jax_to_numpy"><code class="docutils literal notranslate"><span class="pre">jax_to_numpy()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.force_align"><code class="docutils literal notranslate"><span class="pre">force_align()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.concat_data_arrays"><code class="docutils literal notranslate"><span class="pre">concat_data_arrays()</span></code></a></li>
@@ -2041,6 +2204,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.boundary_sensitivity.html#openghg_inversions.boundary_sensitivity.align_boundary_operands"><code class="docutils literal notranslate"><span class="pre">align_boundary_operands()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.boundary_sensitivity.html#openghg_inversions.boundary_sensitivity.bind_period_states"><code class="docutils literal notranslate"><span class="pre">bind_period_states()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.boundary_sensitivity.html#openghg_inversions.boundary_sensitivity.validate_boundary_operands"><code class="docutils literal notranslate"><span class="pre">validate_boundary_operands()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.boundary_sensitivity.html#openghg_inversions.boundary_sensitivity.scale_satellite_boundary_sensitivity_to_column_signal"><code class="docutils literal notranslate"><span class="pre">scale_satellite_boundary_sensitivity_to_column_signal()</span></code></a></li>
 </ul>
@@ -2226,6 +2390,11 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html#openghg_inversions.utils.write_netcdf_preserving_bounds_attrs"><code class="docutils literal notranslate"><span class="pre">write_netcdf_preserving_bounds_attrs()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html#openghg_inversions.utils.get_country"><code class="docutils literal notranslate"><span class="pre">get_country()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html#openghg_inversions.utils.areagrid"><code class="docutils literal notranslate"><span class="pre">areagrid()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.xr_contracts.html">openghg_inversions.xr_contracts</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.xr_contracts.html#openghg_inversions.xr_contracts.registered_contracts"><code class="docutils literal notranslate"><span class="pre">registered_contracts()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.xr_contracts.html#openghg_inversions.xr_contracts.xr_contract"><code class="docutils literal notranslate"><span class="pre">xr_contract()</span></code></a></li>
 </ul>
 </li>
 </ul>

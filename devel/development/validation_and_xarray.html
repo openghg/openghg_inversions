@@ -500,12 +500,13 @@ operations establish these guarantees from their own preconditions.
 The validator checks structure only; numerical properties are established by
 the producer, as described below.</p>
 <p>The <a class="reference download internal" download="" href="../_downloads/e9c3412ce3d6c770482560ceadf93fda/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">explicit</span> <span class="pre">data</span> <span class="pre">contracts</span> <span class="pre">proposal</span></code></a>
-captures this pattern; it does not indicate that contract types have already
-been implemented. The following pseudocode illustrates the recommended static
-marker for a structural contract. <code class="docutils literal notranslate"><span class="pre">xr_contract</span></code> denotes the proposed
-declaration decorator; <code class="docutils literal notranslate"><span class="pre">check_bound_layout</span></code> and
-<code class="docutils literal notranslate"><span class="pre">select_and_expand_transport</span></code> stand for domain-specific validation and
-preparation. These are not existing package functions.</p>
+captures this pattern. <a class="reference internal" href="../reference/openghg_inversions.xr_contracts.html#openghg_inversions.xr_contracts.xr_contract" title="openghg_inversions.xr_contracts.xr_contract"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.xr_contracts.xr_contract()</span></code></a> is
+the declaration decorator, and
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary.contracts</span></code> holds the centered boundary
+transport contracts, the first application. The following pseudocode
+illustrates the recommended static marker for a structural contract;
+<code class="docutils literal notranslate"><span class="pre">check_bound_layout</span></code> and <code class="docutils literal notranslate"><span class="pre">select_and_expand_transport</span></code> stand for
+domain-specific validation and preparation.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">cast</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
@@ -551,7 +552,7 @@ or properties: adding these to a phantom subtype would allow calls that
 type-check but fail at runtime. Use class-level helpers for additional behavior,
 and do not use <code class="docutils literal notranslate"><span class="pre">isinstance</span></code> to decide whether the contract holds. An ordinary
 record may hold contracted fields without repeating their validation.</p>
-<p>Declare contracts through the proposed package decorator in <code class="docutils literal notranslate"><span class="pre">contracts.py</span></code>
+<p>Declare contracts through the package decorator in <code class="docutils literal notranslate"><span class="pre">contracts.py</span></code>
 modules within their owning packages. Shared tests discover those files and
 import their modules without a hand-maintained import list. Each contract’s
 tests supply valid examples, including lazy ones, and required validator
@@ -601,6 +602,20 @@ a check requires reliable failure behavior for the stated policy; Cholesky
 success alone does not establish symmetry or a specified rank tolerance.
 Compatibility with a particular model’s observation labels belongs to the
 composition boundary combining them.</p>
+</section>
+<section id="centered-boundary-application">
+<h2>Centered-boundary application<a class="headerlink" href="#centered-boundary-application" title="Link to this heading">#</a></h2>
+<p>The first application is
+<a class="reference internal" href="../reference/openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.RawCenteredSensitivity" title="openghg_inversions.models.boundary.RawCenteredSensitivity"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawCenteredSensitivity</span></code></a>,
+<a class="reference internal" href="../reference/openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundCenteredSensitivity" title="openghg_inversions.models.boundary.BoundCenteredSensitivity"><code class="xref py py-class docutils literal notranslate"><span class="pre">BoundCenteredSensitivity</span></code></a> and its
+<a class="reference internal" href="../reference/openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundAdditiveSensitivity" title="openghg_inversions.models.boundary.BoundAdditiveSensitivity"><code class="xref py py-class docutils literal notranslate"><span class="pre">BoundAdditiveSensitivity</span></code></a> extension.
+Their schemas use <code class="docutils literal notranslate"><span class="pre">xarray_validate</span></code> for declarative variables, dtypes,
+dimensions and attributes, with callbacks for unit and index relationships;
+the library choice belongs to this application, not to every contract. The
+contracts are structural: each centered family’s <code class="docutils literal notranslate"><span class="pre">add</span></code> performs the one
+numerical check of the jointly materialized values. The class docstrings list
+the guarantees and operations; see <a class="reference internal" href="../usage/centered_boundary_conditions.html"><span class="doc">Boundary-condition operators</span></a>
+for the scientific model.</p>
 </section>
 <section id="transpose-align-compute">
 <h2>Transpose, align, compute<a class="headerlink" href="#transpose-align-compute" title="Link to this heading">#</a></h2>
@@ -728,6 +743,7 @@ the requirement directly?</p></li>
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#choose-the-validation-boundary">Choose the validation boundary</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#make-established-contracts-visible-in-types">Make established contracts visible in types</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#centered-boundary-application">Centered-boundary application</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#transpose-align-compute">Transpose, align, compute</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#units">Units</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#tests-rather-than-production-assertions">Tests rather than production assertions</a></li>

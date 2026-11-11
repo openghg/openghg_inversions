@@ -6,6 +6,12 @@ openghg\_inversions.models
    :show-inheritance:
 
 
+.. toctree::
+   :maxdepth: 4
+
+   openghg_inversions.models.boundary
+
+
 
 .. toctree::
    :maxdepth: 4
