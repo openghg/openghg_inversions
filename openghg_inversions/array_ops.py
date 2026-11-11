@@ -50,7 +50,7 @@ import pandas as pd
 import xarray as xr
 from dask.array.core import Array as DaskArray
 from sparse import COO, SparseArray
-from xarray.core.common import DataWithCoords, is_chunked_array  # type: ignore
+from xarray.core.common import DataWithCoords
 
 # type for xr.Dataset *or* xr.DataArray
 DataSetOrArray = TypeVar("DataSetOrArray", bound=DataWithCoords)
@@ -211,7 +211,8 @@ def sparse_xr_dot(
     least one dimension in common. All matching dimensions will be used for multiplication.
 
     Compared to just using da1 @ da2, this function has two advantages:
-    1. if da1 is sparse but not a dask array, then da1 @ da2 will fail if da2 is a dask array
+    1. if da1 is eager sparse and da2 is a dask array, da1 @ da2 fails in xarray;
+       here da1 is converted to a single-chunk dask array for that case only
     2. da2 can be a Dataset, and current DataArray @ Dataset is not allowed by xarray
 
     Args:
@@ -224,17 +225,21 @@ def sparse_xr_dot(
         xr.Dataset or xr.DataArray: containing the result of matrix/tensor multiplication.
             The type that is returned will be the same as the type of `da2`.
     """
-    if isinstance(da1.data, SparseArray) and not is_chunked_array(da1):  # type: ignore
-        da1 = da1.chunk()
+
+    def dot(other: xr.DataArray) -> xr.DataArray:
+        """Multiply ``da1`` by one DataArray, chunking eager sparse only for Dask."""
+        left = da1
+        # Eager sparse @ dask raises "Unsupported types": xarray's einsum path
+        # calls sparse.tensordot, which cannot take Dask arrays. Chunking the
+        # sparse operand routes the product through Dask instead.
+        # See https://github.com/pydata/xarray/issues/9934
+        if isinstance(da1.data, SparseArray) and other.chunks is not None:
+            left = da1.chunk()
+        return left @ other if dim is None else xr.dot(left, other, dim=dim)
 
     if isinstance(da2, xr.DataArray):
-        if dim is None:
-            return da1 @ da2
-        return xr.dot(da1, da2, dim=dim)
-
-    if dim is None:
-        return da2.map(lambda x: da1 @ x)
-    return da2.map(lambda x: xr.dot(da1, x, dim=dim))
+        return dot(da2)
+    return da2.map(dot)
 
 
 def align_sparse_lat_lon(
