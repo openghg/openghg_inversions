@@ -202,3 +202,214 @@ def test_registered_custom_filter_remains_available(monkeypatch, capsys):
     xr.testing.assert_identical(result["TAC"], dataset.isel(time=[-1]))
     filter_module.list_filters()
     assert "select_last" in capsys.readouterr().out
+
+
+def _reference_local_ratio(fp, lat, lon, release_lat, release_lon, window_size):
+    """Clipped-window reference matching verification-games' audit_local_influence."""
+    dlat, dlon = lat[1] - lat[0], lon[1] - lon[0]
+    half = window_size // 2
+    ratios = np.zeros(fp.shape[-1])
+    for t in range(fp.shape[-1]):
+        y = np.abs(lat - release_lat[t]).argmin()
+        x = np.abs(lon - release_lon[t]).argmin()
+        total = fp[:, :, t].sum()
+        if abs(lat[y] - release_lat[t]) < dlat / 2 and abs(lon[x] - release_lon[t]) < dlon / 2 and total != 0:
+            ratios[t] = fp[max(0, y - half) : y + half + 1, max(0, x - half) : x + half + 1, t].sum() / total
+    return ratios
+
+
+def _footprint_dataset(chunks=None):
+    """Synthetic merged-style dataset with interior, edge, unmatched and empty footprints."""
+    rng = np.random.default_rng(1050)
+    lat = np.linspace(40.0, 49.0, 10)
+    lon = np.linspace(-10.0, 1.0, 12)
+    ntime = 8
+    fp = rng.gamma(0.5, size=(lat.size, lon.size, ntime))
+    release_lat = np.array([44.1, 44.1, 40.2, 48.9, 44.1, 44.1, 70.0, 44.1])
+    release_lon = np.array([-5.1, -5.1, -9.8, 0.9, -5.1, -5.1, -5.1, -5.1])
+    # Concentrate influence near the release point for some times so thresholds bite.
+    fp[3:6, 4:7, [1, 4]] *= 40.0
+    fp[4, 5, 5] *= 400.0
+    fp[:, :, 7] = 0.0
+    dataset = xr.Dataset(
+        {
+            "fp": (("lat", "lon", "time"), fp),
+            "mf": ("time", np.arange(ntime, dtype=float)),
+            "release_lat": ("time", release_lat),
+            "release_lon": ("time", release_lon),
+        },
+        coords={"lat": lat, "lon": lon, "time": pd.date_range("2020-01-01", periods=ntime, freq="h")},
+    )
+    return dataset.chunk(chunks) if chunks is not None else dataset
+
+
+@pytest.mark.parametrize("window_size", [1, 3, 5, 7])
+def test_local_ratios_match_clipped_window_reference(window_size):
+    dataset = _footprint_dataset()
+    original = dataset.copy(deep=True)
+    expected = _reference_local_ratio(
+        dataset.fp.values, dataset.lat.values, dataset.lon.values,
+        dataset.release_lat.values, dataset.release_lon.values, window_size,
+    )
+    result = filter_module.local_ratios(dataset, window_sizes=(window_size,))
+    name = f"local_ratio_{window_size}x{window_size}"
+    assert list(result.data_vars) == [name]
+    np.testing.assert_allclose(result[name].values, expected)
+    assert result[name].values[6] == 0.0  # release point outside the grid
+    assert result[name].values[7] == 0.0  # empty footprint
+    assert result[name].attrs["window_size"] == window_size
+    xr.testing.assert_identical(dataset, original)
+
+
+@pytest.mark.parametrize("window_size", [0, 4, -1, 2.0, True])
+def test_local_ratio_window_must_be_positive_odd_integer(window_size):
+    with pytest.raises(ValueError, match="window size"):
+        filter_module.local_ratios(_footprint_dataset(), window_sizes=(window_size,))
+    with pytest.raises(ValueError, match="window size"):
+        filter_module.local_influence(_footprint_dataset(), window_size=window_size)
+
+
+@pytest.mark.parametrize("threshold", [-0.1, 1.5])
+def test_local_influence_threshold_must_be_a_fraction(threshold):
+    with pytest.raises(ValueError, match="threshold"):
+        filter_module.local_influence(_footprint_dataset(), threshold=threshold)
+
+
+@pytest.mark.parametrize("window_size", [3, 5])
+@pytest.mark.parametrize("threshold", [0.1, 0.15, 0.3])
+@pytest.mark.parametrize("keep_missing", [False, True])
+def test_local_influence_window_and_threshold_select_ratios(window_size, threshold, keep_missing):
+    dataset = _footprint_dataset()
+    ratio = filter_module.local_ratios(dataset, (window_size,))[f"local_ratio_{window_size}x{window_size}"].values
+    keep = ratio <= threshold
+    assert keep.any() and not keep.all()
+
+    result = filtering(
+        {"TAC": dataset}, "local_influence", keep_missing=keep_missing,
+        filter_options={"local_influence": {"window_size": window_size, "threshold": threshold}},
+    )["TAC"]
+
+    if keep_missing:
+        np.testing.assert_array_equal(result.time.values, dataset.time.values)
+        np.testing.assert_array_equal(np.isfinite(result.mf.values), keep)
+    else:
+        xr.testing.assert_identical(result, dataset.isel(time=np.flatnonzero(keep)))
+
+
+def test_local_influence_defaults_to_5x5_and_0p10():
+    dataset = _footprint_dataset()
+    ratio = filter_module.local_ratios(dataset)["local_ratio_5x5"].values
+    result = filter_module.local_influence(dataset)
+    np.testing.assert_array_equal(result.time.values, dataset.time.values[ratio <= 0.1])
+
+
+@pytest.mark.parametrize("window_size", [3, 5])
+@pytest.mark.parametrize("keep_missing", [False, True])
+def test_cached_local_ratios_match_computed_without_fp(window_size, keep_missing):
+    dataset = _footprint_dataset()
+    cached = xr.merge([dataset, filter_module.local_ratios(dataset, (3, 5))]).drop_vars("fp")
+    options = {"local_influence": {"window_size": window_size, "threshold": 0.15}}
+
+    computed = filtering({"TAC": dataset}, "local_influence", keep_missing=keep_missing, filter_options=options)
+    from_cache = filtering({"TAC": cached}, "local_influence", keep_missing=keep_missing, filter_options=options)
+
+    xr.testing.assert_identical(
+        from_cache["TAC"][["mf", "release_lat", "release_lon"]],
+        computed["TAC"][["mf", "release_lat", "release_lon"]],
+    )
+
+
+def test_legacy_standard_name_local_ratio_is_used_for_5x5():
+    dataset = _footprint_dataset()
+    ratio = filter_module.local_ratios(dataset)["local_ratio_5x5"]
+    legacy = dataset.drop_vars("fp").assign(local_ratio=ratio.assign_attrs(standard_name="local_ratio"))
+    expected = filter_module.local_influence(dataset)
+    result = filter_module.local_influence(legacy)
+    np.testing.assert_array_equal(result.time.values, expected.time.values)
+
+    with pytest.raises(ValueError, match="local_ratio_3x3"):
+        filter_module.local_influence(legacy, window_size=3)
+
+
+def test_local_influence_without_fp_or_cache_fails():
+    with pytest.raises(ValueError, match="local_ratio_5x5"):
+        filter_module.local_influence(_footprint_dataset().drop_vars("fp"))
+
+
+def _failing_footprint(shape):
+    @delayed
+    def unused_footprint():
+        pytest.fail("Lazy footprint was executed")
+
+    return da.from_delayed(unused_footprint(), shape=shape, dtype=float)
+
+
+def test_local_ratios_stay_lazy():
+    dataset = _footprint_dataset()
+    lazy = dataset.assign(fp=(dataset.fp.dims, _failing_footprint(dataset.fp.shape)))
+    lazy = lazy.assign(release_lat=lazy.release_lat.chunk(), release_lon=lazy.release_lon.chunk())
+
+    result = filter_module.local_ratios(lazy, (3, 5))
+
+    for name in ("local_ratio_3x3", "local_ratio_5x5"):
+        assert isinstance(result[name].data, da.Array)
+
+
+def test_local_ratios_lazy_and_eager_agree():
+    eager = filter_module.local_ratios(_footprint_dataset(), (3, 5))
+    lazy = filter_module.local_ratios(_footprint_dataset(chunks={"time": 3, "lat": 4}), (3, 5))
+    assert all(isinstance(lazy[name].data, da.Array) for name in lazy.data_vars)
+    xr.testing.assert_allclose(lazy.compute(), eager)
+
+
+def test_cached_local_influence_leaves_footprint_lazy():
+    dataset = _footprint_dataset()
+    ratios = filter_module.local_ratios(dataset, (5,))
+    lazy = xr.merge([dataset.drop_vars("fp"), ratios]).assign(
+        fp=(dataset.fp.dims, _failing_footprint(dataset.fp.shape))
+    )
+
+    result = filter_module.local_influence(lazy, threshold=0.15)
+
+    assert isinstance(result.fp.data, da.Array)
+    expected = dataset.time.values[ratios.local_ratio_5x5.values <= 0.15]
+    np.testing.assert_array_equal(result.time.values, expected)
+
+
+def test_filter_options_validated_before_execution():
+    dataset = _footprint_dataset()
+    with pytest.raises(KeyError):
+        filtering({"TAC": dataset}, "local_influence", filter_options={"unknown_filter": {}})
+    with pytest.raises(TypeError, match="local_influence"):
+        filtering({"TAC": dataset}, "local_influence", filter_options={"local_influence": {"windw": 3}})
+    with pytest.raises(TypeError, match="keep_missing"):
+        filtering({"TAC": dataset}, "noon", filter_options={"noon": {"keep_missing": True}})
+
+
+def test_filter_observations_forwards_filter_options():
+    dataset = _footprint_dataset()
+    options = {"local_influence": {"window_size": 3, "threshold": 0.3}}
+    expected = filtering({"TAC": dataset}, "local_influence", filter_options=options)["TAC"]
+
+    filtered, _ = filter_observations(
+        {"TAC": dataset}, SiteOptions.from_inputs(sites=["TAC"], averaging_period=None),
+        filters="local_influence", filter_options=options,
+    )
+
+    xr.testing.assert_identical(filtered["TAC"], expected)
+
+
+def test_data_config_owns_and_validates_filter_options():
+    params = {
+        "species": "ch4", "sites": ["TAC"], "start_date": "2019-01-01", "end_date": "2019-01-02",
+        "inlet": ["185m"], "domain": "EUROPE", "fp_height": ["185m"],
+        "flux_sources": ["total"], "averaging_period": ["1h"],
+    }
+    options = {"local_influence": {"window_size": 5, "threshold": 0.15}}
+    config = DataConfig.from_params({**params, "filters": ["local_influence"], "filter_options": options})
+    assert config.filter_options == options
+    assert config.filter_options["local_influence"] is not options["local_influence"]
+    assert DataConfig.from_params(params).filter_options is None
+
+    with pytest.raises(TypeError, match="local_influence"):
+        DataConfig.from_params({**params, "filter_options": {"local_influence": {"windw": 5}}})

@@ -71,17 +71,18 @@ def test_reusable_alignment_identity(frequency):
     xr.testing.assert_identical(ds, original)
 
 
-def test_validated_no_time_operands_bind_one_period_without_computation():
-    raw = _site()[["H_bc_anomaly", "H_bc_mass", "bc_reference"]].rename(time="nmeasure")
+def test_nmeasure_operands_bind_one_period_without_computation():
+    site = _site()
+    raw = site[["H_bc_anomaly", "H_bc_mass", "bc_reference"]].rename(time="nmeasure")
     raw = raw.assign_coords(nmeasure=["third", "first", "second"]).chunk({"nmeasure": 1})
+    raw = raw.assign_coords(time=("nmeasure", site.time.values))
     original = raw.copy(deep=False)
     labels = raw.nmeasure[[1, 0]]
     with Callback(posttask=lambda *args: pytest.fail("borrowed payload was computed")):
         assert validate_boundary_operands(raw)
         result = align_boundary_operands(raw, observation_labels=labels)
-    assert "time" not in result.coords
     assert result.indexes["bc_region"].names == ["bc_curtain", "bc_period"]
-    assert set(result.bc_period.values) == {"whole_window"}
+    assert set(result.bc_period.values) == {site.time.values[0]}
     for name in ("H_bc_anomaly", "H_bc_mass"):
         assert result[name].attrs["bc_frequency"] == "none"
         assert result[name].attrs["bc_anchor_time"] == "not-applicable"
@@ -90,7 +91,7 @@ def test_validated_no_time_operands_bind_one_period_without_computation():
     xr.testing.assert_identical(raw, original)
 
 
-@pytest.mark.parametrize("frequency", ["monthly", "6h"])
+@pytest.mark.parametrize("frequency", [None, "monthly", "6h"])
 @pytest.mark.parametrize("time_kind", ["absent", "numeric"])
 def test_period_expansion_requires_datetime_time(frequency, time_kind):
     raw = _site()[["H_bc_anomaly", "H_bc_mass", "bc_reference"]].rename(time="nmeasure")

@@ -3,15 +3,17 @@
 All filters are accessed and applied to data via the `filtering` function.
 
 New filters are registered using `@register_filter`.
-A filter function should accept as arguments: an xr.Dataset, a bool called "keep_missing"
+A filter function should accept as arguments: an xr.Dataset, a bool called "keep_missing",
+and any keyword options that callers may supply through ``filter_options``.
 
 To see the available filters call `list_filters`.
 """
 
+import inspect
 import logging
 import re
-from typing import cast
-from collections.abc import Callable
+from typing import Any, cast
+from collections.abc import Callable, Iterable, Mapping
 
 import numpy as np
 import pandas as pd
@@ -73,6 +75,7 @@ def filtering(
     datasets_in: dict,
     filters: str | None | dict[str, str | None | list[str | None]] | list[str | None],
     keep_missing: bool = False,
+    filter_options: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict:
     """Applies time filtering to all datasets in `datasets_in`.
 
@@ -92,11 +95,20 @@ def filtering(
             or a dictionary of lists of the form  {<site code>: [filter1, filter2, ...]}, with specific filters to
             be applied at each site. Use the `list_filters` function to list available filters.
         keep_missing: if True, drop missing data
+        filter_options: keyword options for named filters, applied wherever that
+            filter runs; for example ``{"local_influence": {"threshold": 0.15}}``.
+            Options for filters that are not requested are validated but unused.
 
     Returns:
         dict in same format as datasets_in, with filters applied
 
+    Raises:
+        KeyError: If a requested filter, or a filter named in ``filter_options``,
+            is not registered.
+        TypeError: If ``filter_options`` names an option a filter does not accept.
+
     """
+    options = validate_filter_options(filter_options)
     if filters is None or filters == [] or filters == {}:
         return datasets_in
 
@@ -141,7 +153,9 @@ def filtering(
             for filt in site_filters:
                 n_nofilter = datasets[site].time.values.shape[0]
 
-                datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
+                datasets[site] = filtering_functions[filt](
+                    datasets[site], keep_missing=keep_missing, **options.get(filt, {})
+                )
 
                 n_filter = datasets[site].time.values.shape[0]
                 n_dropped = n_nofilter - n_filter
@@ -151,6 +165,39 @@ def filtering(
                     break  # no values left, so we won't apply remaining filters
 
     return datasets
+
+
+def validate_filter_options(
+    filter_options: Mapping[str, Mapping[str, Any]] | None,
+) -> dict[str, dict[str, Any]]:
+    """Return owned filter options after checking them against filter signatures.
+
+    Args:
+        filter_options: Mapping from registered filter names to keyword options,
+            or ``None``.
+
+    Returns:
+        New mapping with owned option dictionaries; empty for ``None``.
+
+    Raises:
+        KeyError: If a filter name is not registered.
+        TypeError: If an option is reserved or not accepted by the filter.
+    """
+    if filter_options is None:
+        return {}
+    options: dict[str, dict[str, Any]] = {}
+    for name, values in filter_options.items():
+        if name not in filtering_functions:
+            raise KeyError(name)
+        options[name] = dict(values)
+        reserved = {"dataset", "keep_missing"}.intersection(options[name])
+        if reserved:
+            raise TypeError(f"Filter option(s) {sorted(reserved)!r} cannot be set for {name!r}.")
+        try:
+            inspect.signature(filtering_functions[name]).bind(None, **options[name])
+        except TypeError as exc:
+            raise TypeError(f"Invalid options for filter {name!r}: {exc}") from exc
+    return options
 
 
 def _local_solar_time(dataset: xr.Dataset) -> list[int]:
@@ -259,60 +306,156 @@ def noon(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
         return dataset[dict(time=ti)]
 
 
-def _local_ratio(dataset: xr.Dataset) -> np.ndarray:
-    """Calculates the local ratio in the surrounding grid cells.
+LOCAL_RATIO_STANDARD_NAME = "local_ratio"
+"""Legacy ``standard_name`` of a cached 5×5 local-ratio variable."""
 
-    NOTE: This is not a filter; it is used by the `local_influence` filter.
+
+def local_ratio_name(window_size: int) -> str:
+    """Return the cached variable name for one square local-ratio window.
+
+    Args:
+        window_size: Positive odd number of grid cells along each window side.
+
+    Returns:
+        Name of the form ``local_ratio_{n}x{n}``.
+
+    Raises:
+        ValueError: If ``window_size`` is not a positive odd integer.
     """
-    dlon = dataset.lon[1].values - dataset.lon[0].values
-    dlat = dataset.lat[1].values - dataset.lat[0].values
-    local_sum = np.zeros(len(dataset.mf))
+    _validate_window_size(window_size)
+    return f"local_ratio_{window_size}x{window_size}"
 
-    for ti in range(len(dataset.mf)):
-        release_lon = dataset.release_lon[ti].values
-        release_lat = dataset.release_lat[ti].values
-        wh_rlon = np.where(abs(dataset.lon.values - release_lon) < dlon / 2.0)
-        wh_rlat = np.where(abs(dataset.lat.values - release_lat) < dlat / 2.0)
-        if np.any(wh_rlon[0]) and np.any(wh_rlat[0]):
-            local_sum[ti] = np.sum(
-                dataset.fp[
-                    wh_rlat[0][0] - 2 : wh_rlat[0][0] + 3, wh_rlon[0][0] - 2 : wh_rlon[0][0] + 3, ti
-                ].values
-            ) / np.sum(dataset.fp[:, :, ti].values)
-        else:
-            local_sum[ti] = 0.0
 
-    return local_sum
+def _validate_window_size(window_size: int) -> None:
+    """Reject window sizes that do not centre on the release cell."""
+    if isinstance(window_size, bool) or not isinstance(window_size, int | np.integer):
+        raise ValueError(f"Local-ratio window size must be an integer; got {window_size!r}.")
+    if window_size < 1 or window_size % 2 == 0:
+        raise ValueError(f"Local-ratio window size must be a positive odd integer; got {window_size!r}.")
+
+
+def local_ratios(dataset: xr.Dataset, window_sizes: Iterable[int] = (5,)) -> xr.Dataset:
+    """Return lazy local-to-total footprint ratios for square release-point windows.
+
+    For each observation, the ratio is the integrated footprint summed over the
+    ``n``×``n`` grid cells centred on the release cell, divided by the
+    footprint summed over the whole domain. The release cell is the grid cell
+    whose centre is nearest to ``release_lat``/``release_lon``; windows are
+    clipped at the domain edge. The ratio is zero when the release point lies
+    outside the grid or the whole-domain footprint sum is zero.
+
+    Because the denominator is the whole-domain footprint, compute the ratios
+    before any nested-domain masking or cropping of ``fp``. The result can be
+    merged into observation datasets so :func:`local_influence` runs without
+    ``fp``.
+
+    Args:
+        dataset: Borrowed dataset with an integrated footprint ``fp`` on
+            ``lat``/``lon``/``time`` and ``release_lat``/``release_lon``
+            aligned to ``time``. It is not modified; Dask-backed inputs stay lazy.
+        window_sizes: Positive odd window widths in grid cells.
+
+    Returns:
+        Dataset with one ``local_ratio_{n}x{n}`` variable on ``time`` per
+        window size, sharing the input's Dask graph when the input is lazy.
+
+    Raises:
+        ValueError: If a window size is invalid or the footprint grid has fewer
+            than two cells along ``lat`` or ``lon``.
+    """
+    sizes = tuple(dict.fromkeys(window_sizes))
+    for size in sizes:
+        _validate_window_size(size)
+    if dataset.sizes.get("lat", 0) < 2 or dataset.sizes.get("lon", 0) < 2:
+        raise ValueError("Local ratios need at least two footprint grid cells along lat and lon.")
+
+    fp = dataset["fp"]
+    lat = dataset["lat"]
+    lon = dataset["lon"]
+    dlat = abs(float(lat[1] - lat[0]))
+    dlon = abs(float(lon[1] - lon[0]))
+    # Missing release coordinates never match a cell, so their ratio is zero.
+    lat_distance = abs(lat - dataset["release_lat"]).fillna(np.inf)
+    lon_distance = abs(lon - dataset["release_lon"]).fillna(np.inf)
+    matched = (lat_distance.min("lat") < dlat / 2) & (lon_distance.min("lon") < dlon / 2)
+    lat_index = cast(xr.DataArray, lat_distance.argmin("lat"))
+    lon_index = cast(xr.DataArray, lon_distance.argmin("lon"))
+    lat_offset = abs(xr.DataArray(np.arange(lat.size), dims="lat") - lat_index)
+    lon_offset = abs(xr.DataArray(np.arange(lon.size), dims="lon") - lon_index)
+
+    total = fp.sum(("lat", "lon"))
+    nonzero = matched & (total != 0)
+    ratios = {}
+    for size in sizes:
+        half_width = size // 2
+        window = (lat_offset <= half_width) & (lon_offset <= half_width)
+        local = fp.where(window, 0.0).sum(("lat", "lon"))
+        ratio = xr.where(nonzero, local / total.where(total != 0), 0.0)
+        ratio = ratio.drop_vars([name for name in ratio.coords if name != "time"])
+        ratio.attrs = {
+            "long_name": f"{size}x{size} local-to-total footprint ratio",
+            "units": "1",
+            "window_size": size,
+        }
+        ratios[local_ratio_name(size)] = ratio
+    return xr.Dataset(ratios)
+
+
+def _local_ratio_series(dataset: xr.Dataset, window_size: int) -> xr.DataArray:
+    """Return a cached local-ratio series, or compute it from ``fp``."""
+    name = local_ratio_name(window_size)
+    if name in dataset.data_vars:
+        return dataset[name]
+    if window_size == 5:
+        legacy = dataset.filter_by_attrs(standard_name=LOCAL_RATIO_STANDARD_NAME)
+        if legacy.data_vars:
+            return legacy[next(iter(legacy.data_vars))]
+    if "fp" not in dataset.data_vars:
+        raise ValueError(
+            f"The local_influence filter needs a cached {name!r} variable or a raw footprint 'fp'."
+        )
+    return local_ratios(dataset, (window_size,))[name]
 
 
 @register_filter
-def local_influence(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Subset for times when "local influence" is below threshold.
+def local_influence(
+    dataset: xr.Dataset, keep_missing: bool = False, window_size: int = 5, threshold: float = 0.1,
+) -> xr.Dataset:
+    """Subset for times when "local influence" is at or below threshold.
 
-    Local influence expressed as a fraction of the sum of entire footprint domain.
+    Local influence is the footprint in a ``window_size``×``window_size`` grid
+    window around the release point, as a fraction of the whole-domain
+    footprint. The filter reads a cached ``local_ratio_{n}x{n}`` series when
+    present (or, for 5×5, a variable with ``standard_name="local_ratio"``), and
+    otherwise computes it with :func:`local_ratios`. Only the ratio series is
+    computed; other variables keep their storage.
 
     Args:
         dataset: dataset to filter
-        keep_missing: if True, drop time points removed by filter
+        keep_missing: if True, keep removed times with missing ``mf``
+        window_size: positive odd window width in grid cells
+        threshold: largest local ratio retained, between zero and one
 
     Returns:
         filtered dataset
-    """
-    if not dataset.filter_by_attrs(standard_name="local_ratio"):
-        lr = _local_ratio(dataset)
-    else:
-        lr = dataset.local_ratio
 
-    pc = 0.1
-    ti = [i for i, local_ratio in enumerate(lr) if local_ratio <= pc]
+    Raises:
+        ValueError: If the window or threshold is invalid, or the ratio is
+            neither cached nor computable from ``fp``.
+    """
+    _validate_window_size(window_size)
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError(f"Local-influence threshold must lie between zero and one; got {threshold!r}.")
+    keep = np.asarray(_local_ratio_series(dataset, window_size) <= threshold)
+    ti = np.flatnonzero(keep)
     if keep_missing is True:
         mf_data_array = dataset.mf
-        dataset_temp = dataset.drop("mf")
+        dataset_temp = dataset.drop_vars("mf")
 
         dataarray_temp = mf_data_array[dict(time=ti)]
 
         mf_ds = xr.Dataset(
-            {"mf": (["time"], dataarray_temp)}, coords={"time": (dataarray_temp.coords["time"])}
+            {"mf": (["time"], dataarray_temp.data)}, coords={"time": (dataarray_temp.coords["time"])}
         )
 
         dataset_out = combine_datasets(dataset_temp, mf_ds, method=None)
@@ -332,8 +475,6 @@ def pblh_min(dataset: xr.Dataset, pblh_threshold: float = 200.0, keep_missing: b
 
     Returns:
         filtered dataset
-
-    TODO: need way to pass pblh_threshold to filter
     """
     pblh_da = dataset.PBLH if "PBLH" in dataset.data_vars else dataset.atmosphere_boundary_layer_thickness
 
@@ -368,8 +509,6 @@ def pblh_inlet_diff(
 
     Returns:
         filtered dataset
-
-    TODO: need way to pass diff_threshold to filter
     """
     if "inlet_height_magl" in dataset.attrs:
         inlet_height = dataset.inlet_height_magl
