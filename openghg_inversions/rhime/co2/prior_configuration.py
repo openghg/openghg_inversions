@@ -129,8 +129,9 @@ def shared_baseline_choice(params: Mapping[str, object]) -> SharedBaselineChoice
 
     ``mode`` selects the outer prior and ``delta_sd`` is the atmospheric level
     width in observation concentration units. An optional ``boundary`` table
-    uses the ``[model.boundary]`` keys for its anomaly structure, without a
-    mean shift prior: the atmospheric level replaces it.
+    uses the ``[model.boundary]`` keys for its anomaly structure, with
+    ``type = "additive"`` or ``"anomaly_scaling"`` and without a mean shift
+    prior: the atmospheric level replaces it.
 
     Returns:
         The choice, to be bound to one fit's prepared transport.
@@ -144,7 +145,7 @@ def shared_baseline_choice(params: Mapping[str, object]) -> SharedBaselineChoice
     )
     _reject_unknown(options, "shared_baseline")
     if boundary is not None and not isinstance(boundary, AdditiveChoice | AnomalyScalingChoice):
-        raise ValueError("shared_baseline.boundary requires anomaly_scale or scale_sd.")
+        raise ValueError('shared_baseline.boundary requires type = "additive" or "anomaly_scaling".')
     return SharedBaselineChoice(boundary, delta_sd, cast(OuterMode, mode))
 
 

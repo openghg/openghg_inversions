@@ -35,11 +35,20 @@ def test_prepare_boundary_sensitivity_labels_one_period_and_provenance() -> None
     np.testing.assert_allclose(result.values, _sensitivity().values)
 
 
-def test_timestamp_free_whole_window_has_explicit_label() -> None:
-    source = _sensitivity().rename(time="nmeasure").assign_coords(nmeasure=[3, 2, 1])
+def test_nmeasure_whole_window_is_labelled_by_first_time() -> None:
+    times = _sensitivity().time.values
+    source = _sensitivity().rename(time="nmeasure").assign_coords(
+        nmeasure=[3, 2, 1], time=("nmeasure", times[::-1])
+    )
     result = BoundaryAlignment.prepare(source).data
-    np.testing.assert_array_equal(result.bc_period, ["whole_window", "whole_window"])
+    np.testing.assert_array_equal(result.bc_period, np.repeat(times.min(), 2))
     np.testing.assert_array_equal(result, source)
+
+
+def test_whole_window_requires_datetime_time() -> None:
+    source = _sensitivity().rename(time="nmeasure").assign_coords(nmeasure=[3, 2, 1])
+    with pytest.raises(ValueError, match="requires a datetime time coordinate"):
+        BoundaryAlignment.prepare(source)
 
 
 @pytest.mark.parametrize(

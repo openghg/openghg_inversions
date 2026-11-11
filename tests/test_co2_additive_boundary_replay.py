@@ -42,7 +42,7 @@ def test_additive_public_build_save_reload_and_reconstruction(tmp_path, cached, 
     restored_prepared = Co2PreparedInputs.load(payload)
     np.testing.assert_allclose(restored_prepared.inv_inputs.bc_centering_weights.values.ravel(), [2, 1, 3])
     config = {
-        "model": {"boundary": {"enabled": True, "mean_shift_prior": {
+        "model": {"boundary": {"type": "additive", "mean_shift_prior": {
             "pdf": "normal", "mu": 0.0, "sigma": 0.15,
         }, "anomaly_scale": anomaly_scale}},
         "likelihood": {"kind": "additive_sigma", "no_model_error": True},
