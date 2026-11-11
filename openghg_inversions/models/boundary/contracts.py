@@ -94,10 +94,16 @@ def _check_units(variables: xr.Dataset, *, label: str) -> None:
 
 
 def _require_unique_index(data: xr.Dataset | xr.DataArray, dim: str, *, label: str) -> pd.Index:
-    """Return an indexed dimension's eager labels, requiring them to be unique."""
+    """Return an indexed dimension's eager labels, requiring them to be unique and present.
+
+    A ``pd.MultiIndex`` cannot report missing labels with ``hasnans``; the
+    bound contract checks its level codes instead.
+    """
     index = data.indexes.get(dim)
     if index is None or not index.is_unique:
         raise ValueError(f"{label} requires unique indexed {dim} labels.")
+    if not isinstance(index, pd.MultiIndex) and index.hasnans:
+        raise ValueError(f"{label} requires indexed {dim} labels without missing values.")
     return index
 
 
