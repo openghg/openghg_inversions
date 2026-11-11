@@ -92,7 +92,7 @@ def synthetic_surface_inputs(
         site = prepare_surface_site(
             obs.chunk({"time": 2}), footprint.chunk({"time": 3}), fluxes,
             species=channel, transport=dict.fromkeys(sources, "integrated"),
-            boundary_data=boundary.chunk({"time": 3}), boundary_representation="centered",
+            boundary_data=boundary.chunk({"time": 3}),
             boundary_reference=reference, boundary_reference_units="ppm",
             boundary_mass_tolerance=1e-6, output_units="ppm",
         )
