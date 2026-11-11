@@ -583,7 +583,8 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>data</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Prepared <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> with a <code class="docutils literal notranslate"><span class="pre">bc_region</span></code> MultiIndex whose levels
-are <code class="docutils literal notranslate"><span class="pre">bc_curtain</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_period</span></code>, plus one observation axis.</p>
+are <code class="docutils literal notranslate"><span class="pre">bc_curtain</span></code> and interval-start <code class="docutils literal notranslate"><span class="pre">bc_period</span></code>, plus one
+observation axis.</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the resolved boundary-state labels are invalid.</p>
@@ -607,7 +608,8 @@ are <code class="docutils literal notranslate"><span class="pre">bc_curtain</spa
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Boundary sensitivity with exactly <code class="docutils literal notranslate"><span class="pre">bc_region</span></code> and
-an observation dimension named <code class="docutils literal notranslate"><span class="pre">time</span></code> or <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>.</p></li>
+an observation dimension named <code class="docutils literal notranslate"><span class="pre">time</span></code> or <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>, with a
+datetime <code class="docutils literal notranslate"><span class="pre">time</span></code> coordinate along that dimension.</p></li>
 <li><p><strong>frequency</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional fitted boundary-period frequency. <code class="docutils literal notranslate"><span class="pre">None</span></code>
 creates one period; <code class="docutils literal notranslate"><span class="pre">&quot;monthly&quot;</span></code> follows calendar months.</p></li>
 <li><p><strong>anchor_time</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional anchor for fixed-duration periods.</p></li>
@@ -644,9 +646,10 @@ values are selected and reordered to these exact labels.</p></li>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>operands</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Raw dataset accepted by <a class="reference internal" href="#openghg_inversions.boundary_sensitivity.validate_boundary_operands" title="openghg_inversions.boundary_sensitivity.validate_boundary_operands"><code class="xref py py-func docutils literal notranslate"><span class="pre">validate_boundary_operands()</span></code></a>.</p></li>
-<li><p><strong>frequency</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – <code class="docutils literal notranslate"><span class="pre">None</span></code> creates one period without requiring timestamps.
-A frequency (including <code class="docutils literal notranslate"><span class="pre">'monthly'</span></code>) requires a one-dimensional
-datetime <code class="docutils literal notranslate"><span class="pre">time</span></code> coordinate along the observation dimension.</p></li>
+<li><p><strong>frequency</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – <code class="docutils literal notranslate"><span class="pre">None</span></code> creates one period labelled by the earliest time;
+<code class="docutils literal notranslate"><span class="pre">'monthly'</span></code> follows calendar months. All settings require a
+one-dimensional datetime <code class="docutils literal notranslate"><span class="pre">time</span></code> coordinate along the observation
+dimension.</p></li>
 <li><p><strong>anchor_time</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional anchor for fixed-duration periods; not allowed
 for a single period or calendar-month periods.</p></li>
 <li><p><strong>observation_labels</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional authoritative labels used to select and
@@ -659,8 +662,8 @@ and the original observation dimension. The <code class="docutils literal notran
 contains <code class="docutils literal notranslate"><span class="pre">bc_curtain</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_period</span></code>. Units, representation and
 scalar <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code> are preserved. Outputs are marked expanded and
 must not be passed through raw validation or expansion again. Borrowed
-payloads stay lazy and unchanged; frequency-based expansion materializes
-a lazy auxiliary time coordinate once to construct the period mask.</p>
+payloads stay lazy and unchanged; expansion materializes a lazy
+auxiliary time coordinate once to label the periods.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

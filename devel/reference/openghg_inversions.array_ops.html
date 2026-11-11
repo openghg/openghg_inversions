@@ -729,8 +729,13 @@ preserves the coordinates and dimensions that are not summed over.</p>
 <p>Common dimensions are automatically selected by name. The input arrays must  have at
 least one dimension in common. All matching dimensions will be used for multiplication.</p>
 <p>Compared to just using da1 &#64; da2, this function has two advantages:
-1. if da1 is sparse but not a dask array, then da1 &#64; da2 will fail if da2 is a dask array
-2. da2 can be a Dataset, and current DataArray &#64; Dataset is not allowed by xarray</p>
+1. if da1 is eager sparse and da2 is a dask array, da1 &#64; da2 fails in xarray;</p>
+<blockquote>
+<div><p>here da1 is converted to a single-chunk dask array for that case only</p>
+</div></blockquote>
+<ol class="arabic simple" start="2">
+<li><p>da2 can be a Dataset, and current DataArray &#64; Dataset is not allowed by xarray</p></li>
+</ol>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
