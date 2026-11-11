@@ -425,9 +425,18 @@ values for an ordinary keyword call:
        **config.data.select("species", "domain", "start_date", "end_date", "split_by_sectors")
    )
    filtered, site_options = filter_observations(
-       merged.site_data, merged.site_options, **config.data.select("filters")
+       merged.site_data, merged.site_options, **config.data.select("filters", "filter_options")
    )
    filtered = prepare_observation_errors(filtered, averaging_error=config.data.averaging_error)
+
+``filter_options`` maps filter names to keyword options. For example,
+``filter_options = {"local_influence": {"window_size": 5, "threshold": 0.15}}``
+selects the 5×5 window and 0.15 local-ratio threshold used in the WUR25
+verification-games campaign; omitted options keep each filter's defaults
+(5×5 and 0.10 for ``local_influence``). ``local_influence`` reads cached
+``local_ratio_{n}x{n}`` series when present, so it can run without ``fp``;
+compute them with ``openghg_inversions.filters.local_ratios`` on the
+whole-domain footprint, before any nested-domain masking.
 
 ``config.data.select(*names)`` returns a fresh dictionary of the named attributes.
 Use ``config.model`` and ``config.output`` for their separate owners;

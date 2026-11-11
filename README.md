@@ -318,11 +318,16 @@ To fix issues that Ruff can safely update, run:
 ruff check --fix openghg_inversions
 ```
 
-You can run the tests using:
-``` bash
-pytest
+For normal broad checks, explicitly select PyTensor's Python linker, as CI does:
+
+```bash
+PYTENSOR_FLAGS=linker=py DASK_NUM_WORKERS=2 pytest tests/ --ignore=tests/typing
 ```
-in the `openghg_inversions` repository. (Make sure your virtual env is activated.)
+
+Run this in the repository with your virtual environment activated. Backend
+examples here assume `PYTENSOR_FLAGS` is unset. If it already has entries,
+retain them and add or replace only `linker`; do not define that key twice.
+Local pytest, tox and production defaults are unchanged.
 
 ### Using `tox` to check code
 
@@ -341,22 +346,28 @@ or, within a virtual environment, install `tox` and `tox-uv`.
 The default checks the locked OpenGHG release, borrowed-reference typing, and Ruff:
 
 ```bash
-tox -p --parallel-no-spinner
+PYTENSOR_FLAGS=linker=py tox -p --parallel-no-spinner
 ```
 
 This is the required check before pushing a draft pull request. GitHub Actions
 tests the committed `uv.lock` against the latest OpenGHG release and tests the
 OpenGHG devel branch separately. It fails if the lockfile lags a new release.
 
-The normal CI suite always uses PyTensor's Python linker to avoid repeated JIT
+The normal broad CI test runs use PyTensor's Python linker to avoid repeated JIT
 compilation. Tests marked `compiled_backend` also form a small Numba compatibility
 suite covering likelihood values and gradients, predictive draws, cached sampling
-and spawned chains. They remain part of the normal Python run, with the same
-assertions. A separate serial pytest process reruns only that marked subset with
-Numba for changes to production code, backend-sensitive tests, dependencies or CI
-configuration, and for pushes. The
+and spawned chains. The marker does not remove them from the normal Python run;
+the same assertions run there too. A fresh serial pytest process reruns only the
+marked subset with Numba for changes to production code, backend-sensitive tests,
+dependencies or CI configuration, and for pushes. The
 [backend selector](.github/scripts/select-test-linker.cjs) owns those path rules;
 incomplete or failed change detection enables the additional compiled checks.
+
+Put focused cases that intentionally compile native PyTensor graphs or check
+native-backend behavior in this existing marked subset. Importing a module alone
+is not a reason to mark a test. Keep the marked pass in one fresh serial process
+while it remains small. If it grows, split marked modules or groups across
+independent pytest invocations rather than expanding a long-lived compiled pass.
 
 For explicit marked Numba checks from Actions, use:
 
@@ -364,21 +375,22 @@ For explicit marked Numba checks from Actions, use:
 gh workflow run workflow.yaml --ref <branch> -f compiled_backend=true
 ```
 
-To select the same checks locally, start a fresh process:
+To select the same checks locally, start a fresh process. The `test` dependency
+group supplies pytest-xdist for `-n 0`:
 
 ```bash
-PYTENSOR_FLAGS=linker=numba DASK_NUM_WORKERS=2 uv run pytest \
-  -m 'compiled_backend and not slow and not create_frozen'
+PYTENSOR_FLAGS=linker=numba DASK_NUM_WORKERS=2 uv run --group test pytest tests/ -n 0 \
+  -m 'compiled_backend and not slow and not create_frozen' --ignore=tests/typing --durations=10
 ```
 
-Local pytest, tox and production defaults are unchanged. To opt into Python
-linking for a focused local check with no existing PyTensor flags, start a new process with
+For a focused Python-linker check, start a new process with
 `PYTENSOR_FLAGS=linker=py DASK_NUM_WORKERS=2 uv run pytest <test-path>`.
-If `PYTENSOR_FLAGS` is already set, preserve its other entries and add or replace
-only `linker`. The marked suite checks our integration with PyTensor's Numba
-lowering, including intentional Python fallbacks for custom Ops and the cached
-amplitude sampler's private CVM graph. For a broader check, explicitly run the
-whole suite with `PYTENSOR_FLAGS=linker=numba` and omit `-m compiled_backend`.
+The marked suite checks our integration with PyTensor's Numba lowering, including
+intentional Python fallbacks for custom Ops and the cached amplitude sampler's
+private CVM graph. A whole-suite Numba run is an optional stress diagnostic:
+native JIT state can accumulate across tests in that process. Use the Python
+linker for normal broad checks and the focused marked pass for Numba parity;
+a whole-suite Numba run is not a routine merge gate.
 The marked subset does not establish full float32 predictive accuracy; the known
 upstream float32 multivariate-normal issue remains tracked separately in
 [#770](https://github.com/openghg/openghg_inversions/issues/770).
@@ -388,9 +400,15 @@ On a Slurm cluster, submit tox from the repository root instead of creating its
 environments on a shared worktree filesystem:
 
 ```bash
-sbatch scripts/slurm_tox.sh
+PYTENSOR_FLAGS=linker=py sbatch scripts/slurm_tox.sh -e py312-openghgCur,py313-openghgCur
+PYTENSOR_FLAGS=linker=numba sbatch scripts/slurm_tox.sh -e py313-openghgCur -- \
+  tests/ -m 'compiled_backend and not slow and not create_frozen'
 sbatch scripts/slurm_tox.sh -e type
 ```
+
+Choose the backend before submission, preserving any existing `PYTENSOR_FLAGS`
+entries as above. The Slurm runner retains that linker choice and replaces only
+`base_compiledir` with its node-local cache.
 
 The Slurm runner creates `TOX_WORK_DIR` on node-local storage and removes it on
 exit. It continues to use the shared uv cache for downloaded artifacts; files
@@ -419,9 +437,10 @@ collection or change scientific settings. To run it in the locked Python
 gh workflow run workflow.yaml --ref <branch> -f runtime_comparison=true
 ```
 
-This profiles the full suite serially with two Dask workers and one numerical
-thread and selects the default compiled backend, recording elapsed/CPU time and
-peak RSS. Four focused runs then compare
+This optional stress diagnostic profiles the full suite serially with the Numba
+linker, two Dask workers and one numerical thread, recording elapsed/CPU time and
+peak RSS. It can accumulate native JIT state within each process and is not a
+routine merge gate. Four focused runs then compare
 one/two numerical threads in reverse order, also with xdist disabled and two Dask
 workers per process.
 Every run has fresh PyTensor/Numba caches. The existing float64 scientific probes
@@ -442,8 +461,9 @@ uv-managed Python installations, which include those headers. If PyTensor's
 compiler was explicitly disabled with `cxx=`, the compilation check is skipped.
 
 On a cluster compute node, a writable node-local PyTensor compilation cache
-also avoids shared-filesystem contention. Preserve any existing
-comma-separated `PYTENSOR_FLAGS` entries when adding it:
+also avoids shared-filesystem contention. For normal broad checks, first set
+`linker=py` in the shell's exported `PYTENSOR_FLAGS`, preserving other entries.
+Then add the cache path without discarding those comma-separated entries:
 
 ```bash
 PYTENSOR_FLAGS="${PYTENSOR_FLAGS:+${PYTENSOR_FLAGS},}base_compiledir=${TMPDIR:-/tmp}/pytensor-${USER}" \
@@ -457,13 +477,13 @@ For final review or release-sensitive dependency changes, also test against
 OpenGHG devel:
 
 ```bash
-tox -p --parallel-no-spinner -e py312-openghgCur,py312-openghgDev,borrowed-types,lint
+PYTENSOR_FLAGS=linker=py tox -p --parallel-no-spinner -e py312-openghgCur,py312-openghgDev,borrowed-types,lint
 ```
 
 To specify individual jobs, you can use, e.g.:
 
 ```bash
-tox -e py312-openghgDev
+PYTENSOR_FLAGS=linker=py tox -e py312-openghgDev
 ```
 
 to run the tests against the devel branch.
@@ -473,7 +493,7 @@ Use `tox -l` to list all options.
 To pass arguments to pytest, Ruff, mypy, etc, you can use, e.g.
 
 ```bash
-tox -- "tests/test_hbmcmc_boundary.py"
+PYTENSOR_FLAGS=linker=py tox -e py312-openghgCur -- "tests/test_hbmcmc_boundary.py"
 ```
 
 which will pass the test path as a positional argument to the commands invoked by tox.

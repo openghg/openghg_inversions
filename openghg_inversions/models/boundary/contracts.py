@@ -45,7 +45,6 @@ from openghg_inversions.inversion_inputs import DatetimeLike
 
 CENTERED_NAMES = ("H_bc_anomaly", "H_bc_mass", "bc_reference")
 STATE_LEVELS = ("bc_curtain", "bc_period")
-WHOLE_WINDOW = "whole_window"
 
 
 def require_centered_precision() -> None:
@@ -122,8 +121,8 @@ def _weights_schema() -> DataArraySchema:
         for dim in STATE_LEVELS:
             _require_unique_index(weights, dim, label="bc_centering_weights")
         periods = weights.indexes["bc_period"]
-        if not isinstance(periods, pd.DatetimeIndex) and list(periods) != [WHOLE_WINDOW]:
-            raise ValueError(f"bc_period labels must be interval start times, or {WHOLE_WINDOW!r} without timestamps.")
+        if not isinstance(periods, pd.DatetimeIndex):
+            raise ValueError("bc_period labels must be interval start times.")
         _require_dimensionless(weights, label="bc_centering_weights")
 
     return DataArraySchema(dtype=(np.integer, np.floating), dims=STATE_LEVELS, checks=[relationships])
@@ -180,9 +179,8 @@ class RawCenteredSensitivity(xr.Dataset):
       concentration unit string; ``H_bc_mass`` has units ``'1'``. An ``mf``
       variable, when present, has the same concentration units.
     * Optional ``bc_centering_weights`` lie on ``(bc_curtain, bc_period)``
-      with unique curtain labels, interval-start ``DatetimeIndex`` periods (or
-      the single label ``'whole_window'`` without timestamps) and units
-      equivalent to ``'1'``. Only weighted additive
+      with unique curtain labels, interval-start ``DatetimeIndex`` periods and
+      units equivalent to ``'1'``. Only weighted additive
       anomalies consume them.
     * Other variables are permitted. An absolute ``H_bc`` diagnostic must be
       marked ``boundary_sensitivity_preparation='unexpanded'``.

@@ -203,7 +203,7 @@ def test_configuration_and_runner_forward_same_channel_options(monkeypatch):
 @pytest.mark.parametrize(
     "options,match",
     [
-        ({"boundary": {"o2": MultiplicativeChoice(dict(DEFAULT_BC_PRIOR))}}, "requires prepared o2 boundary inputs"),
+        ({"boundary": {"o2": MultiplicativeChoice(dict(DEFAULT_BC_PRIOR))}}, "o2 boundary requires prepared H_bc or centered boundary operands"),
         ({"offset_args": {"co2": {"per_site": False}}}, "require offset_prior"),
         ({"offset_prior": {"co": {}}}, "keyed only"),
     ],
