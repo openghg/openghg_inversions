@@ -267,37 +267,19 @@ def test_invalid_lazy_structure_fails_without_executing_payload() -> None:
     assert executions == 0
 
 
-def test_invalid_basis_grid_fails_without_executing_lazy_inputs() -> None:
-    """Exact native-grid alignment precedes joint payload materialization."""
+def test_invalid_basis_grid_is_rejected_by_the_covariance_action() -> None:
+    """A basis on a reordered grid fails exact alignment where it meets ``B``."""
     _, native_mean, sensitivity, _, covariance, prolongation = _raw_projected_problem()
-    executions = 0
-
-    @delayed
-    def produce_inputs() -> tuple[np.ndarray, np.ndarray]:
-        """Return both native inputs and record forbidden graph execution."""
-        nonlocal executions
-        executions += 1
-        return native_mean.values, sensitivity.values
-
-    payload = produce_inputs()
-    lazy_mean = native_mean.copy(
-        data=da.from_delayed(payload[0], shape=native_mean.shape, dtype=native_mean.dtype)
-    )
-    lazy_sensitivity = sensitivity.copy(
-        data=da.from_delayed(payload[1], shape=sensitivity.shape, dtype=sensitivity.dtype)
-    )
-    reordered_prolongation = prolongation.isel(lat=[1, 0])
 
     with pytest.raises(ValueError, match="join='exact'"):
         reduce_native_gaussian(
             covariance=covariance,
-            strategy=PreserveBucketProlongation(reordered_prolongation),
+            strategy=PreserveBucketProlongation(prolongation.isel(lat=[1, 0])),
             state_dim="state",
-            native_mean=lazy_mean,
-            native_sensitivity=lazy_sensitivity,
+            native_mean=native_mean,
+            native_sensitivity=sensitivity,
             observation_dim="observation",
         )
-    assert executions == 0
 
 
 def test_related_lazy_inputs_materialize_one_shared_graph_once() -> None:

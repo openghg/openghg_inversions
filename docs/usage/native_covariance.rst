@@ -262,8 +262,10 @@ Memory use and lazy inputs
 The structured covariance action stores axis factors rather than dense native
 :math:`B`, but the product calculation is otherwise eager. Callers may pass a
 sensitivity with sparse or Dask-backed data; ``project_native_covariance``
-densifies and computes it after checking the strategy's restriction against
-its native grid. A strategy materializes its own inputs:
+densifies and computes it. The covariance action owns the native grid: each
+application of :math:`B` aligns its right-hand side exactly, so the
+restriction and sensitivity grids are checked where they meet :math:`B`.
+A strategy materializes its own inputs:
 ``PreserveBucketProlongation`` densifies its basis prolongation, whose values
 it needs. A restriction may remain sparse or Dask-backed until it is selected,
 when it is computed once. A sparse

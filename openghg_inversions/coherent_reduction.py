@@ -23,8 +23,7 @@ from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis.covariance_products import (
     NativeCovarianceProducts,
     RetainedProjectionStrategy,
-    _native_covariance_products,
-    _resolve_projection,
+    project_native_covariance,
 )
 from openghg_inversions.native_covariance import InvertibleNativeCovarianceAction
 
@@ -70,10 +69,9 @@ def reduce_native_gaussian(
 
     This is a named eager numerical boundary. ``native_mean`` and
     ``native_sensitivity`` may be Dask-backed; their payloads are materialized
-    together so a shared graph is executed once. The strategy selects and
-    materializes ``Pi`` from its own inputs, and ``Pi`` is checked against the
-    native grid before the mean and sensitivity are computed. Inputs are
-    borrowed and are not mutated.
+    together so a shared graph is executed once. The strategy then selects and
+    materializes ``Pi`` from its own inputs. Inputs are borrowed and are not
+    mutated.
 
     The inputs must use the covariance action's native dimensions and carry
     exactly matching indexed coordinates on shared dimensions. Unit conversion
@@ -101,33 +99,25 @@ def reduce_native_gaussian(
             inputs, or if covariance-product construction fails.
     """
     native_dims = tuple(covariance.native_dims)
-    if observation_batch_size <= 0:
-        raise ValueError("observation_batch_size must be positive")
     mean = native_mean.transpose(*native_dims)
     sensitivity = native_sensitivity.transpose(observation_dim, *native_dims)
 
-    # xr.dot uses an inner join by default, which could silently discard native
-    # cells. Establish exact compatibility once before any eager computation.
+    # The covariance action checks the grids of H and Pi when it is applied,
+    # but m meets only xr.dot, whose default inner join could silently discard
+    # native cells. This index-only check executes no lazy payload.
     mean, sensitivity = xr.align(mean, sensitivity, join="exact", copy=False)
-    projection = _resolve_projection(
-        strategy,
-        covariance,
-        native_reference=sensitivity,
-        native_dims=native_dims,
-        state_dim=state_dim,
-    )
     mean_data, sensitivity_data = compute(to_dense(mean).data, to_dense(sensitivity).data)
     mean = mean.copy(data=mean_data)
     sensitivity = sensitivity.copy(data=sensitivity_data)
 
-    products = _native_covariance_products(
+    products = project_native_covariance(
         covariance=covariance,
-        projection=projection,
-        sensitivity=sensitivity,
+        strategy=strategy,
         state_dim=state_dim,
+        native_sensitivity=sensitivity,
         observation_dim=observation_dim,
         observation_covariance="dense",
-        batch_size=observation_batch_size,
+        observation_batch_size=observation_batch_size,
     )
     return _reduce_native_covariance_products(
         products=products,

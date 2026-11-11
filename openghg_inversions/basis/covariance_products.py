@@ -92,8 +92,8 @@ class RetainedProjectionStrategy(Protocol):
             A dimensionless restriction with dimensions
             ``(state_dim, *native_dims)`` whose retained labels label every
             retained product. Its payload may be sparse or lazy. The kernel
-            checks its native grid against ``H`` and derives ``B Pi.T``,
-            ``C_alpha``, and ``U_*`` from it.
+            derives ``B Pi.T``, ``C_alpha``, and ``U_*`` from it; the
+            covariance action checks its native grid when applied.
         """
         ...
 
@@ -289,8 +289,8 @@ class SuppliedRestriction:
 
         Full row rank is established by the kernel's positive-definite
         factorization of ``C_alpha``, which is equivalent for positive-definite
-        ``B``. Exact native coordinates are checked against ``H`` by the
-        kernel.
+        ``B``. Exact native coordinates are checked by the covariance action
+        when the kernel applies ``B`` to ``Pi``.
 
         Args:
             covariance: Native covariance action; unused because ``Pi`` is
@@ -307,14 +307,8 @@ class SuppliedRestriction:
                 restriction is not admissible for a LogNormal retained state.
         """
         del covariance
-        expected_dims = {state_dim, *native_dims}
-        supplied = self._restriction
-        if set(supplied.dims) != expected_dims or supplied.ndim != len(expected_dims):
-            raise ValueError(
-                f"Supplied restriction must have dimensions {(state_dim, *native_dims)!r}; "
-                f"got {supplied.dims!r}"
-            )
-        restriction = supplied.transpose(state_dim, *native_dims)
+        # transpose rejects missing or extra dimensions.
+        restriction = self._restriction.transpose(state_dim, *native_dims)
         state_index = require_unique_index(restriction, state_dim, name="Supplied restriction")
         restriction = _materialize_restriction(restriction)
         row_minima, row_sums = _restriction_row_diagnostics(restriction, state_dim=state_dim)
@@ -581,60 +575,17 @@ def project_native_covariance(
     native_dims = tuple(covariance.native_dims)
     if observation_batch_size <= 0:
         raise ValueError("observation_batch_size must be positive")
+    batch_size = observation_batch_size
+    # The covariance action owns the native grid: each apply or solve aligns
+    # its right-hand side exactly, so Pi, U and H are checked where they meet B.
+    projection = _prepare_projection(
+        strategy.projection(covariance, native_dims=native_dims, state_dim=state_dim),
+        native_dims=native_dims,
+        state_dim=state_dim,
+    )
     sensitivity = native_sensitivity.transpose(observation_dim, *native_dims)
-    projection = _resolve_projection(
-        strategy,
-        covariance,
-        native_reference=sensitivity,
-        native_dims=native_dims,
-        state_dim=state_dim,
-    )
     (sensitivity_data,) = compute(to_dense(sensitivity).data)
-    return _native_covariance_products(
-        covariance=covariance,
-        projection=projection,
-        sensitivity=sensitivity.copy(data=sensitivity_data),
-        state_dim=state_dim,
-        observation_dim=observation_dim,
-        observation_covariance=observation_covariance,
-        batch_size=observation_batch_size,
-    )
-
-
-def _resolve_projection(
-    strategy: RetainedProjectionStrategy,
-    covariance: InvertibleNativeCovarianceAction,
-    *,
-    native_reference: xr.DataArray,
-    native_dims: tuple[str, ...],
-    state_dim: str,
-) -> RetainedProjection:
-    """Select ``Pi`` and check it against the possibly lazy native grid of ``H``.
-
-    Exact alignment uses indexes only, so a mismatched grid fails before any
-    lazy sensitivity payload is computed.
-    """
-    projection = strategy.projection(covariance, native_dims=native_dims, state_dim=state_dim)
-    return _prepare_projection(
-        projection,
-        native_reference=native_reference,
-        native_dims=native_dims,
-        state_dim=state_dim,
-    )
-
-
-def _native_covariance_products(
-    *,
-    covariance: InvertibleNativeCovarianceAction,
-    projection: RetainedProjection,
-    sensitivity: xr.DataArray,
-    state_dim: str,
-    observation_dim: str,
-    observation_covariance: Literal["dense", "diagonal"],
-    batch_size: int,
-) -> NativeCovarianceProducts:
-    """Form all products from a prepared ``Pi`` and eager canonical ``H``."""
-    native_dims = tuple(covariance.native_dims)
+    sensitivity = sensitivity.copy(data=sensitivity_data)
     occupied_names = {
         str(name) for array in (sensitivity, projection.restriction) for name in (*array.dims, *array.coords)
     }
@@ -845,21 +796,12 @@ def _observation_covariance(
 def _prepare_projection(
     projection: RetainedProjection,
     *,
-    native_reference: xr.DataArray,
     native_dims: tuple[str, ...],
     state_dim: str,
 ) -> RetainedProjection:
     """Canonicalize and materialize a strategy result at the extension seam."""
     restriction = projection.restriction.transpose(state_dim, *native_dims).assign_attrs(
         {**projection.restriction.attrs, "units": "1"}
-    )
-    # A custom strategy is an extension boundary. Exact alignment prevents its
-    # restriction from silently contracting over only part of the native grid.
-    restriction, _ = xr.align(
-        restriction,
-        native_reference,
-        join="exact",
-        copy=False,
     )
     restriction = _materialize_restriction(restriction)
     return replace(projection, restriction=restriction)

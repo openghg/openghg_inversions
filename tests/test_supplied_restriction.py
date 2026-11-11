@@ -7,7 +7,6 @@ import pandas as pd
 import pytest
 import sparse
 import xarray as xr
-from dask import array as da
 
 from openghg_inversions.basis.covariance_products import (
     PreserveBucketProlongation,
@@ -336,7 +335,7 @@ def test_supplied_restriction_rejects_invalid_labels_and_values(change: str) -> 
         match = "must be unique"
     elif change == "missing-dim":
         restriction = restriction.isel({SOURCE_DIM: 0}, drop=True)
-        match = "must have dimensions"
+        match = "Dimensions"
     elif change == "reordered-native":
         restriction = restriction.isel(lon=slice(None, None, -1))
         match = r"join='exact'|align"
@@ -481,14 +480,8 @@ def test_production_shape_restriction_stays_sparse_with_bounded_memory() -> None
         native_dims=NATIVE_DIMS,
         state_dim="state",
     )
-    lazy_sensitivity = xr.DataArray(
-        da.zeros((14, len(source_rows), n_lat, n_lon)),
-        dims=("observation", *NATIVE_DIMS),
-        coords={SOURCE_DIM: list(source_rows), **coords},
-    )
     prepared = _prepare_projection(
         projection,
-        native_reference=lazy_sensitivity,
         native_dims=NATIVE_DIMS,
         state_dim="state",
     )

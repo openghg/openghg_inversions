@@ -82,8 +82,7 @@ physical restriction (see :doc:`native_covariance`):
    unresolved_covariance = reduction.unresolved_observation_covariance
 
 Calling ``reduce_native_gaussian`` computes any Dask-backed mean and
-sensitivity together, after the strategy's restriction has been checked
-against their native grid. The strategy computes its own inputs, and the
+sensitivity together. The strategy computes its own inputs, and the
 returned xarray arrays are eager with explicit retained-state and observation
 labels.
 
