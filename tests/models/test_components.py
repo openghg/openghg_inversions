@@ -242,6 +242,19 @@ def test_likelihood_representation_rejects_mismatched_observation_labels(
         likelihood_representation(terms, observations, modelled)
 
 
+@pytest.mark.parametrize("dims", [("other",), ("nmeasure", "other")])
+def test_likelihood_representation_rejects_shifts_on_other_axes(dims: tuple[str, ...]) -> None:
+    """Exact alignment ignores unshared dimensions, so differently named shift axes must fail."""
+    observations = xr.DataArray([401.0, 402.0], dims="nmeasure", coords={"nmeasure": ["a", "b"]})
+    centered = pt.as_tensor_variable(np.array([1.0, 2.0]))
+    shift = xr.DataArray(np.full((2,) * len(dims), 400.0), dims=dims)
+    terms = [ConcentrationTerm(centered + 400.0, centered, shift)]
+
+    with registered_model() as model, pytest.raises(ValueError, match="must have the observations' dimensions"):
+        likelihood_representation(terms, observations, terms[0].output)
+    assert "boundary_reference_shift" not in model.named_vars
+
+
 def test_resolve_model_variable_prefers_latent() -> None:
     """Check shared model-variable resolution prefers the reparameterised latent."""
     data = xr.DataArray(
