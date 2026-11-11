@@ -266,25 +266,26 @@ AST inspection of the concrete builder signatures gives:
      - Boundary inputs
    * - ``build_co2_model``
      - 23
-     - 15
+     - 16
      - 9 → 1
    * - ``build_co2_cached_sigma_model``
      - 24
-     - 16
+     - 17
      - 9 → 1
    * - ``build_co2_o2_model``
      - 23
-     - 15
+     - 16
      - 9 → 1
    * - ``build_co2_o2_cached_sigma_model``
      - 23
-     - 15
+     - 16
      - 9 → 1
 
 To reproduce the current count, parse each builder module with ``ast.parse``,
 select its top-level ``FunctionDef`` and count ``posonlyargs + args +
-kwonlyargs``. The only boundary parameter is ``boundary``; unrelated arguments
-are unchanged.
+kwonlyargs``. The only boundary parameter is ``boundary``. Each builder also accepts the
+independent optional ``biosphere_prior`` calibration for its flux state; it adds
+one parameter relative to the boundary-only counts.
 
 A dry-run extension with a new supported boundary prior reaches these owners:
 

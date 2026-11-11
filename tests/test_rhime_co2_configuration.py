@@ -10,7 +10,7 @@ from typing import Any, cast
 
 import pytest
 
-from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeChoice
+from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice, MultiplicativeChoice
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likelihood
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
@@ -516,9 +516,32 @@ def test_boundary_mean_shift_hyperprior_configuration(cached: bool, anomaly_scal
 _SHIFT = {"pdf": "normal", "mu": 0.0, "sigma": 0.5}
 
 
+@pytest.mark.parametrize("boundary, expected", [
+    ({"type": "additive", "anomaly_scale": 0.3, "anomalies": "period_contrasts", "frequency": "monthly"},
+     AdditiveChoice(None, 0.3, anomalies="period_contrasts", frequency="monthly")),
+    ({"type": "additive", "anomaly_scale": 0.3, "anomalies": "independent"},
+     AdditiveChoice(None, 0.3, anomalies="independent")),
+    ({"type": "additive", "anomaly_scale": 0.0, "anomalies": "period_contrasts", "mean_by_period": True,
+      "frequency": "monthly", "mean_shift_prior": _SHIFT},
+     AdditiveChoice(_SHIFT, 0.0, anomalies="period_contrasts", mean_by_period=True, frequency="monthly")),
+    ({"type": "anomaly_scaling", "scale_sd": 0.8, "reference": "whole_window_transport_mean"},
+     AnomalyScalingChoice(None, 0.8, reference="whole_window_transport_mean")),
+    ({"type": "anomaly_scaling", "scale_sd": 0.8, "reference": 401.5, "mean_shift_prior": _SHIFT},
+     AnomalyScalingChoice(_SHIFT, 0.8, reference=401.5)),
+])
+def test_boundary_structure_keys_select_choices(boundary, expected) -> None:
+    config = _ordinary()
+    config["model"] = {"boundary": boundary}
+    assert Co2ModelConfig.from_params(config).model_arguments()["boundary"] == expected
+
+
 @pytest.mark.parametrize("boundary, message", [
     ({"mean_shift_prior": _SHIFT}, r"Missing required option model\.boundary\.anomaly_scale"),
-    ({"anomaly_scale": 0.3}, r"Missing required option model\.boundary\.mean_shift_prior"),
+    ({"anomaly_scale": 0.3}, "may omit the mean shift prior"),
+    ({"anomaly_scale": 0.0, "anomalies": "independent"}, "may omit the mean shift prior"),
+    ({"anomaly_scale": 0.3, "anomalies": "curtains"}, "Unknown boundary anomaly structure"),
+    ({"anomaly_scale": 0.3, "reference": 400.0}, r"Unknown configuration option\(s\): model\.boundary\.reference"),
+    ({"anomaly_scale": 0.3, "scale_sd": 0.3}, r"Unknown configuration option\(s\): model\.boundary\.scale_sd"),
     ({"anomaly_scale": -0.1, "mean_shift_prior": _SHIFT}, "non-negative"),
     ({"anomaly_scale": float("nan"), "mean_shift_prior": _SHIFT}, "finite"),
     ({"anomaly_scale": float("inf"), "mean_shift_prior": _SHIFT}, "finite"),
@@ -535,8 +558,22 @@ def test_additive_boundary_configuration_rejects_incomplete_or_foreign_options(b
 
 
 @pytest.mark.parametrize("boundary, message", [
+    ({"mean_shift_prior": _SHIFT}, r"Missing required option model\.boundary\.scale_sd"),
+    ({"scale_sd": 0.3, "anomaly_scale": 0.3}, r"Unknown configuration option\(s\): model\.boundary\.anomaly_scale"),
+    ({"scale_sd": 0.3, "mean_by_period": True}, "requires a mean shift prior and a boundary frequency"),
+    ({"scale_sd": 0.3, "reference": "rolling"}, "bc_reference must be"),
+])
+def test_anomaly_scaling_boundary_configuration_rejects_incomplete_or_foreign_options(boundary, message) -> None:
+    config = _ordinary()
+    config["model"] = {"boundary": {"type": "anomaly_scaling", **boundary}}
+    with pytest.raises((ValueError, TypeError), match=message):
+        Co2ModelConfig.from_params(config)
+
+
+@pytest.mark.parametrize("boundary, message", [
     ({"anomaly_scale": 0.3, "mean_shift_prior": _SHIFT}, r"model\.boundary\.anomaly_scale, model\.boundary\.mean_shift_prior"),
-    ({"type": "anomalies"}, r"model\.boundary\.type must be one of \['additive', 'multiplicative'\]"),
+    ({"scale_sd": 0.3}, r"Unknown configuration option\(s\): model\.boundary\.scale_sd"),
+    ({"type": "anomalies"}, r"model\.boundary\.type must be one of \['additive', 'anomaly_scaling', 'multiplicative'\]"),
     ({"type": 1}, "model.boundary.type"),
     ({"enabled": False, "type": "multiplicative"}, "options require model.boundary.enabled=true"),
 ])

@@ -85,6 +85,7 @@ class AnomalyScalingChoice:
     anchor_time: DatetimeLike | None = None
 
     def __post_init__(self) -> None:
+        """Copy the mean prior and validate the scaling options and calendar."""
         if self.mean_prior is not None:
             object.__setattr__(self, "mean_prior", dict(self.mean_prior))
         validate_centered_boundary_periods(self.frequency, self.anchor_time)
@@ -155,9 +156,10 @@ class AnomalyScalingChoice:
         else:
             shift = float(self.reference) - stored
         # Recentring keeps the bound layout and units: the shift is a scalar.
+        # Assign variables so the Dataset keeps its own state index and level coordinates.
         recentred = data.assign(
-            H_bc_anomaly=(anomaly - shift * mass).assign_attrs(anomaly.attrs),
-            bc_reference=(stored + shift).assign_attrs(stored.attrs),
+            H_bc_anomaly=(anomaly - shift * mass).assign_attrs(anomaly.attrs).variable,
+            bc_reference=(stored + shift).assign_attrs(stored.attrs).variable,
         )
         return AnomalyScalingBoundary(self, cast(BoundCenteredSensitivity, recentred))
 

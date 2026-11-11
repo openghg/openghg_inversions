@@ -578,6 +578,6 @@ def test_boundary_calendar_mismatch_rejected_before_lazy_payload_computation():
     assert isinstance(bound.data.H_bc_mass.data, da.Array)
     assert executions == []
     # Both anchors have membership [0,0,1,1], but represent different physical intervals.
-    with pytest.raises(ValueError, match="join='exact'"):
+    with pytest.raises(ValueError, match="do not align.*Missing from the weights"):
         choice("2021-01-01T12").bind(inputs.mf, transport)
     assert executions == []

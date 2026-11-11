@@ -95,6 +95,34 @@ manifest lifetime, compatible model changes and graph-free product replay.
    openghg_inversions.rhime.outputs.postprocess_multisector_outputs
    openghg_inversions.rhime.outputs.save_inversion_output
 
+Calibrate retained biosphere priors
+-----------------------------------
+
+See :doc:`the calibration equations and Python workflow </usage/biosphere_prior>`
+for the explicit retained-state intervention and its fixed-reduction scope.
+
+.. autosummary::
+   :nosignatures:
+
+   openghg_inversions.biosphere_prior.BiospherePrior
+   openghg_inversions.biosphere_prior.calibrate_biosphere_prior
+   openghg_inversions.models.biosphere.add_biosphere_state
+   openghg_inversions.models.biosphere.annotate_biosphere_prior
+
+Configure and persist CO2 priors
+--------------------------------
+
+See :doc:`configured CO2 priors </usage/configured_co2_priors>` for explicit
+preparation choices and reuse of frozen scientific artifacts.
+
+.. autosummary::
+   :nosignatures:
+
+   openghg_inversions.rhime.co2.BiospherePriorConfig
+   openghg_inversions.rhime.co2.shared_baseline_choice
+   openghg_inversions.rhime.co2.load_biosphere_prior
+   openghg_inversions.rhime.co2.build_shared_co2_from_config
+
 Run specifications and results
 ------------------------------
 
@@ -203,6 +231,7 @@ operands and supported model routes.
    openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request
    openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma
    openghg_inversions.rhime.co2.prepare_co2_o2_inputs
+   openghg_inversions.rhime.co2.surface_templates.prepare_linked_surface_templates
 
 Basis construction and state geometry
 -------------------------------------
@@ -321,6 +350,24 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.boundary.bind_prepared
    openghg_inversions.models.boundary.Outputs
    openghg_inversions.array_ops.to_dense_tree
+   openghg_inversions.models.shared_baseline.SharedBaselineChoice
+   openghg_inversions.models.shared_baseline.SharedBaseline
+   openghg_inversions.models.linked_shared_baseline.bind_linked_shared_baseline
+   openghg_inversions.rhime.co2.shared_preparation.prepare_linked_shared_inputs
+   openghg_inversions.rhime.co2.shared_preparation.materialize_linked_shared_inputs
+   openghg_inversions.rhime.co2.shared_workflow.build_linked_shared_workflow
+   openghg_inversions.rhime.co2.shared_workflow.annotate_linked_shared_workflow
+   openghg_inversions.rhime.co2.shared_workflow.sample_linked_shared_workflow
+   openghg_inversions.rhime.co2.shared_outputs.physical_flux_scaling
+   openghg_inversions.rhime.co2.shared_outputs.reconstruct_shared_concentrations
+   openghg_inversions.rhime.co2.linked_shared_baseline_model.build_shared_co2_o2_model
+   openghg_inversions.rhime.co2.linked_shared_baseline_model.build_shared_co2_o2_cached_sigma_model
+   openghg_inversions.rhime.co2.linked_shared_baseline_model.annotate_linked_shared_baseline_trace
+   openghg_inversions.rhime.co2.linked_shared_baseline_model.reconstruct_linked_shared_baseline
+   openghg_inversions.rhime.co2.shared_baseline_model.build_shared_co2_model
+   openghg_inversions.rhime.co2.shared_baseline_model.build_shared_co2_cached_sigma_model
+   openghg_inversions.rhime.co2.shared_baseline_model.annotate_shared_baseline_trace
+   openghg_inversions.rhime.co2.shared_baseline_model.reconstruct_shared_baseline
    openghg_inversions.models.add_linked_linear_component
    openghg_inversions.models.add_correlated_lognormal_state
    openghg_inversions.models.add_offset_component

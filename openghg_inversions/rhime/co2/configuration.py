@@ -10,13 +10,16 @@ from math import isfinite
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
+
 import tomllib
 
 
 from openghg_inversions.basis.boundary import BOUNDARY_BASIS_ALGORITHMS
 from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 from openghg_inversions.inversion_data import SiteOptions, check_surface_request
-from openghg_inversions.models.boundary import AdditiveChoice, Choice, MultiplicativeChoice, boundary_preparation
+from openghg_inversions.models.boundary import (
+    AdditiveChoice, AnomalyScalingChoice, Choice, MultiplicativeChoice, boundary_preparation,
+)
 from openghg_inversions.models.boundary.preparation import check_representation
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.priors import positive_prior_args
@@ -99,11 +102,15 @@ _PRIOR_OPTION_NAMES = frozenset({
     "pdf", "mu", "sigma", "lower", "upper", "nu", "alpha", "beta", "lam", "mean", "stdev", "reparameterise",
 })
 _MODEL_SECTION_OPTION_NAMES = {
-    "boundary": frozenset({"enabled", "type", "prior", "frequency", "anchor_time", "mean_shift_prior", "anomaly_scale"}),
+    "boundary": frozenset({
+        "enabled", "type", "prior", "frequency", "anchor_time", "mean_shift_prior", "anomaly_scale", "anomalies",
+        "mean_by_period", "scale_sd", "reference",
+    }),
     "boundary.mean_shift_prior": _PRIOR_OPTION_NAMES,
     "boundary.prior": _PRIOR_OPTION_NAMES,
     "offset": frozenset({"prior", "frequency", "per_site", "drop_first"}),
     "offset.prior": _PRIOR_OPTION_NAMES,
+    "biosphere": frozenset({"path"}),
 }
 
 
@@ -244,7 +251,7 @@ def _validate_co2_option_names(*requests: Mapping[str, object]) -> None:
         "prepared_inputs.observations": frozenset({"filters", "averaging_error"}),
         "prepared_inputs.basis": _BASIS_OPTION_NAMES,
         "prepared_inputs.native_prior": _NATIVE_PRIOR_OPTION_NAMES,
-        "model": frozenset({"boundary", "offset"}),
+        "model": frozenset({"boundary", "offset", "biosphere"}),
         **{f"model.{path}": names for path, names in _MODEL_SECTION_OPTION_NAMES.items()},
         "likelihood": _LIKELIHOOD_OPTION_NAMES,
         "likelihood.sigma_prior": _PRIOR_OPTION_NAMES,
@@ -643,18 +650,49 @@ def _multiplicative_boundary(options: dict[str, object], periods: dict[str, Any]
     return MultiplicativeChoice(prior, **periods)
 
 
+def _mean_shift_options(options: dict[str, object]) -> dict[str, Any]:
+    """Resolve the optional mean-shift prior and its per-period switch shared by centred corrections."""
+    mean_shift_prior = (
+        _prior(options.pop("mean_shift_prior"), "model.boundary.mean_shift_prior")
+        if "mean_shift_prior" in options else None
+    )
+    mean_by_period = (
+        _bool(options.pop("mean_by_period"), "model.boundary.mean_by_period") if "mean_by_period" in options else False
+    )
+    return {"mean_prior": mean_shift_prior, "mean_by_period": mean_by_period}
+
+
 def _additive_boundary(options: dict[str, object], periods: dict[str, Any]) -> AdditiveChoice:
     """Resolve the options of centred additive boundary corrections."""
-    mean_shift_prior = _prior(_take(options, "mean_shift_prior", "model.boundary"), "model.boundary.mean_shift_prior")
+    mean = _mean_shift_options(options)
     anomaly_scale = _number(_take(options, "anomaly_scale", "model.boundary"), "model.boundary.anomaly_scale")
+    anomalies = _string(options.pop("anomalies"), "model.boundary.anomalies") if "anomalies" in options else "weighted"
     _reject_unknown(options, "model.boundary")
-    return AdditiveChoice(mean_shift_prior, anomaly_scale, **periods)
+    return AdditiveChoice(
+        mean["mean_prior"], anomaly_scale, anomalies=anomalies,  # type: ignore[arg-type]
+        mean_by_period=mean["mean_by_period"], **periods,
+    )
+
+
+def _anomaly_scaling_boundary(options: dict[str, object], periods: dict[str, Any]) -> AnomalyScalingChoice:
+    """Resolve the options of a boundary that scales the prescribed anomaly about a reference."""
+    mean = _mean_shift_options(options)
+    scale_sd = _number(_take(options, "scale_sd", "model.boundary"), "model.boundary.scale_sd")
+    reference: object = options.pop("reference", "stored")
+    if not isinstance(reference, str):
+        reference = _number(reference, "model.boundary.reference")
+    _reject_unknown(options, "model.boundary")
+    return AnomalyScalingChoice(
+        mean["mean_prior"], scale_sd, reference=reference,  # type: ignore[arg-type]
+        mean_by_period=mean["mean_by_period"], **periods,
+    )
 
 
 # Each boundary ``type`` names one choice family and owns the parser for its options.
 _BOUNDARY_TYPES: dict[str, Callable[[dict[str, object], dict[str, Any]], Choice]] = {
     MultiplicativeChoice.kind: _multiplicative_boundary,
     AdditiveChoice.kind: _additive_boundary,
+    AnomalyScalingChoice.kind: _anomaly_scaling_boundary,
 }
 
 
@@ -683,28 +721,44 @@ def _boundary_choice(boundary: dict[str, object]) -> Choice | None:
 def _model(value: object) -> dict[str, Any]:
     options = _table(value, "model")
     result: dict[str, Any] = {}
+    if "biosphere" in options:
+        biosphere = _table(options.pop("biosphere"), "model.biosphere")
+        result["biosphere_prior_path"] = _artifact_path(_take(biosphere, "path", "model.biosphere"), "model.biosphere.path")
+        _reject_unknown(biosphere, "model.biosphere")
     if "boundary" in options:
         result["boundary"] = _boundary_choice(_table(options.pop("boundary"), "model.boundary"))
     if "offset" in options:
-        offset = _table(options.pop("offset"), "model.offset")
-        result["offset_prior"] = _prior(_take(offset, "prior", "model.offset"), "model.offset.prior")
-        offset_args: dict[str, Any] = {}
-        if "frequency" in offset:
-            frequency = offset.pop("frequency")
-            if frequency is not None:
-                frequency = _string(frequency, "model.offset.frequency")
-            offset_args["offset_freq"] = frequency
-        for config_name, runner_name in (("per_site", "per_site"), ("drop_first", "drop_first")):
-            if config_name in offset:
-                offset_args[runner_name] = _bool(offset.pop(config_name), f"model.offset.{config_name}")
-        _reject_unknown(offset, "model.offset")
-        if offset_args.get("per_site") is False:
-            if offset_args.get("offset_freq") is not None:
-                raise ValueError("A global model.offset does not accept frequency.")
-            if offset_args.get("drop_first") is True:
-                raise ValueError("A global model.offset does not support drop_first=true.")
-        result["offset_args"] = _frozen(offset_args)
+        result.update(_offset_model(options.pop("offset")))
     _reject_unknown(options, "model")
+    return result
+
+
+def _artifact_path(value: object, path: str) -> Path:
+    if not isinstance(value, Path):
+        value = _string(value, path)
+    return Path(value).expanduser().resolve()
+
+
+def _offset_model(value: object) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    offset = _table(value, "model.offset")
+    result["offset_prior"] = _prior(_take(offset, "prior", "model.offset"), "model.offset.prior")
+    offset_args: dict[str, Any] = {}
+    if "frequency" in offset:
+        frequency = offset.pop("frequency")
+        if frequency is not None:
+            frequency = _string(frequency, "model.offset.frequency")
+        offset_args["offset_freq"] = frequency
+    for config_name, runner_name in (("per_site", "per_site"), ("drop_first", "drop_first")):
+        if config_name in offset:
+            offset_args[runner_name] = _bool(offset.pop(config_name), f"model.offset.{config_name}")
+    _reject_unknown(offset, "model.offset")
+    if offset_args.get("per_site") is False:
+        if offset_args.get("offset_freq") is not None:
+            raise ValueError("A global model.offset does not accept frequency.")
+        if offset_args.get("drop_first") is True:
+            raise ValueError("A global model.offset does not support drop_first=true.")
+    result["offset_args"] = _frozen(offset_args)
     return result
 
 
@@ -848,6 +902,7 @@ class Co2ModelConfig:
     fixed_model_mismatch: float | None = None
     likelihood_builder: Callable[..., Any] | None = None
     likelihood_kwargs: Mapping[str, Any] | None = None
+    biosphere_prior_path: Path | None = None
 
     def __post_init__(self) -> None:
         for item in fields(self):
@@ -868,9 +923,27 @@ class Co2ModelConfig:
             })
         return cls(**model, **likelihood)
 
+    def sampler_arguments(self) -> dict[str, Any]:
+        """Return graph-independent policy choices without opening artifacts."""
+        return {"likelihood_builder": self.likelihood_builder, "likelihood_kwargs": self.likelihood_kwargs or {}}
+
     def model_arguments(self) -> dict[str, Any]:
-        """Bind these choices as keywords at the ordinary scientific boundary."""
-        return {item.name: getattr(self, item.name) for item in fields(self) if getattr(self, item.name) is not None}
+        """Bind these choices as keywords, loading a selected biosphere prior.
+
+        Call after output preflight: this opens the calibrated prior artifact.
+        """
+        from .prior_configuration import load_biosphere_prior
+
+        result = {item.name: getattr(self, item.name) for item in fields(self)
+                  if item.name != "biosphere_prior_path" and getattr(self, item.name) is not None}
+        if self.biosphere_prior_path is not None:
+            result["biosphere_prior"] = load_biosphere_prior(self.biosphere_prior_path)
+        return result
+
+    def artifact_paths(self) -> tuple[Path, ...]:
+        """Identify the calibrated prior and likelihood artifacts consumed during construction."""
+        eigenbasis = (self.likelihood_kwargs or {}).get("eigenbasis_path")
+        return tuple(Path(path).resolve() for path in (self.biosphere_prior_path, eigenbasis) if path is not None)
 
 
 @dataclass(frozen=True)

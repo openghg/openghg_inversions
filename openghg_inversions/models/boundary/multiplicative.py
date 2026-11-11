@@ -94,6 +94,7 @@ class MultiplicativeChoice:
     anchor_time: DatetimeLike | None = None
 
     def __post_init__(self) -> None:
+        """Copy the prior and validate the calendar."""
         object.__setattr__(self, "prior", dict(self.prior))
         validate_centered_boundary_periods(self.frequency, self.anchor_time)
 

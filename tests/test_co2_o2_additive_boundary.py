@@ -314,12 +314,17 @@ def test_standalone_co2_matches_linked_co2_boundary_equation_and_marginal_densit
         np.testing.assert_allclose(single_logp, expected, atol=1e-10)
 
 
-def test_linked_additive_rejects_permuted_weight_labels():
+def test_linked_additive_binds_permuted_weight_labels_by_label():
+    """Weights carrying the bound labels in another order give the same model."""
     with pytensor.config.change_flags(floatX="float64"):
         kwargs = _additive_inputs()
+        model = build_co2_o2_model(**bound_linked_model_arguments({**kwargs}))
         kwargs["bc_centering_weights"]["o2"] = kwargs["bc_centering_weights"]["o2"].isel(bc_curtain=[2, 0, 1])
-        with pytest.raises(ValueError, match="align"):
-            build_co2_o2_model(**bound_linked_model_arguments({**kwargs}))
+        permuted = build_co2_o2_model(**bound_linked_model_arguments({**kwargs}))
+        point = model.initial_point()
+        np.testing.assert_allclose(permuted.compile_logp()(point), model.compile_logp()(point), rtol=1e-12)
+        np.testing.assert_array_equal(permuted["o2_bc_centering_weights"].get_value(),
+                                      model["o2_bc_centering_weights"].get_value())
 
 
 @pytest.mark.parametrize("cached", [False, True])
@@ -339,7 +344,8 @@ def test_public_linked_runners_forward_prepared_additive_boundary_options(monkey
         )
         options = {"boundary": _linked_choices(kwargs)}
 
-        def prior_sample(built, sampler):
+        def prior_sample(built, sampler, *, recompute_deterministics=False):
+            assert recompute_deterministics is True
             with built.model:
                 trace = pm.sample_prior_predictive(draws=2, random_seed=81)
             return restore_inferencedata_coords(trace, get_coord_registry(built.model))
@@ -440,7 +446,8 @@ def test_linked_runners_do_not_compute_passive_additive_arrays(monkeypatch, cach
         )
         options = {"boundary": boundary}
 
-        def prior_sample(built, sampler):
+        def prior_sample(built, sampler, *, recompute_deterministics=False):
+            assert recompute_deterministics is True
             with built.model:
                 trace = pm.sample_prior_predictive(draws=1, random_seed=83)
             return restore_inferencedata_coords(trace, get_coord_registry(built.model))
@@ -487,9 +494,10 @@ def test_mixed_centered_boundary_ou_density_gradients_and_absolute_closure(o2_an
         for channel, operands in kwargs["boundary_operands"].items():
             sensitivity = kwargs[f"{channel}_sensitivity"]
             dim = str(sensitivity.dims[0])
-            observations = xr.DataArray(
-                np.zeros(sensitivity.sizes[dim]), dims=dim, coords={dim: sensitivity[dim]}
-            )
+            observations = select_gathered_data_array(
+                kwargs["observations"], key=channel, key_dim="species",
+                ragged_dim="channel_observation", stack_dim="observation",
+            ).rename({"observation": dim})
             bound = BoundCenteredSensitivity.bind(raw_transport(operands), observations)
             if channel == "co2":
                 absolute_kwargs["boundary_sensitivity"][channel] = (
@@ -567,7 +575,8 @@ def test_public_linked_ou_restores_mixed_centered_boundary_predictions(monkeypat
             site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8},
         )
 
-        def prior_sample(built, sampler):
+        def prior_sample(built, sampler, *, recompute_deterministics=False):
+            assert recompute_deterministics is True
             with built.model:
                 trace = pm.sample_prior_predictive(draws=3, random_seed=93)
             return restore_inferencedata_coords(trace, get_coord_registry(built.model))

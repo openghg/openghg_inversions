@@ -4,7 +4,19 @@ The package exposes CO2-only and separate linked CO2/O2
 recipes while reusing canonical RHIME inputs through explicit composition.
 """
 
+from openghg_inversions.models.linked_shared_baseline import bind_linked_shared_baseline
+from .linked_shared_baseline_model import (
+    build_shared_co2_o2_model, build_shared_co2_o2_cached_sigma_model,
+    annotate_linked_shared_baseline_trace, reconstruct_linked_shared_baseline,
+)
+from .shared_baseline_model import (
+    build_shared_co2_model, build_shared_co2_cached_sigma_model,
+    annotate_shared_baseline_trace, reconstruct_shared_baseline,
+)
 from .co2_model import build_co2_model
+from .prior_configuration import (
+    BiospherePriorConfig, load_biosphere_prior, shared_baseline_choice, build_shared_co2_from_config,
+)
 from .co2_affine_output import (
     BoundCo2AffineFluxMap,
     import_explicit_affine_flux_map,
@@ -48,7 +60,20 @@ from .execution import run_co2
 from .co2_outputs import Co2Output
 from .co2_o2_outputs import Co2O2Output, Co2O2OutputOptions
 
+from .surface_templates import prepare_linked_surface_templates
+from .shared_preparation import prepare_linked_shared_inputs
+from .shared_workflow import sample_linked_shared_workflow
+
 __all__ = [
+    "prepare_linked_surface_templates",
+    "prepare_linked_shared_inputs", "sample_linked_shared_workflow",
+    "bind_linked_shared_baseline", "build_shared_co2_o2_model",
+    "build_shared_co2_o2_cached_sigma_model", "annotate_linked_shared_baseline_trace",
+    "reconstruct_linked_shared_baseline",
+    "build_shared_co2_model", "build_shared_co2_cached_sigma_model",
+    "annotate_shared_baseline_trace", "reconstruct_shared_baseline",
+    "BiospherePriorConfig", "load_biosphere_prior", "shared_baseline_choice",
+    "build_shared_co2_from_config",
     "Co2PreparationConfig", "Co2ModelConfig", "Co2O2PreparationConfig", "Co2O2ModelConfig",
     "Co2O2PreparedInputs",
     "Co2O2Output",

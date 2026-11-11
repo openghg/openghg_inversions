@@ -292,9 +292,10 @@ version-2 dedicated prepared-input schema; ordinary linked inputs retain
 version-1 compatibility. See :doc:`prepared_format_support` for supported formats.
 
 The additive-Gaussian and cached fixed-OU CO₂ and linked CO₂/O₂ routes bind raw
-operands to BC periods at model construction. Their model-facing runners and
-direct builders accept ``bc_freq`` and ``bc_anchor_time``. Direct builders
-consume raw ``boundary_operands`` (in linked models, a mapping keyed by tracer).
+operands to BC periods at model construction. Their model-facing runners accept
+boundary choices, whose ``frequency`` and ``anchor_time`` set the periods. Direct
+builders take boundaries already bound to the fit's observations (in linked
+models, a mapping keyed by tracer).
 Configured and supported saved routes select the same choices in their
 boundary configuration, for example:
 
@@ -326,14 +327,13 @@ boundaries while fitting additive O2 corrections. Configure PyTensor
 ``floatX=float64`` before model construction; these routes reject an explicit
 float32 choice.
 
-The concrete CO2 builder passes centered observations and means to a custom
-likelihood callback with unchanged error operands. A callback whose density
-depends on absolute concentration must explicitly account for the fixed
-translation and any required physical reference context. The prepared-input runner
-restricts centered replay to its supported built-in likelihoods because its
-fixed observed-variable roles and predictive-restoration contract have not been
-established for arbitrary callbacks. Direct custom-model callers own that
-contract. Standard and multisector model builders still reject centered inputs;
+The concrete CO2 builder accepts ``likelihood_builder=None`` for the default
+additive-Gaussian likelihood or the exact
+:func:`~openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood`
+function when a centered ``boundary`` is supplied. Arbitrary callbacks and wrappers
+around the built-in function are rejected before graph construction, matching the
+prepared-input runner's supported centered policy. Custom likelihood callbacks
+remain supported when the boundary is absolute or absent. Standard and multisector model builders still reject centered inputs;
 their preparation operations can produce the reusable canonical handoff shown
 above.
 

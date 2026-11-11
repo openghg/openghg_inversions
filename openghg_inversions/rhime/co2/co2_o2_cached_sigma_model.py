@@ -10,6 +10,8 @@ from dask import compute as dask_compute
 import pymc as pm
 import xarray as xr
 
+from openghg_inversions.biosphere_prior import BiospherePrior
+from openghg_inversions.models.biosphere import add_biosphere_state
 from openghg_inversions.array_ops import to_dense_tree
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models import (
@@ -57,6 +59,7 @@ def build_co2_o2_cached_sigma_model(
     o2_sensitivity: xr.DataArray,
     aggregation_error: AggregationError,
     retained_prior: CorrelatedLognormalPrior,
+    biosphere_prior: BiospherePrior | None = None,
     independent_error_sd: xr.DataArray,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior: PriorArgs,
@@ -70,8 +73,9 @@ def build_co2_o2_cached_sigma_model(
     """Build one joint fixed-OU target and its matched cached affine graph.
 
     Inputs have the same coherent-reduction, optional channel-baseline, and
-    embedded O2-ratio contract as :func:`build_co2_o2_model`. Both channels must
-    use the same concentration unit. OU blocks are independent by
+    embedded O2-ratio contract as
+    :func:`~openghg_inversions.rhime.co2.co2_o2_model.build_co2_o2_model`.
+    Both channels must use the same concentration unit. OU blocks are independent by
     ``(species, site)`` while the prepared aggregation covariance retains all
     cross-channel entries. ``tau_hours`` is fixed, in hours; mappings use
     ``co2:SITE``/``o2:SITE`` keys. Amplitudes have independent positive priors
@@ -99,6 +103,8 @@ def build_co2_o2_cached_sigma_model(
             embed the fixed oxidation ratios.
         aggregation_error: Joint fixed aggregation covariance, including its
             cross-channel block.
+        biosphere_prior: Optional explicit calibration of the retained state prior;
+            omission preserves the original correlated lognormal prior.
         retained_prior: Correlated arithmetic-moment prior for the one state
             vector shared by both channels.
         independent_error_sd: Joint per-row independent standard deviations in
@@ -158,10 +164,10 @@ def build_co2_o2_cached_sigma_model(
         activity,
         output_dim=output_dim,
     )
-    active_prior = prepare_active_correlated_lognormal_prior(
-        activity,
-        retained_prior,
-        var_name="flux_scaling",
+    active_prior = (
+        prepare_active_correlated_lognormal_prior(activity, retained_prior, var_name="flux_scaling")
+        if biosphere_prior is None
+        else None
     )
     factor, diagonal = aggregation_error_as_low_rank(aggregation_error)
     covariance = prepare_fixed_ou_low_rank(
@@ -173,10 +179,12 @@ def build_co2_o2_cached_sigma_model(
         site_labels=tuple(str(label) for label in site_coord.values),
     )
     with registered_model():
-        state = _add_prepared_correlated_lognormal_state_with_activity(
-            activity,
-            active_prior,
-            var_name="flux_scaling",
+        state = (
+            _add_prepared_correlated_lognormal_state_with_activity(
+                activity, active_prior, var_name="flux_scaling",
+            )
+            if biosphere_prior is None
+            else add_biosphere_state(activity, retained_prior, biosphere_prior)
         )
         flux = apply_linear_sensitivity(
             prepared_flux,

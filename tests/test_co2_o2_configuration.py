@@ -123,7 +123,8 @@ def test_fixed_ou_configuration_retains_species_site_mappings_and_backend():
     ],
 )
 def test_new_configured_path_rejects_inferred_ou_explicitly(likelihood):
-    with pytest.raises(ValueError, match="inferred OU"):
+    message = "site_amplitude_prior_scale is unsupported" if "site_amplitude_prior_scale" in likelihood else "inferred OU"
+    with pytest.raises(ValueError, match=message):
         Co2O2ModelConfig.from_params({**_config(), "likelihood": likelihood}).bind(_prepared())
 
 
@@ -191,3 +192,20 @@ def test_channel_additive_prior_scales_are_independent_and_replayable(tmp_path, 
     config["channels"]["o2"]["boundary"]["anomaly_scale"] = -0.1
     with pytest.raises(ValueError, match="non-negative"):
         Co2O2ModelConfig.from_params(config)
+
+
+def test_direct_linked_config_requires_one_boundary_calendar():
+    """Direct construction applies the same one-calendar rule as configured TOML."""
+    from openghg_inversions.models.boundary import MultiplicativeChoice
+
+    prior = {"pdf": "normal", "mu": 1.0, "sigma": 0.1}
+    common = dict(co2_units="ppm", o2_units="ppm", independent_error_sd={"co2": 0.1, "o2": 0.1})
+    with pytest.raises(ValueError, match="must agree across channels"):
+        Co2O2ModelConfig(**common, boundary={
+            "co2": MultiplicativeChoice(prior, frequency="monthly"), "o2": MultiplicativeChoice(prior, frequency="7D"),
+        })
+    same = Co2O2ModelConfig(**common, boundary={
+        "co2": MultiplicativeChoice(prior, frequency="7D", anchor_time="2020-01-01"),
+        "o2": MultiplicativeChoice(prior, frequency="7D", anchor_time="2020-01-01T00:00"),
+    })
+    assert same.boundary["o2"].frequency == "7D"

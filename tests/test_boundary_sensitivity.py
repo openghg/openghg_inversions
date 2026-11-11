@@ -35,11 +35,20 @@ def test_prepare_boundary_sensitivity_labels_one_period_and_provenance() -> None
     np.testing.assert_allclose(result.values, _sensitivity().values)
 
 
-def test_timestamp_free_whole_window_has_explicit_label() -> None:
-    source = _sensitivity().rename(time="nmeasure").assign_coords(nmeasure=[3, 2, 1])
+def test_nmeasure_whole_window_is_labelled_by_first_time() -> None:
+    times = _sensitivity().time.values
+    source = _sensitivity().rename(time="nmeasure").assign_coords(
+        nmeasure=[3, 2, 1], time=("nmeasure", times[::-1])
+    )
     result = BoundaryAlignment.prepare(source).data
-    np.testing.assert_array_equal(result.bc_period, ["whole_window", "whole_window"])
+    np.testing.assert_array_equal(result.bc_period, np.repeat(times.min(), 2))
     np.testing.assert_array_equal(result, source)
+
+
+def test_whole_window_requires_datetime_time() -> None:
+    source = _sensitivity().rename(time="nmeasure").assign_coords(nmeasure=[3, 2, 1])
+    with pytest.raises(ValueError, match="requires a datetime time coordinate"):
+        BoundaryAlignment.prepare(source)
 
 
 @pytest.mark.parametrize(
@@ -88,10 +97,8 @@ def test_prepare_boundary_sensitivity_preserves_lazy_data_and_borrowed_input() -
     xr.testing.assert_identical(source, original)
 
 
-@pytest.mark.parametrize(("frequency", "expected_executions"), [("12h", 1), (None, 1)])
-def test_prepare_boundary_sensitivity_computes_lazy_time_only_when_needed(
-    frequency: str | None, expected_executions: int
-) -> None:
+@pytest.mark.parametrize("frequency", ["12h", None])
+def test_prepare_boundary_sensitivity_computes_lazy_time_once_to_label_periods(frequency: str | None) -> None:
     executions: list[None] = []
 
     @delayed
@@ -111,7 +118,7 @@ def test_prepare_boundary_sensitivity_computes_lazy_time_only_when_needed(
 
     result = BoundaryAlignment.prepare(source, frequency=frequency).data
 
-    assert len(executions) == expected_executions
+    assert len(executions) == 1
     assert hasattr(result.data, "__dask_graph__")
 
 

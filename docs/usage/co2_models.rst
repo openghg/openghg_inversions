@@ -6,6 +6,12 @@ seams for the CO₂-only and linked CO₂/O₂ recipes. Start with the
 :doc:`CO₂ model family <co2_model_family>` support matrix before using these
 interfaces.
 
+An explicit Python ``biosphere_prior`` option changes one calibrated retained
+biosphere uncertainty direction while keeping the reduction fixed. See
+:doc:`biosphere_prior` for the positive lognormal and signed Gaussian diagnostic
+families, calibration targets and provenance. Omission preserves the existing
+prior.
+
 .. _co2-only-model:
 
 CO2 coherent-reduction model
@@ -1519,13 +1525,8 @@ ordinary route with ``likelihood_builder=add_fixed_ou_gaussian_likelihood``. The
 amplitude update use directly composed centered means, while public BC states,
 priors and concentration outputs retain their physical meaning. See the
 :ref:`centered boundary contract <surface-centered-boundary-contract>` for
-period alignment, fixed states, restoration and persistence limits. Direct
-scientific builders also forward centered observations and means to ordinary
-likelihood callables. A custom density that depends on absolute concentration
-must handle the known fixed translation explicitly, including any captured
-physical reference context. Prepared-input runner replay supports the built-in
-additive-Gaussian and fixed-OU likelihoods; direct custom callers own their
-predictive-restoration and output contract.
+period alignment, fixed states, restoration and persistence limits, including the
+supported built-in likelihoods.
 
 :doc:`coherent_reduction` describes the linked retained prior, effective
 operator, affine contribution, and unresolved covariance.
@@ -1728,3 +1729,29 @@ interface as the CO2 runner described above. It supplies one normalized joint
 log likelihood per posterior draw and optional correlated joint prior and
 posterior predictive vectors, preserving cross-channel aggregation covariance.
 The joint likelihood must not be treated as pointwise observation densities.
+
+Linked runners using PyMC record the free random variables during sampling.
+After PyMC returns, they compute the joint log likelihood and evaluate every
+deterministic from the unchanged model graph.
+Observed random variables remain conditioned on their data during evaluation,
+following PyMC's ordinary recording and transform conventions.
+This avoids keeping observation-sized deterministics in both warmup/retained
+backend buffers and the converted posterior. Reconstruction allocates the final
+arrays once and evaluates one state at a time; it preserves all output names,
+precision, coordinates and absolute concentration semantics. The ordinary linked CLI and saved-input
+sampling route use the same storage strategy. Likelihood and deterministic
+reconstruction are logged as separate passes. This opt-in behavior has been
+validated for the linked recipes described here; other RHIME families and
+arbitrary public PyMC models retain their existing defaults. Direct builder users can select
+it with ``sample_rhime_model(built, sampler, recompute_deterministics=True)``.
+
+The returned trace still contains all requested draws and derived outputs, so
+its storage grows with chains, draws and observations. Prior and posterior
+prediction, serialization and diagnostics have their own memory costs. Other
+sampling backends, explicit trace backends or sampling callbacks, requests to
+include transformed variables and empty retained groups use the ordinary
+recording path.
+
+Burn discards only post-tuning retained draws, including the corresponding
+sample statistics and log likelihood. Saved ``warmup_*`` groups retain their
+complete tuning support, even when burn exceeds the number of tuning draws.

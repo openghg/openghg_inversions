@@ -2821,6 +2821,15 @@ def test_public_rhime_runners_follow_named_stage_order(
     basis = cast(Any, object())
     site_data = cast(Any, object())
 
+    def validate_scientific_inputs(actual: MergedData, **kwargs: Any) -> None:
+        """Record the acquired-data boundary before error/filter preparation."""
+        assert actual is merged
+        assert kwargs == {
+            "split_by_sectors": multisector, "use_bc": False,
+            "flux_sources": config.data.flux_sources, "require_footprints": True,
+        }
+        calls.append("validate")
+
     def retrieve(*, site_options: SiteOptions, merged_data=None, **kwargs: Any) -> Any:
         """Record ordinary acquisition or external-data validation."""
         assert site_options is config.data.site_options
@@ -2830,11 +2839,12 @@ def test_public_rhime_runners_follow_named_stage_order(
         calls.append("retrieve")
         return merged
 
-    def filter_observations(actual: Any, site_options: Any, *, filters: Any) -> Any:
+    def filter_observations(actual: Any, site_options: Any, *, filters: Any, filter_options: Any) -> Any:
         """Record public filtering and site alignment."""
         assert set(actual) == set(merged.site_data)
         assert site_options is merged.site_options
         assert filters is config.data.filters
+        assert filter_options is config.data.filter_options
         calls.append("filter")
         return filtered, site_options
 
@@ -2924,6 +2934,7 @@ def test_public_rhime_runners_follow_named_stage_order(
 
     monkeypatch.setattr(recipe_module.RhimeConfig, "from_params", staticmethod(resolve))
     monkeypatch.setattr(recipe_module.MergedData, "from_options", retrieve)
+    monkeypatch.setattr(recipe_module.MergedData, "validate_scientific_inputs", validate_scientific_inputs)
     monkeypatch.setattr(recipe_module, "filter_observations", filter_observations)
     monkeypatch.setattr(recipe_module, "prepare_observation_errors", prepare_errors)
     monkeypatch.setattr(recipe_module, "prepare_basis", build_basis)
@@ -2955,6 +2966,7 @@ def test_public_rhime_runners_follow_named_stage_order(
     expected_calls = [
         "resolve",
         *([] if external_data else ["retrieve"]),
+        "validate",
         "filter",
         "errors",
         "basis",
@@ -3291,7 +3303,7 @@ def test_modern_additive_mismatch_uses_model_spec_without_minimum_error(
     monkeypatch.setattr(
         RhimeSampler,
         "sample",
-        lambda self, model, *, variable_roles: _minimal_output_idata(),
+        lambda self, model, *, variable_roles, recompute_deterministics=False: _minimal_output_idata(),
     )
 
     result = _run_prepared(
@@ -3361,7 +3373,7 @@ def test_custom_likelihood_prepared_run_does_not_require_minimum_error(
     monkeypatch.setattr(
         RhimeSampler,
         "sample",
-        lambda self, model, *, variable_roles: _minimal_output_idata(),
+        lambda self, model, *, variable_roles, recompute_deterministics=False: _minimal_output_idata(),
     )
 
     result = _run_prepared(
@@ -3498,6 +3510,7 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
+        recompute_deterministics: bool = False,
     ) -> xr.DataTree:
         assert model["offset_latent"].ndim == 0
         assert variable_roles["concentration"] == "y"
@@ -3583,6 +3596,7 @@ def test_run_rhime_rejects_noncanonical_custom_likelihood_before_sampling(
         site_options=config.data.site_options,
     )
     monkeypatch.setattr(rhime_standard.MergedData, "from_options", lambda *args, **kwargs: merged)
+    monkeypatch.setattr(rhime_standard.MergedData, "validate_scientific_inputs", lambda *args, **kwargs: None)
     monkeypatch.setattr(rhime_standard, "filter_observations", lambda data, options, **kwargs: (data, options))
     monkeypatch.setattr(rhime_standard, "prepare_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(rhime_standard, "build_sensitivities", lambda *args, **kwargs: object())
@@ -3683,6 +3697,7 @@ def test_prepared_standard_defaults_sampler_and_skips_none_output_writes(
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
+        recompute_deterministics: bool = False,
     ) -> xr.DataTree:
         sampled_with.append(self)
         assert "y" in model.named_vars
@@ -5927,7 +5942,7 @@ def test_canonical_preparation_filters_sites_before_basis_generation(
             acquisition=AcquisitionFacts(),
         )
 
-    def fake_filtering(fp_data: dict, filters: object) -> dict:
+    def fake_filtering(fp_data: dict, filters: object, filter_options: object = None) -> dict:
         nonlocal filtering_calls
         filtering_calls += 1
         assert filters == ["keep-middle"]
@@ -6162,7 +6177,7 @@ def test_canonical_preparation_filters_multisector_sites_before_basis_generation
             acquisition=AcquisitionFacts(),
         )
 
-    def fake_filtering(fp_data: dict, filters: object) -> dict:
+    def fake_filtering(fp_data: dict, filters: object, filter_options: object = None) -> dict:
         assert filters == {"TAC": ["keep-last"]}
         assert "H" not in fp_data["TAC"]
         return {"TAC": fp_data["TAC"].isel(time=[2])}
@@ -6251,7 +6266,7 @@ def test_canonical_preparation_filters_loaded_basis_before_sensitivity(
         captured_basis_times = tuple(site_data["TAC"].time.values)
         return basis_functions
 
-    def fake_filtering(fp_data: dict, filters: object) -> dict:
+    def fake_filtering(fp_data: dict, filters: object, filter_options: object = None) -> dict:
         nonlocal filtering_calls
         filtering_calls += 1
         assert filters == ["keep-middle"]
@@ -8218,8 +8233,10 @@ def test_run_rhime_api_smoke(
         model: pm.Model,
         *,
         variable_roles: dict[str, str] | None = None,
+        recompute_deterministics: bool = False,
     ) -> xr.DataTree:
         """Return deterministic posteriors after checking predictive role selection."""
+        assert recompute_deterministics is False
         assert self.draws == 1
         assert variable_roles is not None
         assert variable_roles["concentration"] == "y"
@@ -8358,8 +8375,10 @@ def test_run_multisector_api_smoke(
         model: pm.Model,
         *,
         variable_roles: dict[str, str] | None = None,
+        recompute_deterministics: bool = False,
     ) -> xr.DataTree:
         """Return deterministic scale factors after checking declared roles."""
+        assert recompute_deterministics is False
         assert self.draws == 1
         assert variable_roles is not None
         assert variable_roles["concentration"] == "y"
@@ -8511,6 +8530,8 @@ output_format = "inv_out"
     monkeypatch.setattr(rhime_standard.MergedData, "from_options",
         fake_load,
     )
+    monkeypatch.setattr(rhime_standard.MergedData, "validate_scientific_inputs",
+                        lambda *args, **kwargs: seen.update(validation=kwargs))
     monkeypatch.setattr(rhime_standard, "filter_observations", lambda value, options, **kwargs: (filtered.site_data, options))
     monkeypatch.setattr(rhime_standard, "resolve_basis_inputs", lambda config: {"landsea_classes": xr.DataArray([[1]], dims=("lat", "lon"))})
     monkeypatch.setattr(rhime_standard, "prepare_basis", fake_basis)
@@ -8727,13 +8748,15 @@ def test_retained_error_population_reaches_preparation_full_run_and_saved_inputs
     dataset["mf_repeatability"] = ("time", [1000.0, 0.0, 2.0])
     dataset["mf_variability"] = ("time", [0.0, 0.0, 0.0])
     dataset["release_lon"] = ("time", [0.0, 0.0, 0.0])
+    dataset["fp"] = xr.ones_like(dataset.fp_x_flux)
     if multisector:
         dataset["fp_x_flux_sectoral"] = dataset.fp_x_flux.expand_dims(source=list(sources))
     if lazy:
         dataset = dataset.chunk(time=1)
     original = dataset.copy(deep=True)
     spatial = _fake_basis_functions()
-    flux = spatial.flux.expand_dims(source=list(sources)) if multisector else spatial.flux
+    native_flux = spatial.flux.assign_attrs(units="mol m-2 s-1")
+    flux = native_flux.expand_dims(source=list(sources)) if multisector else native_flux
     basis = basis_functions_from_flat_basis(
         basis_flat={source: spatial.operator.basis_flat for source in sources} if multisector else spatial.operator.basis_flat,
         flux=flux,
@@ -8745,7 +8768,7 @@ def test_retained_error_population_reaches_preparation_full_run_and_saved_inputs
         mismatch_model="fixed_error",
     ), multisector=multisector)
     merged = MergedData(
-        site_data={"TAC": dataset}, flux_data={source: spatial.flux.to_dataset(name="flux") for source in sources},
+        site_data={"TAC": dataset}, flux_data={source: native_flux.to_dataset(name="flux") for source in sources},
         site_options=config.data.site_options, split_by_sectors=multisector,
     )
     monkeypatch.setattr(recipe, "prepare_basis", lambda **kwargs: basis)

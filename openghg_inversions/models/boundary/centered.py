@@ -102,7 +102,15 @@ class RegisteredSensitivity:
     owner: str | None
 
     def register(self, array: xr.DataArray, name: str) -> TensorVariable:
-        """Register a boundary array with this term's prefix and coordinate owner."""
+        """Register a boundary array with this term's prefix and coordinate owner.
+
+        Args:
+            array: Materialized array on observation and/or boundary-state axes.
+            name: Unprefixed graph name.
+
+        Returns:
+            The registered model data.
+        """
         return add_component_data(array, f"{self.prefix}{name}", self.owner, observation_dim=self.output_dim)
 
 
@@ -197,13 +205,19 @@ class CenteredChoice(Protocol):
     kind: ClassVar[str]
 
     @property
-    def mean_shift(self) -> MeanShift: ...
+    def mean_shift(self) -> MeanShift:
+        """Resolved mean shift of the family."""
+        ...
 
     @property
-    def frequency(self) -> str | None: ...
+    def frequency(self) -> str | None:
+        """Boundary-period frequency, or ``None`` for one period."""
+        ...
 
     @property
-    def anchor_time(self) -> DatetimeLike | None: ...
+    def anchor_time(self) -> DatetimeLike | None:
+        """Optional start of the fixed-duration period grid."""
+        ...
 
 
 class CenteredBoundary:

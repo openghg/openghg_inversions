@@ -103,6 +103,7 @@ class AdditiveChoice:
     anchor_time: DatetimeLike | None = None
 
     def __post_init__(self) -> None:
+        """Copy the mean prior and validate the anomaly options and calendar."""
         if self.mean_prior is not None:
             object.__setattr__(self, "mean_prior", dict(self.mean_prior))
         validate_centered_boundary_periods(self.frequency, self.anchor_time)
@@ -164,13 +165,21 @@ class AdditiveChoice:
                 indexed timestamps conflict with the observations, weighted
                 anomalies have no weights, or the weights' curtain and period
                 labels differ from the bound states (for example because they
-                were prepared with another calendar).
+                were prepared with another calendar), or there is no mean
+                shift prior and the bound states leave no anomaly coordinates,
+                so nothing would be sampled.
         """
         data = BoundCenteredSensitivity.bind(
             sensitivity, observations, frequency=self.frequency, anchor_time=self.anchor_time,
         )
         if self.anomalies != "weighted":
-            return AdditiveBoundary(self, data)
+            bound = AdditiveBoundary(self, data)
+            if self.mean_prior is None and not bound.has_anomalies:
+                raise ValueError(
+                    "Without a mean shift prior, the bound states must leave anomaly coordinates to sample; "
+                    f"{self.anomalies} anomalies have none for this fit's curtains and periods."
+                )
+            return bound
         if "bc_centering_weights" not in sensitivity:
             raise ValueError("Weighted additive boundary anomalies require bc_centering_weights.")
         return AdditiveBoundary(self, BoundAdditiveSensitivity.bind_weights(data, sensitivity.bc_centering_weights))
@@ -227,8 +236,10 @@ class AdditiveBoundary(CenteredBoundary):
     def anomaly_factor(self) -> xr.DataArray | None:
         """Observation-space anomaly sensitivity scaled to standard-normal coordinates.
 
-        The result stays lazy with the bound sensitivity, so it can be
-        combined with other sensitivities before joint materialization.
+        Period-contrast and independent anomalies stay lazy with the bound
+        sensitivity, so they can be combined with other sensitivities before
+        joint materialization. Weighted anomalies need materialized centering
+        weights to form their basis.
 
         Returns:
             ``s M B`` in concentration units: on ``(observation,

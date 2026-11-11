@@ -414,6 +414,7 @@ def prepare_standard(
     averaging_error: bool, filters: Any, basis_algorithm: str | None, nbasis: int,
     fix_basis_outer_regions: bool, use_bc: bool,
     basis_inputs: Mapping[str, Any], bc_basis: BoundaryBasis = nesw_basis,
+    filter_options: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> PreparedInputs:
     """Prepare observations and sensitivities from supplied scientific resources.
 
@@ -423,6 +424,7 @@ def prepare_standard(
         flux_sources: Ordered source identities; the first weights basis design.
         averaging_error: Include variability when deriving observation errors.
         filters: Observation-filter choices interpreted by the filtering owner.
+        filter_options: Keyword options for named observation filters.
         basis_algorithm: Selected basis-generation algorithm.
         nbasis: Requested generated basis size.
         fix_basis_outer_regions: Keep the supplied outer partition fixed.
@@ -433,11 +435,19 @@ def prepare_standard(
 
     Returns:
         Retained backend-neutral inputs and their current native-flux binding.
+
+    Raises:
+        ValueError: If acquired site or flux metadata fails scientific-input
+            schema validation before filtering.
     """
     preparation_start = timer_start()
+    merged_data.validate_scientific_inputs(
+        split_by_sectors=False, use_bc=use_bc, flux_sources=flux_sources,
+        require_footprints=basis_inputs.get("basis_path") is None and basis_inputs.get("basis_partition") is None,
+    )
     # Preparation works on per-site datasets; ``merged_data`` stays acquired data.
     filtered, site_options = filter_observations(
-        merged_data.site_data, merged_data.site_options, filters=filters,
+        merged_data.site_data, merged_data.site_options, filters=filters, filter_options=filter_options,
     )
     filtered = prepare_observation_errors(filtered, averaging_error=averaging_error)
 
@@ -588,7 +598,7 @@ def run_standard(
         prepared = prepare_standard(
             merged_data, basis_inputs=basis_inputs, bc_basis=bc_basis,
             **config.data.select(
-                "domain", "start_date", "flux_sources", "averaging_error", "filters",
+                "domain", "start_date", "flux_sources", "averaging_error", "filters", "filter_options",
                 "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc",
             ),
         )

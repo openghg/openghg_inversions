@@ -20,6 +20,7 @@ from openghg_inversions.array_ops import (
     jax_to_numpy,
     require_unique_index,
     same_index,
+    sparse_xr_dot,
     select_gathered_data_array,
     to_dense,
     to_dense_tree,
@@ -123,6 +124,21 @@ def test_to_dense_tree_densifies_nested_records_for_one_compute() -> None:
     np.testing.assert_array_equal(computed.data.h.values, [0.0, 2.0])
     assert computed.prior["pdf"] == "normal"
     assert isinstance(values[0].data, np.ndarray)
+
+
+def test_to_dense_tree_keeps_named_tuples() -> None:
+    """Named tuples are rebuilt from positional fields rather than one iterable."""
+    from typing import NamedTuple
+
+    class _Pair(NamedTuple):
+        left: xr.DataArray
+        right: float
+
+    sparse_chunks = da.from_array(sparse.COO.from_numpy(np.array([0.0, 2.0])), chunks=1)
+    dense = to_dense_tree(_Pair(xr.DataArray(sparse_chunks, dims="x"), 1.0))
+
+    assert isinstance(dense, _Pair) and dense.right == 1.0
+    assert isinstance(dense.left.data._meta, np.ndarray)
 
 
 def test_to_dense_accepts_mixed_payloads_under_sparse_dask_metadata() -> None:
@@ -561,3 +577,44 @@ def test_concat_gather_missing_data_vars_drop_warns_and_drops(use_datatree: bool
 
     assert set(result.data_vars) == {"mf", "mf_error"}
     assert "inlet_height" not in result
+
+
+def _sparse_weights() -> xr.DataArray:
+    """Return an eager sparse operator over a shared ``r`` dimension."""
+    return xr.DataArray(sparse.COO.from_numpy(np.eye(3)[:, :2]), dims=("x", "r"))
+
+
+@pytest.mark.parametrize("dim", [None, ["r"]])
+def test_sparse_xr_dot_chunks_eager_sparse_only_for_dask_partner(dim: list[str] | None) -> None:
+    """Eager sparse @ dask is routed through dask (pydata/xarray#9934); numpy stays eager."""
+    weights = _sparse_weights()
+    values = xr.DataArray(np.arange(8.0).reshape(2, 4), dims=("r", "t"))
+    expected = weights.copy(data=weights.data.todense()) @ values
+
+    lazy = sparse_xr_dot(weights, values.chunk(), dim=dim)
+    assert lazy.chunks is not None
+    xr.testing.assert_allclose(to_dense(lazy.compute()), expected)
+
+    eager = sparse_xr_dot(weights, values, dim=dim)
+    assert eager.chunks is None
+    xr.testing.assert_allclose(to_dense(eager), expected)
+
+
+def test_sparse_xr_dot_dataset_decides_chunking_per_variable() -> None:
+    """Each Dataset variable is multiplied according to its own backing."""
+    values = xr.DataArray(np.arange(8.0).reshape(2, 4), dims=("r", "t"))
+    result = sparse_xr_dot(_sparse_weights(), xr.Dataset({"eager": values, "lazy": values.chunk()}))
+    assert result.eager.chunks is None
+    assert result.lazy.chunks is not None
+    xr.testing.assert_allclose(to_dense(result.lazy.compute()), result.eager)
+
+
+def test_sparse_xr_dot_passes_dask_backed_sparse_through() -> None:
+    """Dask arrays with sparse chunks already multiply lazily against dask partners."""
+    weights = _sparse_weights().chunk()
+    values = xr.DataArray(np.arange(8.0).reshape(2, 4), dims=("r", "t")).chunk()
+    result = sparse_xr_dot(weights, values)
+    assert result.chunks is not None
+    xr.testing.assert_allclose(
+        to_dense(result).compute(), _sparse_weights().copy(data=np.eye(3)[:, :2]) @ values.compute()
+    )
