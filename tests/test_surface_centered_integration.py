@@ -104,6 +104,7 @@ def test_mocked_fresh_getters_match_supplied_scientific_preparation(monkeypatch)
         xr.testing.assert_identical(borrowed, before)
 
 
+@pytest.mark.fresh_process
 def test_required_provider_missing_capability_fails_end_to_end_gate(tmp_path):
     """A missing capability must make the real mixed-source acceptance case red."""
     import os

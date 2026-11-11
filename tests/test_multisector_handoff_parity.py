@@ -315,6 +315,7 @@ def test_genuine_preparation_incompatibilities_fail_without_inference(tmp_path, 
     assert not (tmp_path / "samples").exists()
 
 
+@pytest.mark.fresh_process
 def test_fresh_process_replay_uses_original_science_and_current_output_without_graph(tmp_path):
     from tests.test_multisector_handoffs import _trace_and_contract
 

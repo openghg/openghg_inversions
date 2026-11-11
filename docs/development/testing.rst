@@ -21,14 +21,14 @@ run on 11 November 2026 (Python linker, one process), 4,125 cases took under
      - 4,125
      - 5 %
 
-The expensive tests fall into three groups:
+The expensive tests fall into two groups:
 
-* Tests that start a fresh Python process. Each child pays the package import,
-  up to about 9 s on a laptop, because ``openghg_inversions.rhime`` imports
-  PyMC, the CO2 recipes and parts of OpenGHG. About 35 such tests took 136 s
-  (22 %).
-* Installed-command workflows, which run several CLI subprocesses with real
-  sampling.
+* Tests that start a new Python interpreter: subprocess import checks,
+  installed-command workflows and samplers that spawn chain processes. Each
+  child pays the package import, up to about 9 s on a laptop, because
+  ``openghg_inversions.rhime`` imports PyMC, the CO2 recipes and parts of
+  OpenGHG; the installed workflows also sample. Eighteen such test functions
+  took about 290 s (46 %). They are marked ``fresh_process``.
 * Statistical-accuracy checks, which draw thousands of samples to compare
   posterior moments against an independent oracle.
 
@@ -49,7 +49,7 @@ suite and tox to the final check (see the Testing section of ``AGENTS.md``).
      - Paths
    * - Configuration and request validation
      - ``tests/test_rhime_configuration.py tests/test_rhime_resolved_run.py
-       tests/test_public_run_api.py tests/test_unsupported_tracer.py``
+       tests/test_public_run_api.py``
    * - Model components and likelihoods
      - ``tests/models``
    * - Basis functions
@@ -66,10 +66,32 @@ suite and tox to the final check (see the Testing section of ``AGENTS.md``).
 
 Useful pytest options while iterating:
 
+* ``-m "not slow and not create_frozen and not fresh_process"`` skips tests
+  that start new interpreters. Passing ``-m`` replaces the default marker
+  expression in ``addopts``, so keep the ``slow`` and ``create_frozen``
+  exclusions. CI runs ``fresh_process`` tests, so run them yourself before
+  handing off a change to imports, entry points, the CLI or stage handoffs.
 * ``-x --lf`` reruns the last failures and stops at the first new one.
 * ``-k <expression>`` selects tests by name within a group.
 * ``--durations=15`` reports the slowest cases, so you notice a new expensive
   test before review does.
+
+Parallel runs
+-------------
+
+pytest-xdist is in the ``test`` dependency group, not the default one, and
+``addopts`` does not set ``-n``, so a plain ``uv run pytest`` is serial. Use it
+for full or broad runs, where it is about three times faster locally (634 s
+serial against 208 s with four workers on a 10-core laptop):
+
+.. code-block:: bash
+
+   DASK_NUM_WORKERS=2 uv run --group test pytest -n 2 --dist=worksteal --ignore=tests/typing
+
+Use ``-n 2`` by default and more workers only when the machine is otherwise
+idle; several agents or terminals each starting workers compete for the same
+cores and memory. Keep focused runs serial, where worker start-up costs more
+than it saves. The slowest single test (about 50 s) bounds a parallel run.
 
 PyTensor backend and precision
 ------------------------------
@@ -144,9 +166,10 @@ Tests that are expensive on purpose
 Some tests need real processes or many draws. Keep them, but make the cost
 visible and bounded:
 
-* **Fresh-process tests.** State in the docstring which import-time or
-  process-boundary behaviour the test protects. Check several modules or
-  conditions in one child process rather than starting one per parameter.
+* **Fresh-process tests.** Mark them ``fresh_process``, and state in the
+  docstring which import-time or process-boundary behaviour the test
+  protects. Check several modules or conditions in one child process rather
+  than starting one per parameter, unless each needs a clean interpreter.
 * **Statistical-accuracy tests.** Use one representative case in the default
   run and mark the rest ``slow``. Draw counts above about 100, quadrature
   oracles and MCSE gates are signs that a test belongs in this group. Say in the

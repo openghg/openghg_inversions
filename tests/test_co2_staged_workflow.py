@@ -152,6 +152,7 @@ def _in_process_cli(*arguments: str | Path) -> None:
     print(f"In-process CLI {arguments[0]}: {perf_counter() - started:.2f}s")
 
 
+@pytest.mark.fresh_process
 def test_installed_co2_stages_preserve_scientific_and_file_contracts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -217,6 +218,7 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
         assert (tmp_path / "postprocess" / f"co2-stage-test_{name}_co2_EUROPE_2020-01-01.nc").is_file()
 
 
+@pytest.mark.fresh_process
 def test_installed_co2_rejects_unsupported_output_before_writing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -231,6 +233,7 @@ def test_installed_co2_rejects_unsupported_output_before_writing(
     assert not destination.exists()
 
 
+@pytest.mark.fresh_process
 def test_installed_configured_co2_full_execution_writes_selected_products(tmp_path, monkeypatch):
     """Keep one installed full-run acceptance; shared inference owns likelihood choices."""
     monkeypatch.chdir(tmp_path)

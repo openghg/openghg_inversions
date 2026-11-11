@@ -251,6 +251,7 @@ def test_none_suppresses_products_and_writing(tmp_path):
     assert not (tmp_path / "unused").exists()
 
 
+@pytest.mark.fresh_process
 def test_importing_linked_paris_before_public_output_types_succeeds():
     import subprocess
     import sys

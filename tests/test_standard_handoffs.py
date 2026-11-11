@@ -179,6 +179,7 @@ def test_reused_destinations_and_manifest_last(tmp_path, monkeypatch):
     assert not preparation.exists()
 
 
+@pytest.mark.fresh_process
 def test_replay_in_fresh_process_uses_saved_model_and_inference(tmp_path):
     _, sampled = _saved(tmp_path)
     script = '''

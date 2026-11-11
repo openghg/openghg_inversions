@@ -2576,6 +2576,7 @@ def test_concrete_rhime_builders_are_owned_by_recipe_modules() -> None:
         "openghg_inversions.rhime.multisector",
     ],
 )
+@pytest.mark.fresh_process
 def test_rhime_modules_import_independently_in_fresh_process(module_name: str) -> None:
     """Recipe imports do not rely on a preloaded models-to-RHIME facade."""
     completed = subprocess.run(
