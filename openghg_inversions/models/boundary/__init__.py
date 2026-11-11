@@ -200,8 +200,8 @@ class Choice(Protocol):
         Args:
             observations: Observations of the fit, supplying row labels and
                 times.
-            sensitivity: Raw centered sensitivity; only
-                :class:`MultiplicativeChoice` also accepts absolute ``H_bc``.
+            sensitivity: Raw centered sensitivity. Absolute ``H_bc`` is bound
+                by :meth:`AbsoluteChoice.bind_absolute` instead.
 
         Returns:
             The bound boundary.
