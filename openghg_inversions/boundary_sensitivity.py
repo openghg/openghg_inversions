@@ -27,8 +27,7 @@ class BoundaryAlignment:
     Args:
         data: Prepared ``H_bc`` with a ``bc_region`` MultiIndex whose levels
             are ``bc_curtain`` and interval-start ``bc_period``, plus one
-            observation axis. Timestamp-free whole-window inputs use the
-            explicit period label ``'whole_window'``.
+            observation axis.
 
     Raises:
         ValueError: If the resolved boundary-state labels are invalid.
@@ -60,7 +59,8 @@ class BoundaryAlignment:
 
         Args:
             sensitivity: Boundary sensitivity with exactly ``bc_region`` and
-                an observation dimension named ``time`` or ``nmeasure``.
+                an observation dimension named ``time`` or ``nmeasure``, with a
+                datetime ``time`` coordinate along that dimension.
             frequency: Optional fitted boundary-period frequency. ``None``
                 creates one period; ``"monthly"`` follows calendar months.
             anchor_time: Optional anchor for fixed-duration periods.
@@ -87,21 +87,22 @@ def _expand_boundary_periods(
     anchor_time: DatetimeLike | None,
     observation_labels: xr.DataArray | None,
 ) -> xr.Dataset:
-    """Select scientific rows and apply one period mask to all boundary operands."""
+    """Select scientific rows and apply one period mask to all boundary operands.
+
+    The required datetime ``time`` coordinate along the observations is
+    computed once if lazy, because period labels are interval-start timestamps
+    (the first time when ``frequency`` is None).
+    """
     normalise_frequency(frequency)
     if observation_labels is not None:
         raw = raw.sel({observation_dim: observation_labels.transpose(observation_dim)})
-    has_time = "time" in raw.coords and raw.time.dims == (observation_dim,) and raw.time.dtype.kind == "M"
-    if not has_time:
-        if frequency is not None:
-            raise ValueError("Frequency-based boundary expansion requires a datetime time coordinate along observations.")
-        period = xr.full_like(raw[observation_dim], "whole_window", dtype="U12")
-    else:
-        time = raw.time
-        if hasattr(time.data, "__dask_graph__"):
-            time = time.compute()
-            raw = raw.assign_coords(time=(observation_dim, time.data))
-        _, period = make_period_calendar(time, frequency, anchor_time=anchor_time)
+    if "time" not in raw.coords or raw.time.dims != (observation_dim,) or raw.time.dtype.kind != "M":
+        raise ValueError("Boundary period expansion requires a datetime time coordinate along observations.")
+    time = raw.time
+    if time.chunks is not None:
+        time = time.compute()
+        raw = raw.assign_coords(time=(observation_dim, time.data))
+    _, period = make_period_calendar(time, frequency, anchor_time=anchor_time)
     mask = get_xr_dummies(
         period, categories=np.unique(period.data), return_sparse=False, cat_dim="bc_period"
     )
@@ -142,7 +143,7 @@ def _select_native_boundary(
     time = observations.coords.get("time")
     if time is not None and time.dims == (native_dim,):
         if "time" in selected.indexes:
-            if hasattr(time.data, "__dask_graph__"):
+            if time.chunks is not None:
                 time = time.compute()
             if not np.array_equal(selected.time.data, time.data):
                 raise ValueError("Indexed boundary time labels conflict with native observation timestamps.")

@@ -17,6 +17,7 @@ from typing import Any, get_args, get_type_hints
 
 from openghg_inversions.basis.boundary import BOUNDARY_BASIS_ALGORITHMS, boundary_basis
 from openghg_inversions.rhime._resources import resolve_resource_paths
+from openghg_inversions.filters import validate_filter_options
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
 from openghg_inversions.inversion_inputs import DatetimeLike
@@ -46,17 +47,21 @@ class DataConfig:
     are owned; numerical payloads remain borrowed. Direct construction expects
     resolved values and does not copy or execute scientific work.
 
-    Boundary-condition basis selection, when ``use_bc`` is true:
-
     Attributes:
-        bc_basis_paths: Exact labelled BC basis files. When set, they take
-            precedence and ``bc_basis_algorithm`` is inactive.
+        bc_basis_paths: Exact labelled BC basis files. When ``use_bc`` is true
+            and these are set, they take precedence and ``bc_basis_algorithm``
+            is inactive.
         bc_basis_algorithm: Built-in basis used without files: ``"NESW"``
             (one region per whole curtain) or ``"twelve-region"`` (two lower
             horizontal halves and one upper region per curtain).
         bc_basis_split_height: Finite twelve-region split in the curtains'
             native height-coordinate units; no unit conversion or vertical
             datum is assumed. Ignored by NESW and by exact files.
+        filters: Filter names, or per-site filter names, applied before
+            observation errors and basis construction.
+        filter_options: Keyword options for named filters, such as
+            ``{"local_influence": {"window_size": 5, "threshold": 0.15}}``.
+            Omitted options keep each filter's defaults.
     """
 
     site_options: SiteOptions
@@ -87,6 +92,7 @@ class DataConfig:
     basis_algorithm: str | None = "weighted"
     nbasis: int = 100
     filters: str | list[str | None] | dict[str, str | None | list[str | None]] | None = None
+    filter_options: dict[str, dict[str, Any]] | None = None
     fix_basis_outer_regions: bool = False
     averaging_error: bool = True
     basis_output_path: Path | None = None
@@ -172,6 +178,8 @@ class DataConfig:
             f.name: remaining.pop(f.name) for f in fields(SiteOptions) if f.name in remaining
         })
         remaining["filters"] = _copy_option_containers(remaining.get("filters", cls.filters))
+        if remaining.get("filter_options") is not None:
+            remaining["filter_options"] = validate_filter_options(remaining["filter_options"])
         remaining["split_by_sectors"] = multisector
         return cls(site_options=site_options, flux_sources=tuple(flux_sources), **remaining)
 

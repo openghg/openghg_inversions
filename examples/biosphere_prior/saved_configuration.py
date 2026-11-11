@@ -96,6 +96,7 @@ def main() -> None:
     # is a saved artifact. File paths resolve from the invocation directory.
     request = tomllib.loads(f"""
         [model.boundary]
+        type = "anomaly_scaling"
         scale_sd = 0.3
         reference = "whole_window_transport_mean"
         mean_shift_prior = {{ pdf = "normal", mu = 0.0, sigma = 0.2 }}

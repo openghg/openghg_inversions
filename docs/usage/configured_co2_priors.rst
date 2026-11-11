@@ -12,16 +12,20 @@ Boundary structures in configuration
 ------------------------------------
 
 ``[model.boundary]`` (and ``[channels.<name>.boundary]`` for linked CO2/O2)
-selects the boundary family from its keys:
+selects the boundary family with ``type``; options of another family are
+rejected:
 
-* ``scale_sd`` selects :class:`~openghg_inversions.models.boundary.AnomalyScalingChoice`,
-  with optional ``reference`` (``"stored"`` (default),
+* ``"multiplicative"`` (the default) uses
+  :class:`~openghg_inversions.models.boundary.MultiplicativeChoice`, with
+  optional ``prior``;
+* ``"additive"`` uses :class:`~openghg_inversions.models.boundary.AdditiveChoice`,
+  with required ``anomaly_scale`` and optional ``anomalies`` (``"weighted"``
+  (default), ``"period_contrasts"`` or ``"independent"``);
+* ``"anomaly_scaling"`` uses
+  :class:`~openghg_inversions.models.boundary.AnomalyScalingChoice`, with
+  required ``scale_sd`` and optional ``reference`` (``"stored"`` (default),
   ``"whole_window_transport_mean"`` or a number in observation concentration
-  units);
-* ``anomaly_scale`` selects :class:`~openghg_inversions.models.boundary.AdditiveChoice`,
-  with optional ``anomalies`` (``"weighted"`` (default), ``"period_contrasts"``
-  or ``"independent"``);
-* otherwise the boundary is multiplicative, with optional ``prior``.
+  units).
 
 ``mean_shift_prior`` and ``mean_by_period`` apply to both corrections;
 omitting ``mean_shift_prior`` omits the mean shift where the structure allows
@@ -33,6 +37,7 @@ configuration is parsed, before any file is opened:
 .. code-block:: toml
 
    [model.boundary]
+   type = "additive"
    anomaly_scale = 0.3
    anomalies = "period_contrasts"
    mean_shift_prior = { pdf = "normal", mu = 0.0, sigma = 0.5 }
