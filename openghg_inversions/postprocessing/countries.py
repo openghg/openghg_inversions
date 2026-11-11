@@ -13,7 +13,7 @@ from typing import cast, Literal, Self, TypeVar
 import xarray as xr
 from openghg_inversions import convert, utils
 
-from openghg_inversions._country_file import load_country_dataset
+from openghg_inversions.region_maps import load_country_dataset
 from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 from openghg_inversions.utils import get_country_file_path
 from ._country_codes import CountryInfoList

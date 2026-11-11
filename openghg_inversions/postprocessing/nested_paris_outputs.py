@@ -29,7 +29,7 @@ from uuid import uuid4
 import xarray as xr
 from openghg.util import align_lat_lon, get_domain_info
 
-from openghg_inversions._country_file import load_country_dataset
+from openghg_inversions.region_maps import load_country_dataset
 from openghg_inversions.array_ops import force_align
 from openghg_inversions.postprocessing.countries import regrid_country_dataset
 from openghg_inversions.postprocessing.inversion_output import InversionOutput

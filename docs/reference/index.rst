@@ -237,6 +237,8 @@ executed layout example and :doc:`affine native-flux reconstruction
    openghg_inversions.basis.basis_functions.FluxWeightedBasis.load
    openghg_inversions.basis.packaged_basis_support_path
    openghg_inversions.basis.load_basis_support_map
+   openghg_inversions.region_maps.load_region_map
+   openghg_inversions.region_maps.load_country_dataset
    openghg_inversions.basis.load_basis_partition
    openghg_inversions.basis.make_basis_functions
    openghg_inversions.basis.load_basis_functions

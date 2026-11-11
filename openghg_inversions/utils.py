@@ -8,6 +8,8 @@ Many functions in this submodule originated in the ACRG code base (in `acrg.name
 """
 
 import re
+import warnings
+from collections.abc import Sequence
 from itertools import pairwise
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,7 +21,6 @@ import xarray as xr
 from openghg.analyse import combine_datasets as openghg_combine_datasets
 
 from openghg_inversions.array_ops import to_dense
-from openghg_inversions._country_file import load_country_dataset
 from openghg_inversions.config.paths import Paths
 
 openghginv_path = Paths.openghginv
@@ -52,33 +53,90 @@ def combine_datasets(
     return openghg_combine_datasets(dataset_a, dataset_b.load(), method=method, tolerance=tolerance)
 
 
+OPEN_DS_ENGINES: tuple[str | None, ...] = (None, "h5netcdf")
+"""Default xarray backends tried, in order, when eagerly opening one file."""
+
+_OPEN_FAILURES = (OSError, RuntimeError, ValueError)
+
+
+def _engine_label(engine: str | None) -> str:
+    """Name an xarray backend choice for messages."""
+    return "default" if engine is None else engine
+
+
+def format_open_failures(failures: Sequence[tuple[str, BaseException]]) -> str:
+    """Summarise failed open attempts as ``label: ErrorType: message`` entries.
+
+    Args:
+        failures: Pairs of backend label and the error it raised, in attempt order.
+
+    Returns:
+        Semicolon-separated summary for warnings and error messages.
+    """
+    return "; ".join(f"{label}: {type(error).__name__}: {error}" for label, error in failures)
+
+
 def open_ds(
     path: str | Path,
     chunks: dict | None = None,
     combine: Literal["by_coords", "nested"] = "by_coords",
+    *,
+    engines: Sequence[str | None] = OPEN_DS_ENGINES,
+    decode_coords: bool | Literal["coordinates", "all"] = True,
 ) -> xr.Dataset:
-    """Efficiently open xarray Datasets.
+    """Open a NetCDF file eagerly, or files lazily when ``chunks`` is given.
+
+    Without ``chunks`` this is the eager read boundary for one file: the data
+    is loaded and the file closed before returning. Each backend in
+    ``engines`` is tried in order; a later backend that succeeds emits a
+    ``RuntimeWarning`` naming the earlier failures. This works around HDF5
+    backend problems that affect only some installations.
 
     Args:
-        path: Path to file to open.
+        path: Path to file to open (or glob, when ``chunks`` is given).
         chunks: Size of chunks for each dimension, e.g. {'lat': 50, 'lon': 50}.
             Opens dataset with dask, such that it is opened 'lazily' and all of the data
             is not loaded into memory. Defaults to None - dataset is opened without dask.
         combine: Way in which the data should be combined (if using chunks), either:
             'by_coords': order the datasets before concatenating (default)
             'nested': concatenate datasets in the order supplied.
+        engines: xarray backends for the eager path, in order; ``None`` lets
+            xarray choose. Ignored when ``chunks`` is given.
+        decode_coords: Passed to ``xarray.open_dataset`` on the eager path.
 
     Returns:
         xr.Dataset: Opened xarray Dataset.
+
+    Raises:
+        FileNotFoundError: If ``path`` does not exist (eager path; no backend
+            fallback is attempted).
+        OSError: If every backend fails, chained from the last failure.
     """
     if chunks is not None:
-        ds = xr.open_mfdataset(path, chunks=chunks, combine=combine)
-    else:
-        # use a context manager, to ensure the file gets closed after use
-        with xr.open_dataset(path) as ds:
-            ds.load()
+        return xr.open_mfdataset(path, chunks=chunks, combine=combine)
 
-    return ds
+    failures: list[tuple[str, BaseException]] = []
+    for engine in engines:
+        try:
+            with xr.open_dataset(path, engine=engine, decode_coords=decode_coords) as ds:
+                loaded = ds.load()
+        except FileNotFoundError:
+            raise
+        except _OPEN_FAILURES as error:
+            failures.append((_engine_label(engine), error))
+            continue
+        if failures:
+            warnings.warn(
+                f"Falling back to xarray engine {_engine_label(engine)!r} for {path} "
+                f"after {format_open_failures(failures)}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        return loaded
+
+    raise OSError(f"Unable to open {path}. Tried {format_open_failures(failures)}") from (
+        failures[-1][1] if failures else None
+    )
 
 
 def read_netcdfs(
@@ -113,8 +171,7 @@ def read_netcdfs(
     datasets = [open_ds(p, chunks=chunks) for p in sorted(files)]
 
     # reindex all of the lat-lon values to a common one to prevent floating point error differences
-    with xr.open_dataset(files[0]) as temp:
-        fields_ds = temp.load()
+    fields_ds = open_ds(files[0])
     fp_lat = fields_ds["lat"].values
     fp_lon = fields_ds["lon"].values
 
@@ -251,22 +308,18 @@ def get_country(domain: str, country_file: str | Path | None = None):
 
     Returns:
         SimpleNamespace with attributes: lon, lat, lonmax, lonmin, latmax, latmin, country, and name
+
+    Raises:
+        KeyError: If the file has neither a ``country`` nor a ``region`` variable,
+            or no ``name`` variable.
     """
-    filename = get_country_file_path(country_file=country_file, domain=domain)
+    from openghg_inversions.region_maps import load_country_dataset  # region_maps imports utils
 
-    f = load_country_dataset(filename)
-    lon = f.variables["lon"][:].values
-    lat = f.variables["lat"][:].values
-
-    # Get country indices and names
-    if "country" in f.variables:
-        country = f.variables["country"][:, :]
-    elif "region" in f.variables:
-        country = f.variables["region"][:, :]
-    else:
-        raise ValueError(f"Variables 'country' or 'region' not found in country file {filename}.")
-
-    name = f.variables["name"].values.astype(str)
+    f = load_country_dataset(get_country_file_path(country_file=country_file, domain=domain))
+    lon = f["lon"].values
+    lat = f["lat"].values
+    country = f["country"]
+    name = f["name"].values.astype(str)
 
     result = dict(
         lon=lon,

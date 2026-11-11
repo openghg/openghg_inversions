@@ -10,7 +10,8 @@ from typing import Literal
 
 import xarray as xr
 
-from openghg_inversions.utils import read_netcdfs
+from openghg_inversions.region_maps import load_region_map
+from openghg_inversions.utils import open_ds, read_netcdfs
 
 
 def packaged_basis_support_path(kind: Literal["landsea", "outer_regions"], domain: str) -> Path:
@@ -42,7 +43,10 @@ def packaged_basis_support_path(kind: Literal["landsea", "outer_regions"], domai
 
 
 def load_basis_support_map(path: str | Path, variable: str) -> xr.DataArray:
-    """Eagerly read one labelled map and close its exact selected file.
+    """Eagerly read one region map and close its exact selected file.
+
+    This is :func:`openghg_inversions.region_maps.load_region_map` with a
+    required variable, so it shares the country-file HDF5 backend fallbacks.
 
     Args:
         path: Exact NetCDF support-file path, without directory discovery.
@@ -54,12 +58,11 @@ def load_basis_support_map(path: str | Path, variable: str) -> xr.DataArray:
         or class interpretation is performed here.
 
     Raises:
+        FileNotFoundError: If ``path`` does not exist.
+        OSError: If no reader can open the file.
         KeyError: If the selected variable is absent.
     """
-    with xr.open_dataset(path, decode_coords="all") as dataset:
-        result = dataset[variable].load()
-        result.attrs = {**dataset.attrs, **result.attrs}
-        return result
+    return load_region_map(path, variable)
 
 
 def resolve_basis_support_maps(
@@ -107,8 +110,7 @@ def load_basis_partition(path: str | Path) -> xr.DataArray:
     are loaded into memory before the file closes, without grid alignment or
     label validation. A missing ``basis`` variable raises KeyError.
     """
-    with xr.open_dataset(path, decode_coords="all") as dataset:
-        return dataset["basis"].load()
+    return open_ds(path, decode_coords="all")["basis"]
 
 
 def load_bc_basis(paths: Sequence[str | Path]) -> xr.Dataset:

@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-import openghg_inversions._country_file as country_file_loader
+from openghg_inversions.region_maps import load_country_dataset
 from openghg_inversions.postprocessing.countries import (
     Countries,
     CountryRegions,
@@ -28,20 +28,19 @@ def test_countries_from_file_falls_back_to_h5netcdf(monkeypatch, europe_country_
     open_calls = []
 
     def open_dataset_with_default_failure(path, *args, **kwargs):
-        engine = kwargs.get("engine", "default")
+        engine = kwargs.get("engine") or "default"
         open_calls.append(engine)
 
-        if "engine" not in kwargs:
+        if engine == "default":
             raise OSError("[Errno -101] NetCDF: HDF error")
 
         return real_open_dataset(path, *args, **kwargs)
 
-    monkeypatch.setattr(country_file_loader.xr, "open_dataset", open_dataset_with_default_failure)
+    monkeypatch.setattr(xr, "open_dataset", open_dataset_with_default_failure)
 
     with pytest.warns(RuntimeWarning, match="Falling back to xarray engine 'h5netcdf'"):
-        dataset = country_file_loader.load_country_dataset(europe_country_file)
+        dataset = load_country_dataset(europe_country_file)
     assert open_calls == ["default", "h5netcdf"]
-    assert dataset.attrs[country_file_loader.COUNTRY_FILE_SELECTED_ENGINE_ATTR] == "h5netcdf"
 
     open_calls.clear()
     with pytest.warns(RuntimeWarning, match="Falling back to xarray engine 'h5netcdf'"):
@@ -59,12 +58,10 @@ def test_countries_from_file_falls_back_when_xarray_engines_fail(monkeypatch, tm
     def fail_open_dataset(*args, **kwargs):
         raise RuntimeError("Unspecified error in H5DSget_num_scales")
 
-    monkeypatch.setattr(country_file_loader.xr, "open_dataset", fail_open_dataset)
+    monkeypatch.setattr(xr, "open_dataset", fail_open_dataset)
 
     with pytest.warns(RuntimeWarning, match="direct HDF5 reader 'h5py'"):
-        dataset = country_file_loader.load_country_dataset(country_file)
-
-    assert dataset.attrs[country_file_loader.COUNTRY_FILE_SELECTED_ENGINE_ATTR] == "h5py"
+        dataset = load_country_dataset(country_file)
 
     countries = Countries(dataset)
 

@@ -12,7 +12,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions import utils
-from openghg_inversions._country_file import load_country_dataset
+from openghg_inversions.region_maps import load_country_dataset
 from openghg_inversions.postprocessing._basis_products import add_basis_reconstruction_metadata
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import (
@@ -414,14 +414,8 @@ def _as_array(data: Any) -> np.ndarray:
 
 def _legacy_country_index(domain: str, country_file: str | Path | None = None) -> np.ndarray:
     """Return the raw country index grid used by legacy-format outputs."""
-    country_dataset = load_country_dataset(
-        utils.get_country_file_path(country_file=country_file, domain=domain)
-    )
-    if "country" in country_dataset:
-        return _as_array(country_dataset["country"])
-    if "region" in country_dataset:
-        return _as_array(country_dataset["region"])
-    raise ValueError("Variables 'country' or 'region' not found in country file.")
+    path = utils.get_country_file_path(country_file=country_file, domain=domain)
+    return _as_array(load_country_dataset(path)["country"])
 
 
 def _model_or_input_var(

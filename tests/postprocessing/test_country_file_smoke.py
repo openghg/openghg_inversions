@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -10,11 +11,7 @@ from pathlib import Path
 import pytest
 import xarray as xr
 
-from openghg_inversions._country_file import (
-    COUNTRY_FILE_ENGINE_ORDER,
-    COUNTRY_FILE_SELECTED_ENGINE_ATTR,
-    load_country_dataset,
-)
+from openghg_inversions.region_maps import load_country_dataset
 
 COUNTRY_FILE_SMOKE_DIR_ENV = "OPENGHG_COUNTRY_FILE_SMOKE_DIR"
 COUNTRY_FILE_NAMES = (
@@ -116,14 +113,13 @@ def test_load_country_dataset_real_files(
     path = _country_file_path(country_file_smoke_dir, file_name)
 
     try:
-        dataset = load_country_dataset(path)
+        with warnings.catch_warnings(record=True) as fallbacks:
+            warnings.simplefilter("always", RuntimeWarning)
+            dataset = load_country_dataset(path)
     except Exception as error:
         print(f"{file_name} load_country_dataset: failed {type(error).__name__}: {error}")
         raise
 
-    selected_engine = dataset.attrs[COUNTRY_FILE_SELECTED_ENGINE_ATTR]
-    print(
-        f"{file_name} load_country_dataset: ok selected_engine={selected_engine}; {_summarise_dataset(dataset)}"
-    )
-    assert selected_engine in COUNTRY_FILE_ENGINE_ORDER
-    assert "country" in dataset.variables or "region" in dataset.variables
+    fallback_report = "; ".join(str(warning.message) for warning in fallbacks) or "none"
+    print(f"{file_name} load_country_dataset: ok fallbacks={fallback_report}; {_summarise_dataset(dataset)}")
+    assert "country" in dataset.variables

@@ -8,7 +8,6 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from openghg_inversions import _country_file as country_file_mod
 from openghg_inversions import utils
 from openghg_inversions.postprocessing import legacy_outputs
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -305,7 +304,7 @@ def test_legacy_country_index_falls_back_when_h5netcdf_open_fails(monkeypatch, t
     def fail_open_dataset(*args: object, **kwargs: object) -> None:
         raise RuntimeError("Unspecified error in H5DSget_num_scales")
 
-    monkeypatch.setattr(country_file_mod.xr, "open_dataset", fail_open_dataset)
+    monkeypatch.setattr(xr, "open_dataset", fail_open_dataset)
 
     country_index = legacy_outputs._legacy_country_index("TEST", country_file=country_file)
 
