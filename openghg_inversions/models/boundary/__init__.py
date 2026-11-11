@@ -43,8 +43,10 @@ class names its family in ``kind``, which configuration selects explicitly
 with ``type`` and outputs record as ``boundary_formulation``.
 Configuration adapters produce choices; :func:`bind_prepared` binds one to
 the sensitivity representation that preparation produced. ``choice.bind(observations,
-sensitivity)`` returns the *bound* record (:class:`MultiplicativeBoundary` or
-:class:`CenteredMultiplicativeBoundary`, :class:`AdditiveBoundary`,
+sensitivity)`` binds centered sensitivity, and an :class:`AbsoluteChoice`'s
+``bind_absolute`` binds absolute ``H_bc``. Either returns the *bound* record
+(:class:`CenteredMultiplicativeBoundary` or, from ``bind_absolute``,
+:class:`MultiplicativeBoundary`; :class:`AdditiveBoundary`;
 :class:`AnomalyScalingBoundary`), which pairs the
 choice with borrowed labelled sensitivity aligned to one fit's observation
 rows and expanded to its boundary periods.
@@ -209,9 +211,29 @@ class Choice(Protocol):
 
 @runtime_checkable
 class AbsoluteChoice(Choice, Protocol):
-    """A choice that can also bind absolute sensitivity ``H_bc``."""
+    """A choice that can also bind absolute sensitivity ``H_bc``.
 
-    def bind_absolute(self, observations: xr.DataArray, sensitivity: xr.DataArray) -> Bound: ...
+    Only :class:`MultiplicativeChoice` implements it; recipes reach it through
+    :func:`bind_prepared` rather than testing the family themselves.
+    """
+
+    def bind_absolute(self, observations: xr.DataArray, sensitivity: xr.DataArray) -> Bound:
+        """Bind prepared absolute sensitivity to one fit's observations and periods.
+
+        Args:
+            observations: Observations of the fit with their observation axis
+                first, supplying row labels and times.
+            sensitivity: Absolute ``H_bc`` in concentration units on the raw
+                ``nmeasure`` or ``time`` axis, or already expanded to periods
+                when the choice requests no calendar.
+
+        Returns:
+            The bound boundary. Numerical payloads stay borrowed and lazy.
+
+        Raises:
+            ValueError: If the sensitivity or period settings are invalid.
+        """
+        ...
 
 
 def bind_prepared(

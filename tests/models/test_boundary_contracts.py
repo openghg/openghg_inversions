@@ -140,6 +140,15 @@ RAW_FAILURES = {
     "duplicate states": (
         lambda data: data.assign_coords(bc_region=["N", "N", "S"]), "unique indexed bc_region",
     ),
+    "missing state": (
+        lambda data: data.assign_coords(bc_region=["N", None, "S"]), "bc_region labels without missing values",
+    ),
+    "missing time": (
+        lambda data: data.assign_coords(time=[TIMES[0], pd.NaT, TIMES[2], TIMES[3]]), "time labels without missing values",
+    ),
+    "missing weight curtain": (
+        lambda data: data.assign_coords(bc_curtain=["N", None, "S"]), "bc_curtain labels without missing values",
+    ),
     "reference shape": (
         lambda data: data.assign(bc_reference=data.H_bc_anomaly.isel(bc_region=0)), "data_vars.bc_reference.dims",
     ),
@@ -234,6 +243,20 @@ def test_binding_constructs_the_bound_contract_lazily():
     assert list(bound.indexes["bc_region"].names) == ["bc_curtain", "bc_period"]
     assert len(bound.indexes["bc_region"]) == len(CURTAINS) * 2  # Every curtain in every month.
     assert "bc_centering_weights" not in bound
+
+
+@pytest.mark.usefixtures("float64")
+@pytest.mark.parametrize(
+    "curtains",
+    [["N", "E", "S"], [3, 1, 2], np.array([3, 1, 2], dtype=np.int16), [0.5, 1.5, 2.5]],
+    ids=["str", "int", "int16", "float"],
+)
+def test_raw_labels_accepted_by_the_contract_bind_to_a_valid_bound_contract(curtains):
+    """Binding establishes the bound contract for any label set the raw contract accepts."""
+    raw = RawCenteredSensitivity.validate(_raw_on_nmeasure(weights=False).assign_coords(bc_region=curtains))
+    bound = BoundCenteredSensitivity.bind(raw, _observations(), frequency="monthly")
+    assert BoundCenteredSensitivity.validate(bound) is bound
+    np.testing.assert_array_equal(np.unique(bound.bc_curtain.values), np.unique(curtains))
 
 
 @pytest.mark.usefixtures("float64")

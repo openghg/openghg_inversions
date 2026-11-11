@@ -442,8 +442,9 @@ def likelihood_representation(
     Args:
         terms: Complete ordered decomposition of ``modelled_mean``. Tensor
             contributions must follow the observations' row order and use
-            their concentration units. Shifts must use the same observation
-            dimensions; indexed row labels are checked exactly here.
+            their concentration units. Shifts must have exactly the
+            observations' dimensions; those and indexed row labels are
+            checked here.
         observations: Labelled observations in the contributions' common units.
         modelled_mean: Prebuilt absolute mean from those same term outputs,
             retaining the recipe's summation grouping and deterministic name.
@@ -453,12 +454,19 @@ def likelihood_representation(
         observations' attributes.
 
     Raises:
-        ValueError: If indexed observation labels differ between observations
-            and any shift, or between shifts.
+        ValueError: If any shift's dimensions differ from the observations',
+            or indexed observation labels differ between observations and any
+            shift, or between shifts.
     """
     shifts = [term.observation_shift for term in terms if term.observation_shift is not None]
     if not shifts:
         return modelled_mean, observations
+    # ``xr.align`` compares only shared dimensions, so differently named axes would broadcast.
+    for shift in shifts:
+        if shift.dims != observations.dims:
+            raise ValueError(
+                f"Observation shifts must have the observations' dimensions {observations.dims}, not {shift.dims}."
+            )
     observations, *shifts = xr.align(observations, *shifts, join="exact", copy=False)
     shift = sum(shifts[1:], start=shifts[0])
     add_model_data(shift.rename("boundary_reference_shift"), "boundary_reference_shift")
