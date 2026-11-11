@@ -17,9 +17,9 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.boundary import (
     AdditiveBoundary, AdditiveChoice, AnomalyScalingChoice, BoundCenteredSensitivity, CenteredMultiplicativeBoundary,
-    MultiplicativeChoice,
+    MultiplicativeBoundary, MultiplicativeChoice, bind_prepared,
 )
-from boundary_test_utils import raw_transport
+from boundary_test_utils import bind_fixture, raw_transport
 
 
 def _mean_response_term(mean_response):
@@ -116,7 +116,7 @@ def test_absolute_affine_keeps_inactive_effects():
     design = data.H_bc_anomaly.rename("H_bc")
     bound = MultiplicativeChoice(
         {"pdf": "normal", "mu": 1., "sigma": .1}, StateActivity(active=np.array([True, False]), fixed_value=3.),
-    ).bind(observations, design)
+    ).bind_absolute(observations, design)
     with registered_model():
         result = bound.add()
         np.testing.assert_allclose((result.output - _affine_expression(result)).eval(), 0., atol=1e-12)
@@ -223,9 +223,33 @@ def test_weighted_additive_binding_requires_centering_weights():
 
 
 
+@pytest.mark.parametrize(
+    "choice",
+    [
+        AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.),
+        AnomalyScalingChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.1),
+    ],
+)
+def test_bind_prepared_rejects_absolute_sensitivity_for_centered_families(choice):
+    data, observations = _native_boundary()
+    with pytest.raises(ValueError, match=f"The {choice.kind} boundary requires centered boundary operands; prepare again"):
+        bind_prepared(choice, observations, absolute=data.H_bc_anomaly)
+
+
+def test_bind_prepared_requires_exactly_one_representation():
+    data, observations = _native_boundary()
+    choice = MultiplicativeChoice({"pdf": "normal", "mu": 1., "sigma": .1})
+    with pytest.raises(ValueError, match="requires prepared H_bc or centered"):
+        bind_prepared(choice, observations)
+    with pytest.raises(ValueError, match="received both"):
+        bind_prepared(choice, observations, centered=raw_transport(data), absolute=data.H_bc_anomaly)
+    assert isinstance(bind_prepared(choice, observations, absolute=data.H_bc_anomaly), MultiplicativeBoundary)
+    assert isinstance(bind_prepared(choice, observations, centered=raw_transport(data)), CenteredMultiplicativeBoundary)
+
+
 def test_absolute_boundary_registers_cli_data_name():
     data, observations = _native_boundary()
-    bound = MultiplicativeChoice({"pdf": "normal", "mu": 1., "sigma": .1}).bind(observations, data.H_bc_anomaly)
+    bound = MultiplicativeChoice({"pdf": "normal", "mu": 1., "sigma": .1}).bind_absolute(observations, data.H_bc_anomaly)
     with registered_model() as model:
         bound.add(prefix="co2_")
     assert "co2_hbc" in model.named_vars
@@ -287,7 +311,7 @@ def test_boundary_payload_materializes_data_prior_and_activity_once(double_preci
         bound = MultiplicativeChoice(
             {"pdf": "normal", "mu": state, "sigma": .1},
             StateActivity(active=state > 0, fixed_value=state, fixed_groups=(), group_coord="scientific_group"),
-        ).bind(observations, data.H_bc_anomaly)
+        ).bind_absolute(observations, data.H_bc_anomaly)
     fields = to_dense_tree(bound)
     assert calls == []
     eager, = compute(fields, scheduler="synchronous")
@@ -340,7 +364,7 @@ def test_output_roles_and_units_declare_resolved_anomaly_state(double_precision,
 def test_multiplicative_output_declarations_match_registered_quantities(double_precision, centered):
     data, observations = _native_boundary()
     transport = raw_transport(data) if centered else data.H_bc_anomaly
-    bound = MultiplicativeChoice({"pdf": "normal", "mu": 1., "sigma": .1}).bind(observations, transport)
+    bound = bind_fixture(MultiplicativeChoice({"pdf": "normal", "mu": 1., "sigma": .1}), observations, transport)
     outputs = bound.outputs(prefix="o2_")
     roles, units = outputs.roles, outputs.units
     assert roles["o2_boundary_scale"] == "o2_bc"
@@ -380,7 +404,7 @@ def test_absolute_boundary_preserves_original_coordinate_owner(state_dim, partia
     bound = MultiplicativeChoice(
         {"pdf": "normal", "mu": 1., "sigma": .1},
         StateActivity(active=np.array([True, False])) if partial else None,
-    ).bind(observations, design)
+    ).bind_absolute(observations, design)
     with registered_model() as model:
         bound.add(**({} if owner is None else {"owner": owner}))  # None selects the default owner.
     expected = state_dim if owner is None and state_dim.startswith("bc_") else f"{owner or 'bc'}_{state_dim}"
@@ -437,7 +461,7 @@ def test_boundary_metadata_uses_choice_facts_without_evaluating_lazy_inputs(doub
                     "bc_frequency": "monthly", "bc_anchor_time": None}
     else:
         transport = data.H_bc_anomaly if kind == "absolute" else raw_transport(data)
-        bound = MultiplicativeChoice(prior, frequency="10D", anchor_time="2020-01-01").bind(observations, transport)
+        bound = bind_fixture(MultiplicativeChoice(prior, frequency="10D", anchor_time="2020-01-01"), observations, transport)
         expected = {"boundary_formulation": "multiplicative", "bc_frequency": "10D", "bc_anchor_time": "2020-01-01"}
         if kind == "centered":
             expected.update(boundary_representation="centered-v1", boundary_mean="none")
