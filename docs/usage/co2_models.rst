@@ -165,8 +165,9 @@ Pass ``boundary=MultiplicativeChoice(prior)`` (from
 :mod:`openghg_inversions.models.boundary`) to bind the prepared ``H_bc`` or
 centered operands and add the boundary contribution. The choice's ``activity``
 can mark boundary states as active or fixed, and ``frequency`` and
-``anchor_time`` select boundary periods. ``[model.boundary]`` with
-``enabled = true`` uses the default scaling prior unless one is configured.
+``anchor_time`` select boundary periods. ``[model.boundary]`` without a
+``type`` is multiplicative and uses the default scaling prior unless one is
+configured.
 Supplying ``offset_prior`` adds an offset. By default the offset has
 one coefficient per site; ``offset_args`` can instead select a global offset
 or site-by-period terms using ``per_site``, ``offset_freq``, and ``drop_first``.
@@ -366,7 +367,7 @@ For TOML replay, use an artifact containing these arrays and configure:
 .. code-block:: toml
 
    [model.boundary]
-   enabled = true
+   type = "additive"
    anomaly_scale = 0.2
 
    [model.boundary.mean_shift_prior]
@@ -419,7 +420,7 @@ O2 correction scale and a 1 ppm pre-centring anomaly scale:
 .. code-block:: toml
 
    [channels.o2.boundary]
-   enabled = true
+   type = "additive"
    anomaly_scale = 1.0
 
    [channels.o2.boundary.mean_shift_prior]
@@ -677,10 +678,19 @@ HalfStudentT, Gamma, Exponential, Uniform with a non-negative lower bound, or
 LogNormal.
 
 Optional model components belong in their own tables. ``[model.boundary]``
-accepts boolean ``enabled`` (default true), ``frequency``, ``anchor_time``,
-and either a multiplicative ``prior`` or the additive pair
-``mean_shift_prior`` and finite, nonnegative ``anomaly_scale``. A disabled boundary
-cannot specify a prior, anomaly scale or period choices.
+accepts boolean ``enabled`` (default true), ``type``, ``frequency`` and
+``anchor_time``. ``type`` selects the boundary family and each family's own
+options; options of another family are rejected rather than used to infer it:
+
+``"multiplicative"`` (default)
+    Scales absolute or centered boundary sensitivity, with an optional
+    ``prior`` for the scaling states.
+``"additive"``
+    Centred additive corrections, requiring centered preparation, with both
+    ``mean_shift_prior`` and a finite, nonnegative ``anomaly_scale``.
+
+A disabled boundary cannot specify a type, prior, anomaly scale or period
+choices.
 For raw reusable inputs, omitting ``frequency`` selects one period;
 ``"monthly"`` selects calendar months, and a positive fixed duration such as
 ``"2D"`` selects fixed-duration periods. ``anchor_time`` is accepted only with

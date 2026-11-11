@@ -38,8 +38,11 @@ configuration to a saved trace:
 A *choice* (:class:`MultiplicativeChoice`, :class:`AdditiveChoice`,
 :class:`AnomalyScalingChoice`) is one resolved selection of the user's
 boundary options (priors, activity, anomaly structure and scale, reference
-and the boundary period calendar) before any arrays are attached.
-Configuration adapters produce choices. ``choice.bind(observations,
+and the boundary period calendar) before any arrays are attached. Each choice
+class names its family in ``kind``, which configuration selects explicitly
+with ``type`` and outputs record as ``boundary_formulation``.
+Configuration adapters produce choices; :func:`bind_prepared` binds one to
+the sensitivity representation that preparation produced. ``choice.bind(observations,
 sensitivity)`` returns the *bound* record (:class:`MultiplicativeBoundary` or
 :class:`CenteredMultiplicativeBoundary`, :class:`AdditiveBoundary`,
 :class:`AnomalyScalingBoundary`), which pairs the
@@ -66,9 +69,11 @@ with ``H = A + c M``. Preparation and loading establish
 produces :class:`BoundCenteredSensitivity`, which every centered family
 consumes; and weighted additive anomalies extend it to
 :class:`BoundAdditiveSensitivity`. Every :class:`Choice` binds raw centered
-sensitivity; only :class:`MultiplicativeChoice` also accepts absolute
-``H_bc``, binding it to :class:`MultiplicativeBoundary`, the one bound
-record that does not inherit :class:`~.centered.CenteredBoundary`. Centered
+sensitivity; only :class:`MultiplicativeChoice` is also an
+:class:`AbsoluteChoice`, whose ``bind_absolute`` binds absolute ``H_bc`` to
+:class:`MultiplicativeBoundary`, the one bound record that does not inherit
+:class:`~.centered.CenteredBoundary`. :func:`bind_prepared` is the one place
+that checks a choice against the representation preparation produced. Centered
 sensitivity keeps small anomalies after cancellation: likelihoods use
 observations shifted by the fixed ``c M 1``, while absolute outputs add it
 back. Centered graphs need a float64 PyTensor process
@@ -165,9 +170,14 @@ class Bound(Protocol):
 
 @runtime_checkable
 class Choice(Protocol):
-    """One resolved selection of a boundary family's options, before binding."""
+    """One resolved selection of a boundary family's options, before binding.
+
+    ``kind`` names the family, as selected by the configuration ``type`` and
+    recorded as ``boundary_formulation``.
+    """
 
     __dataclass_fields__: ClassVar[dict[str, Any]]
+    kind: ClassVar[str]
 
     @property
     def frequency(self) -> str | None:
@@ -197,7 +207,58 @@ class Choice(Protocol):
         ...
 
 
+@runtime_checkable
+class AbsoluteChoice(Choice, Protocol):
+    """A choice that can also bind absolute sensitivity ``H_bc``."""
+
+    def bind_absolute(self, observations: xr.DataArray, sensitivity: xr.DataArray) -> Bound: ...
+
+
+def bind_prepared(
+    choice: Choice,
+    observations: xr.DataArray,
+    *,
+    centered: RawCenteredSensitivity | None = None,
+    absolute: xr.DataArray | None = None,
+    label: str = "boundary",
+) -> Bound:
+    """Bind a choice to the one sensitivity representation that preparation produced.
+
+    Recipes pass whichever representation their prepared inputs record; this
+    is the single check that the choice's family supports it.
+
+    Args:
+        choice: The resolved boundary choice.
+        observations: One channel's observations, as for ``choice.bind``.
+        centered: Raw centered sensitivity, when preparation produced it.
+        absolute: Absolute ``H_bc``, when preparation produced only that.
+        label: Name of the boundary in error messages, such as ``"o2 boundary"``.
+
+    Returns:
+        The bound boundary.
+
+    Raises:
+        ValueError: If preparation produced neither or both representations,
+            or absolute sensitivity is given to a family that requires
+            centered sensitivity.
+    """
+    if centered is None and absolute is None:
+        raise ValueError(f"The {label} requires prepared H_bc or centered boundary operands.")
+    if centered is not None and absolute is not None:
+        raise ValueError(f"The {label} received both prepared H_bc and centered boundary operands; prepare one.")
+    if centered is not None:
+        return choice.bind(observations, centered)
+    assert absolute is not None
+    if not isinstance(choice, AbsoluteChoice):
+        raise ValueError(
+            f"The {choice.kind} {label} requires centered boundary operands; "
+            "prepare again with boundary_representation='centered'."
+        )
+    return choice.bind_absolute(observations, absolute)
+
+
 __all__ = [
+    "AbsoluteChoice",
     "AdditiveBoundary",
     "AdditiveChoice",
     "AnomalyScalingBoundary",
@@ -211,6 +272,7 @@ __all__ = [
     "MultiplicativeBoundary",
     "MultiplicativeChoice",
     "RawCenteredSensitivity",
+    "bind_prepared",
     "centered_boundary_expression",
     "normalize_centering_weights",
     "require_centered_precision",

@@ -399,6 +399,7 @@ def prepare_multisector(
     use_bc: bool,
     basis_inputs: Mapping[str, Any],
     bc_basis: BoundaryBasis = nesw_basis,
+    filter_options: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> PreparedInputs:
     """Prepare observations and sensitivities from supplied scientific resources.
 
@@ -408,6 +409,7 @@ def prepare_multisector(
         flux_sources: Ordered source identities; the first weights basis design.
         averaging_error: Include variability when deriving observation errors.
         filters: Observation-filter choices interpreted by the filtering owner.
+        filter_options: Keyword options for named observation filters.
         basis_algorithm: Selected basis-generation algorithm.
         nbasis: Requested generated basis size.
         fix_basis_outer_regions: Keep the supplied outer partition fixed.
@@ -430,7 +432,7 @@ def prepare_multisector(
     )
     # Preparation works on per-site datasets; ``merged_data`` stays acquired data.
     filtered, site_options = filter_observations(
-        merged_data.site_data, merged_data.site_options, filters=filters,
+        merged_data.site_data, merged_data.site_options, filters=filters, filter_options=filter_options,
     )
     filtered = prepare_observation_errors(filtered, averaging_error=averaging_error)
 
@@ -596,6 +598,7 @@ def run_multisector(
                 "flux_sources",
                 "averaging_error",
                 "filters",
+                "filter_options",
                 "basis_algorithm",
                 "nbasis",
                 "fix_basis_outer_regions",
