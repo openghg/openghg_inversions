@@ -470,8 +470,11 @@ def test_additive_boundary_materializes_shared_operands_at_explicit_model_bounda
         },
         attrs={"boundary_representation": "centered-v1"},
     )
-    weights = _period_weights([1.0, 2.0], mass.bc_region.values, ["whole_window"])
-    observations = xr.DataArray([400.0, 400.0], dims="nmeasure", coords={"nmeasure": [0, 1]})
+    times = pd.to_datetime(["2020-01-01T00", "2020-01-01T01"])
+    weights = _period_weights([1.0, 2.0], mass.bc_region.values, times[:1])
+    observations = xr.DataArray(
+        [400.0, 400.0], dims="nmeasure", coords={"nmeasure": [0, 1], "time": ("nmeasure", times)},
+    )
     prior = {"pdf": "normal", "mu": 0.0, "sigma": 0.2}
     transport = raw_transport(operands, weights=weights)
     prepared = AdditiveChoice(prior, 0.3).bind(observations, transport)
