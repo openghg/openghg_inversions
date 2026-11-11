@@ -70,7 +70,7 @@ _PRIOR_OPTION_NAMES = frozenset({
     "pdf", "mu", "sigma", "lower", "upper", "nu", "alpha", "beta", "lam", "mean", "stdev", "reparameterise",
 })
 _MODEL_SECTION_OPTION_NAMES = {
-    "boundary": frozenset({"enabled", "prior", "frequency", "anchor_time", "mean_shift_prior", "anomaly_scale"}),
+    "boundary": frozenset({"enabled", "type", "prior", "frequency", "anchor_time", "mean_shift_prior", "anomaly_scale"}),
     "boundary.mean_shift_prior": _PRIOR_OPTION_NAMES,
     "boundary.prior": _PRIOR_OPTION_NAMES,
     "offset": frozenset({"prior", "frequency", "per_site", "drop_first"}),
@@ -342,37 +342,48 @@ def _sampling(value: object) -> RhimeSampler:
     return sampler
 
 
+def _multiplicative_boundary(options: dict[str, object], periods: dict[str, Any]) -> MultiplicativeChoice:
+    """Resolve the options of a multiplicative boundary, the default type."""
+    prior = _prior(options.pop("prior"), "model.boundary.prior") if "prior" in options else dict(DEFAULT_BC_PRIOR)
+    _reject_unknown(options, "model.boundary")
+    return MultiplicativeChoice(prior, **periods)
+
+
+def _additive_boundary(options: dict[str, object], periods: dict[str, Any]) -> AdditiveChoice:
+    """Resolve the options of centred additive boundary corrections."""
+    mean_shift_prior = _prior(_take(options, "mean_shift_prior", "model.boundary"), "model.boundary.mean_shift_prior")
+    anomaly_scale = _number(_take(options, "anomaly_scale", "model.boundary"), "model.boundary.anomaly_scale")
+    _reject_unknown(options, "model.boundary")
+    return AdditiveChoice(mean_shift_prior, anomaly_scale, **periods)
+
+
+# Each boundary ``type`` names one choice family and owns the parser for its options.
+_BOUNDARY_TYPES: dict[str, Callable[[dict[str, object], dict[str, Any]], Choice]] = {
+    MultiplicativeChoice.kind: _multiplicative_boundary,
+    AdditiveChoice.kind: _additive_boundary,
+}
+
+
 def _boundary_choice(boundary: dict[str, object]) -> Choice | None:
-    """Resolve one ``[model.boundary]`` table; ``None`` when explicitly disabled."""
+    """Resolve one ``[model.boundary]`` table; ``None`` when explicitly disabled.
+
+    ``type`` selects the family and defaults to ``"multiplicative"``, scaling
+    absolute or centered sensitivity. Options belonging to another family are
+    rejected rather than used to infer it.
+    """
     enabled = _bool(boundary.pop("enabled", True), "model.boundary.enabled")
-    prior = _prior(boundary.pop("prior"), "model.boundary.prior") if "prior" in boundary else None
-    mean_shift_prior = (
-        _prior(boundary.pop("mean_shift_prior"), "model.boundary.mean_shift_prior")
-        if "mean_shift_prior" in boundary else None
-    )
-    anomaly_scale = (
-        _number(boundary.pop("anomaly_scale"), "model.boundary.anomaly_scale") if "anomaly_scale" in boundary else None
-    )
-    frequency = boundary.pop("frequency", None)
-    anchor_time = boundary.pop("anchor_time", None)
-    if frequency is not None:
-        frequency = _string(frequency, "model.boundary.frequency")
-    if anchor_time is not None:
-        anchor_time = _string(anchor_time, "model.boundary.anchor_time")
-    _reject_unknown(boundary, "model.boundary")
     if not enabled:
-        if any(value is not None for value in (prior, mean_shift_prior, anomaly_scale, frequency, anchor_time)):
+        if boundary:
             raise ValueError("model.boundary options require model.boundary.enabled=true.")
         return None
-    if (mean_shift_prior is None) != (anomaly_scale is None):
-        raise ValueError("model.boundary.mean_shift_prior and anomaly_scale must be supplied together.")
-    if mean_shift_prior is not None:
-        if prior is not None:
-            raise ValueError("Centred boundary corrections cannot use model.boundary.prior.")
-        assert anomaly_scale is not None
-        return AdditiveChoice(mean_shift_prior, anomaly_scale, frequency=frequency, anchor_time=anchor_time)
-    return MultiplicativeChoice(prior if prior is not None else dict(DEFAULT_BC_PRIOR),
-                                frequency=frequency, anchor_time=anchor_time)
+    kind = _string(boundary.pop("type", MultiplicativeChoice.kind), "model.boundary.type")
+    if kind not in _BOUNDARY_TYPES:
+        raise ValueError(f"model.boundary.type must be one of {sorted(_BOUNDARY_TYPES)!r}, not {kind!r}.")
+    periods: dict[str, Any] = {
+        name: _string(boundary.pop(name), f"model.boundary.{name}")
+        for name in ("frequency", "anchor_time") if name in boundary
+    }
+    return _BOUNDARY_TYPES[kind](boundary, periods)
 
 
 def _model(value: object) -> dict[str, Any]:
