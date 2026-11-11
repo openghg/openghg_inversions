@@ -186,20 +186,40 @@ restrictions are both supplied by the caller.
 
 ``absolute_weighted_regional_mean_restriction`` builds the current production
 policy from per-source integer region maps and signed per-cell weights
-:math:`q` (for example prior flux times cell area). Positive region labels are
-active; zero or negative labels mark inactive cells, which receive no weight.
+:math:`q` (for example prior flux times cell area). For source :math:`s`,
+region :math:`r`, and native cell :math:`i`,
+
+.. math::
+
+   \Pi_{(s,r),(s',i)} =
+   \mathbf 1[s=s']\,\mathbf 1[i\in r]\,
+   \frac{|q_{si}|}{\sum_{j\in r}|q_{sj}|}.
+
 Each row is exactly nonnegative and sums to one by construction, so the result
-is admissible for a LogNormal retained state without any tolerance. Its
-retained state is a ``(source, region_in_source)`` MultiIndex that numbers each
-source's active regions ``0, 1, ...`` in ascending label order, as
-``MultiSourceBucketBasisOperator`` does. Its payload is sparse with one weight
-per active cell.
+is admissible for a LogNormal retained state without any tolerance. Using
+absolute weights is not the same as scaling the net signed regional flux. For a
+region of two cells with :math:`q = (-2, +1)`, the retained scaling is the
+positive weighted mean :math:`\alpha = (2x_1 + x_2)/3`. Scaling the net flux
+:math:`-2x_1 + x_2` against its prior value :math:`-1` would instead give
+:math:`2x_1 - x_2`, which can be negative even when both native scalings are
+positive.
+
+Zero and positive region labels are active, so zero-based labels such as those
+from ``range`` work directly; negative labels mark inactive cells, which receive
+no weight. Relabel a map that marks inactive cells with zero, for example with
+``labels.where(labels > 0, -1)``. The retained state is a
+``(source, region_in_source)`` MultiIndex that numbers each source's active
+regions ``0, 1, ...`` in ascending label order. For maps without inactive
+cells, this numbering matches ``MultiSourceBucketBasisOperator``. The payload is
+sparse, with at most one weight per active cell.
 
 For positive native scaling :math:`x`, the retained scaling
 :math:`\alpha = \Pi x` is guaranteed positive only when :math:`\Pi` is
 nonnegative with positive weight in every row. With
 ``retained_distribution="lognormal"`` the strategy refuses a signed restriction
-or an all-zero row; the Gaussian default accepts them. The derived lift
+or an all-zero row. The Gaussian default accepts signed weights, but every
+restriction still needs full row rank: an all-zero row makes :math:`C_\alpha`
+singular, and the retained Cholesky factorization rejects it. The derived lift
 :math:`U_*` may be signed in either case, because it is a linear conditional
 mean rather than a positive scaling map. The returned restriction records
 ``restriction_source="supplied"``, the declared retained distribution, and the
@@ -234,6 +254,18 @@ and the centred conditional observation model
    Hm + H U_*(\alpha - \Pi m),
    R + H B_\perp H^\mathsf{T}
    \right).
+
+To see where :math:`B_\perp` comes from, write the unresolved native part as
+
+.. math::
+
+   e = x - m - U_*(\alpha - \Pi m).
+
+Then :math:`\operatorname{Cov}(e, \alpha) = B\Pi^\mathsf{T} - U_* C_\alpha = 0`,
+so :math:`e` is independent of :math:`\alpha` when :math:`x` is Gaussian, and
+:math:`\operatorname{Cov}(e) = B - U_* C_\alpha U_*^\mathsf{T} = B_\perp`.
+Observations see :math:`e` through :math:`H`, which gives the unresolved
+observation covariance :math:`A = H B_\perp H^\mathsf{T}`.
 
 The :doc:`coherent_reduction` operation owns the first exact solve-based
 transformation, centred forward model, and unresolved observation covariance.
@@ -300,19 +332,15 @@ Correspondence with ``verification-games``
 
 This API ports only the reusable lower-level prototype calculation.
 The recent 14-site production runs define retained coefficients with a
-source-blocked, absolute-prior-flux-weighted mean. For source :math:`s`, region
-:math:`r`, and native cell :math:`i`, let
+source-blocked, absolute-prior-flux-weighted mean: the regional mean above with
 
 .. math::
 
-   q_{si} = \bar F^{\mathrm{UOB\,BASE}}_{si} A_i,
-   \qquad
-   \Pi_{(s,r),(s',i)} =
-   \mathbf 1[s=s']\,\mathbf 1[i\in r]\,
-   \frac{|q_{si}|}{\sum_{j\in r}|q_{sj}|}.
+   q_{si} = \bar F^{\mathrm{UOB\,BASE}}_{si} A_i.
 
-Thus each row is nonnegative, sums to one, and averages native scaling factors
-within exactly one source and one active region. This physical restriction is
+Each row averages native scaling factors within exactly one source and one
+active region. If a production map marks inactive cells with zero, relabel
+them to a negative value before calling the builder. This physical restriction is
 chosen independently of :math:`B`; the covariance then determines
 :math:`C_\alpha` and :math:`U_*`. The prototype also supports a distinct
 signed-flux-total policy, but that is not the current 14-site production
@@ -340,8 +368,8 @@ strategy.
      - ``SuppliedRestriction`` accepts the same physical :math:`\Pi` and
        reproduces the prototype's :math:`C_\alpha`, :math:`H_\alpha`, and
        unresolved observation covariance for separable and class-blocked
-       covariance. The default strategy remains the compatibility-oriented
-       ``PreserveBucketProlongation``.
+       covariance. The compatibility-oriented ``PreserveBucketProlongation``
+       remains available for bucket bases.
    * - Cross-source covariance, arbitrary reporting functionals :math:`Q`,
        :math:`B_\perp` products, coherent likelihood reduction, reconstruction,
        and covariance approximation

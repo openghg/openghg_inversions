@@ -45,13 +45,15 @@ without constructing an inverse, then returns the centred conditional model
 All three retained quantities---the prior, effective forward operator, and
 unresolved covariance---come from the same product set.
 
-The current function accepts a basis prolongation :math:`U`. With the default
-strategy, it constructs the compatible restriction :math:`\Pi_U` using
-:math:`B`, so that the covariance-derived prolongation :math:`U_*` equals the
-supplied basis prolongation. A custom projection strategy can already choose
-:math:`\Pi`, although callers must still supply the basis argument. A future
-interface may accept either operator directly and construct its compatible
-counterpart. The restriction and prolongation are related through :math:`B`;
+The retained projection strategy supplies :math:`\Pi`, by one of two routes:
+
+* ``PreserveBucketProlongation(U)`` holds a basis prolongation :math:`U` and
+  constructs the compatible restriction :math:`\Pi_U` using :math:`B`, so that
+  the covariance-derived prolongation :math:`U_*` equals :math:`U`.
+* ``SuppliedRestriction(Pi)`` holds a physical restriction chosen
+  independently of :math:`B`; no basis prolongation is needed.
+
+Either way, the restriction and prolongation are related through :math:`B`;
 they are not generally transposes of one another.
 
 Preparing the exact result

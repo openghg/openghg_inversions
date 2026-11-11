@@ -258,7 +258,15 @@ class SuppliedRestriction:
         retained_distribution: Literal["gaussian", "lognormal"] = "gaussian",
         name: str = "supplied_restriction",
     ) -> None:
-        """Hold the borrowed restriction and its admissibility setting."""
+        """Hold the borrowed restriction and its admissibility setting.
+
+        Raises:
+            ValueError: If ``retained_distribution`` is not a supported family.
+        """
+        if retained_distribution not in ("gaussian", "lognormal"):
+            raise ValueError(
+                f"retained_distribution must be 'gaussian' or 'lognormal'; got {retained_distribution!r}"
+            )
         self._restriction = restriction
         self._retained_distribution = retained_distribution
         self._name = name
@@ -328,12 +336,11 @@ class SuppliedRestriction:
                     "A LogNormal retained state requires positive weight in every "
                     f"restriction row; row {_label(state_index, row)!r} sums to {row_sums[row]:.3e}"
                 )
-        elif self._retained_distribution != "gaussian":
-            assert_never(self._retained_distribution)
         row_normalized = bool(np.all(np.abs(row_sums - 1.0) <= ROW_NORMALIZATION_TOLERANCE))
+        # Keep any caller-recorded definition, such as the builder's weighting
+        # formula; restriction_source records that Pi was supplied.
         restriction = restriction.rename("restriction").assign_attrs(
             mathematical_name="Pi",
-            definition="supplied",
             strategy=self._name,
             restriction_source="supplied",
             retained_distribution=self._retained_distribution,
@@ -372,8 +379,9 @@ def absolute_weighted_regional_mean_restriction(
 
     Args:
         regions: Non-empty insertion-ordered mapping from source label to an
-            integer region-label array on the spatial native grid. Positive
-            labels are active regions; zero or negative labels mark inactive
+            integer region-label array on the spatial native grid. Zero and
+            positive labels are active regions, so zero-based labels such as
+            those from ``range`` work directly; negative labels mark inactive
             cells, which receive no weight.
         weights: Signed per-cell weights ``q`` with dimensions
             ``(native_source_dim, *spatial_dims)``. Its source coordinate must
@@ -391,9 +399,10 @@ def absolute_weighted_regional_mean_restriction(
         Dimensionless sparse ``Pi`` with dimensions
         ``(state_dim, native_source_dim, *spatial_dims)``. The state
         coordinate is a ``(source_dim, region_dim)`` MultiIndex in source order.
-        As in :class:`~openghg_inversions.basis.operators.MultiSourceBucketBasisOperator`,
-        each source's active regions are numbered ``0, 1, ...`` in ascending
+        Each source's active regions are numbered ``0, 1, ...`` in ascending
         label order; the map's label values carry no meaning in the result.
+        For maps without inactive cells, this numbering matches
+        :class:`~openghg_inversions.basis.operators.MultiSourceBucketBasisOperator`.
 
     Raises:
         ValueError: If no sources are given, source or spatial labels do not
@@ -403,8 +412,11 @@ def absolute_weighted_regional_mean_restriction(
     if not regions:
         raise ValueError("regions must contain at least one source")
     sources = list(regions)
-    if native_source_dim not in weights.dims:
-        raise ValueError(f"weights must have native source dimension {native_source_dim!r}")
+    if native_source_dim not in weights.indexes:
+        raise ValueError(
+            f"weights must have an indexed native source coordinate {native_source_dim!r} "
+            "listing the regions keys"
+        )
     if weights.indexes[native_source_dim].tolist() != sources:
         raise ValueError(
             f"weights {native_source_dim!r} labels must equal the regions keys in order; "
@@ -443,21 +455,28 @@ def absolute_weighted_regional_mean_restriction(
     for source_index, (source, source_labels) in enumerate(zip(sources, label_values, strict=True)):
         flat_labels = np.asarray(source_labels).reshape(-1)
         absolute = np.abs(weight_values[source_index].reshape(-1))
-        active_cells = np.flatnonzero(flat_labels > 0)
+        active_cells = np.flatnonzero(flat_labels >= 0)
+        # The inverse maps each active cell's arbitrary region label to its
+        # consecutive local row 0, 1, ... in ascending label order. bincount
+        # then sums |q| per local row, giving each region's denominator.
         source_region_labels, local_rows = np.unique(flat_labels[active_cells], return_inverse=True)
         totals = np.bincount(local_rows, weights=absolute[active_cells], minlength=source_region_labels.size)
         if np.any(totals <= 0.0):
             region = int(source_region_labels[np.argmax(totals <= 0.0)])
             raise ValueError(f"Region {region} of source {source!r} has zero total absolute weight")
+        # Earlier sources' rows come first, so offset local rows into the
+        # full multi-source state.
         row_blocks.append(len(state_labels) + local_rows)
         source_blocks.append(np.full(active_cells.size, source_index))
         cell_blocks.append(active_cells)
         value_blocks.append(absolute[active_cells] / totals[local_rows])
         state_labels.extend((source, position) for position in range(source_region_labels.size))
     if not state_labels:
-        raise ValueError("regions must contain at least one active (positive) region label")
+        raise ValueError("regions must contain at least one active (nonnegative) region label")
 
     cells = np.concatenate(cell_blocks)
+    # COO coordinates are (state row, native source, *spatial indices);
+    # unravel_index turns flattened active cells back into grid indices.
     coordinates = np.vstack(
         [
             np.concatenate(row_blocks),
@@ -915,6 +934,9 @@ def _derive_covariance_natural_prolongation(
             )
         b_pi_values = np.asarray(b_pi_t.transpose(*native_dims, state_column_dim).values)
         native_shape = tuple(b_pi_t.sizes[dim] for dim in native_dims)
+        # U_* C_alpha = B Pi.T and C_alpha is symmetric, so solve
+        # C_alpha U_*.T = (B Pi.T).T with each flattened native cell as one
+        # right-hand-side column, then restore the native shape.
         solved = cho_solve(
             factor,
             b_pi_values.reshape((-1, b_pi_t.sizes[state_column_dim])).T,

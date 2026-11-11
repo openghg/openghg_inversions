@@ -26,10 +26,11 @@ SOURCE_DIM = "native_source"
 NATIVE_DIMS = (SOURCE_DIM, "lat", "lon")
 LATITUDE = np.array([50.0, 51.0, 52.5])
 LONGITUDE = np.array([-2.0, -1.0, 0.5, 1.5])
-# Source-specific regions; label 0 marks an inactive cell with no retained weight.
+# Source-specific regions; label 0 is an active region and -1 marks an inactive
+# cell with no retained weight.
 REGIONS = {
-    "GPP": np.array([[1, 1, 2, 2], [1, 3, 3, 2], [3, 3, 0, 2]]),
-    "FF": np.array([[4, 4, 4, 7], [4, 4, 7, 7], [0, 7, 7, 7]]),
+    "GPP": np.array([[0, 0, 2, 2], [0, 3, 3, 2], [3, 3, -1, 2]]),
+    "FF": np.array([[4, 4, 4, 7], [4, 4, 7, 7], [-1, 7, 7, 7]]),
 }
 CORRELATION_LENGTHS = {"GPP": 1.3, "FF": 0.8}
 SIGMAS = {"GPP": 0.7, "FF": 0.4}
@@ -38,7 +39,7 @@ SIGMAS = {"GPP": 0.7, "FF": 0.4}
 def _state_index() -> pd.MultiIndex:
     """Return retained labels: source order, then active regions numbered from zero."""
     return pd.MultiIndex.from_tuples(
-        [(source, position) for source in SOURCES for position in range(np.unique(REGIONS[source][REGIONS[source] > 0]).size)],
+        [(source, position) for source in SOURCES for position in range(np.unique(REGIONS[source][REGIONS[source] >= 0]).size)],
         names=("source", "region_in_source"),
     )
 
@@ -75,7 +76,7 @@ def _oracle_restriction(weights: np.ndarray) -> np.ndarray:
     rows = []
     for source_index, source in enumerate(SOURCES):
         for region in np.unique(REGIONS[source]):
-            if region <= 0:
+            if region < 0:
                 continue
             row = np.zeros(weights.shape)
             mask = REGIONS[source] == region
@@ -170,19 +171,19 @@ def test_builder_matches_direct_absolute_weighted_regional_mean() -> None:
     assert np.all(restriction.data.data > 0.0)
     np.testing.assert_allclose(pi.sum(axis=1), 1.0, rtol=0.0, atol=1e-15)
     np.testing.assert_allclose(pi @ np.ones(pi.shape[1]), np.ones(pi.shape[0]), atol=1e-15)
-    inactive = np.concatenate([REGIONS[source].reshape(-1) <= 0 for source in SOURCES])
+    inactive = np.concatenate([REGIONS[source].reshape(-1) < 0 for source in SOURCES])
     assert not pi[:, inactive].any()
     for row, (source, region) in enumerate(restriction.indexes["state"]):
         support = restriction.isel(state=row).data.todense() > 0.0
         other_sources = [index for index, label in enumerate(SOURCES) if label != source]
         assert not support[other_sources].any()
-        active_labels = np.unique(REGIONS[source][REGIONS[source] > 0])
+        active_labels = np.unique(REGIONS[source][REGIONS[source] >= 0])
         assert np.array_equal(support[SOURCES.index(source)], REGIONS[source] == active_labels[region])
 
 
 def test_builder_state_labels_match_multisource_bucket_operator() -> None:
-    """With every cell active, retained labels match the basis operator's numbering."""
-    regions = {source: labels.where(labels > 0, 9) for source, labels in _regions().items()}
+    """With every cell active, including label 0, retained labels match the operator's numbering."""
+    regions = {source: labels.where(labels >= 0, 9) for source, labels in _regions().items()}
     operator = MultiSourceBucketBasisOperator(regions)
 
     restriction = absolute_weighted_regional_mean_restriction(regions, _flux_weights())
@@ -200,7 +201,9 @@ def test_builder_materializes_lazy_inputs() -> None:
     xr.testing.assert_identical(lazy, _restriction())
 
 
-@pytest.mark.parametrize("problem", ["float-labels", "source-order", "grid", "zero-region", "non-finite"])
+@pytest.mark.parametrize(
+    "problem", ["float-labels", "source-order", "unindexed-source", "grid", "zero-region", "non-finite"]
+)
 def test_builder_rejects_invalid_inputs(problem: str) -> None:
     """Labels must be integers on the exact grid, in source order, with usable weights."""
     regions = _regions()
@@ -211,6 +214,9 @@ def test_builder_rejects_invalid_inputs(problem: str) -> None:
     elif problem == "source-order":
         regions = {"FF": regions["FF"], "GPP": regions["GPP"]}
         match = "labels must equal the regions keys"
+    elif problem == "unindexed-source":
+        weights = weights.drop_vars(SOURCE_DIM)
+        match = "indexed native source coordinate"
     elif problem == "grid":
         regions["GPP"] = regions["GPP"].isel(lon=slice(None, None, -1))
         match = r"join='exact'|align"
@@ -277,6 +283,7 @@ def test_supplied_restriction_keeps_labels_provenance_and_sparse_storage() -> No
     assert result.dims == ("state", *NATIVE_DIMS)
     assert result.indexes["state"].equals(_state_index())
     assert result.attrs["policy"] == "absolute-weighted regional mean"
+    assert result.attrs["definition"] == restriction.attrs["definition"]
     assert result.attrs["restriction_source"] == "supplied"
     assert result.attrs["retained_distribution"] == "lognormal"
     assert result.attrs["lognormal_admissible"] is True
@@ -284,6 +291,12 @@ def test_supplied_restriction_keeps_labels_provenance_and_sparse_storage() -> No
     assert result.attrs["row_normalized"] is True
     assert result.attrs["units"] == "1"
     assert "restriction_source" not in restriction.attrs
+
+
+def test_unknown_retained_distribution_is_rejected_at_construction() -> None:
+    """A misspelled retained family fails before any projection work."""
+    with pytest.raises(ValueError, match="retained_distribution must be 'gaussian' or 'lognormal'"):
+        SuppliedRestriction(_restriction(), retained_distribution="LogNormal")  # type: ignore[arg-type]
 
 
 def test_signed_restriction_is_refused_for_lognormal_and_allowed_for_gaussian() -> None:
@@ -379,7 +392,7 @@ def test_bucket_strategy_accepts_sparse_and_lazy_prolongation() -> None:
     state_index = _state_index()
     values = np.zeros((len(SOURCES), LATITUDE.size, LONGITUDE.size, len(state_index)))
     for column, (source, region) in enumerate(state_index):
-        active_labels = np.unique(REGIONS[source][REGIONS[source] > 0])
+        active_labels = np.unique(REGIONS[source][REGIONS[source] >= 0])
         values[SOURCES.index(source), ..., column] = REGIONS[source] == active_labels[region]
     prolongation = _labelled(values, (*NATIVE_DIMS, "state")).assign_coords(
         xr.Coordinates.from_pandas_multiindex(state_index, "state")
@@ -464,10 +477,10 @@ def test_production_shape_restriction_stays_sparse_with_bounded_memory() -> None
     tracemalloc.start()
     regions = {}
     for source, count in source_rows.items():
-        # Region labels 1..count, with about 45% of cells inactive (label 0).
-        labels = rng.integers(1, count + 1, size=(n_lat, n_lon))
-        labels.reshape(-1)[:count] = np.arange(1, count + 1)
-        labels.reshape(-1)[count:][rng.random(n_lat * n_lon - count) < 0.45] = 0
+        # Region labels 0..count-1, with about 45% of cells inactive (label -1).
+        labels = rng.integers(0, count, size=(n_lat, n_lon))
+        labels.reshape(-1)[:count] = np.arange(count)
+        labels.reshape(-1)[count:][rng.random(n_lat * n_lon - count) < 0.45] = -1
         regions[source] = xr.DataArray(labels, dims=("lat", "lon"), coords=coords)
     weights = xr.DataArray(
         rng.normal(size=(len(source_rows), n_lat, n_lon)),
