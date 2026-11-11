@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, ClassVar, Protocol
 
 import numpy as np
 import pymc as pm
@@ -202,6 +202,8 @@ class MeanShift:
 class CenteredChoice(Protocol):
     """Options every centered family's choice provides to :class:`CenteredBoundary`."""
 
+    kind: ClassVar[str]
+
     @property
     def mean_shift(self) -> MeanShift:
         """Resolved mean shift of the family."""
@@ -305,7 +307,6 @@ class CenteredBoundary:
 
     def _outputs(
         self,
-        formulation: str,
         prefix: str,
         *,
         roles: Mapping[str, str],
@@ -318,6 +319,7 @@ class CenteredBoundary:
             The sensitivity, reference and ``mu_bc`` roles and units, the mean
             shift's, then ``roles``, ``units`` and ``metadata``, with
             ``prefix`` applied to roles and graph names.
+            ``boundary_formulation`` is the choice's ``kind``.
         """
         concentration_units = self.concentration_units
         mean = self.choice.mean_shift.outputs(concentration_units)
@@ -333,7 +335,7 @@ class CenteredBoundary:
             {**names, **mean.roles, **roles},
             {**{name: concentration_units for name in names.values()}, "H_bc_mass": "1", **mean.units, **units},
             {
-                "boundary_formulation": formulation,
+                "boundary_formulation": self.choice.kind,
                 "boundary_representation": "centered-v1",
                 **metadata,
                 **mean.metadata,

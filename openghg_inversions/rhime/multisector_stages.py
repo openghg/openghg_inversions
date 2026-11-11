@@ -189,6 +189,7 @@ def prepare(
             "flux_sources",
             "averaging_error",
             "filters",
+            "filter_options",
             "basis_algorithm",
             "nbasis",
             "fix_basis_outer_regions",
