@@ -10,7 +10,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.array_ops import get_xr_dummies
-from openghg_inversions.inversion_inputs import DatetimeLike, make_freq_indicator, normalise_frequency
+from openghg_inversions.inversion_inputs import DatetimeLike, make_period_calendar, normalise_frequency
 
 __all__ = [
     "BoundaryAlignment",
@@ -26,7 +26,8 @@ class BoundaryAlignment:
 
     Args:
         data: Prepared ``H_bc`` with a ``bc_region`` MultiIndex whose levels
-            are ``bc_curtain`` and ``bc_period``, plus one observation axis.
+            are ``bc_curtain`` and interval-start ``bc_period``, plus one
+            observation axis.
 
     Raises:
         ValueError: If the resolved boundary-state labels are invalid.
@@ -58,7 +59,8 @@ class BoundaryAlignment:
 
         Args:
             sensitivity: Boundary sensitivity with exactly ``bc_region`` and
-                an observation dimension named ``time`` or ``nmeasure``.
+                an observation dimension named ``time`` or ``nmeasure``, with a
+                datetime ``time`` coordinate along that dimension.
             frequency: Optional fitted boundary-period frequency. ``None``
                 creates one period; ``"monthly"`` follows calendar months.
             anchor_time: Optional anchor for fixed-duration periods.
@@ -85,21 +87,25 @@ def _expand_boundary_periods(
     anchor_time: DatetimeLike | None,
     observation_labels: xr.DataArray | None,
 ) -> xr.Dataset:
-    """Select scientific rows and apply one period mask to all boundary operands."""
+    """Select scientific rows and apply one period mask to all boundary operands.
+
+    The required datetime ``time`` coordinate along the observations is
+    computed once if lazy, because period labels are interval-start timestamps
+    (the first time when ``frequency`` is None).
+    """
     normalise_frequency(frequency)
     if observation_labels is not None:
         raw = raw.sel({observation_dim: observation_labels.transpose(observation_dim)})
-    if frequency is None:
-        period = xr.zeros_like(raw[observation_dim], dtype=int)
-    else:
-        if "time" not in raw.coords or raw.time.dims != (observation_dim,) or raw.time.dtype.kind != "M":
-            raise ValueError("Frequency-based boundary expansion requires a datetime time coordinate along observations.")
-        time = raw.time
-        if hasattr(time.data, "__dask_graph__"):
-            time = time.compute()
-            raw = raw.assign_coords(time=(observation_dim, time.data))
-        period = make_freq_indicator(time, frequency, anchor_time=anchor_time)
-    mask = get_xr_dummies(period.rename("bc_period"), return_sparse=False, cat_dim="bc_period")
+    if "time" not in raw.coords or raw.time.dims != (observation_dim,) or raw.time.dtype.kind != "M":
+        raise ValueError("Boundary period expansion requires a datetime time coordinate along observations.")
+    time = raw.time
+    if time.chunks is not None:
+        time = time.compute()
+        raw = raw.assign_coords(time=(observation_dim, time.data))
+    _, period = make_period_calendar(time, frequency, anchor_time=anchor_time)
+    mask = get_xr_dummies(
+        period, categories=np.unique(period.data), return_sparse=False, cat_dim="bc_period"
+    )
     result = (raw.rename(bc_region="bc_curtain") * mask).stack(
         bc_region=("bc_curtain", "bc_period")
     ).transpose("bc_region", observation_dim)
@@ -111,14 +117,17 @@ def _expand_boundary_periods(
             bc_frequency=frequency or "none",
             bc_anchor_time=(
                 str(np.datetime64(anchor_time) if anchor_time is not None else time.values.min())
-                if frequency not in (None, "monthly") else "not-applicable"
+                if frequency not in (None, "monthly")
+                else "not-applicable"
             ),
         )
     return result
 
 
 def _select_native_boundary(
-    inputs: xr.Dataset, observations: xr.DataArray, observation_dim: str,
+    inputs: xr.Dataset,
+    observations: xr.DataArray,
+    observation_dim: str,
 ) -> xr.Dataset:
     """Select rows, borrow native timestamps, and check indexed-time identity.
 
@@ -134,7 +143,7 @@ def _select_native_boundary(
     time = observations.coords.get("time")
     if time is not None and time.dims == (native_dim,):
         if "time" in selected.indexes:
-            if hasattr(time.data, "__dask_graph__"):
+            if time.chunks is not None:
                 time = time.compute()
             if not np.array_equal(selected.time.data, time.data):
                 raise ValueError("Indexed boundary time labels conflict with native observation timestamps.")
@@ -290,9 +299,10 @@ def align_boundary_operands(
 
     Args:
         operands: Raw dataset accepted by :func:`validate_boundary_operands`.
-        frequency: ``None`` creates one period without requiring timestamps.
-            A frequency (including ``'monthly'``) requires a one-dimensional
-            datetime ``time`` coordinate along the observation dimension.
+        frequency: ``None`` creates one period labelled by the earliest time;
+            ``'monthly'`` follows calendar months. All settings require a
+            one-dimensional datetime ``time`` coordinate along the observation
+            dimension.
         anchor_time: Optional anchor for fixed-duration periods; not allowed
             for a single period or calendar-month periods.
         observation_labels: Optional authoritative labels used to select and
@@ -304,8 +314,8 @@ def align_boundary_operands(
         contains ``bc_curtain`` and ``bc_period``. Units, representation and
         scalar ``bc_reference`` are preserved. Outputs are marked expanded and
         must not be passed through raw validation or expansion again. Borrowed
-        payloads stay lazy and unchanged; frequency-based expansion materializes
-        a lazy auxiliary time coordinate once to construct the period mask.
+        payloads stay lazy and unchanged; expansion materializes a lazy
+        auxiliary time coordinate once to label the periods.
 
     Raises:
         ValueError: If raw operands or period settings are invalid, or required
