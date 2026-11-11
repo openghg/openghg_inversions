@@ -2567,17 +2567,13 @@ def test_concrete_rhime_builders_are_owned_by_recipe_modules() -> None:
     assert not hasattr(rhime_multisector, "build_multisector_rhime_model")
 
 
-@pytest.mark.parametrize(
-    "module_name",
-    [
-        "openghg_inversions.models",
-        "openghg_inversions.rhime",
-        "openghg_inversions.rhime.standard",
-        "openghg_inversions.rhime.multisector",
-    ],
-)
+@pytest.mark.parametrize("module_name", ["openghg_inversions.models", "openghg_inversions.rhime"])
 def test_rhime_modules_import_independently_in_fresh_process(module_name: str) -> None:
-    """Recipe imports do not rely on a preloaded models-to-RHIME facade."""
+    """Recipe imports do not rely on a preloaded models-to-RHIME facade.
+
+    Importing ``rhime.standard`` or ``rhime.multisector`` first runs the
+    ``rhime`` package, which imports both, so the ``rhime`` case covers them.
+    """
     completed = subprocess.run(
         [sys.executable, "-c", f"import {module_name}"],
         check=False,
