@@ -27,8 +27,20 @@ from openghg_inversions.serialization import restore_serialisation_multiindexes
 from test_co2_affine_output import _prepared
 
 
-def _components_fixture():
-    prepared, _ = _prepared()
+def components_trace(
+    prepared, *, chains: int = 1, prior_draws: int = 4, posterior_draws: int = 3,
+) -> xr.DataTree:
+    """Construct labelled, nonconstant CO2 draws for one prepared input without sampling.
+
+    Args:
+        prepared: CO2 prepared inputs whose state and observation labels the draws use.
+        chains: Number of chains in each sampled group.
+        prior_draws: Draws per chain in the prior groups.
+        posterior_draws: Draws per chain in the posterior groups.
+
+    Returns:
+        Trace with custom role names, prior/posterior latent and predictive groups.
+    """
     roles = {
         "model_mean": "mean_custom",
         "pollution_concentration": "emission_custom",
@@ -38,12 +50,14 @@ def _components_fixture():
         "model_error": "sd_custom",
         "concentration": "predictive_custom",
     }
+    nstate = prepared.inv_inputs.sizes["region"]
+    units = prepared.inv_inputs.mf.attrs["units"]
     datasets = {}
-    for group, draws in (("prior", 4), ("posterior", 3)):
+    for group, draws in (("prior", prior_draws), ("posterior", posterior_draws)):
         scale = xr.DataArray(
-            np.arange(draws * 2).reshape(1, draws, 2) / 10 + 1,
+            np.arange(chains * draws * nstate).reshape(chains, draws, nstate) / 10 + 1,
             dims=("chain", "draw", "region"),
-            coords={"chain": [0], "draw": np.arange(draws), "region": prepared.inv_inputs.region},
+            coords={"chain": np.arange(chains), "draw": np.arange(draws), "region": prepared.inv_inputs.region},
             attrs={"units": "1"},
         )
         flux = (
@@ -65,16 +79,25 @@ def _components_fixture():
         datasets[f"{group}_predictive"] = xr.Dataset(
             {
                 "predictive_custom": mean
-                + xr.DataArray(np.arange(draws).reshape(1, draws, 1), dims=("chain", "draw", "nmeasure"))
+                + xr.DataArray(np.arange(draws), dims="draw")
             }
         )
+        for dataset in (datasets[group], datasets[f"{group}_predictive"]):
+            for name in set(dataset.data_vars) - {"state_custom"}:
+                dataset[name].attrs["units"] = units
     datasets["/"] = xr.Dataset(
         attrs={
             "rhime_variable_roles": json.dumps(roles),
             "rhime_model_metadata": json.dumps({"recipe": "co2"}),
         }
     )
-    return prepared, xr.DataTree.from_dict(datasets)
+    return xr.DataTree.from_dict(datasets)
+
+
+def _components_fixture():
+    """Return the small prepared case with one chain of constructed draws."""
+    prepared, _ = _prepared()
+    return prepared, components_trace(prepared)
 
 
 def test_role_selected_components_close_and_preserve_independent_predictive_draws():

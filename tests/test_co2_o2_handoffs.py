@@ -30,15 +30,24 @@ def no_inference(monkeypatch):
     monkeypatch.setattr(handoffs, "sample_rhime_model", forbidden)
 
 
-@pytest.fixture
-def joint_trace(no_inference):
-    """Use labelled, nonconstant draws to test persistence without fitting a model."""
-    prepared = synthetic_inputs()
+def constructed_joint_trace(prepared=None, *, chains: int = 1, draws: int = 4) -> xr.DataTree:
+    """Construct labelled, nonconstant joint draws for the synthetic linked inputs.
+
+    Args:
+        prepared: Linked prepared inputs; defaults to the example synthetic inputs.
+        chains: Number of posterior chains.
+        draws: Posterior draws per chain. The prior keeps two reordered draws.
+
+    Returns:
+        Annotated joint trace with latent, predictive, observed and constant groups.
+    """
+    prepared = synthetic_inputs() if prepared is None else prepared
     sensitivity = _gather_co2_o2_sensitivity(prepared.co2_sensitivity, prepared.o2_sensitivity)
+    nstate = prepared.retained_prior.mean.size
     scaling = xr.DataArray(
-        np.arange(20).reshape(1, 4, 5) / 20 + 0.5,
+        np.arange(chains * draws * nstate).reshape(chains, draws, nstate) / (draws * nstate) + 0.5,
         dims=("chain", "draw", "state"),
-        coords={"chain": [0], "draw": np.arange(4), **dict(prepared.retained_prior.mean.coords)},
+        coords={"chain": np.arange(chains), "draw": np.arange(draws), **dict(prepared.retained_prior.mean.coords)},
         attrs={"units": "dimensionless flux scale"},
     )
     contribution = xr.dot(sensitivity, scaling, dim="state").transpose("chain", "draw", "observation")
@@ -53,7 +62,7 @@ def joint_trace(no_inference):
     })
     for name in ("co2_o2_flux_contribution", "modelled_concentration", "epsilon"):
         posterior[name].attrs["units"] = "ppm"
-    prior = posterior.isel(draw=[3, 0]).assign_coords(draw=[0, 1])
+    prior = posterior.isel(chain=[0], draw=[draws - 1, 0]).assign_coords(draw=[0, 1])
     return xr.DataTree.from_dict({
         "/": xr.Dataset(attrs={
             "rhime_recipe": "co2_o2",
@@ -72,6 +81,12 @@ def joint_trace(no_inference):
             "aggregation_error_covariance": prepared.aggregation_error.covariance,
         }),
     })
+
+
+@pytest.fixture
+def joint_trace(no_inference):
+    """Use labelled, nonconstant draws to test persistence without fitting a model."""
+    return constructed_joint_trace()
 
 
 @pytest.mark.parametrize("extension", [".nc", ".zarr"])
