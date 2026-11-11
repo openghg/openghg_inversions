@@ -1,12 +1,13 @@
 """Multiplicative boundary scaling, from absolute or centered sensitivity.
 
 The boundary contribution is ``H b`` for dimensionless scaling states ``b``.
-:meth:`MultiplicativeChoice.bind` returns one bound record per sensitivity
-representation:
+:meth:`MultiplicativeChoice.bind` and :meth:`MultiplicativeChoice.bind_absolute`
+return one bound record per sensitivity representation (recipes choose
+between them with :func:`~openghg_inversions.models.boundary.bind_prepared`):
 
-- :class:`MultiplicativeBoundary` holds absolute sensitivity ``H``
+- :class:`MultiplicativeBoundary`, from ``bind_absolute``, holds absolute sensitivity ``H``
   (``H_bc``) and adds ``H b`` as an ordinary linear component.
-- :class:`CenteredMultiplicativeBoundary` holds centered sensitivity
+- :class:`CenteredMultiplicativeBoundary`, from ``bind``, holds centered sensitivity
   ``H = A + c M`` (:class:`~.contracts.BoundCenteredSensitivity`; see
   :doc:`/usage/centered_boundary_conditions`). Like the other centered
   families it writes the contribution as ``A 1 + c M 1 + (A + c M)(b - 1)``,
@@ -63,7 +64,8 @@ class MultiplicativeChoice:
 
     A choice holds the scientific options (scaling prior, state activity and
     boundary period calendar) without bound observations or sensitivity arrays.
-    :meth:`bind` pairs it with one fit's observations and sensitivity.
+    :meth:`bind` pairs it with one fit's observations and centered
+    sensitivity; :meth:`bind_absolute` pairs it with absolute ``H_bc``.
 
     Attributes:
         prior: Prior for the dimensionless scaling states ``bc``, as passed to
@@ -199,8 +201,8 @@ class MultiplicativeBoundary:
             prior before :meth:`add`; rows may be padded or subset with
             ``dataclasses.replace``, keeping that layout.
 
-    :meth:`MultiplicativeChoice.bind` establishes the layout by construction,
-    so the record does not validate it again.
+    :meth:`MultiplicativeChoice.bind_absolute` establishes the layout by
+    construction, so the record does not validate it again.
     """
 
     choice: MultiplicativeChoice
