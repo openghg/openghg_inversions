@@ -400,7 +400,7 @@ def test_linked_additive_requires_native_centered_operands(cached):
         if cached
         else co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs
     )
-    with pytest.raises(ValueError, match="co2 AdditiveChoice requires centered boundary operands"):
+    with pytest.raises(ValueError, match="The additive co2 boundary requires centered boundary operands"):
         runner(
             prepared_inputs=prepared,
             independent_error_sd=kwargs["independent_error_sd"],
@@ -492,9 +492,10 @@ def test_mixed_centered_boundary_ou_density_gradients_and_absolute_closure(o2_an
         for channel, operands in kwargs["boundary_operands"].items():
             sensitivity = kwargs[f"{channel}_sensitivity"]
             dim = str(sensitivity.dims[0])
-            observations = xr.DataArray(
-                np.zeros(sensitivity.sizes[dim]), dims=dim, coords={dim: sensitivity[dim]}
-            )
+            observations = select_gathered_data_array(
+                kwargs["observations"], key=channel, key_dim="species",
+                ragged_dim="channel_observation", stack_dim="observation",
+            ).rename({"observation": dim})
             bound = BoundCenteredSensitivity.bind(raw_transport(operands), observations)
             if channel == "co2":
                 absolute_kwargs["boundary_sensitivity"][channel] = (
