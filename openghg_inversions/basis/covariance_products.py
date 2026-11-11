@@ -617,13 +617,9 @@ def project_native_covariance(
         column_dim=state_column_dim,
         rhs_block_size=batch_size,
     )
-    state_covariance = _restriction_product_blocks(
-        projection.restriction,
-        b_pi_t,
-        native_dims=native_dims,
-        state_dim=state_dim,
-        column_dim=state_column_dim,
-        rhs_block_size=batch_size,
+    # A sparse Pi contracts over its stored weights only; no dense blocks needed.
+    state_covariance = xr.dot(projection.restriction, b_pi_t, dim=list(native_dims)).transpose(
+        state_dim, state_column_dim
     )
     state_covariance_values = np.asarray(state_covariance.values, dtype=np.float64)
     state_covariance = state_covariance.copy(
@@ -699,23 +695,6 @@ def _apply_restriction_blocks(
         )
         blocks.append(covariance.apply(rhs))
     return xr.concat(blocks, dim=column_dim).transpose(*native_dims, column_dim)
-
-
-def _restriction_product_blocks(
-    restriction: xr.DataArray,
-    b_pi_t: xr.DataArray,
-    *,
-    native_dims: tuple[str, ...],
-    state_dim: str,
-    column_dim: str,
-    rhs_block_size: int,
-) -> xr.DataArray:
-    """Form ``Pi B Pi.T`` from the already materialized restriction."""
-    blocks: list[xr.DataArray] = []
-    for start in range(0, restriction.sizes[state_dim], rhs_block_size):
-        rows = to_dense(restriction.isel({state_dim: slice(start, start + rhs_block_size)}))
-        blocks.append(xr.dot(rows, b_pi_t, dim=list(native_dims)))
-    return xr.concat(blocks, dim=state_dim).transpose(state_dim, column_dim)
 
 
 def _observation_covariance(

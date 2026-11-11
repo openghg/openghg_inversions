@@ -143,8 +143,8 @@ this lift is :math:`\operatorname{E}[x\mid\alpha]`. Without Gaussianity it is
 the linear-Bayes lift determined by the first two moments.
 
 In general, :math:`U_*`, :math:`U_{\mathrm{bucket}}`, and
-:math:`\Pi^\mathsf{T}` are different operators. The default strategy preserves
-the established bucket-scaling interpretation by choosing
+:math:`\Pi^\mathsf{T}` are different operators. ``PreserveBucketProlongation``
+preserves the established bucket-scaling interpretation by choosing
 
 .. math::
 

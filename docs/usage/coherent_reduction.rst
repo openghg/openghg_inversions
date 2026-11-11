@@ -153,10 +153,13 @@ that the chosen rank is adequate for a particular likelihood.
 Assumptions and limitations
 ---------------------------
 
-The native coordinates of the mean, sensitivity, and basis prolongation must
-match exactly. The function checks this before computing because xarray dot
-products would otherwise use an inner join and could silently omit unmatched
-native cells.
+The native coordinates of the mean and sensitivity must match exactly. The
+function checks this before computing them, because xarray dot products would
+otherwise use an inner join and could silently omit unmatched native cells.
+The strategy's input, a basis prolongation for ``PreserveBucketProlongation``
+or a restriction for ``SuppliedRestriction``, must use the same native grid.
+The covariance action checks that grid when it applies or solves with that
+input, which may happen after the mean and sensitivity have been computed.
 
 The native mean and basis describe dimensionless scaling factors. Convert the
 sensitivity to the required observation units with OpenGHG's Pint registry
@@ -187,8 +190,10 @@ model-mismatch error is small.
 The conditional model is exact for a Gaussian native state and error
 independent of that state. Using the resulting moments with a LogNormal
 retained state is a moment-matched approximation. A positive sampled state
-requires a separately established nonnegative physical restriction; the
-default restriction is not guaranteed to preserve positivity.
+requires a separately established nonnegative physical restriction, such as
+``SuppliedRestriction`` with ``retained_distribution="lognormal"``. The
+bucket-compatible restriction derived by ``PreserveBucketProlongation`` is not
+guaranteed to preserve positivity.
 
 The function does not construct a likelihood, approximate :math:`A`, serialize
 the result, or reconstruct arbitrary native quantities. Do not add another
