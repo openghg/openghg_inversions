@@ -14,11 +14,11 @@ calibrated from the data.
   :math:`\delta M\mathbf1+A'v`, scaling the prescribed anomaly by
   dimensionless :math:`v`.
 
-Both are choices: ``choice.bind(observations, sensitivity)`` binds one to
-the prepared centered operands of a fit; no correction artifact is prepared
-or stored.
-The options are recorded in the trace metadata and the arrays the graph uses
-in its constant data.
+Both are choices. A model recipe binds a choice to the prepared centered
+operands of one fit with ``choice.bind(observations, sensitivity)`` and adds
+the bound record inside its registered model; no correction artifact is
+prepared or stored. The CO2 runners and configuration do not yet accept these
+choices; that adoption is downstream work.
 
 Additive structures
 -------------------
@@ -114,8 +114,13 @@ Example
        {"pdf": "normal", "mu": 0.0, "sigma": 0.5}, 0.8,
        reference="whole_window_transport_mean",
    )
-   # boundary=contrasts for one channel, or
-   # boundary={"co2": contrasts, "o2": scaling} for a linked fit.
+
+   # observations: one fit's observation rows; sensitivity: its prepared
+   # RawCenteredSensitivity.
+   bound = contrasts.bind(observations, sensitivity)
+   # Materialize the bound record together with the recipe's other inputs,
+   # then, inside the recipe's registered model:
+   term = bound.add()
 
 Prior covariance
 ----------------

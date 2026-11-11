@@ -260,10 +260,13 @@ constraints are needed to distinguish them in that case.
    With the default NESW basis, complete jointly normalized particle weights
    we know that :math:`M\mathbf1=\mathbf1`.
    A global observation offset, or unrestricted site offsets, therefore
-   duplicates the boundary mean's constant direction. Model construction
-   warns for this combination when the supplied mass response is approximately
-   one. This narrow warning covers normalized surface preparation; it is not a
-   general rank or identifiability test for arbitrary transport. Fixing one site's offset or constraining site
+   duplicates the boundary mean's constant direction.
+   :func:`~openghg_inversions.models.components.warn_constant_offset_confounding`
+   warns for this combination when an affine design column is one on every
+   row. Model construction does not call it yet: a recipe adding
+   unrestricted offsets must call it explicitly. This narrow check covers
+   normalized surface preparation; it is not a general rank or
+   identifiability test for arbitrary transport. Fixing one site's offset or constraining site
    offsets to contrasts removes that one redundancy; BC anomalies can still
    reproduce site contrasts.
 
@@ -443,9 +446,6 @@ code trusts it rather than checking it again:
    * - Weights aligned to the bound states
      - :meth:`~openghg_inversions.models.boundary.BoundAdditiveSensitivity.bind_weights`,
        by exact label alignment
-   * - Joint linked rows; state-only data and reference unchanged
-     - ``pad_linked_boundary`` in ``openghg_inversions.rhime.co2.co2_o2_model``,
-       by construction
    * - Finite anomaly and reference; finite, non-negative, nonzero mass;
        the fixed shift ``c M 1``
      - :meth:`~openghg_inversions.models.boundary.BoundCenteredSensitivity.reference_shift`,
@@ -457,4 +457,4 @@ code trusts it rather than checking it again:
 
 Bound records do not validate their data on construction or on
 ``dataclasses.replace``. Code replacing ``data`` must preserve the contract;
-the linked padding helper is the supported row transformation.
+this revision provides no supported row transformation for bound records.
