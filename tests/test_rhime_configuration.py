@@ -616,7 +616,7 @@ def test_canonical_path_construction_does_not_load_resources(tmp_path, monkeypat
     monkeypatch.setattr(xr, "open_datatree", unexpected_read)
     monkeypatch.chdir(tmp_path)
     config = rhime_params.RhimeConfig.from_params(
-        _request(basis_path="missing.nc", bc_basis_paths=["missing-bc.nc"], country_file="missing-country.nc"),
+        _request(basis_path="missing.nc", bc_basis={"paths": ["missing-bc.nc"]}, country_file="missing-country.nc"),
         multisector=False,
     )
     assert config.data.basis_path == tmp_path / "missing.nc"
@@ -653,20 +653,19 @@ def test_canonical_paths_are_forwarded_without_conversion(tmp_path, monkeypatch)
         patch.setattr(Path, "resolve", unexpected_normalization)
         patch.setattr(Path, "expanduser", unexpected_normalization)
         config = rhime_params.RhimeConfig.from_params(
-            _request(basis_path=path, bc_basis_paths=paths, country_file=path), multisector=False,
+            _request(basis_path=path, bc_basis={"paths": paths}, country_file=path), multisector=False,
         )
     assert config.data.basis_path is path
     assert config.data.bc_basis.paths is paths
     assert config.output.country_file is path
 
 
-@pytest.mark.parametrize("name,collection", [("bc_basis_paths", False), ("basis_path", True)])
-def test_declared_path_shape_is_validated_for_absolute_paths(tmp_path, name, collection):
+@pytest.mark.parametrize("nested", [True, False])
+def test_declared_path_shape_is_validated_for_absolute_paths(tmp_path, nested):
     path = tmp_path / "basis.nc"
+    request = _request(bc_basis={"paths": path}) if nested else _request(basis_path=(path,))
     with pytest.raises(ValueError, match="filesystem path"):
-        rhime_params.RhimeConfig.from_params(
-            _request(**{name: (path,) if collection else path}), multisector=False,
-        )
+        rhime_params.RhimeConfig.from_params(request, multisector=False)
 
 
 @pytest.mark.parametrize("name", ["fp_basis_case", "basis_directory", "bc_basis_case", "bc_basis_directory"])

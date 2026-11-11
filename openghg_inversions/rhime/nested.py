@@ -23,7 +23,7 @@ from dataclasses import dataclass, field, replace
 from numbers import Integral
 import warnings
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, TypeVar, get_type_hints
 
 from dask import compute as dask_compute, is_dask_collection
 from dask.base import unpack_collections
@@ -760,7 +760,7 @@ def inner_data_config(
             "outer_regions_path": inner_outer_regions_path,
             "basis_output_path": inner_basis_output_path,
         },
-        annotations=DataConfig.option_annotations(), base_dir=Path.cwd(),
+        annotations=get_type_hints(DataConfig), base_dir=Path.cwd(),
     )
     return replace(
         outer_data, **basis_options,
@@ -1377,7 +1377,7 @@ def run_nested(
     time_tolerance = nested_options.pop("inner_time_tolerance", None)
     inner_basis_output_path = resolve_resource_paths(
         {"basis_output_path": nested_options.pop("inner_basis_output_path", None)},
-        annotations=DataConfig.option_annotations(), base_dir=Path.cwd(),
+        annotations=get_type_hints(DataConfig), base_dir=Path.cwd(),
     )["basis_output_path"]
 
     if config is None:

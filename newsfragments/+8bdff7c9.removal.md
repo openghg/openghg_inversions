@@ -1,1 +1,0 @@
-`DataConfig` groups BC basis selection into `DataConfig.bc_basis` (`BcBasisOptions`). Read `config.data.bc_basis.paths`, `.algorithm` and `.split_height` instead of the former flat `bc_basis_*` attributes. The external `bc_basis_paths`, `bc_basis_algorithm` and `bc_basis_split_height` options in INI files, JSON manifests and `RhimeConfig.from_params` are unchanged.

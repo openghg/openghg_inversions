@@ -245,7 +245,7 @@ flux basis for separate fields):
    prepared.save("centered-co2.nc")
 
 Selection filters preserve aligned operands and scalar references. Preparation
-owns spatial ``bc_basis_algorithm="NESW"`` or explicit ``bc_basis_paths``;
+owns the spatial ``bc_basis`` selection (built-in ``"NESW"`` or explicit ``paths``);
 frequency and anchor belong to the model. Both representations are written in
 generic format version 3 with an explicit representation field. Known ordinary
 raw-v2 files remain readable; retired baked-v1 and ambiguous centered-v2 files

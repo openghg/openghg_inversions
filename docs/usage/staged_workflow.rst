@@ -123,18 +123,21 @@ strings such as domain names are unchanged; configuration construction does not
 load scientific resources. Each owner converts its declared fields once; later
 configured execution and identity encoding forward canonical paths.
 
-For file-backed boundary conditions, specify exact files, for example
-``"bc_basis_paths": ["bc/january.nc", "bc/february.nc"]`` in the parameter JSON.
+For file-backed boundary conditions, specify exact files in the nested
+``bc_basis`` group, for example
+``"bc_basis": {"paths": ["bc/january.nc", "bc/february.nc"]}`` in the parameter JSON.
 ``prepare`` loads all selected files before acquisition and passes their labelled
 data to sensitivity construction, preserving time combination and alignment.
 Missing or unreadable selected files fail before acquisition.
-``"bc_basis_algorithm": "NESW"`` selects the built-in calculation and is the
-default without exact paths. Explicit ``bc_basis_paths`` take precedence, leaving
+``"bc_basis": {"algorithm": "NESW"}`` selects the built-in calculation and is the
+default without exact paths. Explicit ``paths`` take precedence, leaving
 the algorithm inactive. NESW uses acquired directional contributions without
 reading a BC basis file. ``use_bc=False`` bypasses BC basis resolution and loading.
-For twelve lateral regions, select ``"bc_basis_algorithm": "twelve-region"``
-and optionally ``"bc_basis_split_height": 3000.0``; saved preparation retains
-both options. See :ref:`twelve-region-boundary-basis` for native units, exact
+For twelve lateral regions, select ``"bc_basis": {"algorithm": "twelve-region"}``
+and optionally ``"split_height": 3000.0`` in the same mapping; the preparation
+manifest records the nested group. Flat ``bc_basis_*`` names in parameter JSON
+and older manifests are still read, with a ``DeprecationWarning``; INI files keep
+the flat spelling. See :ref:`twelve-region-boundary-basis` for native units, exact
 partition rules and the public Python basis constructor.
 Staged commands accept canonical resource names; see :doc:`legacy_and_migration`
 for historical selector replacements.
