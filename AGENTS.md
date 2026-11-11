@@ -85,6 +85,12 @@ already installed, invoke them directly from that environment.
 
 Use focused test paths while iterating and run the relevant broader pytest
 coverage before handing off a change. We support Python 3.12 and 3.13.
+Pytest defaults to PyTensor's Python linker, as CI does; set `linker` in
+`PYTENSOR_FLAGS` explicitly for compiled checks. Follow
+`docs/development/testing.rst` when adding or changing tests: it lists focused
+test groups and the rules that keep the suite fast (one rule per test at its
+owning layer, no multiplied parametrize axes, no real sampling for format
+checks, and a stated reason for fresh-process or statistical tests).
 
 Use tox for final CI-equivalent validation, rather than routine iteration.
 On the cluster, tox invocations that create or recreate environments must run
