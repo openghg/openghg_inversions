@@ -434,8 +434,7 @@ def test_linked_runners_do_not_compute_passive_additive_arrays(monkeypatch, cach
                 boundary["co2"] = AdditiveChoice(kwargs["bc_mean_shift_prior"]["co2"], kwargs["bc_anomaly_scale"]["co2"])
             else:
                 channel_weights = passive(channel_weights)
-                if mode != "disabled":
-                    boundary[channel] = MultiplicativeChoice(dict(DEFAULT_BC_PRIOR))
+                boundary[channel] = None if mode == "disabled" else MultiplicativeChoice(dict(DEFAULT_BC_PRIOR))
             weights[channel] = channel_weights
         prepared = replace(
             _prepared(),

@@ -238,7 +238,7 @@ class Co2O2ModelConfig:
                     _reject_unknown(table, f"channels.{name}.boundary.activity")
                     activity = StateActivity(active=active, fixed_value=fixed)
                 selected["boundary"] = boundary
-            for key, value in _model(selected).items():
+            for key, value in _model(selected, f"channels.{name}").items():
                 if key == "boundary" and activity is not None:
                     if not isinstance(value, MultiplicativeChoice):
                         raise ValueError("Boundary activity requires an enabled multiplicative boundary.")
@@ -283,8 +283,12 @@ class Co2O2ModelConfig:
                   and getattr(self, item.name) is not None}
         return {**result, "independent_error_sd": independent, "boundary": self._channel_boundaries(prepared)}
 
-    def _channel_boundaries(self, prepared: Co2O2PreparedInputs) -> dict[str, Choice]:
-        """Resolve configured choices and default prepared channels to choices."""
+    def _channel_boundaries(self, prepared: Co2O2PreparedInputs) -> dict[str, Choice | None]:
+        """Resolve configured choices and default prepared channels to choices.
+
+        Explicitly disabled channels stay in the result as ``None`` so the
+        runner can tell a deliberate omission from an unconfigured channel.
+        """
         configured = dict(self.boundary or {})
         enabled = [choice for choice in configured.values() if choice is not None]
         default = MultiplicativeChoice(
@@ -293,11 +297,12 @@ class Co2O2ModelConfig:
             anchor_time=enabled[0].anchor_time if enabled else None,
         )
         available = set(prepared.boundary_operands) | set(prepared.boundary_sensitivity)
-        result = {}
+        result: dict[str, Choice | None] = {}
         for channel in ("co2", "o2"):
-            choice = configured.get(channel, default if channel in available else None)
-            if choice is not None:
-                result[channel] = choice
+            if channel in configured:
+                result[channel] = configured[channel]
+            elif channel in available:
+                result[channel] = default
         return result
 
 
