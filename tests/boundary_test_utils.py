@@ -9,7 +9,7 @@ the runners.
 import xarray as xr
 
 from openghg_inversions.array_ops import select_gathered_data_array
-from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeChoice, RawCenteredSensitivity
+from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeChoice, RawCenteredSensitivity, bind_prepared
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 
 
@@ -70,6 +70,13 @@ def boundary_transport(options, channel=None):
     return sensitivity
 
 
+def bind_fixture(choice, observations, sensitivity):
+    """Bind a fixture's absolute ``H_bc`` or raw centered sensitivity, as recipes do."""
+    if isinstance(sensitivity, xr.Dataset):
+        return bind_prepared(choice, observations, centered=sensitivity)
+    return bind_prepared(choice, observations, absolute=sensitivity)
+
+
 def bound_linked_model_arguments(options):
     """Bind each native channel once, preserving all other fixture arguments."""
     boundaries = {}
@@ -85,7 +92,7 @@ def bound_linked_model_arguments(options):
             ragged_dim="channel_observation",
             stack_dim="observation",
         ).rename({"observation": str(sensitivity.dims[0])})
-        boundaries[channel] = choice.bind(native, boundary_transport(options, channel))
+        boundaries[channel] = bind_fixture(choice, native, boundary_transport(options, channel))
     return {
         **{name: value for name, value in options.items() if name not in BOUNDARY_OPTIONS},
         "boundary": boundaries,
@@ -97,5 +104,5 @@ def bound_model_arguments(options):
     choice = boundary_choice(options)
     return {
         **{name: value for name, value in options.items() if name not in BOUNDARY_OPTIONS},
-        "boundary": None if choice is None else choice.bind(options["observations"], boundary_transport(options)),
+        "boundary": None if choice is None else bind_fixture(choice, options["observations"], boundary_transport(options)),
     }

@@ -16,7 +16,7 @@ from openghg_inversions.models.biosphere import annotate_biosphere_prior
 from openghg_inversions.array_ops import select_gathered_data_array, to_dense_tree
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
-from openghg_inversions.models.boundary import Bound, Choice, MultiplicativeChoice
+from openghg_inversions.models.boundary import Bound, Choice, bind_prepared
 from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
@@ -220,16 +220,10 @@ def _bind_co2_o2_boundaries(
             prepared.observations, key=channel, key_dim="species", ragged_dim="channel_observation",
             stack_dim=str(prepared.observations.dims[0]),
         ).rename({str(prepared.observations.dims[0]): str(sensitivity.dims[0])})
-        if channel in prepared.boundary_operands:
-            result[channel] = choice.bind(native, prepared.boundary_operands[channel])
-        elif channel not in prepared.boundary_sensitivity:
-            raise ValueError(f"The {channel} boundary choice requires prepared {channel} boundary inputs.")
-        elif isinstance(choice, MultiplicativeChoice):
-            result[channel] = choice.bind(native, prepared.boundary_sensitivity[channel])
-        else:
-            raise ValueError(
-                f"The {channel} {type(choice).__name__} requires centered boundary operands; prepare them again."
-            )
+        result[channel] = bind_prepared(
+            choice, native, centered=prepared.boundary_operands.get(channel),
+            absolute=prepared.boundary_sensitivity.get(channel), label=f"{channel} boundary",
+        )
     return result
 
 

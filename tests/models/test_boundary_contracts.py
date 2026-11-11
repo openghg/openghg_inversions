@@ -167,13 +167,16 @@ def test_raw_contract_reports_the_violated_requirement(case):
         RawCenteredSensitivity.validate(modify(raw_example()), label="co2 centered boundaries")
 
 
-def test_weight_check_accepts_whole_window_and_equivalent_units():
-    """Timestamp-free weights use the explicit whole-window label."""
+def test_weight_check_accepts_equivalent_units_and_rejects_untimed_periods():
+    """Weights use interval-start periods; units only need to be dimensionless."""
     weights = xr.DataArray(
         [[1.0], [2.0]], dims=("bc_curtain", "bc_period"),
-        coords={"bc_curtain": ["N", "S"], "bc_period": ["whole_window"]}, attrs={"units": "dimensionless"},
+        coords={"bc_curtain": ["N", "S"], "bc_period": pd.to_datetime(["2020-01-01"])},
+        attrs={"units": "dimensionless"},
     )
     validate_centering_weights(weights)
+    with pytest.raises(ValueError, match="interval start times"):
+        validate_centering_weights(weights.assign_coords(bc_period=["whole_window"]))
 
 
 BOUND_FAILURES = {
@@ -259,7 +262,7 @@ def test_unweighted_families_share_the_centered_contract_without_weights():
 def test_absolute_multiplicative_route_keeps_its_own_layout():
     """Absolute transport is bound without centered assumptions."""
     absolute = _raw_on_nmeasure().H_bc_anomaly.rename("H_bc")
-    bound = MultiplicativeChoice({"pdf": "lognormal", "mu": 0.0, "sigma": 0.1}).bind(_observations(), absolute)
+    bound = MultiplicativeChoice({"pdf": "lognormal", "mu": 0.0, "sigma": 0.1}).bind_absolute(_observations(), absolute)
     assert set(bound.data.data_vars) == {"H_bc"}
     assert isinstance(bound, MultiplicativeBoundary)
     with pytest.raises(ValueError, match="missing keys.*H_bc_anomaly"):

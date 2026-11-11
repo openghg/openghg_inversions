@@ -21,7 +21,7 @@ from openghg_inversions.models.boundary import (
     AnomalyScalingChoice,
     MultiplicativeChoice,
 )
-from boundary_test_utils import centered_transport
+from boundary_test_utils import bind_fixture, centered_transport
 
 TIMES = pd.to_datetime(["2020-01-03", "2020-01-20", "2020-02-03", "2020-02-05"])
 ROWS = [10, 20, 30, 40]
@@ -93,7 +93,7 @@ CASES = {
 @pytest.mark.parametrize("case", CASES)
 def test_affine_blocks_reproduce_likelihood_contribution(case):
     choice, transport = CASES[case]()
-    bound = choice.bind(_observations(), transport)
+    bound = bind_fixture(choice, _observations(), transport)
     with registered_model():
         term = bound.add()
         affine = pt.as_tensor_variable(term.fixed_contribution.transpose("nmeasure").values)

@@ -72,7 +72,7 @@ _PRIOR_OPTION_NAMES = frozenset({
 })
 _MODEL_SECTION_OPTION_NAMES = {
     "boundary": frozenset({
-        "enabled", "prior", "frequency", "anchor_time", "mean_shift_prior", "anomaly_scale", "anomalies",
+        "enabled", "type", "prior", "frequency", "anchor_time", "mean_shift_prior", "anomaly_scale", "anomalies",
         "mean_by_period", "scale_sd", "reference",
     }),
     "boundary.mean_shift_prior": _PRIOR_OPTION_NAMES,
@@ -348,63 +348,79 @@ def _sampling(value: object) -> RhimeSampler:
     return sampler
 
 
+def _multiplicative_boundary(options: dict[str, object], periods: dict[str, Any]) -> MultiplicativeChoice:
+    """Resolve the options of a multiplicative boundary, the default type."""
+    prior = _prior(options.pop("prior"), "model.boundary.prior") if "prior" in options else dict(DEFAULT_BC_PRIOR)
+    _reject_unknown(options, "model.boundary")
+    return MultiplicativeChoice(prior, **periods)
+
+
+def _mean_shift_options(options: dict[str, object]) -> dict[str, Any]:
+    """Resolve the optional mean-shift prior and its per-period switch shared by centred corrections."""
+    mean_shift_prior = (
+        _prior(options.pop("mean_shift_prior"), "model.boundary.mean_shift_prior")
+        if "mean_shift_prior" in options else None
+    )
+    mean_by_period = (
+        _bool(options.pop("mean_by_period"), "model.boundary.mean_by_period") if "mean_by_period" in options else False
+    )
+    return {"mean_prior": mean_shift_prior, "mean_by_period": mean_by_period}
+
+
+def _additive_boundary(options: dict[str, object], periods: dict[str, Any]) -> AdditiveChoice:
+    """Resolve the options of centred additive boundary corrections."""
+    mean = _mean_shift_options(options)
+    anomaly_scale = _number(_take(options, "anomaly_scale", "model.boundary"), "model.boundary.anomaly_scale")
+    anomalies = _string(options.pop("anomalies"), "model.boundary.anomalies") if "anomalies" in options else "weighted"
+    _reject_unknown(options, "model.boundary")
+    return AdditiveChoice(
+        mean["mean_prior"], anomaly_scale, anomalies=anomalies,  # type: ignore[arg-type]
+        mean_by_period=mean["mean_by_period"], **periods,
+    )
+
+
+def _anomaly_scaling_boundary(options: dict[str, object], periods: dict[str, Any]) -> AnomalyScalingChoice:
+    """Resolve the options of a boundary that scales the prescribed anomaly about a reference."""
+    mean = _mean_shift_options(options)
+    scale_sd = _number(_take(options, "scale_sd", "model.boundary"), "model.boundary.scale_sd")
+    reference: object = options.pop("reference", "stored")
+    if not isinstance(reference, str):
+        reference = _number(reference, "model.boundary.reference")
+    _reject_unknown(options, "model.boundary")
+    return AnomalyScalingChoice(
+        mean["mean_prior"], scale_sd, reference=reference,  # type: ignore[arg-type]
+        mean_by_period=mean["mean_by_period"], **periods,
+    )
+
+
+# Each boundary ``type`` names one choice family and owns the parser for its options.
+_BOUNDARY_TYPES: dict[str, Callable[[dict[str, object], dict[str, Any]], Choice]] = {
+    MultiplicativeChoice.kind: _multiplicative_boundary,
+    AdditiveChoice.kind: _additive_boundary,
+    AnomalyScalingChoice.kind: _anomaly_scaling_boundary,
+}
+
+
 def _boundary_choice(boundary: dict[str, object]) -> Choice | None:
     """Resolve one ``[model.boundary]`` table; ``None`` when explicitly disabled.
 
-    ``scale_sd`` selects anomaly scaling (with an optional ``reference``),
-    ``anomaly_scale`` selects additive corrections (with optional
-    ``anomalies`` structure), and otherwise the boundary is multiplicative.
-    ``mean_shift_prior`` and ``mean_by_period`` apply to both corrections.
+    ``type`` selects the family and defaults to ``"multiplicative"``, scaling
+    absolute or centered sensitivity. Options belonging to another family are
+    rejected rather than used to infer it.
     """
     enabled = _bool(boundary.pop("enabled", True), "model.boundary.enabled")
-    prior = _prior(boundary.pop("prior"), "model.boundary.prior") if "prior" in boundary else None
-    mean_shift_prior = (
-        _prior(boundary.pop("mean_shift_prior"), "model.boundary.mean_shift_prior")
-        if "mean_shift_prior" in boundary else None
-    )
-    anomaly_scale = (
-        _number(boundary.pop("anomaly_scale"), "model.boundary.anomaly_scale") if "anomaly_scale" in boundary else None
-    )
-    scale_sd = _number(boundary.pop("scale_sd"), "model.boundary.scale_sd") if "scale_sd" in boundary else None
-    anomalies = _string(boundary.pop("anomalies"), "model.boundary.anomalies") if "anomalies" in boundary else None
-    mean_by_period = (
-        _bool(boundary.pop("mean_by_period"), "model.boundary.mean_by_period") if "mean_by_period" in boundary else None
-    )
-    reference: object = boundary.pop("reference", None)
-    if reference is not None and not isinstance(reference, str):
-        reference = _number(reference, "model.boundary.reference")
-    frequency = boundary.pop("frequency", None)
-    anchor_time = boundary.pop("anchor_time", None)
-    if frequency is not None:
-        frequency = _string(frequency, "model.boundary.frequency")
-    if anchor_time is not None:
-        anchor_time = _string(anchor_time, "model.boundary.anchor_time")
-    _reject_unknown(boundary, "model.boundary")
-    options = (prior, mean_shift_prior, anomaly_scale, scale_sd, anomalies, mean_by_period, reference, frequency, anchor_time)
     if not enabled:
-        if any(value is not None for value in options):
+        if boundary:
             raise ValueError("model.boundary options require model.boundary.enabled=true.")
         return None
-    periods = {"frequency": frequency, "anchor_time": anchor_time}
-    if scale_sd is not None:
-        if any(value is not None for value in (prior, anomaly_scale, anomalies)):
-            raise ValueError("model.boundary.scale_sd selects anomaly scaling; omit prior, anomaly_scale and anomalies.")
-        return AnomalyScalingChoice(
-            mean_shift_prior, scale_sd, reference="stored" if reference is None else reference,  # type: ignore[arg-type]
-            mean_by_period=bool(mean_by_period), **periods,
-        )
-    if reference is not None:
-        raise ValueError("model.boundary.reference applies only to anomaly scaling (scale_sd).")
-    if anomaly_scale is not None:
-        if prior is not None:
-            raise ValueError("Centred boundary corrections cannot use model.boundary.prior.")
-        return AdditiveChoice(
-            mean_shift_prior, anomaly_scale, anomalies=anomalies or "weighted",  # type: ignore[arg-type]
-            mean_by_period=bool(mean_by_period), **periods,
-        )
-    if any(value is not None for value in (mean_shift_prior, anomalies, mean_by_period)):
-        raise ValueError("model.boundary.mean_shift_prior, anomalies and mean_by_period require anomaly_scale or scale_sd.")
-    return MultiplicativeChoice(prior if prior is not None else dict(DEFAULT_BC_PRIOR), **periods)
+    kind = _string(boundary.pop("type", MultiplicativeChoice.kind), "model.boundary.type")
+    if kind not in _BOUNDARY_TYPES:
+        raise ValueError(f"model.boundary.type must be one of {sorted(_BOUNDARY_TYPES)!r}, not {kind!r}.")
+    periods: dict[str, Any] = {
+        name: _string(boundary.pop(name), f"model.boundary.{name}")
+        for name in ("frequency", "anchor_time") if name in boundary
+    }
+    return _BOUNDARY_TYPES[kind](boundary, periods)
 
 
 def _model(value: object) -> dict[str, Any]:

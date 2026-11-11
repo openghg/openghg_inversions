@@ -164,7 +164,7 @@ def test_configured_co2_inference_uses_same_bc_calibration_and_nonzero_target(tm
     )
     request = {
         "model": {
-            "boundary": {"scale_sd": 0.3, "mean_shift_prior": mean_shift_prior},
+            "boundary": {"type": "anomaly_scaling", "scale_sd": 0.3, "mean_shift_prior": mean_shift_prior},
             "biosphere": {"path": str(tmp_path / "bio.nc")},
         },
         "likelihood": likelihood,
@@ -234,7 +234,7 @@ def test_linked_config_independent_species_corrections_and_one_calibration(tmp_p
         channels[channel] = {
             "units": "ppm",
             "independent_error_sd": 0.1,
-            "boundary": {"scale_sd": 0.3, "mean_shift_prior": mean_shift_prior},
+            "boundary": {"type": "anomaly_scaling", "scale_sd": 0.3, "mean_shift_prior": mean_shift_prior},
         }
     request = {"channels": channels, "biosphere": {"path": str(tmp_path / "bio.nc")}}
     choices = Co2O2ModelConfig.from_params(load_co2_o2_params(params=request)).bind(prepared)
@@ -276,7 +276,7 @@ def test_shared_configured_graph_matches_python_and_saves_absolute_trace(tmp_pat
     choice = shared_baseline_choice({
         "mode": "multiplicative_shrunk",
         "delta_sd": 5.0,
-        "boundary": {"scale_sd": 0.7, "frequency": "2D", "anchor_time": "2021-01-01"},
+        "boundary": {"type": "anomaly_scaling", "scale_sd": 0.7, "frequency": "2D", "anchor_time": "2021-01-01"},
     })
     assert choice == SharedBaselineChoice(SCALING, 5.0, "multiplicative_shrunk")
     weights = xr.DataArray(
@@ -369,6 +369,7 @@ def test_toml_component_choices_are_same_as_python():
         mode = "multiplicative"
         delta_sd = 5.0
         [shared_baseline.boundary]
+        type = "anomaly_scaling"
         scale_sd = 0.7
         frequency = "2D"
         anchor_time = "2021-01-01"

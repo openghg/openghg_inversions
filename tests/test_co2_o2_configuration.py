@@ -175,6 +175,7 @@ def test_channel_additive_prior_scales_are_independent_and_replayable(tmp_path, 
     config = _config()
     for channel, scale, anomaly_scale in (("co2", 0.5, co2_anomaly_scale), ("o2", 2.0, o2_anomaly_scale)):
         config["channels"][channel]["boundary"] = {
+            "type": "additive",
             "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": scale},
             "anomaly_scale": anomaly_scale,
         }

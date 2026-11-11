@@ -346,6 +346,8 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.xr_contracts.xr_contract
    openghg_inversions.models.boundary.Choice
    openghg_inversions.models.boundary.Bound
+   openghg_inversions.models.boundary.AbsoluteChoice
+   openghg_inversions.models.boundary.bind_prepared
    openghg_inversions.models.boundary.Outputs
    openghg_inversions.array_ops.to_dense_tree
    openghg_inversions.models.shared_baseline.SharedBaselineChoice

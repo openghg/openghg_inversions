@@ -24,14 +24,14 @@ random_seed = 12345
 # Optional centred additive boundary corrections (observation concentration units).
 # Requires native centered operands and explicit bc_centering_weights; replaces BC scaling.
 # [model.boundary]
-# enabled = true
+# type = "additive"
 # anomaly_scale = 0.5
 # mean_shift_prior = { pdf = "normal", mu = 0.0, sigma = 0.5 }
 
 # Other centred correction structures (see docs/usage/boundary_correction_structures.rst):
 #   anomalies = "period_contrasts" or "independent" (mean_shift_prior then optional),
-#   mean_by_period = true (requires frequency), or scale_sd = 0.8 with
-#   reference = "whole_window_transport_mean" for anomaly scaling.
+#   mean_by_period = true (requires frequency), or type = "anomaly_scaling" with
+#   scale_sd = 0.8 and reference = "whole_window_transport_mean".
 
 # A calibrated biosphere prior saved with BiospherePriorConfig
 # (see examples/biosphere_prior/saved_configuration.py).
