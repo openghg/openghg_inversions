@@ -206,6 +206,17 @@ def test_supplied_merged_data_must_match_the_requested_window(
         prepare(tmp_path, request(partition), other, "window")
 
 
+def test_supplied_merged_data_pass_scientific_input_validation(
+    tmp_path: Path, merged: MergedData, partition: Path,
+) -> None:
+    from dataclasses import replace
+
+    site = merged.site_data["TOY"]
+    unitless = replace(merged, site_data={"TOY": site.assign(mf=site.mf.drop_attrs())})
+    with pytest.raises(ValueError, match=r"site_data\['TOY'\]: Validation failed"):
+        prepare(tmp_path, request(partition), unitless, "unitless")
+
+
 def test_saved_preparations_are_checked_against_the_boundary_choice(
     tmp_path: Path, merged: MergedData, partition: Path,
 ) -> None:

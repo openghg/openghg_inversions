@@ -94,6 +94,10 @@ def prepare_native_co2(
             species="co2", domain=domain, start_date=start_date, end_date=end_date, split_by_sectors=False,
         )
 
+    merged_data.validate_scientific_inputs(
+        split_by_sectors=False, use_bc=use_bc, flux_sources=flux_sources,
+        require_footprints=basis_inputs.get("basis_path") is None and basis_inputs.get("basis_partition") is None,
+    )
     site_data = select_boundary_representation(merged_data.site_data, boundary.representation)
     filtered, site_options = filter_observations(site_data, merged_data.site_options, filters=native.filters)
     filtered = prepare_observation_errors(filtered, averaging_error=native.averaging_error)
