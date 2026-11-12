@@ -26,6 +26,7 @@ from .co2_o2_preparation import Co2O2PreparedInputs, _stack, prepare_co2_o2_inpu
 
 
 def _ppm(array: xr.DataArray, *, context: str, inherited_units: str | None = None) -> xr.DataArray:
+    """Convert an explicit mole-fraction array to ppm, rejecting missing units."""
     units = array.attrs.get("units", inherited_units)
     if not isinstance(units, str) or not units.strip():
         raise ValueError(f"{context} requires explicit concentration units.")
@@ -55,6 +56,25 @@ def _channel_templates(
     data: MergedData, channel: str, mapping: Mapping[str, Hashable], prior: CorrelatedLognormalPrior,
     references: Mapping[str, xr.DataArray],
 ) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray, xr.Dataset, dict[str, Any]]:
+    """Map one channel's native surface data onto explicit linked templates.
+
+    Args:
+        data: Source-resolved merged data for ``channel`` with explicit
+            species, domain, window and site/inlet selectors.
+        channel: Linked channel name, ``"co2"`` or ``"o2"``.
+        mapping: Acquired flux source to retained-state label.
+        prior: Joint retained prior whose state labels the mapping uses.
+        references: Materialized scalar ``bc_reference`` by site.
+
+    Returns:
+        The channel's observations, independent errors and flux sensitivity
+        on one native row axis, its raw centered boundary operands on
+        ``nmeasure``, and acquisition, selection and per-site provenance.
+
+    Raises:
+        ValueError: If acquisition facts, selectors, source mapping, state
+            labels, units or boundary references are incomplete or inconsistent.
+    """
     facts = data.acquisition
     if facts.species != channel or not all((facts.domain, facts.start_date, facts.end_date)):
         raise ValueError(f"{channel} requires explicit species/domain/window acquisition facts.")
@@ -100,6 +120,7 @@ def _channel_templates(
         offset += len(times)
 
         def native(array: xr.DataArray) -> xr.DataArray:
+            """Relabel one site's time rows onto the channel's native observation rows."""
             return array.rename(time=dim).assign_coords(
                 {dim: row_labels, "time": (dim, times.values), "site": (dim, [site] * len(times))}
             )
@@ -247,6 +268,7 @@ def prepare_linked_surface_templates(
     nco2 = co2_obs.size
 
     def block(rows: slice, columns: slice, row: xr.DataArray, column: xr.DataArray) -> xr.DataArray:
+        """Label one row/column block of the joint covariance with its state axes."""
         return xr.DataArray(covariance.data[rows, columns], dims=(row.dims[0], f"{column.dims[0]}_cov"),
                             coords={row.dims[0]: row[row.dims[0]], f"{column.dims[0]}_cov": column.indexes[column.dims[0]].values})
 
