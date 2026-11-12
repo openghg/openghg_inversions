@@ -161,13 +161,12 @@ prepared activity policy. Persist traces with
 groups and observation/state MultiIndexes. Product replay uses saved scientific
 meaning without repeating construction or sampling.
 
-Pass ``boundary=MultiplicativeChoice(prior)`` (from
-:mod:`openghg_inversions.models.boundary`) to bind the prepared ``H_bc`` or
-centered operands and add the boundary contribution. The choice's ``activity``
-can mark boundary states as active or fixed, and ``frequency`` and
-``anchor_time`` select boundary periods. ``[model.boundary]`` without a
-``type`` is multiplicative and uses the default scaling prior unless one is
-configured.
+Pass a boundary choice such as ``boundary=MultiplicativeChoice(prior)`` (from
+:mod:`openghg_inversions.models.boundary`) to add the boundary contribution;
+the runner binds it to the prepared ``H_bc`` or centered operands.
+``[model.boundary]`` without a ``type`` is multiplicative and uses the default
+scaling prior unless one is configured; see
+:ref:`co2-boundary-corrections`.
 Supplying ``offset_prior`` adds an offset. By default the offset has
 one coefficient per site; ``offset_args`` can instead select a global offset
 or site-by-period terms using ``per_site``, ``offset_freq``, and ``drop_first``.
@@ -178,297 +177,20 @@ likelihood, and sampled outputs.
 The location and scale parameters in ``offset_prior`` use the observations'
 concentration units.
 
-Boundary choices in Python
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+Select a boundary correction
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-A boundary is one choice, the prior specification before binding:
-``MultiplicativeChoice(prior,
-activity=None, frequency=None, anchor_time=None)`` or
-``AdditiveChoice(mean_prior, anomaly_scale, frequency=None,
-anchor_time=None)``. Pass it as ``boundary=`` to
-:func:`~openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs` or
-:func:`~openghg_inversions.rhime.co2.co2_cached_sigma_runner.build_rhime_co2_cached_sigma`,
-or under ``model["boundary"]`` to ``build_co2_inference``. The linked frontends
-take ``boundary={"co2": co2_choice, "o2": o2_choice}``; channels without a
-choice have no boundary term. The configuration adapters produce the same
-choices from ``[model.boundary]`` and ``[channels.<name>.boundary]``.
-
-The runner binds the choice once with ``choice.bind(observations,
-sensitivity)``, where the sensitivity is the prepared ``H_bc`` or a
-:class:`~openghg_inversions.models.boundary.RawCenteredSensitivity` Dataset.
-Binding produces
-:class:`~openghg_inversions.models.boundary.BoundCenteredSensitivity` (extended
-to :class:`~openghg_inversions.models.boundary.BoundAdditiveSensitivity` for
-weighted additive anomalies); these are static annotations on ordinary
-Datasets carrying structural guarantees. Numerical requirements are checked
-once by the explicit reference-shift and weight-normalization operations after
-joint materialization. The bound record
-is materialized jointly with the selected core arrays and prior parameters and
-is then passed to the builder, which calls ``boundary.add(...)``. Fitted
-metadata, roles and physical coefficient units come from ``boundary.outputs()``;
-scientific replay preserves those units independently of contribution units.
-
-Common boundary mean and centred additive anomalies
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Store the complete averaging weights on ``(bc_curtain, bc_period)`` with
-units ``"1"``. Period labels are the actual interval start timestamps returned
-by the same calendar that constructs the transport mask. For example::
-
-    weights = xr.DataArray(
-        values,
-        dims=("bc_curtain", "bc_period"),
-        coords={"bc_curtain": curtains, "bc_period": period_starts},
-        attrs={"units": "1"},
-    )
-
-Keep every curtain/period weight, including unobserved states; unequal,
-nonseparable weights are supported. Raw spatial preparation stays independent
-of fit periods. ``AdditiveChoice.bind`` binds raw operands and stacks the
-weights once per channel and fit. Exact labelled alignment rejects a different
-calendar before evaluating numerical payloads. Builders receive this bound
-record as ``boundary`` (a channel mapping for linked recipes), including the
-resolved prior and anomaly scale. They do not bind periods again.
-
-To subset a complete fitted period support, keep the bound record and select
-only its observation rows. The full boundary-state support and resolved prior
-remain on that record::
-
-    from dataclasses import replace
-    from openghg_inversions.models.boundary import AdditiveChoice, RawCenteredSensitivity, validate_centering_weights
-
-    choice = AdditiveChoice(mean_prior, anomaly_scale, frequency="monthly")
-    sensitivity = RawCenteredSensitivity.validate(raw_operands)
-    validate_centering_weights(weights)
-    sensitivity = RawCenteredSensitivity.with_centering_weights(sensitivity, weights)
-    bound = choice.bind(observations, sensitivity)
-    subset = replace(bound, data=bound.data.isel(nmeasure=selected_rows))
-
-Pass ``subset`` as the builder's ``boundary`` alongside the same observation
-row selection. ``bind`` accepts raw operands only; do not bind already
-expanded transport again. Rebinding raw inputs on a smaller window can remove
-complete periods and requires matching weights.
-
-We define the transport operators and the
-:ref:`additive boundary formulation <boundary-additive-corrections>` in
-:doc:`centered_boundary_conditions`. Here we describe its supported CO2-family
-configuration and outputs.
-
-Use ``AdditiveChoice(mean_prior, anomaly_scale)`` to select a constant
-boundary-product correction :math:`\delta` plus regional and temporal
-anomalies :math:`u_j`, where :math:`j=(\text{region},\text{period})`.
-Both use the channel observations' concentration units, usually ppm. The
-ordinary and cached fixed-OU CO2 recipes use the same formulation; linked
-CO2/O2 recipes use the channel-specific options below.
-
-There is one :math:`\delta` over the entire inversion window and one weighted
-constraint,
-
-.. math::
-
-   d_j=\delta+u_j,\qquad \sum_jw_ju_j=0,\qquad \sum_jw_j=1.
-
-Individual periods can have nonzero mean anomalies. The constraint applies
-to the complete set of region--period states. The caller supplies positive
-weights; the model normalizes them to sum to one. Uniform weights specify an
-equal-state average. For a native-field average, choose weights using the
-:ref:`declared measure and basis <boundary-averaging-weights>`.
-
-Anomaly prior and uncertainty
-"""""""""""""""""""""""""""""
-
-There are :math:`K` labelled region--period boundary states.
-Define :math:`\Pi=I-\mathbf{1}w^\mathsf{T}`, where :math:`\mathbf{1}` is the
-length-:math:`K` vector of ones. The anomaly prior is
-
-.. math::
-
-   u &\sim \mathcal{N}\!\left(0,\,s_{bc}^{2}\Pi\Pi^\mathsf{T}\right), \\
-   \delta &\sim p_{\delta}, \qquad \delta\ \text{independent of}\ u.
-
-The finite, nonnegative fixed scale :math:`s_{bc}` is ``anomaly_scale`` in
-concentration units. For a positive scale it is the standard deviation of
-independent Gaussian corrections *before* subtracting their weighted mean.
-The implementation uses only :math:`K-1` independent coordinates to sample
-the constrained anomalies. Set ``anomaly_scale=0`` to infer only the common
-level from ``mean_prior``: all anomalies are exactly zero and no
-contrast variables are sampled. For a single boundary state, the anomaly is
-also exactly zero at any accepted scale. Negative and nonfinite scales are
-rejected.
-
-Centring changes individual anomaly variances and induces correlations:
-
-.. math::
-
-   \operatorname{Var}(u_j)
-      &= s_{bc}^{2}\left(1-2w_j+\sum_k w_k^2\right), \\
-   \operatorname{Var}(u_j-u_k) &= 2s_{bc}^{2},\qquad j\ne k.
-
-In particular, equal weights give marginal anomaly standard deviation
-:math:`s_{bc}\sqrt{1-1/K}`. The scale controls pairwise departures independently
-of the prior for the common mean; it is not the marginal standard deviation
-of each anomaly. The variance consequence of a sum-to-zero constraint is also
-explained in `Stan's marginal-distribution discussion
-<https://mc-stan.org/docs/stan-users-guide/regression.html#marginal-distribution-of-sum-to-zero-components>`_.
-
-This prior keeps the projected baseline :math:`H_{bc}\mathbf1` fixed and
-infers additive concentration corrections. It replaces the multiplicative
-scaling prior. Choose the common-mean prior and anomaly scale for uncertainty
-in the supplied boundary product. The additive choice has no scaling prior or
-state activity; use ``MultiplicativeChoice`` for the multiplicative model.
-
-Prepare and configure the boundary corrections
-""""""""""""""""""""""""""""""""""""""""""""""
-
-Use the native dimensionless transport ``H_bc_mass`` described in the
-:ref:`additive formulation <boundary-additive-corrections>`:
-
-.. math::
-
-   g &= M\mathbf1, \\
-   \mu_{bc} &= H_{bc}\mathbf1+g\delta+Mu.
-
-Additive models require native centered boundary operands, including the
-scalar ``bc_reference`` and signed ``H_bc_anomaly``. The prior choice leaves
-these prepared quantities unchanged. Pass
-``bc_centering_weights`` on ``("bc_curtain", "bc_period")`` with interval-start
-period labels and units ``"1"``. The CO2 artifact retains this unstacked array,
-separate from reusable spatial transport. Selecting another frequency requires
-matching explicit weights for that state partition:
-
-.. code-block:: python
-
-   prepared = prepare_co2_inputs(
-       canonical_inputs,
-       reduction,
-       bc_centering_weights=boundary_weights,
-   )
-   from openghg_inversions.rhime.co2 import (
-       materialize_co2_inputs, build_co2_from_materialized, annotate_co2_trace,
-   )
-   from openghg_inversions.models.boundary import AdditiveChoice
-   from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
-
-   choice = AdditiveChoice({"pdf": "normal", "mu": 0.0, "sigma": 0.5}, anomaly_scale=0.2)
-   inputs, priors, boundary = materialize_co2_inputs(prepared_inputs=prepared, boundary=choice)
-   built = build_co2_from_materialized(
-       inputs, boundary=boundary, prepared_inputs=prepared, priors=priors,
-   )
-   trace = sample_rhime_model(built, RhimeSampler())
-   trace = annotate_co2_trace(trace, built, concentration_units=prepared.inv_inputs.mf.attrs["units"])
-
-The 0.5 ppm common-mean scale and 0.2 ppm anomaly scale are illustrative.
-Preparation preserves the native operands and stores explicit averaging
-weights as ``bc_centering_weights``. The legacy satellite column scaling path
-is separate from this centered surface-boundary representation.
-
-For TOML replay, use an artifact containing these arrays and configure:
-
-.. code-block:: toml
-
-   [model.boundary]
-   type = "additive"
-   anomaly_scale = 0.2
-
-   [model.boundary.mean_shift_prior]
-   pdf = "normal"
-   mu = 0.0
-   sigma = 0.5
-
-Direct builders accept the bound ``AdditiveBoundary`` returned by
-``AdditiveChoice.bind`` from native centered operands with centering weights.
-The mean prior uses the ordinary scalar prior dictionary. Its location and scale use concentration units.
-For a common-level-only TOML configuration, use ``anomaly_scale = 0.0`` with
-the same ``mean_shift_prior`` table.
-
-The CO2 recipes save ``bc_mean_shift``, the labelled ``bc_anomaly`` and the total
-``bc_correction`` (:math:`\delta\mathbf{1}+u`). Observation-space outputs are
-``mu_bc_reference`` for :math:`H_{bc}\mathbf{1}`, stored once in
-``constant_data``, and sampled ``mu_bc_mean_shift`` for :math:`g\delta` and
-``mu_bc_anomaly`` for :math:`Mu`. Their sum is ``mu_bc``, the complete boundary
-contribution included once in ``modelled_concentration`` and the likelihood.
-Public concentration products broadcast the fixed reference over requested
-draws. The additive model has no sampled boundary-scaling output.
-With zero anomaly scale or one boundary state, ``bc_anomaly`` and
-``mu_bc_anomaly`` are stored once as zeros in ``constant_data`` and broadcast
-over the draws in public products; the total correction remains the common
-mean in every state.
-
-Linked CO2/O2 concentration scales
-""""""""""""""""""""""""""""""""""
-
-The linked ordinary and cached fixed-OU recipes apply the same formulation
-independently to each enabled channel. Pass an ``AdditiveChoice`` per channel
-in ``boundary={"co2": ..., "o2": ...}``. Preparation stores each channel's
-``bc_centering_weights`` argument in that channel's native centered
-``boundary_operands``. Each channel has its own scalar mean, weighted
-anomalies and explicit averaging weights.
-No site or channel is an identifiability reference for the other.
-Each channel independently supports a zero anomaly scale, so one can use a
-common-level-only correction while the other retains sampled contrasts or a
-multiplicative boundary prior.
-
-For O2 near 200,000 ppm, a multiplicative standard deviation of 0.01 gives
-about 2,000 ppm uncertainty in the boundary concentration before transport.
-The observation-space uncertainty depends on transport responses. Additive
-scales instead express uncertainty directly in ppm and do not grow with the
-absolute O2 background. This boundary formulation supports the existing linked
-transport-equivalent ppm convention; it adds no per-meg or APO conversion.
-For example, the following TOML uses a 2 ppm common
-O2 correction scale and a 1 ppm pre-centring anomaly scale:
-
-.. code-block:: toml
-
-   [channels.o2.boundary]
-   type = "additive"
-   anomaly_scale = 1.0
-
-   [channels.o2.boundary.mean_shift_prior]
-   pdf = "normal"
-   mu = 0.0
-   sigma = 2.0
-
-These widths and the CO2 widths above are illustrative scientific choices,
-not defaults or recommendations. Select them from uncertainty in the supplied
-boundary product and assess their sensitivity for the observing network.
-The linked recipes prefix saved outputs with the channel: for example,
-``o2_bc_mean_shift``, ``o2_bc_anomaly``, ``o2_bc_correction``, and the
-``o2_mu_bc_reference``, ``o2_mu_bc_mean_shift`` and ``o2_mu_bc_anomaly``
-components. ``o2_mu_bc`` is the complete O2 boundary prediction; CO2 uses
-the corresponding ``co2_`` names.
-
-What centring does and does not identify
-""""""""""""""""""""""""""""""""""""""""
-
-The weighted constraint uniquely decomposes a given boundary correction into
-its mean and anomalies, removing the redundant direction within that
-decomposition. It does not guarantee identifiability against site offsets,
-boundary patterns or flux contributions: transport can leave boundary states
-poorly observed or make their predictions difficult to distinguish. The `Stan User's
-Guide on collinearity
-<https://mc-stan.org/docs/stan-users-guide/problematic-posteriors.html#collinearity>`_
-explains why redundant or nearly redundant prediction directions remain a
-problem for inference.
-
-A constant observation offset describes persistent observation bias, while
-:math:`\delta` describes a constant correction to the supplied boundary
-product. If :math:`g=\mathbf1`, these distinct components have the same
-observation-space direction. The likelihood then identifies their sum;
-separate prior information or external constraints are needed to distinguish
-them. Finer boundary periods allow anomalies to vary over time while
-:math:`\delta` remains constant over the whole inversion. Assess transport
-sensitivity, BC--flux confounding and prior sensitivity when interpreting
-these corrections.
-
-For complete normalized transport and the default NESW basis,
-:math:`g=\mathbf1` is guaranteed. The builders warn when
-additive boundaries are combined with unrestricted observation offsets.
-Offsets default to ``per_site=True, drop_first=False``. Setting
-``drop_first=True`` removes the first encountered site's offsets; it does not
-select a named calibration reference. This removes the duplicate constant
-direction, but does not guarantee separation from boundary anomalies or fluxes.
-Centered site offsets are not currently implemented. See
-:doc:`../development/boundary_offset_identifiability` for the investigation.
+The CO2 recipes support multiplicative scaling of the boundary sensitivity
+(``MultiplicativeChoice``) and centred additive concentration corrections
+(``AdditiveChoice``): a constant correction to the boundary product over the
+inversion window plus weighted region--period anomalies. Both are selected
+with ``[model.boundary]`` (``[channels.<name>.boundary]`` for linked
+recipes) or passed as ``boundary=`` in Python. Additive corrections require
+native centered operands and, for weighted anomalies, averaging weights stored
+at preparation. See :doc:`co2_boundary_corrections` for the configuration
+task, :doc:`centered_boundary_conditions` for the operators and prior, and
+:doc:`boundary_correction_structures` for the alternative correction
+structures.
 
 Configure prepared-input execution from TOML
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1402,10 +1124,19 @@ hours; numeric time coordinates are interpreted directly as hours. If
 including entries for dropped sites.
 
 Boundary and offset selection uses ``[model.boundary]`` and
-``[model.offset]`` as for other CO2 likelihoods. The numerical builder also
-accepts a ``boundary`` choice, ``offset_prior`` and ``offset_args`` for direct
-scientific composition.
-Its location and scale parameters use the observations' concentration units.
+``[model.offset]`` as for other CO2 likelihoods. In Python, the runner
+:func:`~openghg_inversions.rhime.co2.co2_cached_sigma_runner.build_rhime_co2_cached_sigma`
+accepts a boundary choice as ``boundary``, ``offset_prior`` and the
+``offset_args`` convenience mapping. It binds the choice, materializes it
+with the selected inputs, and constructs the same graph as the numerical
+builder
+:func:`~openghg_inversions.rhime.co2.co2_cached_sigma_model.build_co2_cached_sigma_model`.
+Direct builder callers pass the bound boundary component as ``boundary`` (see
+:ref:`co2-boundary-binding`), ``offset_prior``, and separate ``offset_freq``,
+``offset_drop_first`` and ``offset_per_site`` values; the builder accepts
+neither a choice nor ``offset_args``, and materializes its arguments together.
+The offset prior's location and scale parameters use the observations'
+concentration units.
 These coefficients join the flux coefficients only inside the private cached
 likelihood calculation; their public scientific variables and contributions
 remain separate.

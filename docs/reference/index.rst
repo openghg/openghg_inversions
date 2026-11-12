@@ -295,7 +295,10 @@ mathematical contracts and eager-computation boundaries.
    openghg_inversions.source_covariance.IndependentSourceCovariance
    openghg_inversions.basis.NativeCovarianceProducts
    openghg_inversions.basis.RetainedProjection
+   openghg_inversions.basis.RetainedProjectionStrategy
    openghg_inversions.basis.PreserveBucketProlongation
+   openghg_inversions.basis.SuppliedRestriction
+   openghg_inversions.basis.absolute_weighted_regional_mean_restriction
    openghg_inversions.basis.project_native_covariance
    openghg_inversions.coherent_reduction.CoherentGaussianReduction
    openghg_inversions.coherent_reduction.reduce_native_gaussian

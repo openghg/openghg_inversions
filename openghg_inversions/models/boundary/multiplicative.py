@@ -40,7 +40,7 @@ from .centered import CenteredBoundary, Correction, MeanShift
 from .contracts import BoundCenteredSensitivity, RawCenteredSensitivity
 from .outputs import Outputs
 
-def centered_boundary_expression(anomaly, mass, reference, state):
+def centered_boundary_expression(anomaly: Any, mass: Any, reference: Any, state: Any) -> Any:
     """Evaluate ``A b + c M (b - 1)`` without subtracting a large reference.
 
     Args:

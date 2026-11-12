@@ -140,7 +140,7 @@ def shared_baseline_choice(params: Mapping[str, object]) -> SharedBaselineChoice
     mode = _string(_take(options, "mode", "shared_baseline"), "shared_baseline.mode")
     delta_sd = _number(_take(options, "delta_sd", "shared_baseline"), "shared_baseline.delta_sd", positive=True)
     boundary = (
-        _boundary_choice(dict(_table(options.pop("boundary"), "shared_baseline.boundary")))
+        _boundary_choice(dict(_table(options.pop("boundary"), "shared_baseline.boundary")), "shared_baseline.boundary")
         if "boundary" in options else None
     )
     _reject_unknown(options, "shared_baseline")
