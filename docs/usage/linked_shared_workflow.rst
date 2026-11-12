@@ -162,8 +162,7 @@ example illustrates execution and recovery; it defines no campaign acceptance
 or convergence criterion.
 
 The example uses ``SharedBaselineChoice(None, 1.0, mode)`` for each channel and
-passes those choices explicitly to the current snapshot workflow. Saved inputs
-use format6. The builder returns ``built, cached, materialized_prepared``;
-annotation uses that returned preparation. Pure reconstruction receives the
-channel mapping of ``bound.data``, retaining physical source effects separately
-from atmospheric removed means.
+passes those choices to the staged ``save_preparation``, ``sample`` and
+``postprocess`` handoffs. Pure reconstruction receives the channel mapping of
+``bound.data``, retaining physical source effects separately from atmospheric
+removed means.

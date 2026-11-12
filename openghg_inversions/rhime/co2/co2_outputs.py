@@ -544,7 +544,7 @@ def prepared_period(result: Co2Output) -> str:
 
 
 def _co2_product_names(output: Co2OutputOptions, *, has_reconstruction: bool, has_countries: bool) -> tuple[str, ...]:
-    """Select the products shared by early preflight and actual calculation."""
+    """Predict the products :func:`calculate_co2_products` attaches, for early output-path preflight."""
     if output.output_format == "none":
         return ()
     names = ["basic"]

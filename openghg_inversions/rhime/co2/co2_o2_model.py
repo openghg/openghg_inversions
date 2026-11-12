@@ -391,6 +391,7 @@ def build_co2_o2_model(
         tau_hours=tau_hours,
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
+        biosphere_prior=biosphere_prior,
     )
 
 
@@ -411,6 +412,7 @@ def _build_co2_o2_model(
     tau_hours: float | Mapping[str, float] | None = None,
     fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     site_amplitude_prior: Mapping[str, Any] | None = None,
+    biosphere_prior: BiospherePrior | None = None,
 ) -> pm.Model:
     """Construct the linked CO2/O2 graph from eager inputs.
 

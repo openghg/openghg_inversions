@@ -679,7 +679,7 @@ def _anomaly_scaling_boundary(
 ) -> AnomalyScalingChoice:
     """Resolve the options of a boundary that scales the prescribed anomaly about a reference."""
     mean = _mean_shift_options(options, path)
-    scale_sd = _number(_take(options, "scale_sd", path), f"{path}.scale_sd")
+    scale_sd = _number(_take(options, "scale_sd", path), f"{path}.scale_sd", positive=True)
     reference: object = options.pop("reference", "stored")
     if not isinstance(reference, str):
         reference = _number(reference, f"{path}.reference")

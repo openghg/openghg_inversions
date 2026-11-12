@@ -26,6 +26,8 @@ from ._surface_schema import validate_surface_inputs
 from ._boundary import baseline_reference_sensitivities as _reference_sensitivities
 
 
+#: Revision of the source-wise surface policy recorded on prepared site data;
+#: linked surface templates reject data prepared under another revision.
 SURFACE_POLICY_REVISION = "957-source-wise-v1"
 
 

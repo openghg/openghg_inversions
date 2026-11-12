@@ -57,12 +57,14 @@ def _snapshot_bound(data: xr.Dataset) -> SharedBaseline:
 
 
 def _native_channel(array: xr.DataArray, channel: str, row: str) -> xr.DataArray:
+    """Select one channel's rows from a joint array onto its native row axis."""
     return select_gathered_data_array(
         array, key=channel, key_dim="species", ragged_dim="channel_observation", stack_dim="observation",
     ).rename(observation=row)
 
 
 def _channel_units(observations: xr.DataArray) -> str:
+    """Return the single concentration unit shared by one channel's observations."""
     units = np.unique(observations.observation_units.values)
     if len(units) != 1 or not isinstance(units[0], str) or not units[0].strip():
         raise ValueError("Each native channel requires one explicit concentration unit.")
@@ -145,6 +147,7 @@ def prepare_linked_shared_inputs(
         outer=outer, sampled_outer=sampled_outer, calibrated_prior=calibrated_prior,
     )
     def original_selector(selector: xr.DataArray) -> xr.DataArray:
+        """Relabel a retained-state selector onto the original state axis."""
         return selector.rename({
             name: "original_state" if name == prepared.retained_prior.state_dim else f"original_state_{name}"
             for name in selector.coords
@@ -170,12 +173,12 @@ def prepare_linked_shared_inputs(
                 value[name] = selected.variable
             else:
                 value[name] = selected
-        value.delta_sd.attrs["units"] = value.attrs["units"]
         frozen[channel] = replace(bound, data=value)
     return replace(prepared, shared_baseline=frozen)
 
 
 def _native_raw_boundary(raw: xr.Dataset, row: str, observations: xr.DataArray) -> xr.Dataset:
+    """Select raw centered boundary operands on one channel's native rows."""
     raw_row = next(str(dim) for dim in raw.H_bc_anomaly.dims if dim != "bc_region")
     if raw_row == "time":
         raw = raw.sel(time=observations.time)
@@ -231,6 +234,7 @@ def _same_array(
 
 
 def _restore_state(array: xr.DataArray, prefix: str, prior: CorrelatedLognormalPrior) -> xr.DataArray:
+    """Rename a stored original-state array back to the retained prior's state labels."""
     return array.rename({
         name: (prior.state_dim if name == prefix else prior.covariance_dim if name == f"{prefix}_cov"
                else name.removeprefix(f"{prefix}_"))
