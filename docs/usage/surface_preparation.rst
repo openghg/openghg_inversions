@@ -287,9 +287,10 @@ must be regenerated. See :doc:`prepared_format_support` for the exact map.
 Old rounded ``H_bc`` alone cannot recover accurate centered operands.
 
 Standalone CO₂ and linked CO₂/O₂ prepared inputs support saving and reopening
-both ordinary boundaries and centered operands. Linked centered operands use the
-version-2 dedicated prepared-input schema; ordinary linked inputs retain
-version-1 compatibility. See :doc:`prepared_format_support` for supported formats.
+both ordinary boundaries and centered operands, in the current dedicated
+prepared-input schemas (version 3 for CO₂, version 6 for linked CO₂/O₂). Older
+internal artifacts must be prepared again. See :doc:`prepared_format_support`
+for supported formats.
 
 The additive-Gaussian and cached fixed-OU CO₂ and linked CO₂/O₂ routes bind raw
 operands to BC periods at model construction. Their model-facing runners accept

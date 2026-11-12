@@ -643,45 +643,47 @@ def _sampling(value: object) -> RhimeSampler:
     return sampler
 
 
-def _multiplicative_boundary(options: dict[str, object], periods: dict[str, Any]) -> MultiplicativeChoice:
+def _multiplicative_boundary(options: dict[str, object], periods: dict[str, Any], path: str) -> MultiplicativeChoice:
     """Resolve the options of a multiplicative boundary, the default type."""
-    prior = _prior(options.pop("prior"), "model.boundary.prior") if "prior" in options else dict(DEFAULT_BC_PRIOR)
-    _reject_unknown(options, "model.boundary")
+    prior = _prior(options.pop("prior"), f"{path}.prior") if "prior" in options else dict(DEFAULT_BC_PRIOR)
+    _reject_unknown(options, path)
     return MultiplicativeChoice(prior, **periods)
 
 
-def _mean_shift_options(options: dict[str, object]) -> dict[str, Any]:
+def _mean_shift_options(options: dict[str, object], path: str) -> dict[str, Any]:
     """Resolve the optional mean-shift prior and its per-period switch shared by centred corrections."""
     mean_shift_prior = (
-        _prior(options.pop("mean_shift_prior"), "model.boundary.mean_shift_prior")
+        _prior(options.pop("mean_shift_prior"), f"{path}.mean_shift_prior")
         if "mean_shift_prior" in options else None
     )
     mean_by_period = (
-        _bool(options.pop("mean_by_period"), "model.boundary.mean_by_period") if "mean_by_period" in options else False
+        _bool(options.pop("mean_by_period"), f"{path}.mean_by_period") if "mean_by_period" in options else False
     )
     return {"mean_prior": mean_shift_prior, "mean_by_period": mean_by_period}
 
 
-def _additive_boundary(options: dict[str, object], periods: dict[str, Any]) -> AdditiveChoice:
+def _additive_boundary(options: dict[str, object], periods: dict[str, Any], path: str) -> AdditiveChoice:
     """Resolve the options of centred additive boundary corrections."""
-    mean = _mean_shift_options(options)
-    anomaly_scale = _number(_take(options, "anomaly_scale", "model.boundary"), "model.boundary.anomaly_scale")
-    anomalies = _string(options.pop("anomalies"), "model.boundary.anomalies") if "anomalies" in options else "weighted"
-    _reject_unknown(options, "model.boundary")
+    mean = _mean_shift_options(options, path)
+    anomaly_scale = _number(_take(options, "anomaly_scale", path), f"{path}.anomaly_scale")
+    anomalies = _string(options.pop("anomalies"), f"{path}.anomalies") if "anomalies" in options else "weighted"
+    _reject_unknown(options, path)
     return AdditiveChoice(
         mean["mean_prior"], anomaly_scale, anomalies=anomalies,  # type: ignore[arg-type]
         mean_by_period=mean["mean_by_period"], **periods,
     )
 
 
-def _anomaly_scaling_boundary(options: dict[str, object], periods: dict[str, Any]) -> AnomalyScalingChoice:
+def _anomaly_scaling_boundary(
+    options: dict[str, object], periods: dict[str, Any], path: str
+) -> AnomalyScalingChoice:
     """Resolve the options of a boundary that scales the prescribed anomaly about a reference."""
-    mean = _mean_shift_options(options)
-    scale_sd = _number(_take(options, "scale_sd", "model.boundary"), "model.boundary.scale_sd")
+    mean = _mean_shift_options(options, path)
+    scale_sd = _number(_take(options, "scale_sd", path), f"{path}.scale_sd")
     reference: object = options.pop("reference", "stored")
     if not isinstance(reference, str):
-        reference = _number(reference, "model.boundary.reference")
-    _reject_unknown(options, "model.boundary")
+        reference = _number(reference, f"{path}.reference")
+    _reject_unknown(options, path)
     return AnomalyScalingChoice(
         mean["mean_prior"], scale_sd, reference=reference,  # type: ignore[arg-type]
         mean_by_period=mean["mean_by_period"], **periods,
@@ -689,75 +691,83 @@ def _anomaly_scaling_boundary(options: dict[str, object], periods: dict[str, Any
 
 
 # Each boundary ``type`` names one choice family and owns the parser for its options.
-_BOUNDARY_TYPES: dict[str, Callable[[dict[str, object], dict[str, Any]], Choice]] = {
+_BOUNDARY_TYPES: dict[str, Callable[[dict[str, object], dict[str, Any], str], Choice]] = {
     MultiplicativeChoice.kind: _multiplicative_boundary,
     AdditiveChoice.kind: _additive_boundary,
     AnomalyScalingChoice.kind: _anomaly_scaling_boundary,
 }
 
 
-def _boundary_choice(boundary: dict[str, object]) -> Choice | None:
-    """Resolve one ``[model.boundary]`` table; ``None`` when explicitly disabled.
+def _boundary_choice(boundary: dict[str, object], path: str) -> Choice | None:
+    """Resolve one boundary table at ``path``; ``None`` when explicitly disabled.
 
     ``type`` selects the family and defaults to ``"multiplicative"``, scaling
     absolute or centered sensitivity. Options belonging to another family are
     rejected rather than used to infer it.
     """
-    enabled = _bool(boundary.pop("enabled", True), "model.boundary.enabled")
+    enabled = _bool(boundary.pop("enabled", True), f"{path}.enabled")
     if not enabled:
         if boundary:
-            raise ValueError("model.boundary options require model.boundary.enabled=true.")
+            raise ValueError(f"{path} options require {path}.enabled=true.")
         return None
-    kind = _string(boundary.pop("type", MultiplicativeChoice.kind), "model.boundary.type")
+    kind = _string(boundary.pop("type", MultiplicativeChoice.kind), f"{path}.type")
     if kind not in _BOUNDARY_TYPES:
-        raise ValueError(f"model.boundary.type must be one of {sorted(_BOUNDARY_TYPES)!r}, not {kind!r}.")
+        raise ValueError(f"{path}.type must be one of {sorted(_BOUNDARY_TYPES)!r}, not {kind!r}.")
     periods: dict[str, Any] = {
-        name: _string(boundary.pop(name), f"model.boundary.{name}")
+        name: _string(boundary.pop(name), f"{path}.{name}")
         for name in ("frequency", "anchor_time") if name in boundary
     }
-    return _BOUNDARY_TYPES[kind](boundary, periods)
+    return _BOUNDARY_TYPES[kind](boundary, periods, path)
 
 
-def _model(value: object) -> dict[str, Any]:
-    options = _table(value, "model")
+def _model(value: object, path: str = "model") -> dict[str, Any]:
+    """Resolve boundary and offset choices from one model table at ``path``.
+
+    The linked recipe passes ``channels.<name>`` so messages name the table the
+    user actually wrote.
+    """
+    options = _table(value, path)
     result: dict[str, Any] = {}
     if "biosphere" in options:
-        biosphere = _table(options.pop("biosphere"), "model.biosphere")
-        result["biosphere_prior_path"] = _artifact_path(_take(biosphere, "path", "model.biosphere"), "model.biosphere.path")
-        _reject_unknown(biosphere, "model.biosphere")
+        biosphere_path = f"{path}.biosphere"
+        biosphere = _table(options.pop("biosphere"), biosphere_path)
+        result["biosphere_prior_path"] = _artifact_path(_take(biosphere, "path", biosphere_path), f"{biosphere_path}.path")
+        _reject_unknown(biosphere, biosphere_path)
     if "boundary" in options:
-        result["boundary"] = _boundary_choice(_table(options.pop("boundary"), "model.boundary"))
+        result["boundary"] = _boundary_choice(_table(options.pop("boundary"), f"{path}.boundary"), f"{path}.boundary")
     if "offset" in options:
-        result.update(_offset_model(options.pop("offset")))
-    _reject_unknown(options, "model")
+        result.update(_offset_model(options.pop("offset"), f"{path}.offset"))
+    _reject_unknown(options, path)
     return result
 
 
 def _artifact_path(value: object, path: str) -> Path:
+    """Resolve a configured artifact path to an absolute path."""
     if not isinstance(value, Path):
         value = _string(value, path)
     return Path(value).expanduser().resolve()
 
 
-def _offset_model(value: object) -> dict[str, Any]:
+def _offset_model(value: object, path: str) -> dict[str, Any]:
+    """Resolve the offset prior and runner options from the offset table at ``path``."""
     result: dict[str, Any] = {}
-    offset = _table(value, "model.offset")
-    result["offset_prior"] = _prior(_take(offset, "prior", "model.offset"), "model.offset.prior")
+    offset = _table(value, path)
+    result["offset_prior"] = _prior(_take(offset, "prior", path), f"{path}.prior")
     offset_args: dict[str, Any] = {}
     if "frequency" in offset:
         frequency = offset.pop("frequency")
         if frequency is not None:
-            frequency = _string(frequency, "model.offset.frequency")
+            frequency = _string(frequency, f"{path}.frequency")
         offset_args["offset_freq"] = frequency
     for config_name, runner_name in (("per_site", "per_site"), ("drop_first", "drop_first")):
         if config_name in offset:
-            offset_args[runner_name] = _bool(offset.pop(config_name), f"model.offset.{config_name}")
-    _reject_unknown(offset, "model.offset")
+            offset_args[runner_name] = _bool(offset.pop(config_name), f"{path}.{config_name}")
+    _reject_unknown(offset, path)
     if offset_args.get("per_site") is False:
         if offset_args.get("offset_freq") is not None:
-            raise ValueError("A global model.offset does not accept frequency.")
+            raise ValueError(f"A global {path} does not accept frequency.")
         if offset_args.get("drop_first") is True:
-            raise ValueError("A global model.offset does not support drop_first=true.")
+            raise ValueError(f"A global {path} does not support drop_first=true.")
     result["offset_args"] = _frozen(offset_args)
     return result
 

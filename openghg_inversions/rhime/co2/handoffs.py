@@ -130,6 +130,7 @@ def prepare(
     canonical_inputs: PreparedInputs | None = None,
     reduction: CoherentGaussianReduction | None = None,
     aggregation_error_rank: int | None = 512,
+    bc_centering_weights: xr.DataArray | None = None,
     affine_artifact: AffineFluxMapArtifact | None = None, affine_path: str | Path | None = None,
     boundary_representation: BoundaryRepresentation | None = None, boundary: Choice | None = None,
     native: Co2NativePreparationConfig | None = None, merged_data: MergedData | None = None,
@@ -148,11 +149,17 @@ def prepare(
     produces the representation it needs (or the explicit
     ``boundary_representation``), and other routes are checked with
     :func:`~openghg_inversions.rhime.co2.co2_preparation.check_prepared_boundary`.
+    ``bc_centering_weights`` is stored with new centered preparations from
+    canonical inputs, as in
+    :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`;
+    weighted additive boundaries require it.
     """
     if (canonical_inputs is None) != (reduction is None):
         raise ValueError("Pass canonical_inputs and reduction together.")
     if merged_data is not None and native is None:
         raise ValueError("merged_data requires configured native preparation choices.")
+    if bc_centering_weights is not None and canonical_inputs is None:
+        raise ValueError("bc_centering_weights apply only to a new preparation from canonical_inputs.")
     if native is not None:
         if prepared_path is not None or canonical_inputs is not None or affine_path is not None:
             raise ValueError("Native preparation builds its own artifact; do not pass saved or canonical inputs.")
@@ -178,7 +185,7 @@ def prepare(
             raise ValueError("A new preparation requires affine_artifact, not an imported companion path.")
         prepared = prepare_co2_inputs(
             canonical_inputs, cast(CoherentGaussianReduction, reduction),
-            aggregation_error_rank=aggregation_error_rank,
+            aggregation_error_rank=aggregation_error_rank, bc_centering_weights=bc_centering_weights,
         )
         check_prepared_boundary(prepared.inv_inputs, boundary, boundary_representation)
         return save_preparation(

@@ -183,9 +183,9 @@ def test_base_covariance_materializes_aligned_payloads_once(
         aggregation = AggregationError(mode="none", marginal_variance=np.zeros(3))
         expected_aggregation = np.zeros((3, 3))
 
-    import openghg_inversions.models.scalar_sigma as scalar_sigma
+    import openghg_inversions.array_ops as array_ops
 
-    real_compute = scalar_sigma.dask_compute
+    real_compute = array_ops.dask_compute
     calls = 0
 
     def recording_compute(*arrays: object) -> tuple[object, ...]:
@@ -193,7 +193,7 @@ def test_base_covariance_materializes_aligned_payloads_once(
         calls += 1
         return real_compute(*arrays)
 
-    monkeypatch.setattr(scalar_sigma, "dask_compute", recording_compute)
+    monkeypatch.setattr(array_ops, "dask_compute", recording_compute)
     actual = scalar_sigma_base_covariance(observations, error, aggregation)
 
     assert calls == 1

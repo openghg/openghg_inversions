@@ -122,10 +122,15 @@ The CO2-only handoff is intentionally separate from both the generic
 It does not add coherent-reduction or aggregation-error options to the
 standard and multisector runners.
 
+:doc:`co2_models` describes the CO₂ and linked recipes. To select and
+configure multiplicative or additive boundary corrections for them, follow
+:doc:`co2_boundary_corrections`.
+
 .. toctree::
    :maxdepth: 1
 
    co2_models
+   co2_boundary_corrections
 
 Staged CO₂ commands
 -------------------

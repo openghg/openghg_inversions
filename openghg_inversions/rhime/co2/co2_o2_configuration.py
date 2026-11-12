@@ -231,7 +231,7 @@ class Co2O2ModelConfig:
             if isinstance(value, Mapping):
                 object.__setattr__(self, item.name, normalise_optional_mapping(value))
         if self.boundary is not None:
-            # Direct construction meets the same one-calendar rule as configuration.
+            # The single owner of the one-calendar rule for parsed and direct construction.
             object.__setattr__(self, "boundary", normalise_optional_mapping(_shared_boundary_periods(self.boundary)))
 
     @classmethod
@@ -271,7 +271,7 @@ class Co2O2ModelConfig:
                     _reject_unknown(table, f"channels.{name}.boundary.activity")
                     activity = StateActivity(active=active, fixed_value=fixed)
                 selected["boundary"] = boundary
-            for key, value in _model(selected).items():
+            for key, value in _model(selected, f"channels.{name}").items():
                 if key == "boundary" and activity is not None:
                     if not isinstance(value, MultiplicativeChoice):
                         raise ValueError("Boundary activity requires an enabled multiplicative boundary.")
@@ -279,8 +279,6 @@ class Co2O2ModelConfig:
                 model.setdefault(key, {})[name] = value
             _reject_unknown(channel, f"channels.{name}")
         _reject_unknown(channels, "channels")
-        if "boundary" in model:
-            model["boundary"] = _shared_boundary_periods(model["boundary"])
         if errors and len(errors) != 2:
             raise ValueError("Configure independent_error_sd for both linked channels or omit it for both.")
         if units["co2"] != units["o2"]:
@@ -332,8 +330,12 @@ class Co2O2ModelConfig:
         """Identify the calibrated prior file for write protection."""
         return () if self.biosphere_prior_path is None else (Path(self.biosphere_prior_path).resolve(),)
 
-    def _channel_boundaries(self, prepared: Co2O2PreparedInputs) -> dict[str, Choice]:
-        """Resolve configured choices and default prepared channels to choices."""
+    def _channel_boundaries(self, prepared: Co2O2PreparedInputs) -> dict[str, Choice | None]:
+        """Resolve configured choices and default prepared channels to choices.
+
+        Explicitly disabled channels stay in the result as ``None`` so the
+        runner can tell a deliberate omission from an unconfigured channel.
+        """
         configured = dict(self.boundary or {})
         enabled = [choice for choice in configured.values() if choice is not None]
         default = MultiplicativeChoice(
@@ -342,11 +344,12 @@ class Co2O2ModelConfig:
             anchor_time=enabled[0].anchor_time if enabled else None,
         )
         available = set(prepared.boundary_operands) | set(prepared.boundary_sensitivity)
-        result = {}
+        result: dict[str, Choice | None] = {}
         for channel in ("co2", "o2"):
-            choice = configured.get(channel, default if channel in available else None)
-            if choice is not None:
-                result[channel] = choice
+            if channel in configured:
+                result[channel] = configured[channel]
+            elif channel in available:
+                result[channel] = default
         return result
 
 

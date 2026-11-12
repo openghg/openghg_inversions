@@ -380,3 +380,40 @@ def test_in_memory_linked_period_override_supports_mixed_raw_channel_representat
     point = built.model.initial_point()
     for channel in ("co2", "o2"):
         assert point[f"{channel}_bc"].size == 4
+
+
+def test_linked_runner_warns_for_unchosen_prepared_boundary_and_accepts_explicit_disable():
+    """Omitting a prepared channel warns; ``None`` disables it deliberately."""
+    import warnings
+
+    from openghg_inversions.models.boundary import MultiplicativeChoice
+    from openghg_inversions.rhime.co2.co2_o2_runner import _bind_co2_o2_boundaries
+
+    prepared = _raw_ordinary(True)
+    choice = MultiplicativeChoice({"pdf": "normal", "mu": 1.0, "sigma": 0.01})
+    with pytest.warns(UserWarning, match=r"\['o2'\] is not used"):
+        assert set(_bind_co2_o2_boundaries(prepared, {"co2": choice})) == {"co2"}
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert set(_bind_co2_o2_boundaries(prepared, {"co2": choice, "o2": None})) == {"co2"}
+
+
+def test_configured_linked_disabled_channel_is_explicit_none():
+    config = _config(True)
+    config["channels"]["o2"]["boundary"] = {"enabled": False}
+    bound = Co2O2ModelConfig.from_params(config).bind(_raw_ordinary(True))
+    assert bound["boundary"]["o2"] is None
+    assert bound["boundary"]["co2"] is not None
+
+
+def test_co2_materialization_reports_missing_selected_inputs():
+    from openghg_inversions.rhime.co2.co2_runner import _materialize_co2_inputs
+
+    with pytest.raises(ValueError, match="missing from prepared data: \\['absent'\\]"):
+        _materialize_co2_inputs(_ordinary().rhime_inputs, ["absent"], {}, None)
+
+
+def test_staged_prepare_rejects_weights_for_imported_preparation(tmp_path):
+    weights = xr.DataArray(np.ones((1, 1)), dims=("bc_curtain", "bc_period"))
+    with pytest.raises(ValueError, match="only to a new preparation"):
+        handoffs.prepare(output_dir=tmp_path, prepared_path=tmp_path / "prepared.nc", bc_centering_weights=weights)

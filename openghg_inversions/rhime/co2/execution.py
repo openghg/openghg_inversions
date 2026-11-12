@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
+import xarray as xr
+
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
@@ -74,6 +76,7 @@ def run_co2(
     prepared: Co2PreparedInputs | None = None, canonical_inputs: PreparedInputs | None = None,
     reduction: CoherentGaussianReduction | None = None, affine_artifact: AffineFluxMapArtifact | None = None,
     aggregation_error_rank: int | None = 512, merged_data: MergedData | None = None,
+    bc_centering_weights: xr.DataArray | None = None,
 ) -> Co2Output:
     """Prepare or load CO2 inputs, sample and create requested products.
 
@@ -88,7 +91,10 @@ def run_co2(
     Imported runs must supply requested dates and domain explicitly or retain
     them in preparation provenance. Selected prior artifacts and consumed
     preparation/reconstruction files are protected from trace/product output
-    aliases before sampling.
+    aliases before sampling. ``bc_centering_weights`` is stored with a new
+    centered preparation from canonical inputs, as in
+    :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`;
+    weighted additive boundaries require it.
 
     Returns:
         Scientific result containing the trace, concentration components and
@@ -122,6 +128,8 @@ def run_co2(
         if canonical_inputs is not None or supplied_prepared or source is None:
             raise ValueError("Supplied or new coherent preparation requires its matching affine_artifact.")
     consumed_paths = tuple(Path(path) for path in (config_file, params_file) if path is not None)
+    if bc_centering_weights is not None and canonical_inputs is None:
+        raise ValueError("bc_centering_weights apply only to a new preparation from canonical_inputs.")
     if preparation.native is not None:
         if prepared is not None or canonical_inputs is not None or affine_artifact is not None:
             raise ValueError("Configured acquisition builds its own preparation; do not pass prepared inputs.")
@@ -132,7 +140,10 @@ def run_co2(
             merged_data=merged_data,
         )
     elif canonical_inputs is not None and reduction is not None:
-        prepared = prepare_co2_inputs(canonical_inputs, reduction, aggregation_error_rank=aggregation_error_rank)
+        prepared = prepare_co2_inputs(
+            canonical_inputs, reduction, aggregation_error_rank=aggregation_error_rank,
+            bc_centering_weights=bc_centering_weights,
+        )
     elif prepared is None:
         if source is None:
             raise ValueError("Pass prepared inputs or configure prepared_inputs.path.")

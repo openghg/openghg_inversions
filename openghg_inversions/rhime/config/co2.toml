@@ -52,7 +52,8 @@ random_seed = 12345
 # Optional centred additive boundary corrections (observation concentration units).
 # Requires centered operands and bc_centering_weights; replaces BC scaling. A built
 # preparation produces centered operands for this type and reads the weights from
-# prepared_inputs.bc_centering_weights_path.
+# prepared_inputs.bc_centering_weights_path. Python callers preparing from canonical
+# inputs pass bc_centering_weights to prepare_co2_inputs, handoffs.prepare or run_co2.
 # [model.boundary]
 # type = "additive"
 # anomaly_scale = 0.5
