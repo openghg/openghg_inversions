@@ -330,6 +330,45 @@ Dense batches still fill a preallocated complete quadratic observation
 covariance. Changing the batch size changes execution only, not the scientific
 inputs or requested numerical form.
 
+Calibrating native amplitudes
+-----------------------------
+
+:func:`openghg_inversions.native_b_calibration.calibrate_native_b_amplitudes`
+chooses the native grid-cell standard deviation of each source, and optionally
+of each class, so that the prior SD of declared total-flux functionals matches
+requested relative or absolute targets. For source :math:`s` and functional
+weights :math:`w_r` (for example a country mask times cell area) the native
+weights are :math:`q_{sr} = F_s w_r`, and
+
+.. math::
+
+   \operatorname{SD}_{sr} = \sqrt{q_{sr}^\mathsf{T} B_s q_{sr}}
+   = a_s \sqrt{q_{sr}^\mathsf{T} K_L q_{sr}},
+
+where :math:`K_L` is the unit separable exponential kernel with correlation
+length :math:`L`, blocked by class when labels are given. The unit variances
+are evaluated through the covariance action, so dense :math:`B` is never
+formed. One amplitude per source is the least-squares fit in log SD, which is
+the closed form :math:`\log a_s = \operatorname{mean}_r \log(t_{sr} /
+\operatorname{SD}^{\mathrm{unit}}_{sr})` and is exact for one target. Per-class
+amplitudes use a small least-squares fit and require the targets to identify
+every class.
+
+Every combination of the flux's other dimensions, such as ``time``, is
+calibrated independently, so per-month calibration is the default. A frozen
+policy, such as the verification-games production setting of a January-only
+calibration scaled by 1.7 for every month, is expressed by passing those
+amplitudes to ``evaluate_native_b_amplitudes``, which reports achieved against
+target SDs for any amplitudes. ``calibrated_source_covariance`` builds the
+matching :class:`~openghg_inversions.source_covariance.IndependentSourceCovariance`
+for one slice. The amplitudes depend on :math:`L`: with a fixed target, a
+longer correlation raises the unit SD of a same-signed total and lowers the
+amplitude.
+
+This is the native counterpart of
+``basis.prior_uncertainty.calibrate_basis_prior_stdev``, which calibrates
+independent retained basis-state widths instead.
+
 Correspondence with ``verification-games``
 -------------------------------------------
 
@@ -373,6 +412,14 @@ strategy.
        unresolved observation covariance for separable and class-blocked
        covariance. The compatibility-oriented ``PreserveBucketProlongation``
        remains available for bucket bases.
+   * - Native ``B`` amplitude calibration to regional targets
+       (``direct-europe-sector`` mode of
+       ``calibrate_regional_land_b_amplitudes``)
+     - Faithful port for per-source targets
+     - ``calibrate_native_b_amplitudes`` with one target per source reproduces
+       the prototype amplitudes. Its net-biosphere and net-land targets with a
+       GPP/TER cross-correlation, and the robust regularised fit, are not
+       ported because OGI sources are independent.
    * - Cross-source covariance, arbitrary reporting functionals :math:`Q`,
        :math:`B_\perp` products, coherent likelihood reduction, reconstruction,
        and covariance approximation
@@ -384,5 +431,6 @@ API reference
 -------------
 
 See :mod:`openghg_inversions.native_covariance`,
-:mod:`openghg_inversions.source_covariance`, and
+:mod:`openghg_inversions.source_covariance`,
+:mod:`openghg_inversions.native_b_calibration`, and
 :mod:`openghg_inversions.basis.covariance_products` for the public interfaces.
