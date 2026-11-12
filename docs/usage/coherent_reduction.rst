@@ -191,16 +191,23 @@ and the noise parameters, with residual
    Q B_\perp Q^T - Q B_\perp H^T (A + R)^{-1} H B_\perp Q^T\right).
 
 Under the prior, :math:`Q x_\perp \sim N(0, Q B_\perp Q^T)` independently of
-:math:`\alpha`. With the exact :math:`A`, the complete functional mean and
-covariance equal the native-grid Gaussian posterior for any retained
-partition. :func:`openghg_inversions.postprocessing.unresolved_functionals.complete_functional_draws`
+:math:`\alpha`. For a Gaussian retained state and the exact :math:`A`, the
+complete functional mean and covariance equal the native-grid Gaussian
+posterior for any retained partition. With a LogNormal retained state the
+conditioning on each draw remains exact under the reduced model, but the
+reduced model is the moment-matched approximation described in
+`Assumptions and limitations`_, so the result is not the native-grid
+posterior of a LogNormal native field.
+:func:`openghg_inversions.postprocessing.unresolved_functionals.complete_functional_draws`
 adds the conditional mean and one conditional draw to each retained draw. It
-takes :math:`(A + R)^{-1}` as a solve:
+takes :math:`(A + R)^{-1}` as a labelled solve whose observation order is
+checked against the residuals:
 :func:`~openghg_inversions.postprocessing.unresolved_functionals.dense_solve`
 for one fixed dense covariance, or
 :func:`~openghg_inversions.postprocessing.unresolved_functionals.fixed_ou_solve`
 for the fit's low-rank-plus-diagonal :math:`A` with each draw's fixed-OU
-amplitudes.
+amplitudes, selected by chain and draw label. Residuals must carry the units
+of :math:`H`.
 
 For CO2 country totals, build :math:`Q` with
 :func:`~openghg_inversions.postprocessing.co2_flux_outputs.co2_country_functionals`
@@ -209,7 +216,9 @@ and pass an
 to :func:`~openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs`.
 Its outputs then carry ``uncertainty_scope="complete_native"`` and the
 conditioning description; without it they remain
-``"retained_state_conditional"`` and omit the unresolved native state.
+``"retained_state_conditional"`` and omit the unresolved native state. The
+products' :math:`D` must equal the map's own :math:`A F U_*`, which rejects
+products prepared for another partition or covariance.
 
 Use the same :math:`A` in the solve as in the products. The products use the
 exact :math:`B_\perp`, so pairing them with a truncated low-rank :math:`A`
@@ -224,7 +233,11 @@ OU amplitudes.
 When retained states are marginalised into :math:`A`,
 :func:`openghg_inversions.coherent_reduction.marginalise_functional_states`
 moves their functional contribution into :math:`Q x_\perp`, matching a
-reduction with the kept rows of :math:`\Pi`.
+reduction with the kept rows of :math:`\Pi`. For CO2 country outputs, pass
+full-restriction products and declare the marginalised states on the
+conditioning; they must be exactly the fit's inactive states, which are
+otherwise held fixed without their variance and make complete uncertainty
+undefined.
 
 Assumptions and limitations
 ---------------------------

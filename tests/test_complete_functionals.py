@@ -1,5 +1,7 @@
 """Dense Gaussian oracles for complete native functionals of a coherent reduction."""
 
+import copy
+from dataclasses import replace
 import json
 
 import numpy as np
@@ -42,7 +44,8 @@ LENGTHS = {"fossil": 0.9, "biosphere": 1.6}
 # Country borders cross every retained region of both partitions.
 COUNTRY_MAP = np.array([[0, 0, 1, 1], [0, 2, 1, 1], [2, 2, 2, 1]])
 COUNTRY_NAMES = ["FRANCE", "GERMANY", "SPAIN"]
-# Two partitions of the same native grid, per source.
+# Two partitions of the same native grid, per source. Both use the same
+# retained-state labels, so only the products' values tell them apart.
 PARTITIONS = {
     "columns": {"fossil": np.array([[0, 0, 1, 1]] * 3), "biosphere": np.array([[0, 1, 1, 2]] * 3)},
     "rows": {
@@ -51,6 +54,12 @@ PARTITIONS = {
     },
 }
 N_OBSERVATION = 7
+OBSERVATIONS = [f"obs-{index}" for index in range(N_OBSERVATION)]
+SITES = np.array([0, 0, 0, 1, 1, 1, 1])
+HOURS = np.array([0.0, 2.0, 5.0, 0.0, 1.0, 4.0, 9.0])
+TAU = {"MHD": 4.0, "TAC": 2.5}
+NOISE_DIAGONAL = np.array([0.2, 0.25, 0.3, 0.15, 0.2, 0.35, 0.25])
+MARGINALISED = ["fossil-1", "biosphere-2"]
 
 
 def _labelled(values, dims, **extra_coords) -> xr.DataArray:
@@ -94,6 +103,16 @@ def _restriction(partition: str) -> xr.DataArray:
     return _labelled(np.array(rows), ("state", *NATIVE_DIMS), state=labels).assign_attrs(units="1")
 
 
+def _ou(amplitudes) -> np.ndarray:
+    """Return the within-site OU covariance for site amplitudes ordered like ``TAU``."""
+    covariance = np.zeros((N_OBSERVATION, N_OBSERVATION))
+    for site, (amplitude, tau) in enumerate(zip(amplitudes, TAU.values(), strict=True)):
+        rows = np.flatnonzero(SITES == site)
+        lag = np.abs(HOURS[rows, None] - HOURS[None, rows])
+        covariance[np.ix_(rows, rows)] = amplitude**2 * np.exp(-lag / tau)
+    return covariance
+
+
 def _problem():
     """Return one reproducible native problem with an extra Gaussian boundary term."""
     rng = np.random.default_rng(1077)
@@ -105,10 +124,9 @@ def _problem():
     sensitivity = _labelled(
         rng.uniform(0.0, 1.0, size=(N_OBSERVATION, 2, 3, 4)),
         ("observation", *NATIVE_DIMS),
-        observation=[f"obs-{index}" for index in range(N_OBSERVATION)],
+        observation=OBSERVATIONS,
     ).assign_attrs(units="ppm")
-    noise_root = 0.3 * rng.normal(size=(N_OBSERVATION, N_OBSERVATION))
-    noise = noise_root @ noise_root.T + 0.2 * np.eye(N_OBSERVATION)
+    noise = np.diag(NOISE_DIAGONAL) + _ou([0.6, 0.4])
     boundary = rng.normal(size=(N_OBSERVATION, 2))
     boundary_prior = np.diag([0.5, 0.3])
     observations = rng.normal(size=N_OBSERVATION) + sensitivity.values.reshape(N_OBSERVATION, -1) @ (
@@ -127,6 +145,11 @@ def _problem():
     }
 
 
+def _without_boundary(problem):
+    """Return the problem with no boundary term."""
+    return {**problem, "G": np.zeros((N_OBSERVATION, 0)), "P_beta": np.zeros((0, 0))}
+
+
 def _countries() -> Countries:
     """Return a three-country map on the native grid."""
     return Countries(
@@ -137,11 +160,13 @@ def _countries() -> Countries:
     )
 
 
-def _reduce(problem, partition: str, functionals: xr.DataArray, functional_dim: str):
-    """Reduce one partition with its functional products."""
+def _reduce(
+    problem, restriction: xr.DataArray, functionals: xr.DataArray, functional_dim: str = "functional"
+):
+    """Reduce one restriction with its functional products."""
     return reduce_native_gaussian(
         covariance=problem["covariance"],
-        strategy=SuppliedRestriction(_restriction(partition)),
+        strategy=SuppliedRestriction(restriction),
         state_dim="state",
         native_mean=problem["mean"],
         native_sensitivity=problem["sensitivity"],
@@ -153,7 +178,7 @@ def _reduce(problem, partition: str, functionals: xr.DataArray, functional_dim: 
 
 
 def _generic_functionals(problem) -> xr.DataArray:
-    """Return one country total per source as plain native functionals."""
+    """Return one country total per source, plus one border-free functional."""
     rows, labels = [], []
     for index, source in enumerate(SOURCES):
         for country, name in enumerate(COUNTRY_NAMES):
@@ -161,7 +186,6 @@ def _generic_functionals(problem) -> xr.DataArray:
             row[index] = (COUNTRY_MAP == country) * problem["flux"].values[index]
             rows.append(row)
             labels.append(f"{name}/{source}")
-    # A third, border-free functional checks that rows need not be country-shaped.
     rows.append(np.ones((2, 3, 4)))
     labels.append("domain")
     return _labelled(np.array(rows), ("functional", *NATIVE_DIMS), functional=labels).assign_attrs(
@@ -176,12 +200,49 @@ def _flat(array: xr.DataArray, leading: str) -> np.ndarray:
     )
 
 
-def _native_posterior(problem, q: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _observation_covariance(values: np.ndarray) -> xr.DataArray:
+    """Label a dense observation covariance."""
+    return xr.DataArray(
+        values,
+        dims=("observation", "observation_cov"),
+        coords={"observation": OBSERVATIONS, "observation_cov": OBSERVATIONS},
+    )
+
+
+def _samples(values: np.ndarray, dim: str, labels) -> xr.DataArray:
+    """Label ``(chain, draw, dim)`` sample values."""
+    return xr.DataArray(
+        values,
+        dims=("chain", "draw", dim),
+        coords={"chain": np.arange(values.shape[0]), "draw": np.arange(values.shape[1]), dim: labels},
+    )
+
+
+def _residual(values: np.ndarray) -> xr.DataArray:
+    """Label residual draws in the sensitivity units."""
+    return _samples(values, "observation", OBSERVATIONS).assign_attrs(units="ppm")
+
+
+def _native_posterior(
+    problem, q: np.ndarray, noise: np.ndarray | None = None
+) -> tuple[np.ndarray, np.ndarray]:
     """Return the native-grid Gaussian posterior of ``Q x`` with the boundary marginalised."""
     b, h, m = problem["B"], _flat(problem["sensitivity"], "observation"), problem["mean"].values.reshape(-1)
-    s = h @ b @ h.T + problem["G"] @ problem["P_beta"] @ problem["G"].T + problem["R"]
+    noise = problem["R"] if noise is None else noise
+    s = h @ b @ h.T + problem["G"] @ problem["P_beta"] @ problem["G"].T + noise
     gain = q @ b @ h.T @ np.linalg.inv(s)
     return q @ m + gain @ (problem["y"] - h @ m), q @ b @ q.T - gain @ h @ b @ q.T
+
+
+def _native_conditional(problem, q, pi, delta, beta, noise):
+    """Return the native ``E[Q x | Pi x, beta, y]`` and ``Cov[Q x | Pi x, beta, y]``."""
+    b, h, m = problem["B"], _flat(problem["sensitivity"], "observation"), problem["mean"].values.reshape(-1)
+    joint = np.vstack([pi, h])
+    observed_covariance = joint @ b @ joint.T
+    observed_covariance[pi.shape[0] :, pi.shape[0] :] += noise
+    gain = q @ b @ joint.T @ np.linalg.inv(observed_covariance)
+    observed = np.concatenate([delta, problem["y"] - problem["G"] @ beta - h @ m])
+    return q @ m + gain @ observed, q @ b @ q.T - gain @ joint @ b @ q.T
 
 
 def _reduced_posterior(problem, reduction):
@@ -217,6 +278,14 @@ def _complete_moments(problem, reduction) -> tuple[np.ndarray, np.ndarray, np.nd
     return complete_mean, complete_covariance, retained_mean, retained_covariance
 
 
+def _exact_solve(problem, reduction):
+    """Return the dense exact ``A + R`` solve of one reduction."""
+    return dense_solve(
+        _observation_covariance(reduction.unresolved_observation_covariance.values + problem["R"]),
+        description="exact dense A + dense R",
+    )
+
+
 def test_two_partitions_give_the_native_posterior_of_every_functional() -> None:
     """With exact A, complete functionals equal the native posterior for any partition."""
     problem = _problem()
@@ -226,7 +295,7 @@ def test_two_partitions_give_the_native_posterior_of_every_functional() -> None:
 
     complete = {}
     for partition in PARTITIONS:
-        reduction = _reduce(problem, partition, functionals, "functional")
+        reduction = _reduce(problem, _restriction(partition), functionals)
         products = reduction.functional_products
         assert products.functional_mean.get_index("functional").equals(functionals.get_index("functional"))
         assert products.unresolved_observation_covariance.dims == ("functional", "observation")
@@ -239,6 +308,19 @@ def test_two_partitions_give_the_native_posterior_of_every_functional() -> None:
             complete_mean, native_mean, rtol=1e-10, atol=1e-10 * np.abs(native_mean).max()
         )
         np.testing.assert_allclose(complete_covariance, native_covariance, atol=1e-10 * scale)
+        # The production reconstruction is linear in (alpha, beta), so evaluating it
+        # at the posterior mean of (alpha, beta) gives the complete posterior mean.
+        mean_z, _, jacobian, _, innovation = _reduced_posterior(problem, reduction)
+        n_state = products.retained_response.sizes["state"]
+        at_mean = complete_functional_draws(
+            _samples(mean_z[None, None, :n_state], "state", products.retained_response.state),
+            products,
+            residual=_residual((innovation - jacobian @ mean_z)[None, None]),
+            solve=_exact_solve(problem, reduction),
+        )
+        np.testing.assert_allclose(
+            at_mean.values[0, 0], native_mean, rtol=1e-10, atol=1e-10 * np.abs(native_mean).max()
+        )
         # Retained-only output misses both a mean update and unresolved variance.
         assert np.abs(retained_mean - native_mean).max() > 1e-2 * np.abs(native_mean).max()
         assert np.abs(retained_covariance - native_covariance).max() > 1e-2 * scale
@@ -252,7 +334,7 @@ def test_products_match_dense_definitions() -> None:
     """Each product equals its dense definition from B, H, Pi and Q."""
     problem = _problem()
     functionals = _generic_functionals(problem)
-    reduction = _reduce(problem, "columns", functionals, "functional")
+    reduction = _reduce(problem, _restriction("columns"), functionals)
     products = reduction.functional_products
     b, h, q = problem["B"], _flat(problem["sensitivity"], "observation"), _flat(functionals, "functional")
     pi = _flat(_restriction("columns"), "state")
@@ -266,17 +348,19 @@ def test_products_match_dense_definitions() -> None:
         products.unresolved_observation_covariance.values, q @ b_perp @ h.T, atol=1e-11
     )
     np.testing.assert_allclose(products.unresolved_covariance.values, q @ b_perp @ q.T, atol=1e-11)
+    np.testing.assert_allclose(products.retained_covariance.values, reduction.retained_covariance.values)
+    assert products.effective_observation_operator.attrs["units"] == "ppm"
+    assert products.marginalised is None
 
 
 def test_per_draw_conditional_mean_is_the_native_conditional_mean() -> None:
     """Without conditional noise, each draw equals E[Q x | Pi x, beta, y] on the native grid."""
     problem = _problem()
     functionals = _generic_functionals(problem)
-    reduction = _reduce(problem, "rows", functionals, "functional")
+    reduction = _reduce(problem, _restriction("rows"), functionals)
     products = reduction.functional_products
-    b, h, q = problem["B"], _flat(problem["sensitivity"], "observation"), _flat(functionals, "functional")
+    q = _flat(functionals, "functional")
     pi = _flat(_restriction("rows"), "state")
-    m = problem["mean"].values.reshape(-1)
     rng = np.random.default_rng(3)
     delta = rng.normal(size=(2, 3, pi.shape[0]))
     beta = rng.normal(size=(2, 3, 2))
@@ -286,32 +370,20 @@ def test_per_draw_conditional_mean_is_the_native_conditional_mean() -> None:
         - delta @ reduction.effective_observation_operator.values.T
         - beta @ problem["G"].T
     )
-    samples = {"chain": [0, 1], "draw": [0, 1, 2]}
-    observation = reduction.effective_observation_operator.observation
 
     draws = complete_functional_draws(
-        xr.DataArray(
-            delta,
-            dims=("chain", "draw", "state"),
-            coords={**samples, "state": products.retained_response.state},
-        ),
+        _samples(delta, "state", products.retained_response.state),
         products,
-        residual=xr.DataArray(
-            residual, dims=("chain", "draw", "observation"), coords={**samples, "observation": observation}
-        ),
-        solve=dense_solve(reduction.unresolved_observation_covariance.values + problem["R"]),
+        residual=_residual(residual),
+        solve=_exact_solve(problem, reduction),
     )
 
-    joint = np.vstack([pi, h])
-    observed_covariance = joint @ b @ joint.T
-    observed_covariance[pi.shape[0] :, pi.shape[0] :] += problem["R"]
-    gain = q @ b @ joint.T @ np.linalg.inv(observed_covariance)
     for chain in range(2):
         for draw in range(3):
-            observed = np.concatenate(
-                [delta[chain, draw], problem["y"] - beta[chain, draw] @ problem["G"].T - h @ m]
+            expected, _ = _native_conditional(
+                problem, q, pi, delta[chain, draw], beta[chain, draw], problem["R"]
             )
-            np.testing.assert_allclose(draws.values[chain, draw], q @ m + gain @ observed, rtol=1e-9)
+            np.testing.assert_allclose(draws.values[chain, draw], expected, rtol=1e-9)
     assert draws.dims == ("chain", "draw", "functional")
     assert draws.attrs["units"] == "g yr-1"
 
@@ -321,29 +393,18 @@ def test_conditional_draws_reproduce_the_native_posterior_by_monte_carlo() -> No
     problem = _problem()
     functionals = _generic_functionals(problem)
     native_mean, native_covariance = _native_posterior(problem, _flat(functionals, "functional"))
-    reduction = _reduce(problem, "columns", functionals, "functional")
+    reduction = _reduce(problem, _restriction("columns"), functionals)
     products = reduction.functional_products
     mean_z, covariance_z, jacobian, _, innovation = _reduced_posterior(problem, reduction)
-    rng = np.random.default_rng(11)
     count = 40_000
-    z = rng.multivariate_normal(mean_z, covariance_z, size=count)[None]
+    z = np.random.default_rng(11).multivariate_normal(mean_z, covariance_z, size=count)[None]
     n_state = products.retained_response.sizes["state"]
-    samples = {"chain": [0], "draw": np.arange(count)}
 
     draws = complete_functional_draws(
-        xr.DataArray(
-            z[..., :n_state],
-            dims=("chain", "draw", "state"),
-            coords={**samples, "state": products.retained_response.state},
-        ),
+        _samples(z[..., :n_state], "state", products.retained_response.state),
         products,
-        residual=xr.DataArray(
-            innovation - z @ jacobian.T,
-            dims=("chain", "draw", "observation"),
-            coords={**samples, "observation": reduction.effective_observation_operator.observation},
-        ),
-        solve=dense_solve(reduction.unresolved_observation_covariance.values + problem["R"]),
-        noise_varies_by_draw=False,
+        residual=_residual(innovation - z @ jacobian.T),
+        solve=_exact_solve(problem, reduction),
         rng=np.random.default_rng(12),
     ).values[0]
 
@@ -354,35 +415,96 @@ def test_conditional_draws_reproduce_the_native_posterior_by_monte_carlo() -> No
     )
 
 
+def _fixed_ou(reduction, amplitude: xr.DataArray):
+    """Return an LRPD fixed-OU solve whose factor reproduces the exact A of ``reduction``."""
+    eigenvalues, vectors = np.linalg.eigh(reduction.unresolved_observation_covariance.values)
+    keep = eigenvalues > 1e-12 * eigenvalues.max()
+    factor = vectors[:, keep] * np.sqrt(eigenvalues[keep])
+    covariance = prepare_fixed_ou_low_rank(
+        factor,
+        NOISE_DIAGONAL,
+        np.datetime64("2021-01-01T00", "ns") + (HOURS * 3600e9).astype("timedelta64[ns]"),
+        SITES,
+        TAU,
+        site_labels=list(TAU),
+    )
+    return fixed_ou_solve(
+        covariance,
+        amplitude,
+        site_dim="site",
+        observation_index=reduction.effective_observation_operator.indexes["observation"],
+    )
+
+
+def test_low_rank_fixed_ou_draws_use_each_draws_noise() -> None:
+    """LRPD A with draw-specific OU noise conditions each draw on its own R, means and covariances."""
+    problem = _problem()
+    functionals = _generic_functionals(problem)
+    q = _flat(functionals, "functional")
+    pi = _flat(_restriction("columns"), "state")
+    reduction = _reduce(problem, _restriction("columns"), functionals)
+    products = reduction.functional_products
+    count = 20_000
+    amplitudes = np.where((np.arange(count) % 2 == 0)[:, None], [[0.1, 0.1]], [[2.5, 2.0]])
+    # Amplitudes are stored with sites and draws in a different order from the trace.
+    amplitude = xr.DataArray(
+        amplitudes[None, ::-1, ::-1],
+        dims=("chain", "draw", "site"),
+        coords={"chain": [0], "draw": np.arange(count)[::-1], "site": list(TAU)[::-1]},
+    )
+    solve = _fixed_ou(reduction, amplitude)
+    delta = np.zeros((1, count, pi.shape[0]))
+    beta = np.array([0.4, -0.2])
+    residual = np.broadcast_to(
+        problem["y"] - reduction.native_observation_mean.values - problem["G"] @ beta,
+        (1, count, N_OBSERVATION),
+    )
+    state = _samples(delta, "state", products.retained_response.state)
+
+    means = complete_functional_draws(state, products, residual=_residual(residual), solve=solve).values[0]
+    draws = complete_functional_draws(
+        state, products, residual=_residual(residual), solve=solve, rng=np.random.default_rng(2)
+    ).values[0]
+
+    moments = []
+    for parity in (0, 1):
+        noise = np.diag(NOISE_DIAGONAL) + _ou(amplitudes[parity])
+        expected_mean, expected_covariance = _native_conditional(problem, q, pi, delta[0, 0], beta, noise)
+        np.testing.assert_allclose(
+            means[parity::2], np.broadcast_to(expected_mean, means[parity::2].shape), rtol=1e-8
+        )
+        np.testing.assert_allclose(
+            np.cov(draws[parity::2], rowvar=False),
+            expected_covariance,
+            atol=0.05 * np.abs(expected_covariance).max(),
+        )
+        moments.append((expected_mean, expected_covariance))
+    # The two noise levels give conditional covariances that differ by more than
+    # the Monte Carlo tolerance above, so each draw must use its own noise.
+    assert np.abs(moments[0][1] - moments[1][1]).max() > 0.15 * np.abs(moments[0][1]).max()
+
+
 def test_prior_draws_add_the_unresolved_prior_covariance() -> None:
     """Prior functional draws have covariance Q B Q.T, not only D C_alpha D.T."""
     problem = _problem()
     functionals = _generic_functionals(problem)
     q = _flat(functionals, "functional")
-    reduction = _reduce(problem, "rows", functionals, "functional")
+    reduction = _reduce(problem, _restriction("rows"), functionals)
     products = reduction.functional_products
-    rng = np.random.default_rng(5)
     count = 40_000
-    delta = rng.multivariate_normal(
+    delta = np.random.default_rng(5).multivariate_normal(
         np.zeros(reduction.retained_covariance.shape[0]), reduction.retained_covariance.values, size=count
     )
     draws = complete_functional_draws(
-        xr.DataArray(
-            delta[None],
-            dims=("chain", "draw", "state"),
-            coords={"chain": [0], "draw": np.arange(count), "state": products.retained_response.state},
-        ),
+        _samples(delta[None], "state", products.retained_response.state),
         products,
         rng=np.random.default_rng(6),
     ).values[0]
 
     prior = q @ problem["B"] @ q.T
     np.testing.assert_allclose(np.cov(draws, rowvar=False), prior, atol=0.04 * np.abs(prior).max())
-    retained = (
-        products.retained_response.values
-        @ reduction.retained_covariance.values
-        @ products.retained_response.values.T
-    )
+    d = products.retained_response.values
+    retained = d @ reduction.retained_covariance.values @ d.T
     assert np.abs(retained - prior).max() > 0.1 * np.abs(prior).max()
 
 
@@ -390,25 +512,12 @@ def test_marginalised_states_move_into_the_unresolved_products() -> None:
     """Marginalising states equals reducing with the kept rows of Pi, with zero D columns."""
     problem = _problem()
     functionals = _generic_functionals(problem)
-    full = _reduce(problem, "rows", functionals, "functional")
     restriction = _restriction("rows")
-    marginalised = restriction.state.isin(["fossil-1", "biosphere-2"])
-    kept = reduce_native_gaussian(
-        covariance=problem["covariance"],
-        strategy=SuppliedRestriction(restriction.sel(state=~marginalised)),
-        state_dim="state",
-        native_mean=problem["mean"],
-        native_sensitivity=problem["sensitivity"],
-        observation_dim="observation",
-        functionals=functionals,
-    ).functional_products
+    full = _reduce(problem, restriction, functionals)
+    marginalised = restriction.state.isin(MARGINALISED)
+    kept = _reduce(problem, restriction.sel(state=~marginalised), functionals).functional_products
 
-    result = marginalise_functional_states(
-        full.functional_products,
-        retained_covariance=full.retained_covariance,
-        effective_observation_operator=full.effective_observation_operator,
-        marginalised=marginalised,
-    )
+    result = marginalise_functional_states(full.functional_products, marginalised)
 
     np.testing.assert_allclose(
         result.retained_response.sel(state=~marginalised), kept.retained_response, atol=1e-12
@@ -418,13 +527,40 @@ def test_marginalised_states_move_into_the_unresolved_products() -> None:
         result.unresolved_observation_covariance, kept.unresolved_observation_covariance, atol=1e-11
     )
     np.testing.assert_allclose(result.unresolved_covariance, kept.unresolved_covariance, atol=1e-11)
-    unchanged = marginalise_functional_states(
-        full.functional_products,
-        retained_covariance=full.retained_covariance,
-        effective_observation_operator=full.effective_observation_operator,
-        marginalised=xr.zeros_like(marginalised),
+    assert result.marginalised.values.tolist() == marginalised.values.tolist()
+    assert marginalise_functional_states(full.functional_products, xr.zeros_like(marginalised)) is (
+        full.functional_products
     )
-    assert unchanged is full.functional_products
+    with pytest.raises(ValueError, match="already marginalised"):
+        marginalise_functional_states(result, marginalised)
+
+
+def test_complete_draws_validate_units_labels_and_order() -> None:
+    """Residual units, solve observation order and sample labels are checked."""
+    problem = _problem()
+    reduction = _reduce(problem, _restriction("rows"), _generic_functionals(problem))
+    products = reduction.functional_products
+    state = _samples(
+        np.zeros((1, 2, products.retained_response.sizes["state"])), "state", products.retained_response.state
+    )
+    residual = _residual(np.zeros((1, 2, N_OBSERVATION)))
+    solve = _exact_solve(problem, reduction)
+
+    with pytest.raises(ValueError, match="differ in scale"):
+        complete_functional_draws(state, products, residual=residual.assign_attrs(units="ppb"), solve=solve)
+    unitless = residual.copy()
+    unitless.attrs = {}
+    with pytest.raises(ValueError, match="must carry units"):
+        complete_functional_draws(state, products, residual=unitless, solve=solve)
+    reversed_solve = dense_solve(
+        _observation_covariance(np.eye(N_OBSERVATION)).isel(
+            observation=slice(None, None, -1), observation_cov=slice(None, None, -1)
+        )
+    )
+    with pytest.raises(ValueError, match="different observation labels or order"):
+        complete_functional_draws(state, products, residual=residual, solve=reversed_solve)
+    with pytest.raises(ValueError, match="'draw' labels"):
+        complete_functional_draws(state, products, residual=residual.assign_coords(draw=[5, 6]), solve=solve)
 
 
 def test_functional_products_reject_mismatched_dimensions() -> None:
@@ -432,20 +568,26 @@ def test_functional_products_reject_mismatched_dimensions() -> None:
     problem = _problem()
     functionals = _generic_functionals(problem).isel({SOURCE_DIM: 0})
     with pytest.raises(ValueError, match="Functionals must have dimensions"):
-        _reduce(problem, "rows", functionals, "functional")
+        _reduce(problem, _restriction("rows"), functionals)
 
 
-def _co2_setup(partition: str):
-    """Return a bound CO2 map, its country functionals and products for one partition."""
+def _co2_setup(partition: str, countries: Countries | None = None, functional_partition: str | None = None):
+    """Return a bound CO2 map for ``partition`` and country products for ``functional_partition``."""
     problem = _problem()
-    covariance_products = project_native_covariance(
-        covariance=problem["covariance"],
-        strategy=SuppliedRestriction(_restriction(partition)),
-        state_dim="state",
-        native_sensitivity=problem["sensitivity"],
-        observation_dim="observation",
-    )
-    reduction = _reduce(problem, partition, _generic_functionals(problem), "functional")
+    countries = _countries() if countries is None else countries
+
+    def products_for(name: str):
+        """Return covariance products of one partition."""
+        return project_native_covariance(
+            covariance=problem["covariance"],
+            strategy=SuppliedRestriction(_restriction(name)),
+            state_dim="state",
+            native_sensitivity=problem["sensitivity"],
+            observation_dim="observation",
+        )
+
+    covariance_products = products_for(partition)
+    reduction = _reduce(problem, _restriction(partition), _generic_functionals(problem))
     mapping = AffineFluxMap(
         problem["mean"], problem["flux"], covariance_products.prolongation, state_dim="state"
     )
@@ -453,11 +595,10 @@ def _co2_setup(partition: str):
         AffineFluxMapArtifact(mapping, "fixture", {"projection_strategy": "supplied"}, {}),
         reduction.retained_mean,
     )
-    countries = _countries()
-    functionals = co2_country_functionals(bound, countries)
+    functionals = co2_country_functionals(bound, countries, source_dim=SOURCE_DIM)
     products = project_native_functionals(
         covariance=problem["covariance"],
-        products=covariance_products,
+        products=products_for(functional_partition or partition),
         functionals=functionals,
         functional_dim="country_functional",
         native_mean=problem["mean"],
@@ -467,30 +608,38 @@ def _co2_setup(partition: str):
     return problem, reduction, bound, countries, functionals, products
 
 
-def _co2_trace(problem, reduction, count: int) -> tuple[xr.DataTree, xr.DataArray]:
-    """Return a CO2 trace with exact reduced posterior draws and their residuals (no boundary)."""
-    h_alpha = reduction.effective_observation_operator.values
-    c = reduction.retained_covariance.values
+def _co2_trace(
+    problem, reduction, count: int, *, fixed: xr.DataArray | None = None
+) -> tuple[xr.DataTree, xr.DataArray]:
+    """Return a CO2 trace with exact reduced posterior draws and their residuals (no boundary).
+
+    ``reduction`` is the reduction the fit used. With ``fixed``, the trace
+    records those states as inactive and holds them at their prior mean.
+    """
+    state_labels = reduction.retained_mean.state
+    active = (
+        np.ones(state_labels.size, dtype=bool) if fixed is None else ~np.asarray(fixed.values, dtype=bool)
+    )
+    h_alpha = reduction.effective_observation_operator.values[:, active]
+    c = reduction.retained_covariance.values[np.ix_(active, active)]
     weight = np.linalg.inv(reduction.unresolved_observation_covariance.values + problem["R"])
     innovation = problem["y"] - reduction.native_observation_mean.values
     covariance = np.linalg.inv(np.linalg.inv(c) + h_alpha.T @ weight @ h_alpha)
     mean = covariance @ h_alpha.T @ weight @ innovation
     rng = np.random.default_rng(21)
-    states = reduction.retained_mean.values
-    posterior = rng.multivariate_normal(mean, covariance, size=count)[None]
-    prior = rng.multivariate_normal(np.zeros_like(mean), c, size=count)[None]
-    samples = {"chain": [0], "draw": np.arange(count)}
+    posterior = np.zeros((1, count, state_labels.size))
+    posterior[..., active] = rng.multivariate_normal(mean, covariance, size=count)
+    prior = np.zeros((1, count, state_labels.size))
+    prior[..., active] = rng.multivariate_normal(np.zeros_like(mean), c, size=count)
     groups = {}
     for group, delta in {"posterior": posterior, "prior": prior}.items():
-        groups[group] = xr.Dataset(
-            {
-                "flux_scaling": xr.DataArray(
-                    states + delta,
-                    dims=("chain", "draw", "state"),
-                    coords={**samples, "state": reduction.retained_mean.state},
-                    attrs={"units": "1"},
-                )
-            }
+        draws = _samples(reduction.retained_mean.values + delta, "state", state_labels).assign_attrs(
+            units="1"
+        )
+        groups[group] = xr.Dataset({"flux_scaling": draws})
+    if fixed is not None:
+        groups["constant_data"] = xr.Dataset(
+            {"flux_scaling_is_active": xr.DataArray(active, dims="state", coords={"state": state_labels})}
         )
     groups["/"] = xr.Dataset(
         attrs={
@@ -498,47 +647,20 @@ def _co2_trace(problem, reduction, count: int) -> tuple[xr.DataTree, xr.DataArra
             "rhime_variable_roles": json.dumps({"flux_scale": "flux_scaling"}),
         }
     )
-    residual = xr.DataArray(
-        innovation - posterior @ h_alpha.T,
-        dims=("chain", "draw", "observation"),
-        coords={**samples, "observation": reduction.effective_observation_operator.observation},
-    )
-    return xr.DataTree.from_dict(groups), residual
+    return xr.DataTree.from_dict(groups), _residual(innovation - posterior[..., active] @ h_alpha.T)
 
 
-def test_co2_country_outputs_report_complete_native_country_totals() -> None:
-    """Complete multisource country totals sample the native posterior; retained-only does not."""
-    problem, reduction, bound, countries, functionals, products = _co2_setup("columns")
-    count = 20_000
-    trace, residual = _co2_trace(problem, reduction, count)
-    q = _flat(functionals, "country_functional")
-    native_mean, native_covariance = _native_posterior(
-        {**problem, "G": np.zeros((N_OBSERVATION, 0)), "P_beta": np.zeros((0, 0))}, q
-    )
-    # Totals over sources: rows are (country, source) in stacked order.
+def _country_totals(functionals: xr.DataArray) -> np.ndarray:
+    """Return the matrix summing (country, source) rows into country totals."""
     labels = functionals.get_index("country_functional")
-    total = np.array([[label[0] == country for label in labels] for country in COUNTRY_NAMES], dtype=float)
-    unresolved = UnresolvedFunctionalConditioning(
-        products=products,
-        residual=residual,
-        solve=dense_solve(reduction.unresolved_observation_covariance.values + problem["R"]),
-        description="exact dense A + fixed dense R",
-        noise_varies_by_draw=False,
-        seed=4,
-    )
+    return np.array([[label[0] == country for label in labels] for country in COUNTRY_NAMES], dtype=float)
 
-    result = co2_country_flux_outputs(trace, bound, countries, unresolved=unresolved)
-    retained_only = co2_country_flux_outputs(trace, bound, countries)
 
-    assert result.attrs["uncertainty_scope"] == "complete_native"
-    assert result.attrs["unresolved_conditioning"] == "exact dense A + fixed dense R"
-    assert retained_only.attrs["uncertainty_scope"] == "retained_state_conditional"
-    assert "unresolved_conditioning" not in retained_only.attrs
-    for variable in result.data_vars.values():
-        assert variable.attrs["uncertainty_scope"] == "complete_native"
-        assert variable.attrs["units"] == "g yr-1"
-    assert result.country.values.tolist() == COUNTRY_NAMES
-
+def _assert_matches_native(result, problem, functionals, count: int) -> None:
+    """Complete country totals sample the native posterior within Monte Carlo error."""
+    q = _flat(functionals, "country_functional")
+    native_mean, native_covariance = _native_posterior(_without_boundary(problem), q)
+    total = _country_totals(functionals)
     total_mean = total @ native_mean
     total_sd = np.sqrt(np.diag(total @ native_covariance @ total.T))
     np.testing.assert_array_less(
@@ -548,19 +670,47 @@ def test_co2_country_outputs_report_complete_native_country_totals() -> None:
     np.testing.assert_allclose(
         result.country_total_posterior_stdev.sel(country=COUNTRY_NAMES), total_sd, rtol=0.03
     )
-    per_source = result.country_posterior_mean.transpose("country", SOURCE_DIM).values
-    expected_per_source = np.array(
-        [[native_mean[labels.get_loc((c, s))] for s in SOURCES] for c in COUNTRY_NAMES]
+
+
+def test_co2_country_outputs_report_complete_native_country_totals() -> None:
+    """Complete multisource country totals sample the native posterior; retained-only does not."""
+    problem, reduction, bound, countries, functionals, products = _co2_setup("columns")
+    count = 20_000
+    trace, residual = _co2_trace(problem, reduction, count)
+    q = _flat(functionals, "country_functional")
+    native_mean, native_covariance = _native_posterior(_without_boundary(problem), q)
+    labels = functionals.get_index("country_functional")
+    unresolved = UnresolvedFunctionalConditioning(
+        products=products, residual=residual, solve=_exact_solve(problem, reduction), seed=4
     )
+
+    result = co2_country_flux_outputs(trace, bound, countries, unresolved=unresolved)
+    retained_only = co2_country_flux_outputs(trace, bound, countries)
+
+    assert result.attrs["uncertainty_scope"] == "complete_native"
+    assert result.attrs["unresolved_conditioning"] == "exact dense A + dense R"
+    assert result.attrs["marginalised_state_count"] == "0"
+    assert retained_only.attrs["uncertainty_scope"] == "retained_state_conditional"
+    assert "unresolved_conditioning" not in retained_only.attrs
+    for variable in result.data_vars.values():
+        assert variable.attrs["uncertainty_scope"] == "complete_native"
+        assert variable.attrs["units"] == "g yr-1"
+    assert result.country.values.tolist() == COUNTRY_NAMES
+
+    _assert_matches_native(result, problem, functionals, count)
+    per_source = result.country_posterior_mean.transpose("country", SOURCE_DIM).values
+    expected = np.array([[native_mean[labels.get_loc((c, s))] for s in SOURCES] for c in COUNTRY_NAMES])
     source_sd = np.sqrt(np.diag(native_covariance))
     expected_sd = np.array([[source_sd[labels.get_loc((c, s))] for s in SOURCES] for c in COUNTRY_NAMES])
-    np.testing.assert_array_less(np.abs(per_source - expected_per_source), 5 * expected_sd / np.sqrt(count))
+    np.testing.assert_array_less(np.abs(per_source - expected), 5 * expected_sd / np.sqrt(count))
 
+    total = _country_totals(functionals)
     prior_sd = np.sqrt(np.diag(total @ q @ problem["B"] @ q.T @ total.T))
     np.testing.assert_allclose(
         result.country_total_prior_stdev.sel(country=COUNTRY_NAMES), prior_sd, rtol=0.03
     )
     # The retained-only output is materially different when unresolved variance is non-zero.
+    total_sd = np.sqrt(np.diag(total @ native_covariance @ total.T))
     retained_sd = retained_only.country_total_posterior_stdev.sel(country=COUNTRY_NAMES).values
     assert np.abs(retained_sd - total_sd).max() > 0.1 * total_sd.max()
 
@@ -572,11 +722,7 @@ def test_co2_complete_outputs_agree_across_partitions() -> None:
         problem, reduction, bound, countries, _, products = _co2_setup(partition)
         trace, residual = _co2_trace(problem, reduction, 20_000)
         unresolved = UnresolvedFunctionalConditioning(
-            products=products,
-            residual=residual,
-            solve=dense_solve(reduction.unresolved_observation_covariance.values + problem["R"]),
-            description="exact",
-            noise_varies_by_draw=False,
+            products=products, residual=residual, solve=_exact_solve(problem, reduction)
         )
         summaries.append(co2_country_flux_outputs(trace, bound, countries, unresolved=unresolved))
     first, second = summaries
@@ -585,56 +731,102 @@ def test_co2_complete_outputs_agree_across_partitions() -> None:
     xr.testing.assert_allclose(sd, second.country_total_posterior_stdev, rtol=0.05)
 
 
-def test_co2_country_outputs_reject_products_for_another_functional() -> None:
-    """Products prepared for a different functional or mean fail clearly."""
+def test_co2_country_outputs_reject_products_for_another_functional_or_partition() -> None:
+    """Products prepared for a different functional, mean or partition fail clearly."""
     problem, reduction, bound, countries, _, products = _co2_setup("rows")
     trace, residual = _co2_trace(problem, reduction, 4)
-    wrong = NativeFunctionalProducts(
-        functional_mean=products.functional_mean * 2.0,
-        retained_response=products.retained_response,
-        unresolved_observation_covariance=products.unresolved_observation_covariance,
-        unresolved_covariance=products.unresolved_covariance,
-    )
-    unresolved = UnresolvedFunctionalConditioning(
-        products=wrong,
-        residual=residual,
-        solve=dense_solve(np.eye(N_OBSERVATION)),
-        description="wrong",
-    )
+
+    def conditioning(candidate):
+        """Wrap candidate products with this fit's residual and solve."""
+        return UnresolvedFunctionalConditioning(
+            products=candidate, residual=residual, solve=_exact_solve(problem, reduction)
+        )
+
+    wrong_mean = replace(products, functional_mean=products.functional_mean * 2.0)
     with pytest.raises(ValueError, match="different country functional or native mean"):
-        co2_country_flux_outputs(trace, bound, countries, unresolved=unresolved)
+        co2_country_flux_outputs(trace, bound, countries, unresolved=conditioning(wrong_mean))
+    # Same state labels, same Q m, different partition.
+    *_, other_partition = _co2_setup("rows", functional_partition="columns")
+    with pytest.raises(ValueError, match="different retained partition or covariance"):
+        co2_country_flux_outputs(trace, bound, countries, unresolved=conditioning(other_partition))
+    marginalised = marginalise_functional_states(
+        products, products.retained_response.state.isin(MARGINALISED)
+    )
+    with pytest.raises(ValueError, match="full-restriction functional products"):
+        co2_country_flux_outputs(trace, bound, countries, unresolved=conditioning(marginalised))
 
 
-def test_fixed_ou_solve_uses_each_draws_site_amplitudes() -> None:
-    """The fixed-OU solve inverts LRPD A plus each draw's OU noise, in the covariance's site order."""
-    rng = np.random.default_rng(8)
-    times = np.array(["2021-01-01T00", "2021-01-01T03", "2021-01-01T00", "2021-01-01T07", "2021-01-01T09"])
-    times = times.astype("datetime64[ns]")
-    site_index = np.array([0, 0, 1, 1, 0])
-    factor = rng.normal(size=(5, 2))
-    diagonal = rng.uniform(0.1, 0.3, size=5)
-    covariance = prepare_fixed_ou_low_rank(
-        factor, diagonal, times, site_index, {"MHD": 5.0, "TAC": 2.0}, site_labels=["MHD", "TAC"]
+def test_co2_inactive_states_require_and_use_declared_marginalisation() -> None:
+    """A fit that marginalised states into A gives the native posterior only when they are declared."""
+    problem, full, bound, countries, functionals, products = _co2_setup("rows")
+    marginalised = full.retained_mean.state.isin(MARGINALISED)
+    # The fit used the kept-row reduction: its A absorbed the marginalised states.
+    kept = _reduce(problem, _restriction("rows").sel(state=~marginalised), _generic_functionals(problem))
+    fit = replace(
+        full,
+        effective_observation_operator=kept.effective_observation_operator.reindex(
+            state=full.retained_mean.state, fill_value=0.0
+        ),
+        unresolved_observation_covariance=kept.unresolved_observation_covariance,
     )
-    # Amplitudes are stored in a different site order from the covariance.
-    amplitude = xr.DataArray(
-        rng.uniform(0.5, 1.5, size=(2, 3, 2)),
-        dims=("chain", "draw", "site"),
-        coords={"chain": [0, 1], "draw": [0, 1, 2], "site": ["TAC", "MHD"]},
+    count = 20_000
+    trace, residual = _co2_trace(problem, fit, count, fixed=marginalised)
+    solve = _exact_solve(problem, kept)
+
+    with pytest.raises(ValueError, match="inactive states must be exactly the states marginalised"):
+        co2_country_flux_outputs(
+            trace, bound, countries, unresolved=UnresolvedFunctionalConditioning(products, residual, solve)
+        )
+    result = co2_country_flux_outputs(
+        trace,
+        bound,
+        countries,
+        unresolved=UnresolvedFunctionalConditioning(products, residual, solve, marginalised=marginalised),
     )
-    solve = fixed_ou_solve(covariance, amplitude, site_dim="site")
-    rhs = rng.normal(size=(5, 3))
-    hours = (times - times[0]) / np.timedelta64(1, "h")
-    for chain in range(2):
-        for draw in range(3):
-            dense = factor @ factor.T + np.diag(diagonal)
-            for site, tau in (("MHD", 5.0), ("TAC", 2.0)):
-                rows = np.flatnonzero(site_index == ["MHD", "TAC"].index(site))
-                lag = np.abs(hours[rows, None] - hours[None, rows])
-                dense[np.ix_(rows, rows)] += float(
-                    amplitude.sel(site=site).values[chain, draw]
-                ) ** 2 * np.exp(-lag / tau)
-            np.testing.assert_allclose(solve(rhs, chain, draw), np.linalg.solve(dense, rhs), rtol=1e-9)
+
+    assert result.attrs["marginalised_state_count"] == "2"
+    _assert_matches_native(result, problem, functionals, count)
+
+
+def test_country_membership_may_vary_by_source() -> None:
+    """Source-specific membership gives each source its own country rows."""
+    countries = _countries()
+    by_source = copy.copy(countries)
+    biosphere_map = xr.DataArray(
+        (np.arange(12).reshape(3, 4) % 3 == np.arange(3)[:, None, None]).astype(float),
+        dims=("country", "lat", "lon"),
+        coords={"country": countries.matrix.country.values, "lat": LATITUDE, "lon": LONGITUDE},
+    )
+    by_source.matrix = xr.concat(
+        [to_dense(countries.matrix).transpose("country", "lat", "lon"), biosphere_map],
+        dim=xr.DataArray(list(SOURCES), dims=SOURCE_DIM),
+    )
+    problem, reduction, bound, _, functionals, products = _co2_setup("rows", countries=by_source)
+
+    rows = to_dense(functionals).sel(country_functional=("SPAIN", "biosphere"))
+    weights = to_dense(by_source.matrix * by_source.area_grid).sel(
+        {"country": "SPAIN", SOURCE_DIM: "biosphere"}
+    )
+    flux = problem["flux"].sel({SOURCE_DIM: "biosphere"})
+    np.testing.assert_allclose(
+        rows.sel({SOURCE_DIM: "biosphere"}).values,
+        (weights * flux).values * 44.01 * 365 * 24 * 3600,
+        rtol=1e-4,
+    )
+    np.testing.assert_array_equal(rows.sel({SOURCE_DIM: "fossil"}).values, 0.0)
+    trace, residual = _co2_trace(problem, reduction, 50)
+    retained = co2_country_flux_outputs(trace, bound, by_source)
+    complete = co2_country_flux_outputs(
+        trace,
+        bound,
+        by_source,
+        unresolved=UnresolvedFunctionalConditioning(products, residual, _exact_solve(problem, reduction)),
+    )
+    assert (
+        retained.country_total_posterior_mean.dims
+        == complete.country_total_posterior_mean.dims
+        == ("country",)
+    )
 
 
 def test_single_source_country_functionals_have_one_row_per_country() -> None:
@@ -657,40 +849,36 @@ def test_single_source_country_functionals_have_one_row_per_country() -> None:
     functionals = co2_country_functionals(bound, countries)
     assert functionals.dims == ("country_functional", "lat", "lon")
     assert functionals.get_index("country_functional").names == ["country"]
+    q = np.asarray(to_dense(functionals).values).reshape(3, -1)
     weights = to_dense(countries.matrix * countries.area_grid).transpose("country", "lat", "lon").values
-    np.testing.assert_allclose(
-        _two_dimensional(functionals),
-        (weights * flux.values).reshape(3, -1) * 44.01 * 365 * 24 * 3600,
-        rtol=1e-4,
-    )
-    count = 3
+    np.testing.assert_allclose(q, (weights * flux.values).reshape(3, -1) * 44.01 * 365 * 24 * 3600, rtol=1e-4)
+
+    functional_coords = functionals.country_functional.coords
     products = NativeFunctionalProducts(
         functional_mean=xr.DataArray(
-            _two_dimensional(functionals) @ mean.values.reshape(-1),
-            dims="country_functional",
-            coords=functionals.country_functional.coords,
+            q @ mean.values.reshape(-1), dims="country_functional", coords=functional_coords
         ),
         retained_response=xr.DataArray(
-            _two_dimensional(functionals) @ prolongation.values.reshape(-1, 2),
+            q @ prolongation.values.reshape(-1, 2),
             dims=("country_functional", "state"),
-            coords={**functionals.country_functional.coords, "state": ["a", "b"]},
+            coords={**functional_coords, "state": ["a", "b"]},
         ),
         unresolved_observation_covariance=xr.DataArray(
             np.zeros((3, 1)),
             dims=("country_functional", "observation"),
-            coords={**functionals.country_functional.coords, "observation": ["obs"]},
+            coords={**functional_coords, "observation": ["obs"]},
         ),
         unresolved_covariance=xr.DataArray(
             np.zeros((3, 3)), dims=("country_functional", "country_functional_cov")
         ),
+        retained_covariance=xr.DataArray(np.eye(2), dims=("state", "state_cov")),
+        effective_observation_operator=xr.DataArray(
+            np.zeros((1, 2)),
+            dims=("observation", "state"),
+            coords={"observation": ["obs"], "state": ["a", "b"]},
+        ),
     )
-    samples = {"chain": [0], "draw": np.arange(count)}
-    state = xr.DataArray(
-        np.ones((1, count, 2)),
-        dims=("chain", "draw", "state"),
-        coords={**samples, "state": ["a", "b"]},
-        attrs={"units": "1"},
-    )
+    state = _samples(np.ones((1, 3, 2)), "state", ["a", "b"]).assign_attrs(units="1")
     trace = xr.DataTree.from_dict(
         {
             "posterior": xr.Dataset({"flux_scaling": state}),
@@ -703,16 +891,11 @@ def test_single_source_country_functionals_have_one_row_per_country() -> None:
             ),
         }
     )
-    unresolved = UnresolvedFunctionalConditioning(
-        products=products,
-        residual=xr.DataArray(
-            np.zeros((1, count, 1)),
-            dims=("chain", "draw", "observation"),
-            coords={**samples, "observation": ["obs"]},
-        ),
-        solve=dense_solve(np.eye(1)),
-        description="zero unresolved",
+    solve = dense_solve(
+        xr.DataArray(np.eye(1), dims=("observation", "observation_cov"), coords={"observation": ["obs"]})
     )
+    residual = _samples(np.zeros((1, 3, 1)), "observation", ["obs"])
+    unresolved = UnresolvedFunctionalConditioning(products, residual, solve)
     complete = co2_country_flux_outputs(trace, bound, countries, unresolved=unresolved)
     retained = co2_country_flux_outputs(trace, bound, countries)
     assert complete.country_total_posterior_mean.dims == ("country",)
@@ -721,8 +904,3 @@ def test_single_source_country_functionals_have_one_row_per_country() -> None:
         retained.country_total_posterior_mean,
         rtol=1e-6,
     )
-
-
-def _two_dimensional(functionals: xr.DataArray) -> np.ndarray:
-    """Return a single-source functional matrix with one column per cell."""
-    return np.asarray(to_dense(functionals).values).reshape(functionals.sizes["country_functional"], -1)

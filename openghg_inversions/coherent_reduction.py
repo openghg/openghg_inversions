@@ -63,9 +63,12 @@ class NativeFunctionalProducts:
     - covariance ``Q B_perp Q.T - Q B_perp H.T (A + R)^-1 H B_perp Q.T``.
 
     Under the prior, ``Q x_perp`` is independent of ``alpha`` with covariance
-    ``Q B_perp Q.T``. With the exact ``A`` the resulting functional mean and
-    covariance equal the native-grid Gaussian posterior for any retained
-    partition.
+    ``Q B_perp Q.T``. For a Gaussian retained state and the exact ``A``, the
+    resulting functional mean and covariance equal the native-grid Gaussian
+    posterior for any retained partition. With a LogNormal retained state the
+    conditioning on each draw is still exact under the reduced model, but the
+    reduced model itself is the moment-matched approximation described under
+    "Assumptions and limitations" in the coherent-reduction guide.
 
     Attributes:
         functional_mean: ``Q m`` on the functional axis, in the functional's
@@ -76,12 +79,23 @@ class NativeFunctionalProducts:
             ``(functional_dim, observation_dim)``.
         unresolved_covariance: Positive-semidefinite ``Q B_perp Q.T`` on
             distinct functional row and column axes.
+        retained_covariance: ``C_alpha`` of the full-restriction reduction the
+            products were computed for. It identifies that reduction and is
+            needed to marginalise states later.
+        effective_observation_operator: ``H_alpha`` of that reduction, with
+            the sensitivity units the residuals must use.
+        marginalised: Boolean state mask of states already moved into the
+            unresolved part by :func:`marginalise_functional_states`, or
+            ``None`` for full-restriction products.
     """
 
     functional_mean: xr.DataArray
     retained_response: xr.DataArray
     unresolved_observation_covariance: xr.DataArray
     unresolved_covariance: xr.DataArray
+    retained_covariance: xr.DataArray
+    effective_observation_operator: xr.DataArray
+    marginalised: xr.DataArray | None = None
 
     @property
     def functional_dim(self) -> str:
@@ -362,14 +376,13 @@ def project_native_functionals(
                 **square_attrs,
             },
         ),
+        retained_covariance=products.state_covariance,
+        effective_observation_operator=effective,
     )
 
 
 def marginalise_functional_states(
     products: NativeFunctionalProducts,
-    *,
-    retained_covariance: xr.DataArray,
-    effective_observation_operator: xr.DataArray,
     marginalised: xr.DataArray,
 ) -> NativeFunctionalProducts:
     """Move marginalised retained states of functional products into ``x_perp``.
@@ -382,35 +395,36 @@ def marginalise_functional_states(
     ``Q B'_perp Q.T = Q B_perp Q.T + D_M S D_M.T``, where ``H_M`` are the
     marginalised columns of ``H_alpha``. Marginalised states' functional
     contribution then goes through the unresolved path, consistently with an
-    ``A`` that absorbed ``H_M S H_M.T``. Inputs are borrowed.
+    ``A`` that absorbed ``H_M S H_M.T``. A reduction that marginalises states
+    into ``A`` must apply this to its functional products as well. Inputs are
+    borrowed.
 
     Args:
-        products: Functional products of the full-restriction reduction.
-        retained_covariance: That reduction's ``C_alpha``.
-        effective_observation_operator: That reduction's ``H_alpha``.
+        products: Full-restriction functional products, carrying that
+            reduction's ``C_alpha`` and ``H_alpha``.
         marginalised: Boolean mask on the retained-state axis; ``True``
             marks a state to integrate out.
 
     Returns:
         Products for the kept-state reduction on the full state axis, so a
         marginalised state held at its prior mean contributes nothing through
-        ``D``. Unchanged products when no state is marginalised.
+        ``D``, with ``marginalised`` recorded. Unchanged products when no
+        state is marginalised.
 
     Raises:
-        ValueError: If state or observation labels differ between inputs, or
-            every state is marginalised.
+        ValueError: If the products were already marginalised, state labels
+            differ, or every state is marginalised.
     """
+    if products.marginalised is not None:
+        raise ValueError(
+            "Functional products are already marginalised; start from full-restriction products."
+        )
     state_dim = products.state_dim
-    observation_dim = products.observation_dim
     state_index = products.retained_response.indexes[state_dim]
-    effective = effective_observation_operator.transpose(observation_dim, state_dim)
-    covariance = retained_covariance.transpose(state_dim, ...)
-    for name, array in (("C_alpha", covariance), ("H_alpha", effective), ("marginalised", marginalised)):
-        if not same_index(array.indexes[state_dim], state_index):
-            raise ValueError(f"{name} state labels differ from the functional products.")
-    observation_index = products.unresolved_observation_covariance.indexes[observation_dim]
-    if not same_index(effective.indexes[observation_dim], observation_index):
-        raise ValueError("H_alpha observation labels differ from the functional products.")
+    if marginalised.dims != (state_dim,) or not same_index(marginalised.indexes[state_dim], state_index):
+        raise ValueError("The marginalised mask must use the functional products' state labels.")
+    covariance = products.retained_covariance
+    effective = products.effective_observation_operator
     mask = np.asarray(marginalised.values, dtype=bool)
     if not mask.any():
         return products
@@ -427,13 +441,14 @@ def marginalise_functional_states(
     response = np.zeros_like(d)
     response[:, kept] = d[:, kept] + d_m @ gain
     unresolved = products.unresolved_covariance.values + d_m @ schur @ d_m.T
-    return NativeFunctionalProducts(
-        functional_mean=products.functional_mean,
+    return replace(
+        products,
         retained_response=products.retained_response.copy(data=response),
         unresolved_observation_covariance=products.unresolved_observation_covariance.copy(
             data=products.unresolved_observation_covariance.values + d_m @ schur @ h_m.T
         ),
         unresolved_covariance=products.unresolved_covariance.copy(data=(unresolved + unresolved.T) * 0.5),
+        marginalised=marginalised.astype(bool),
     )
 
 
