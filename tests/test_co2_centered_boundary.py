@@ -15,6 +15,7 @@ from scipy.stats import multivariate_normal
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.co2 import build_co2_cached_sigma_model, build_co2_model
@@ -257,6 +258,32 @@ def test_forward_equations_and_cached_likelihood_gradient(n_boundary: int, anoma
                     atol=1e-8,
                 )
     np.testing.assert_allclose(*predictions)
+
+
+@pytest.mark.parametrize(
+    ("override", "message"),
+    [
+        ({"likelihood_kwargs": {"site_amplitude_prior": {}}}, "likelihood_kwargs require likelihood_builder"),
+        ({"sigma_prior": {"pdf": "halfnormal", "sigma": 1.0}}, "requires `sigma_alignment`"),
+        ({"likelihood_builder": lambda **_: None}, "not custom callbacks"),
+        (
+            {"likelihood_builder": add_fixed_ou_gaussian_likelihood, "sigma_alignment": object()},
+            "cannot be combined with default",
+        ),
+    ],
+)
+def test_public_builder_rejects_option_conflicts_before_materialization(monkeypatch, override, message) -> None:
+    """Invalid direct-call options fail without executing any input graph."""
+    from openghg_inversions.rhime.co2 import co2_model
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("materialized before rejecting options")
+
+    monkeypatch.setattr(co2_model, "dask_compute", forbidden)
+    inputs = _inputs()
+    arguments = bound_model_arguments(_kwargs(inputs))
+    with pytest.raises(ValueError, match=message):
+        build_co2_model(inputs.H, **{**arguments, **override})
 
 
 @pytest.mark.parametrize(

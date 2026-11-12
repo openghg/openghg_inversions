@@ -90,6 +90,47 @@ def _normalise_offset_args(
     return frequency, drop_first, per_site
 
 
+def _check_co2_model_options(
+    *,
+    boundary: Bound | None,
+    likelihood_builder: RhimeLikelihoodBuilder | None,
+    likelihood_kwargs: Mapping[str, Any] | None,
+    sigma_alignment: SigmaAlignment | None,
+    sigma_prior: PriorArgs | None,
+    fixed_model_mismatch: float | xr.DataArray | None,
+) -> None:
+    """Reject conflicting CO2 likelihood and boundary options without reading arrays.
+
+    This is the single owner of these rules for :func:`build_co2_model`, which
+    calls it before materializing its inputs, and for the eager construction
+    path used by runners.
+
+    Raises:
+        ValueError: If a centered boundary is combined with a custom
+            likelihood callback, ``likelihood_kwargs`` or ``sigma_prior`` lack
+            the option they configure, or a selected ``likelihood_builder`` is
+            combined with default additive-sigma or fixed-mismatch options.
+    """
+    if (isinstance(boundary, CenteredBoundary)
+            and likelihood_builder is not None
+            and likelihood_builder is not add_fixed_ou_gaussian_likelihood):
+        raise ValueError(
+            "Centered boundaries support the default additive-Gaussian or "
+            "built-in fixed-OU likelihood, not custom callbacks."
+        )
+    if likelihood_builder is None:
+        if likelihood_kwargs:
+            raise ValueError("likelihood_kwargs require likelihood_builder.")
+        if sigma_alignment is None and sigma_prior is not None:
+            raise ValueError("`sigma_prior` requires `sigma_alignment`.")
+    elif any(value is not None for value in (sigma_alignment, sigma_prior, fixed_model_mismatch)):
+        raise ValueError(
+            "A selected likelihood_builder cannot be combined with default "
+            "additive-sigma or fixed-mismatch options; pass its options in "
+            "likelihood_kwargs."
+        )
+
+
 def build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
@@ -189,8 +230,19 @@ def build_co2_model(
         ValueError: If shared preparation, prior construction, or registered
             coordinate alignment fails, or if ``sigma_prior`` is supplied
             without ``sigma_alignment``, or if a centered boundary is combined
-            with a custom likelihood callback or wrapper.
+            with a custom likelihood callback or wrapper. Conflicting
+            likelihood and boundary options are rejected before any input is
+            computed.
     """
+    # Cheap option conflicts fail before any lazy input is executed.
+    _check_co2_model_options(
+        boundary=boundary,
+        likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
+        sigma_alignment=sigma_alignment,
+        sigma_prior=sigma_prior,
+        fixed_model_mismatch=fixed_model_mismatch,
+    )
     (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, priors = dask_compute(
         *to_dense_tree((
             (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary,
@@ -243,26 +295,16 @@ def _build_co2_model(
     materialization so already-eager arrays are not handled twice. Arguments
     and errors are those of :func:`build_co2_model`.
     """
-    if (isinstance(boundary, CenteredBoundary)
-            and likelihood_builder is not None
-            and likelihood_builder is not add_fixed_ou_gaussian_likelihood):
-        raise ValueError(
-            "Centered boundaries support the default additive-Gaussian or "
-            "built-in fixed-OU likelihood, not custom callbacks."
-        )
-    if likelihood_builder is None:
-        if likelihood_kwargs:
-            raise ValueError("likelihood_kwargs require likelihood_builder.")
-        if sigma_alignment is None and sigma_prior is not None:
-            raise ValueError("`sigma_prior` requires `sigma_alignment`.")
-        if sigma_alignment is not None:
-            sigma_prior = dict(DEFAULT_ADDITIVE_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
-    elif any(value is not None for value in (sigma_alignment, sigma_prior, fixed_model_mismatch)):
-        raise ValueError(
-            "A selected likelihood_builder cannot be combined with default "
-            "additive-sigma or fixed-mismatch options; pass its options in "
-            "likelihood_kwargs."
-        )
+    _check_co2_model_options(
+        boundary=boundary,
+        likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
+        sigma_alignment=sigma_alignment,
+        sigma_prior=sigma_prior,
+        fixed_model_mismatch=fixed_model_mismatch,
+    )
+    if likelihood_builder is None and sigma_alignment is not None:
+        sigma_prior = dict(DEFAULT_ADDITIVE_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     if offset_prior is not None:
         offset_prior = dict(offset_prior)
     offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
