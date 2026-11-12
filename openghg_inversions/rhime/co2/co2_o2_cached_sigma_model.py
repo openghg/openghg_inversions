@@ -140,6 +140,50 @@ def build_co2_o2_cached_sigma_model(
         )))
     )
     site_amplitude_prior, offset_prior = priors["amplitude"], priors["offset"]
+    return _build_co2_o2_cached_sigma_model(
+        observations=observations,
+        fixed_prior_contribution=fixed_prior_contribution,
+        co2_sensitivity=co2_sensitivity,
+        o2_sensitivity=o2_sensitivity,
+        aggregation_error=aggregation_error,
+        retained_prior=retained_prior,
+        independent_error_sd=independent_error_sd,
+        tau_hours=tau_hours,
+        site_amplitude_prior=site_amplitude_prior,
+        initial_site_amplitudes=initial_site_amplitudes,
+        state_activity=state_activity,
+        boundary=boundary,
+        offset_prior=offset_prior,
+        offset_args=offset_args,
+        output_dim=output_dim,
+    )
+
+
+def _build_co2_o2_cached_sigma_model(
+    *,
+    observations: xr.DataArray,
+    fixed_prior_contribution: xr.DataArray,
+    co2_sensitivity: xr.DataArray,
+    o2_sensitivity: xr.DataArray,
+    aggregation_error: AggregationError,
+    retained_prior: CorrelatedLognormalPrior,
+    independent_error_sd: xr.DataArray,
+    tau_hours: float | Mapping[str, float],
+    site_amplitude_prior: PriorArgs,
+    initial_site_amplitudes: float | Mapping[str, float] | None = None,
+    state_activity: StateActivity | None = None,
+    boundary: Mapping[str, Bound] | None = None,
+    offset_prior: Mapping[str, PriorArgs] | None = None,
+    offset_args: Mapping[str, Mapping[str, Any]] | None = None,
+    output_dim: str = "observation",
+) -> Co2CachedSigmaModel:
+    """Construct the linked cached fixed-OU graph from eager inputs.
+
+    Materialization belongs to the caller: :func:`build_co2_o2_cached_sigma_model` computes its
+    arguments together, and the runner calls this after its own joint
+    materialization so already-eager arrays are not handled twice. Arguments,
+    returns and errors are those of :func:`build_co2_o2_cached_sigma_model`.
+    """
     validate_observation_error_arrays(
         observations,
         independent_error_sd,

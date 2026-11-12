@@ -33,7 +33,7 @@ from .co2_cached_sigma_model import (
     OU_SITE_AMPLITUDE,
     OU_SITE_INDEX,
     Co2CachedSigmaModel,
-    build_co2_cached_sigma_model,
+    _build_co2_cached_sigma_model,
 )
 from .co2_model import _normalise_offset_args
 from .co2_preparation import Co2PreparedInputs
@@ -277,7 +277,7 @@ def build_rhime_co2_cached_sigma(
         prior_covariance,
         covariance_dim=str(prior_covariance.dims[-1]),
     )
-    cached_model = build_co2_cached_sigma_model(
+    cached_model = _build_co2_cached_sigma_model(
         model_inputs["H"],
         retained_prior=retained_prior,
         biosphere_prior=biosphere_prior,

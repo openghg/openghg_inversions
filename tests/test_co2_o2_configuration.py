@@ -208,3 +208,14 @@ def test_direct_linked_config_requires_one_boundary_calendar():
         "o2": MultiplicativeChoice(prior, frequency="7D", anchor_time="2020-01-01T00:00"),
     })
     assert same.boundary["o2"].frequency == "7D"
+
+
+def test_channel_boundary_errors_name_the_channel_table():
+    config = _config()
+    config["channels"]["o2"]["boundary"] = {"type": "bogus"}
+    with pytest.raises(ValueError, match=r"channels\.o2\.boundary\.type must be one of"):
+        Co2O2ModelConfig.from_params(config)
+    config["channels"]["o2"]["boundary"] = {"type": "additive", "prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+                                            "anomaly_scale": 0.5, "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 1.0}}
+    with pytest.raises(ValueError, match=r"channels\.o2\.boundary\.prior"):
+        Co2O2ModelConfig.from_params(config)

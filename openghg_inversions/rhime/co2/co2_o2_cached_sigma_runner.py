@@ -19,7 +19,7 @@ from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 from .co2_cached_sigma_runner import (
     _sampler_for_cached_graph,
 )
-from .co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
+from .co2_o2_cached_sigma_model import _build_co2_o2_cached_sigma_model
 from .co2_o2_model import _validate_channel_offset_options
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .co2_o2_runner import (
@@ -41,7 +41,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
-    boundary: Mapping[str, Choice] | None = None,
+    boundary: Mapping[str, Choice | None] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     sampler: RhimeSampler | Literal["default"] = "default",
@@ -88,7 +88,9 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             Omitted states follow the model's structural activity policy.
         boundary: Optional boundary choices keyed by ``co2``/``o2``, each bound
             once to that channel's prepared absolute sensitivity or centered
-            operands. Omitted channels have no boundary term.
+            operands. ``None`` disables a channel's boundary; omitted channels
+            have no boundary term, with a warning when the preparation has
+            their transport.
         offset_prior: Channel-keyed offset priors in concentration units.
             Channels omitted from this mapping have no offset.
         offset_args: Per-channel per_site, offset_freq, and drop_first options
@@ -137,7 +139,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     offset_prior = eager_priors["offset"]
     site_amplitude_prior = eager_priors["amplitude"]
     observations, fixed, co2, o2, error = materialized
-    cached = build_co2_o2_cached_sigma_model(
+    cached = _build_co2_o2_cached_sigma_model(
         observations=observations,
         fixed_prior_contribution=fixed,
         co2_sensitivity=co2,
