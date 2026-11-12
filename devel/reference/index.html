@@ -1147,25 +1147,34 @@ mathematical contracts and eager-computation boundaries.</p>
 <tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.RetainedProjection" title="openghg_inversions.basis.RetainedProjection"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.RetainedProjection</span></code></a></p></td>
 <td><p>A labelled retained restriction selected by one strategy.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.PreserveBucketProlongation" title="openghg_inversions.basis.PreserveBucketProlongation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.PreserveBucketProlongation</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.RetainedProjectionStrategy" title="openghg_inversions.basis.RetainedProjectionStrategy"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.RetainedProjectionStrategy</span></code></a></p></td>
+<td><p>Extension seam for choosing authoritative retained coefficients.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.PreserveBucketProlongation" title="openghg_inversions.basis.PreserveBucketProlongation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.PreserveBucketProlongation</span></code></a></p></td>
 <td><p>Derive <code class="docutils literal notranslate"><span class="pre">Pi_U</span></code> so covariance-weighted prolongation equals <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.project_native_covariance" title="openghg_inversions.basis.project_native_covariance"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.project_native_covariance</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.SuppliedRestriction" title="openghg_inversions.basis.SuppliedRestriction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.SuppliedRestriction</span></code></a></p></td>
+<td><p>Use a caller-supplied physical restriction <code class="docutils literal notranslate"><span class="pre">Pi</span></code> as retained coordinates.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.absolute_weighted_regional_mean_restriction" title="openghg_inversions.basis.absolute_weighted_regional_mean_restriction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.absolute_weighted_regional_mean_restriction</span></code></a></p></td>
+<td><p>Build a source-blocked regional mean weighted by absolute cell totals.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.project_native_covariance" title="openghg_inversions.basis.project_native_covariance"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.project_native_covariance</span></code></a></p></td>
 <td><p>Compute coherent labelled native-covariance products eagerly.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.CoherentGaussianReduction" title="openghg_inversions.coherent_reduction.CoherentGaussianReduction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.coherent_reduction.CoherentGaussianReduction</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.CoherentGaussianReduction" title="openghg_inversions.coherent_reduction.CoherentGaussianReduction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.coherent_reduction.CoherentGaussianReduction</span></code></a></p></td>
 <td><p>One exact, labelled native-to-retained Gaussian reduction.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.reduce_native_gaussian" title="openghg_inversions.coherent_reduction.reduce_native_gaussian"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.coherent_reduction.reduce_native_gaussian</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.reduce_native_gaussian" title="openghg_inversions.coherent_reduction.reduce_native_gaussian"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.coherent_reduction.reduce_native_gaussian</span></code></a></p></td>
 <td><p>Prepare the exact centred Gaussian model for one <code class="docutils literal notranslate"><span class="pre">B/H/Pi/m</span></code> set.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.AggregationError</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.AggregationError</span></code></a></p></td>
 <td><p>Validated aggregation-error representation selected for a likelihood.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.prepare_low_rank_aggregation_error" title="openghg_inversions.observation_error.prepare_low_rank_aggregation_error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.prepare_low_rank_aggregation_error</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.prepare_low_rank_aggregation_error" title="openghg_inversions.observation_error.prepare_low_rank_aggregation_error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.prepare_low_rank_aggregation_error</span></code></a></p></td>
 <td><p>Approximate a labelled covariance by a low-rank-plus-diagonal form.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.resolve_aggregation_error" title="openghg_inversions.observation_error.resolve_aggregation_error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.resolve_aggregation_error</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.resolve_aggregation_error" title="openghg_inversions.observation_error.resolve_aggregation_error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.resolve_aggregation_error</span></code></a></p></td>
 <td><p>Validate and select an aggregation-error covariance representation.</p></td>
 </tr>
 </tbody>

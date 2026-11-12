@@ -47,6 +47,7 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'development/validation_and_xarray';</script>
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.21.0';
@@ -471,8 +472,10 @@ preparation, or a named scientific composition boundary;</p></li>
 <li><p>check results from dynamic extensions, such as custom strategies, where
 they re-enter package code;</p></li>
 <li><p>let the operation that needs an invariant enforce it: check a positive
-batch size before batching, and let a required Cholesky factorization report
-a matrix which cannot be used as positive definite; and</p></li>
+batch size before batching, and let a required Cholesky factorization,
+together with a condition estimate from its factor, report a matrix which
+cannot be used as positive definite (see <a class="reference internal" href="#singular-and-nearly-singular-matrices">Singular and nearly singular
+matrices</a>); and</p></li>
 <li><p>validate serialized or cached artifacts in their loader against a published
 schema, rather than repeating those checks in every downstream kernel.</p></li>
 </ul>
@@ -487,6 +490,28 @@ extension boundary, prevents a library’s permissive behaviour from changing
 the calculation’s meaning, or gives a materially clearer failure before
 expensive or irreversible work. Otherwise, an equation-level test is often
 the clearer home for the invariant.</p>
+</section>
+<section id="singular-and-nearly-singular-matrices">
+<h2>Singular and nearly singular matrices<a class="headerlink" href="#singular-and-nearly-singular-matrices" title="Link to this heading">#</a></h2>
+<p>Do not infer rank from whether a Cholesky factorization fails. Whether an
+exactly singular matrix passes depends on the LAPACK build and on the values:
+Apple Accelerate, which macOS NumPy wheels use, often factors one with a tiny
+positive last pivot, where OpenBLAS usually fails. A wrong answer computed
+from that factor need not look wrong later. For a redundant bucket basis, the
+noisy inverse of the Gram matrix gave a restriction whose retained covariance
+was well conditioned, so downstream checks accepted an invalid result in about
+a third of trials.</p>
+<p>When rank matters, factorize once and check the reciprocal condition estimate
+that LAPACK <code class="docutils literal notranslate"><span class="pre">dpocon</span></code> computes from the factor, as
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.basis.covariance_products</span></code> does for both the bucket
+Gram matrix and <span class="math notranslate nohighlight">\(C_\alpha\)</span>. This needs no eigendecomposition. Choose
+the threshold for the calculation that consumes the matrix, and test the
+singular case with a factorization that accepts it, so the test does not pass
+only because the local LAPACK happens to reject it. The investigation, with
+the history and trial counts, is recorded on <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/1055#issuecomment-6817880924">pull request 1055</a>.
+Use an eigendecomposition when the eigenvalues are themselves needed, for
+example to check positive semidefiniteness of a matrix that may legitimately
+be singular.</p>
 </section>
 <section id="make-established-contracts-visible-in-types">
 <h2>Make established contracts visible in types<a class="headerlink" href="#make-established-contracts-visible-in-types" title="Link to this heading">#</a></h2>
@@ -742,6 +767,7 @@ the requirement directly?</p></li>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#choose-the-validation-boundary">Choose the validation boundary</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#singular-and-nearly-singular-matrices">Singular and nearly singular matrices</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#make-established-contracts-visible-in-types">Make established contracts visible in types</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#centered-boundary-application">Centered-boundary application</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#transpose-align-compute">Transpose, align, compute</a></li>

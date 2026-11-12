@@ -597,6 +597,11 @@ xarray Datasets and DataArrays, and return either a Dataset or a DataArray.</p>
 <dt>sparse_xr_dot</dt><dd><p>Multiplies a Dataset or DataArray by a DataArray with sparse
 underlying array. The built-in xarray functionality doesn’t work correctly.</p>
 </dd>
+<dt>to_dense</dt><dd><p>Converts sparse payloads to dense NumPy, lazily for Dask chunks.</p>
+</dd>
+<dt>materialize_together</dt><dd><p>Densifies and computes related payloads at one named eager boundary,
+logging the boundary at DEBUG level.</p>
+</dd>
 </dl>
 </section>
 <section id="coordinate-alignment-policy">
@@ -842,6 +847,37 @@ leaves are returned as given.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.array_ops.materialize_together">
+<span class="sig-name descname"><span class="pre">materialize_together</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">arrays</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">purpose</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.array_ops.materialize_together" title="Link to this definition">#</a></dt>
+<dd><p>Densify and compute related payloads at one named eager boundary.</p>
+<p>Related Dask payloads are computed in one call, so a graph they share runs
+once. Only the data payloads are computed: coordinates, attributes and names
+are kept, and lazy auxiliary coordinates stay lazy. This differs from
+computing whole DataArrays, which would also compute those coordinates.
+Sparse payloads, eager or in Dask chunks, become dense NumPy arrays, because
+<code class="docutils literal notranslate"><span class="pre">compute</span></code> alone can return a sparse array.</p>
+<p>Each call logs one DEBUG message on this module’s logger naming the purpose
+and the arrays, so eager boundaries can be traced by enabling DEBUG for
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.array_ops</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>*arrays</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Borrowed labelled arrays that share this boundary. They are not
+mutated.</p></li>
+<li><p><strong>purpose</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Short description of the boundary, used in the log message.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Arrays with eager dense NumPy payloads, in input order. Each is a
+shallow copy sharing the input’s coordinates.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)">tuple</a>[<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>, …]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1198,6 +1234,7 @@ installed on <cite>multi_dim</cite>.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.align_sparse_lat_lon"><code class="docutils literal notranslate"><span class="pre">align_sparse_lat_lon()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.to_dense"><code class="docutils literal notranslate"><span class="pre">to_dense()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.to_dense_tree"><code class="docutils literal notranslate"><span class="pre">to_dense_tree()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.materialize_together"><code class="docutils literal notranslate"><span class="pre">materialize_together()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.jax_to_numpy"><code class="docutils literal notranslate"><span class="pre">jax_to_numpy()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.force_align"><code class="docutils literal notranslate"><span class="pre">force_align()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.concat_data_arrays"><code class="docutils literal notranslate"><span class="pre">concat_data_arrays()</span></code></a></li>

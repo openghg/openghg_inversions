@@ -503,23 +503,28 @@ those linked products locally, then returns</p>
 \[A = HBH^\mathsf{T} - H_\alpha C_\alpha H_\alpha^\mathsf{T}.\]</div>
 <p>All three retained quantities—the prior, effective forward operator, and
 unresolved covariance—come from the same product set.</p>
-<p>The current function accepts a basis prolongation <span class="math notranslate nohighlight">\(U\)</span>. With the default
-strategy, it constructs the compatible restriction <span class="math notranslate nohighlight">\(\Pi_U\)</span> using
-<span class="math notranslate nohighlight">\(B\)</span>, so that the covariance-derived prolongation <span class="math notranslate nohighlight">\(U_*\)</span> equals the
-supplied basis prolongation. A custom projection strategy can already choose
-<span class="math notranslate nohighlight">\(\Pi\)</span>, although callers must still supply the basis argument. A future
-interface may accept either operator directly and construct its compatible
-counterpart. The restriction and prolongation are related through <span class="math notranslate nohighlight">\(B\)</span>;
+<p>The retained projection strategy supplies <span class="math notranslate nohighlight">\(\Pi\)</span>, by one of two routes:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">PreserveBucketProlongation(U)</span></code> holds a basis prolongation <span class="math notranslate nohighlight">\(U\)</span> and
+constructs the compatible restriction <span class="math notranslate nohighlight">\(\Pi_U\)</span> using <span class="math notranslate nohighlight">\(B\)</span>, so that
+the covariance-derived prolongation <span class="math notranslate nohighlight">\(U_*\)</span> equals <span class="math notranslate nohighlight">\(U\)</span>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">SuppliedRestriction(Pi)</span></code> holds a physical restriction chosen
+independently of <span class="math notranslate nohighlight">\(B\)</span>; no basis prolongation is needed.</p></li>
+</ul>
+<p>Either way, the restriction and prolongation are related through <span class="math notranslate nohighlight">\(B\)</span>;
 they are not generally transposes of one another.</p>
 <section id="preparing-the-exact-result">
 <h2>Preparing the exact result<a class="headerlink" href="#preparing-the-exact-result" title="Link to this heading">#</a></h2>
-<p>Pass the native covariance, canonical basis prolongation, labelled native mean,
-and sensitivity through one operation:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.coherent_reduction</span><span class="w"> </span><span class="kn">import</span> <span class="n">reduce_native_gaussian</span>
+<p>Pass the native covariance, a retained projection strategy, labelled native
+mean, and sensitivity through one operation. The bucket strategy holds a basis
+operator’s canonical prolongation; <code class="docutils literal notranslate"><span class="pre">SuppliedRestriction</span></code> instead holds a
+physical restriction (see <a class="reference internal" href="native_covariance.html"><span class="doc">Native Covariance Projection</span></a>):</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.basis</span><span class="w"> </span><span class="kn">import</span> <span class="n">PreserveBucketProlongation</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.coherent_reduction</span><span class="w"> </span><span class="kn">import</span> <span class="n">reduce_native_gaussian</span>
 
 <span class="n">reduction</span> <span class="o">=</span> <span class="n">reduce_native_gaussian</span><span class="p">(</span>
     <span class="n">covariance</span><span class="o">=</span><span class="n">covariance</span><span class="p">,</span>
-    <span class="n">basis_prolongation</span><span class="o">=</span><span class="n">basis_prolongation</span><span class="p">,</span>
+    <span class="n">strategy</span><span class="o">=</span><span class="n">PreserveBucketProlongation</span><span class="p">(</span><span class="n">basis_prolongation</span><span class="p">),</span>
     <span class="n">state_dim</span><span class="o">=</span><span class="s2">"state"</span><span class="p">,</span>
     <span class="n">native_mean</span><span class="o">=</span><span class="n">native_mean</span><span class="p">,</span>
     <span class="n">native_sensitivity</span><span class="o">=</span><span class="n">native_sensitivity</span><span class="p">,</span>
@@ -532,8 +537,8 @@ and sensitivity through one operation:</p>
 <span class="n">unresolved_covariance</span> <span class="o">=</span> <span class="n">reduction</span><span class="o">.</span><span class="n">unresolved_observation_covariance</span>
 </pre></div>
 </div>
-<p>Calling <code class="docutils literal notranslate"><span class="pre">reduce_native_gaussian</span></code> computes any Dask-backed mean, sensitivity,
-and basis-prolongation data. Related arrays are computed together, and the
+<p>Calling <code class="docutils literal notranslate"><span class="pre">reduce_native_gaussian</span></code> computes any Dask-backed mean and
+sensitivity together. The strategy computes its own inputs, and the
 returned xarray arrays are eager with explicit retained-state and observation
 labels.</p>
 </section>
@@ -598,10 +603,13 @@ that the chosen rank is adequate for a particular likelihood.</p>
 </section>
 <section id="assumptions-and-limitations">
 <h2>Assumptions and limitations<a class="headerlink" href="#assumptions-and-limitations" title="Link to this heading">#</a></h2>
-<p>The native coordinates of the mean, sensitivity, and basis prolongation must
-match exactly. The function checks this before computing because xarray dot
-products would otherwise use an inner join and could silently omit unmatched
-native cells.</p>
+<p>The native coordinates of the mean and sensitivity must match exactly. The
+function checks this before computing them, because xarray dot products would
+otherwise use an inner join and could silently omit unmatched native cells.
+The strategy’s input, a basis prolongation for <code class="docutils literal notranslate"><span class="pre">PreserveBucketProlongation</span></code>
+or a restriction for <code class="docutils literal notranslate"><span class="pre">SuppliedRestriction</span></code>, must use the same native grid.
+The covariance action checks that grid when it applies or solves with that
+input, which may happen after the mean and sensitivity have been computed.</p>
 <p>The native mean and basis describe dimensionless scaling factors. Convert the
 sensitivity to the required observation units with OpenGHG’s Pint registry
 before calling the function. All rows of the current observation DataArray
@@ -628,8 +636,10 @@ model-mismatch error is small.</p>
 <p>The conditional model is exact for a Gaussian native state and error
 independent of that state. Using the resulting moments with a LogNormal
 retained state is a moment-matched approximation. A positive sampled state
-requires a separately established nonnegative physical restriction; the
-default restriction is not guaranteed to preserve positivity.</p>
+requires a separately established positivity-preserving physical restriction,
+such as <code class="docutils literal notranslate"><span class="pre">SuppliedRestriction</span></code> with <code class="docutils literal notranslate"><span class="pre">require_positivity_preserving=True</span></code>. The
+bucket-compatible restriction derived by <code class="docutils literal notranslate"><span class="pre">PreserveBucketProlongation</span></code> is not
+guaranteed to preserve positivity.</p>
 <p>The function does not construct a likelihood, approximate <span class="math notranslate nohighlight">\(A\)</span>, serialize
 the result, or reconstruct arbitrary native quantities. Do not add another
 error term representing the same unresolved flux. Adding covariance components

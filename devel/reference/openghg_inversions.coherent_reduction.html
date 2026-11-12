@@ -636,40 +636,38 @@ floating-point roundoff.</p></li>
 <dl>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">covariance</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_prolongation</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">strategy</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_dim</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">native_mean</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">native_sensitivity</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">observation_dim</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">observation_batch_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">64</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">strategy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.coherent_reduction.reduce_native_gaussian" title="Link to this definition">#</a></dt>
 <dd><p>Prepare the exact centred Gaussian model for one <code class="docutils literal notranslate"><span class="pre">B/H/Pi/m</span></code> set.</p>
-<p>This is a named eager numerical boundary. <code class="docutils literal notranslate"><span class="pre">native_mean</span></code>,
-<code class="docutils literal notranslate"><span class="pre">native_sensitivity</span></code>, and <code class="docutils literal notranslate"><span class="pre">basis_prolongation</span></code> may be Dask-backed; their
-payloads are materialized together so a shared graph is executed once.
-Inputs are borrowed and are not mutated.</p>
+<p>This is a named eager numerical boundary. <code class="docutils literal notranslate"><span class="pre">native_mean</span></code> and
+<code class="docutils literal notranslate"><span class="pre">native_sensitivity</span></code> may be Dask-backed; their payloads are materialized
+together so a shared graph is executed once. The strategy then selects and
+materializes <code class="docutils literal notranslate"><span class="pre">Pi</span></code> from its own inputs. Inputs are borrowed and are not
+mutated.</p>
 <p>The inputs must use the covariance action’s native dimensions and carry
 exactly matching indexed coordinates on shared dimensions. Unit conversion
 belongs to the upstream OpenGHG/pint-xarray preparation boundary: <code class="docutils literal notranslate"><span class="pre">m</span></code> and
-the basis describe dimensionless scaling, while <code class="docutils literal notranslate"><span class="pre">H</span></code> is already expressed
+<code class="docutils literal notranslate"><span class="pre">Pi</span></code> describe dimensionless scaling, while <code class="docutils literal notranslate"><span class="pre">H</span></code> is already expressed
 in the desired observation units.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>covariance</strong> (<a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.InvertibleNativeCovarianceAction" title="openghg_inversions.native_covariance.InvertibleNativeCovarianceAction"><em>InvertibleNativeCovarianceAction</em></a>) – Invertible labelled native covariance action <code class="docutils literal notranslate"><span class="pre">B</span></code>.</p></li>
-<li><p><strong>basis_prolongation</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Canonical labelled basis prolongation used by the
-retained projection strategy.</p></li>
-<li><p><strong>state_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Retained-state dimension shared by the prolongation and
-restriction.</p></li>
+<li><p><strong>strategy</strong> (<a class="reference internal" href="openghg_inversions.basis.covariance_products.html#openghg_inversions.basis.covariance_products.RetainedProjectionStrategy" title="openghg_inversions.basis.covariance_products.RetainedProjectionStrategy"><em>RetainedProjectionStrategy</em></a>) – Authoritative retained restriction strategy, owning the
+inputs that define <code class="docutils literal notranslate"><span class="pre">Pi</span></code>.</p></li>
+<li><p><strong>state_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Retained-state dimension of <code class="docutils literal notranslate"><span class="pre">Pi</span></code>.</p></li>
 <li><p><strong>native_mean</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Dimensionless native scaling mean <code class="docutils literal notranslate"><span class="pre">m</span></code>.</p></li>
 <li><p><strong>native_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Native sensitivity <code class="docutils literal notranslate"><span class="pre">H</span></code> in canonical observation
 units.</p></li>
 <li><p><strong>observation_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Observation dimension in <code class="docutils literal notranslate"><span class="pre">native_sensitivity</span></code>.</p></li>
 <li><p><strong>observation_batch_size</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a>) – Covariance right-hand-side batch size.</p></li>
-<li><p><strong>strategy</strong> (<a class="reference internal" href="openghg_inversions.basis.covariance_products.html#openghg_inversions.basis.covariance_products.RetainedProjectionStrategy" title="openghg_inversions.basis.covariance_products.RetainedProjectionStrategy"><em>RetainedProjectionStrategy</em></a><em> | </em><em>None</em>) – Optional authoritative retained restriction strategy.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>

@@ -407,6 +407,12 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.ConcentrationTerm.absolute">absolute() (ConcentrationTerm class method)</a>, <a href="reference/openghg_inversions.models.html#openghg_inversions.models.ConcentrationTerm.absolute">[1]</a>
 </li>
+      <li><a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.absolute_weighted_regional_mean_restriction">absolute_weighted_regional_mean_restriction() (in module openghg_inversions.basis)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.basis.covariance_products.html#openghg_inversions.basis.covariance_products.absolute_weighted_regional_mean_restriction">(in module openghg_inversions.basis.covariance_products)</a>
+</li>
+      </ul></li>
       <li><a href="reference/openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.AbsoluteChoice">AbsoluteChoice (class in openghg_inversions.models.boundary)</a>
 </li>
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.AllSplitAcceptancePolicies.accept_split">accept_split() (AllSplitAcceptancePolicies method)</a>
@@ -769,6 +775,8 @@
         <li><a href="reference/openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.basis_matrix">(MultiSourceBucketBasisOperator property)</a>
 </li>
       </ul></li>
+      <li><a href="reference/openghg_inversions.basis.covariance_products.html#openghg_inversions.basis.covariance_products.PreserveBucketProlongation.basis_prolongation">basis_prolongation (PreserveBucketProlongation property)</a>, <a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.PreserveBucketProlongation.basis_prolongation">[1]</a>
+</li>
       <li><a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.basis_weights_from_data">basis_weights_from_data() (in module openghg_inversions.basis)</a>
 </li>
       <li><a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.BasisFunctions">BasisFunctions (in module openghg_inversions.basis)</a>
@@ -825,10 +833,10 @@
 </li>
       <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedDataArray">BorrowedDataArray (class in openghg_inversions.borrowed)</a>
 </li>
-      <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedNDArray">BorrowedNDArray (class in openghg_inversions.borrowed)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedNDArray">BorrowedNDArray (class in openghg_inversions.borrowed)</a>
+</li>
       <li><a href="reference/openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Bound">Bound (class in openghg_inversions.models.boundary)</a>
 </li>
       <li><a href="reference/openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundAdditiveSensitivity">BoundAdditiveSensitivity (class in openghg_inversions.models.boundary)</a>
@@ -1887,6 +1895,8 @@
         <li><a href="reference/openghg_inversions.rhime.standard.html#openghg_inversions.rhime.standard.materialize_standard_inputs">(in module openghg_inversions.rhime.standard)</a>
 </li>
       </ul></li>
+      <li><a href="reference/openghg_inversions.array_ops.html#openghg_inversions.array_ops.materialize_together">materialize_together() (in module openghg_inversions.array_ops)</a>
+</li>
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity">MaxChildPCAEccentricity (class in openghg_inversions.basis.algorithms)</a>
 </li>
       <li><a href="reference/openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior.mean">mean (CorrelatedLognormalPrior property)</a>, <a href="reference/openghg_inversions.models.html#openghg_inversions.models.CorrelatedLognormalPrior.mean">[1]</a>
@@ -2277,7 +2287,11 @@
       <li><a href="reference/openghg_inversions.postprocessing.make_outputs.html#openghg_inversions.postprocessing.make_outputs.OutputSector.name">name (OutputSector attribute)</a>
 
       <ul>
+        <li><a href="reference/openghg_inversions.basis.covariance_products.html#openghg_inversions.basis.covariance_products.PreserveBucketProlongation.name">(PreserveBucketProlongation property)</a>, <a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.PreserveBucketProlongation.name">[1]</a>
+</li>
         <li><a href="reference/openghg_inversions.postprocessing.stats.html#openghg_inversions.postprocessing.stats.StatsFunction.name">(StatsFunction attribute)</a>
+</li>
+        <li><a href="reference/openghg_inversions.basis.covariance_products.html#openghg_inversions.basis.covariance_products.SuppliedRestriction.name">(SuppliedRestriction property)</a>, <a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.SuppliedRestriction.name">[1]</a>
 </li>
       </ul></li>
       <li><a href="reference/openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap.native_dims">native_dims (AffineFluxMap property)</a>, <a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.AffineFluxMap.native_dims">[1]</a>
@@ -3602,6 +3616,8 @@
       <ul>
         <li><a href="reference/openghg_inversions.basis.covariance_products.html#openghg_inversions.basis.covariance_products.RetainedProjectionStrategy.projection">(RetainedProjectionStrategy method)</a>, <a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.RetainedProjectionStrategy.projection">[1]</a>
 </li>
+        <li><a href="reference/openghg_inversions.basis.covariance_products.html#openghg_inversions.basis.covariance_products.SuppliedRestriction.projection">(SuppliedRestriction method)</a>, <a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.SuppliedRestriction.projection">[1]</a>
+</li>
       </ul></li>
       <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedNDArray.put">put() (BorrowedNDArray method)</a>
 </li>
@@ -3753,6 +3769,8 @@
         <li><a href="reference/openghg_inversions.rhime.co2.centered_boundary.html#openghg_inversions.rhime.co2.centered_boundary.require_centered_precision">(in module openghg_inversions.rhime.co2.centered_boundary)</a>
 </li>
       </ul></li>
+      <li><a href="reference/openghg_inversions.basis.covariance_products.html#openghg_inversions.basis.covariance_products.SuppliedRestriction.require_positivity_preserving">require_positivity_preserving (SuppliedRestriction property)</a>, <a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.SuppliedRestriction.require_positivity_preserving">[1]</a>
+</li>
       <li><a href="reference/openghg_inversions.array_ops.html#openghg_inversions.array_ops.require_unique_index">require_unique_index() (in module openghg_inversions.array_ops)</a>
 </li>
       <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.DataConfig.required_option_names">required_option_names() (DataConfig class method)</a>, <a href="reference/openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.DataConfig.required_option_names">[1]</a>
@@ -3834,6 +3852,8 @@
 </li>
       </ul></li>
       <li><a href="reference/openghg_inversions.serialization.html#openghg_inversions.serialization.restore_serialisation_multiindexes">restore_serialisation_multiindexes() (in module openghg_inversions.serialization)</a>
+</li>
+      <li><a href="reference/openghg_inversions.basis.covariance_products.html#openghg_inversions.basis.covariance_products.SuppliedRestriction.restriction">restriction (SuppliedRestriction property)</a>, <a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.SuppliedRestriction.restriction">[1]</a>
 </li>
       <li><a href="reference/openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.MergedDataProvenance.retain_sites">retain_sites() (MergedDataProvenance method)</a>
 
@@ -4081,10 +4101,10 @@
 </li>
       <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedNDArray.setfield">setfield() (BorrowedNDArray method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedNDArray.setflags">setflags() (BorrowedNDArray method)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.inference.cached_sigma.html#openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep.setup_chain">setup_chain() (PymcCachedSigmaNutsStep method)</a>, <a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.setup_chain">[1]</a>
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.make_paris_outputs.html#openghg_inversions.postprocessing.make_paris_outputs.shift_measurement_time_to_midpoint">shift_measurement_time_to_midpoint() (in module openghg_inversions.postprocessing.make_paris_outputs)</a>
@@ -4213,6 +4233,12 @@
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.diagnostics.html#openghg_inversions.postprocessing.diagnostics.summary">summary() (in module openghg_inversions.postprocessing.diagnostics)</a>
 </li>
+      <li><a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.SuppliedRestriction">SuppliedRestriction (class in openghg_inversions.basis)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.basis.covariance_products.html#openghg_inversions.basis.covariance_products.SuppliedRestriction">(class in openghg_inversions.basis.covariance_products)</a>
+</li>
+      </ul></li>
       <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeConfig.supported_option_names">supported_option_names() (RhimeConfig class method)</a>, <a href="reference/openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.RhimeConfig.supported_option_names">[1]</a>
 </li>
   </ul></td>
