@@ -108,6 +108,27 @@ def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariabl
     return cast(TensorVariable, pm.Data(name, materialized.values, dims=dims))
 
 
+def add_component_data(
+    array: xr.DataArray, name: str, owner: str | None, *, observation_dim: str = "nmeasure",
+) -> TensorVariable:
+    """Register a component's array with its owner-qualified state coordinates.
+
+    Combines :func:`component_coords` and :func:`add_model_data`, the usual
+    pairing when a component registers a sensitivity or other state-indexed
+    array.
+
+    Args:
+        array: Borrowed array, materialized at registration.
+        name: Model variable name.
+        owner: Component namespace for state coordinates, or ``None``.
+        observation_dim: Shared observation dimension, left unqualified.
+
+    Returns:
+        The registered tensor.
+    """
+    return add_model_data(component_coords(array, owner, observation_dim=observation_dim), name)
+
+
 def _coords_to_mapping(coords: dict[str, Any] | xr.Coordinates) -> dict[str, Any]:
     """Convert supported coordinate containers to a plain mapping."""
     if isinstance(coords, xr.Coordinates):

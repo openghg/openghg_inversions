@@ -46,6 +46,7 @@ an xarray issue, which now is written in terms of ``force_align``.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import warnings
 from collections.abc import Hashable, Iterable, Iterator, Mapping, Sequence
@@ -57,7 +58,7 @@ import pandas as pd
 import xarray as xr
 from dask.array.core import Array as DaskArray
 from sparse import COO, SparseArray
-from xarray.core.common import DataWithCoords, is_chunked_array  # type: ignore
+from xarray.core.common import DataWithCoords
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +221,8 @@ def sparse_xr_dot(
     least one dimension in common. All matching dimensions will be used for multiplication.
 
     Compared to just using da1 @ da2, this function has two advantages:
-    1. if da1 is sparse but not a dask array, then da1 @ da2 will fail if da2 is a dask array
+    1. if da1 is eager sparse and da2 is a dask array, da1 @ da2 fails in xarray;
+       here da1 is converted to a single-chunk dask array for that case only
     2. da2 can be a Dataset, and current DataArray @ Dataset is not allowed by xarray
 
     Args:
@@ -233,17 +235,21 @@ def sparse_xr_dot(
         xr.Dataset or xr.DataArray: containing the result of matrix/tensor multiplication.
             The type that is returned will be the same as the type of `da2`.
     """
-    if isinstance(da1.data, SparseArray) and not is_chunked_array(da1):  # type: ignore
-        da1 = da1.chunk()
+
+    def dot(other: xr.DataArray) -> xr.DataArray:
+        """Multiply ``da1`` by one DataArray, chunking eager sparse only for Dask."""
+        left = da1
+        # Eager sparse @ dask raises "Unsupported types": xarray's einsum path
+        # calls sparse.tensordot, which cannot take Dask arrays. Chunking the
+        # sparse operand routes the product through Dask instead.
+        # See https://github.com/pydata/xarray/issues/9934
+        if isinstance(da1.data, SparseArray) and other.chunks is not None:
+            left = da1.chunk()
+        return left @ other if dim is None else xr.dot(left, other, dim=dim)
 
     if isinstance(da2, xr.DataArray):
-        if dim is None:
-            return da1 @ da2
-        return xr.dot(da1, da2, dim=dim)
-
-    if dim is None:
-        return da2.map(lambda x: da1 @ x)
-    return da2.map(lambda x: xr.dot(da1, x, dim=dim))
+        return dot(da2)
+    return da2.map(dot)
 
 
 def align_sparse_lat_lon(
@@ -312,6 +318,42 @@ def to_dense(da: xr.DataArray) -> xr.DataArray:
         return xr.apply_ufunc(_sparse_dask_to_dense, da, dask="allowed")
 
     return da
+
+
+def to_dense_tree(value: Any) -> Any:
+    """Apply :func:`to_dense` to every labelled array in a nested value.
+
+    Traverses Datasets, mappings, lists, tuples and dataclass instances, such
+    as bound scientific components or prior arguments with array-valued
+    parameters. Other leaves are returned unchanged. Dask graphs are preserved,
+    so the caller can pass the result to one ``dask.compute`` call that
+    materializes related arrays together. Inputs are not mutated.
+
+    Args:
+        value: A labelled array, dataset, mapping, list, tuple, dataclass
+            instance, or any other object.
+
+    Returns:
+        A structure of the same shape with each labelled array densified;
+        dataclass fields that are not ``init`` fields are not copied. Other
+        leaves are returned as given.
+    """
+    if isinstance(value, xr.DataArray):
+        return to_dense(value)
+    if isinstance(value, xr.Dataset):
+        return value.map(to_dense, keep_attrs=True)
+    if isinstance(value, Mapping):
+        return {key: to_dense_tree(item) for key, item in value.items()}
+    if isinstance(value, tuple) and hasattr(value, "_fields"):
+        return type(value)(*(to_dense_tree(item) for item in value))
+    if isinstance(value, list | tuple):
+        return type(value)(to_dense_tree(item) for item in value)
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return dataclasses.replace(value, **{
+            field.name: to_dense_tree(getattr(value, field.name))
+            for field in dataclasses.fields(value) if field.init
+        })
+    return value
 
 
 def materialize_together(*arrays: xr.DataArray, purpose: str) -> tuple[xr.DataArray, ...]:

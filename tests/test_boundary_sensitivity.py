@@ -31,7 +31,38 @@ def test_prepare_boundary_sensitivity_labels_one_period_and_provenance() -> None
     assert result.indexes["bc_region"].names == ["bc_curtain", "bc_period"]
     assert result.attrs["units"] == "ppm"
     assert result.attrs["bc_frequency"] == "none"
+    np.testing.assert_array_equal(result.bc_period, np.repeat(np.datetime64("2020-01-01", "ns"), 2))
     np.testing.assert_allclose(result.values, _sensitivity().values)
+
+
+def test_nmeasure_whole_window_is_labelled_by_first_time() -> None:
+    times = _sensitivity().time.values
+    source = _sensitivity().rename(time="nmeasure").assign_coords(
+        nmeasure=[3, 2, 1], time=("nmeasure", times[::-1])
+    )
+    result = BoundaryAlignment.prepare(source).data
+    np.testing.assert_array_equal(result.bc_period, np.repeat(times.min(), 2))
+    np.testing.assert_array_equal(result, source)
+
+
+def test_whole_window_requires_datetime_time() -> None:
+    source = _sensitivity().rename(time="nmeasure").assign_coords(nmeasure=[3, 2, 1])
+    with pytest.raises(ValueError, match="requires a datetime time coordinate"):
+        BoundaryAlignment.prepare(source)
+
+
+@pytest.mark.parametrize(
+    ("frequency", "anchor", "starts"),
+    [("monthly", None, ["2020-02-01", "2020-03-01"]),
+     ("10D", "2020-01-01", ["2020-01-31", "2020-03-01"])],
+)
+def test_period_mask_uses_actual_calendar_start_labels_with_gaps(frequency, anchor, starts) -> None:
+    source = _sensitivity().assign_coords(time=pd.to_datetime(["2020-03-02", "2020-02-03", "2020-02-04"]))
+    result = BoundaryAlignment.prepare(source, frequency=frequency, anchor_time=anchor).data
+    np.testing.assert_array_equal(result.bc_period, np.tile(np.array(starts, dtype="datetime64[ns]"), 2))
+    np.testing.assert_array_equal(result.sum("bc_region"), source.sum("bc_region"))
+    np.testing.assert_array_equal(result.isel(bc_region=[0, 2], time=0), [0, 0])
+    np.testing.assert_array_equal(result.isel(bc_region=[1, 3], time=[1, 2]), [[0, 0], [0, 0]])
 
 
 @pytest.mark.parametrize("frequency", ["0h", "-1h", "NaT", "nan", "inf"])
@@ -66,10 +97,8 @@ def test_prepare_boundary_sensitivity_preserves_lazy_data_and_borrowed_input() -
     xr.testing.assert_identical(source, original)
 
 
-@pytest.mark.parametrize(("frequency", "expected_executions"), [("12h", 1), (None, 0)])
-def test_prepare_boundary_sensitivity_computes_lazy_time_only_when_needed(
-    frequency: str | None, expected_executions: int
-) -> None:
+@pytest.mark.parametrize("frequency", ["12h", None])
+def test_prepare_boundary_sensitivity_computes_lazy_time_once_to_label_periods(frequency: str | None) -> None:
     executions: list[None] = []
 
     @delayed
@@ -89,7 +118,7 @@ def test_prepare_boundary_sensitivity_computes_lazy_time_only_when_needed(
 
     result = BoundaryAlignment.prepare(source, frequency=frequency).data
 
-    assert len(executions) == expected_executions
+    assert len(executions) == 1
     assert hasattr(result.data, "__dask_graph__")
 
 
@@ -148,6 +177,8 @@ def test_satellite_boundary_scaling_uses_footprint_level_provenance() -> None:
         }
     )
 
+    inputs["bc_centering_weights"] = xr.DataArray([2.0, 1.0], dims="bc_region", attrs={"units": "1"})
+    original = inputs.copy(deep=True)
     result = scale_satellite_boundary_sensitivity_to_column_signal(
         inputs,
         sites=["OCO2-EASTASIA"],
@@ -157,6 +188,9 @@ def test_satellite_boundary_scaling_uses_footprint_level_provenance() -> None:
     )
 
     np.testing.assert_allclose(result["H_bc"], [[12.5, 50.0], [37.5, 100.0]])
+
+    xr.testing.assert_identical(result.bc_centering_weights, inputs.bc_centering_weights)
+    xr.testing.assert_identical(inputs, original)
 
 
 def test_satellite_boundary_scaling_skips_matching_provenance_levels() -> None:
