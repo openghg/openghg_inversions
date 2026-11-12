@@ -45,7 +45,7 @@ binds both against the joint state:
 
 .. code-block:: python
 
-   from openghg_inversions.models.boundary import AnomalyScalingChoice, RawCenteredSensitivity
+   from openghg_inversions.models.boundary import AnomalyScalingChoice
    from openghg_inversions.rhime.co2 import bind_linked_shared_baseline
    from openghg_inversions.models.shared_baseline import SharedBaselineChoice
 
@@ -60,8 +60,7 @@ binds both against the joint state:
        o2_sensitivity=linked.o2_sensitivity,
        retained_prior=linked.retained_prior,
        fixed_prior_contribution=fixed_by_channel,
-       boundary_sensitivity={channel: RawCenteredSensitivity.validate(operands[channel])
-                           for channel in ("co2", "o2")},
+       boundary_sensitivity=linked.boundary_operands,
        outer=outer,
        sampled_outer=sampled_outer,
    )
