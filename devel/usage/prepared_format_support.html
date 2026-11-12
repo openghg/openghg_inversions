@@ -386,6 +386,7 @@
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="co2_boundary_corrections.html">Configure CO₂ boundary corrections</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="surface_preparation.html">Surface CO₂/O₂ preparation pilot</a></li>
@@ -506,22 +507,21 @@ marker or operands, no representation field, and any <code class="docutils liter
 marked <code class="docutils literal notranslate"><span class="pre">raw-spatial</span></code> without fitted boundary periods.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">openghg_inversions.co2_prepared_inputs</span></code></p></td>
-<td><p>1 / 2</p></td>
-<td><p>Version 1 supports ordinary CO₂ coherent reduction; version 2 additionally
-supports centered operands. Writers use 1 / 2 for ordinary / centered.
-The embedded
-<code class="docutils literal notranslate"><span class="pre">rhime_inputs</span></code> tree follows the generic format rules above.</p></td>
+<td><p>3</p></td>
+<td><p>Coherent reduction with ordinary or centered transport and optional
+unstacked curtain/period averaging weights. The embedded <code class="docutils literal notranslate"><span class="pre">rhime_inputs</span></code>
+tree follows the generic format rules above.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">openghg_inversions.co2_o2_prepared_inputs</span></code></p></td>
-<td><p>1 / 2</p></td>
-<td><p>Version 1 supports linked absolute boundaries; version 2 additionally
-supports independently labelled centered channel operands. Writers use
-1 / 2 for absolute / centered.</p></td>
+<td><p>5</p></td>
+<td><p>Linked channels with absolute or independently labelled centered
+transport and optional unstacked curtain/period averaging weights.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
-<p>The CO₂ and linked envelopes have independent histories. Their versions do not
+<p>Only the current CO₂ and linked envelopes are accepted; older internal artifacts
+require preparation and sampling again. The envelopes have independent histories. Their versions do not
 follow the generic version number. Coherent-reduction covariance remains part of
 the CO₂ scientific contract.</p>
 </section>
@@ -552,16 +552,16 @@ the CO₂ scientific contract.</p>
 <td><p>3</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">openghg_inversions.co2.prepare</span></code></p></td>
-<td><p>1</p></td>
+<td><p>2</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">openghg_inversions.co2.sample</span></code></p></td>
-<td><p>1</p></td>
+<td><p>2</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">openghg_inversions.co2_o2.prepare</span></code></p></td>
-<td><p>1</p></td>
+<td><p>2</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">openghg_inversions.co2_o2.sample</span></code></p></td>
-<td><p>1</p></td>
+<td><p>2</p></td>
 </tr>
 </tbody>
 </table>

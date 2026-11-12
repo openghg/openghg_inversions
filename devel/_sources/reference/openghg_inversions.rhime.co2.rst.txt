@@ -10,7 +10,6 @@ openghg\_inversions.rhime.co2
 .. toctree::
    :maxdepth: 4
 
-   openghg_inversions.rhime.co2.centered_boundary
    openghg_inversions.rhime.co2.co2_affine_output
    openghg_inversions.rhime.co2.co2_cached_sigma_model
    openghg_inversions.rhime.co2.co2_cached_sigma_runner

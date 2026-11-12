@@ -387,6 +387,7 @@
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="co2_boundary_corrections.html">Configure CO₂ boundary corrections</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="surface_preparation.html">Surface CO₂/O₂ preparation pilot</a></li>
@@ -480,7 +481,8 @@ particular care when the required absolute accuracy is small relative to the
 background concentration. For example, resolving ppm or smaller changes in
 O2 near 200,000 ppm requires retaining many significant digits. We explain
 both the effect of quantized footprint weights and the order of arithmetic
-operations below. See <a class="reference internal" href="surface_preparation.html"><span class="doc">Surface CO₂/O₂ preparation pilot</span></a> for the preparation workflow.</p>
+operations below. See <a class="reference internal" href="surface_preparation.html"><span class="doc">Surface CO₂/O₂ preparation pilot</span></a> for the preparation workflow
+and <a class="reference internal" href="co2_boundary_corrections.html"><span class="doc">Configure CO₂ boundary corrections</span></a> for supported runners and prior configuration.</p>
 <section id="transport-concentrations-and-the-boundary-basis">
 <h2>Transport, concentrations and the boundary basis<a class="headerlink" href="#transport-concentrations-and-the-boundary-basis" title="Link to this heading">#</a></h2>
 <p>We distinguish boundary grid cells and native times from the states inferred
@@ -674,7 +676,9 @@ to specify uncertainty in the common boundary correction separately from
 uncertainty in departures from it. The weighted structure gives
 <span class="math notranslate nohighlight">\(\delta\)</span> its scalar prior and makes it independent of the constrained
 Gaussian anomalies. Decomposing independent corrections into their mean and
-departures would generally give a different joint prior. See
+departures would generally give a different joint prior. Its covariance and
+scale interpretation are derived in <a class="reference internal" href="#boundary-anomaly-prior-uncertainty"><span class="std std-ref">Anomaly prior and uncertainty</span></a>.
+See <a class="reference internal" href="co2_boundary_corrections.html"><span class="doc">Configure CO₂ boundary corrections</span></a> for supported configuration, and
 <a class="reference internal" href="boundary_correction_structures.html"><span class="doc">Boundary correction structures</span></a> for per-period contrasts, independent
 state anomalies, per-period mean shifts and anomaly scaling.</p>
 <p>A constant observation offset represents persistent bias in observations;
@@ -689,16 +693,47 @@ constraints are needed to distinguish them in that case.</p>
 <p>With the default NESW basis, complete jointly normalized particle weights
 we know that <span class="math notranslate nohighlight">\(M\mathbf1=\mathbf1\)</span>.
 A global observation offset, or unrestricted site offsets, therefore
-duplicates the boundary mean’s constant direction.
-<a class="reference internal" href="../reference/openghg_inversions.models.components.html#openghg_inversions.models.components.warn_constant_offset_confounding" title="openghg_inversions.models.components.warn_constant_offset_confounding"><code class="xref py py-func docutils literal notranslate"><span class="pre">warn_constant_offset_confounding()</span></code></a>
-warns for this combination when an affine design column is one on every
-row. Model construction does not call it yet: a recipe adding
-unrestricted offsets must call it explicitly. This narrow check covers
-normalized surface preparation; it is not a general rank or
-identifiability test for arbitrary transport. Fixing one site’s offset or constraining site
+duplicates the boundary mean’s constant direction. Model construction
+warns for this combination when the supplied mass response is approximately
+one. This narrow warning covers normalized surface preparation; it is not a
+general rank or identifiability test for arbitrary transport. Fixing one site’s offset or constraining site
 offsets to contrasts removes that one redundancy; BC anomalies can still
-reproduce site contrasts.</p>
+reproduce site contrasts. See <a class="reference internal" href="../development/boundary_offset_identifiability.html"><span class="doc">Boundary corrections and observation offsets</span></a>
+for examples and the distinction between relative site effects and physical
+bias attribution.</p>
 </div>
+</section>
+<section id="anomaly-prior-and-uncertainty">
+<span id="boundary-anomaly-prior-uncertainty"></span><h3>Anomaly prior and uncertainty<a class="headerlink" href="#anomaly-prior-and-uncertainty" title="Link to this heading">#</a></h3>
+<p>There are <span class="math notranslate nohighlight">\(K\)</span> labelled region–period boundary states.
+Define <span class="math notranslate nohighlight">\(\Pi=I-\mathbf{1}w^\mathsf{T}\)</span>, where <span class="math notranslate nohighlight">\(\mathbf{1}\)</span> is the
+length-<span class="math notranslate nohighlight">\(K\)</span> vector of ones. The anomaly prior is</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}u &amp;\sim \mathcal{N}\!\left(0,\,s_{bc}^{2}\Pi\Pi^\mathsf{T}\right), \\
+\delta &amp;\sim p_{\delta}, \qquad \delta\ \text{independent of}\ u.\end{split}\]</div>
+<p>The finite, nonnegative fixed scale <span class="math notranslate nohighlight">\(s_{bc}\)</span> is <code class="docutils literal notranslate"><span class="pre">anomaly_scale</span></code> in
+concentration units. For a positive scale it is the standard deviation of
+independent Gaussian corrections <em>before</em> subtracting their weighted mean.
+The implementation uses only <span class="math notranslate nohighlight">\(K-1\)</span> independent coordinates to sample
+the constrained anomalies. Set <code class="docutils literal notranslate"><span class="pre">anomaly_scale=0</span></code> to infer only the common
+level from <code class="docutils literal notranslate"><span class="pre">mean_prior</span></code>: all anomalies are exactly zero and no
+contrast variables are sampled. For a single boundary state, the anomaly is
+also exactly zero at any accepted scale. Negative and nonfinite scales are
+rejected.</p>
+<p>Centring changes individual anomaly variances and induces correlations:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\operatorname{Var}(u_j)
+   &amp;= s_{bc}^{2}\left(1-2w_j+\sum_k w_k^2\right), \\
+\operatorname{Var}(u_j-u_k) &amp;= 2s_{bc}^{2},\qquad j\ne k.\end{split}\]</div>
+<p>In particular, equal weights give marginal anomaly standard deviation
+<span class="math notranslate nohighlight">\(s_{bc}\sqrt{1-1/K}\)</span>. The scale controls pairwise departures independently
+of the prior for the common mean; it is not the marginal standard deviation
+of each anomaly. The variance consequence of a sum-to-zero constraint is also
+explained in <a class="reference external" href="https://mc-stan.org/docs/stan-users-guide/regression.html#marginal-distribution-of-sum-to-zero-components">Stan’s marginal-distribution discussion</a>.</p>
+<p>This prior keeps the projected baseline <span class="math notranslate nohighlight">\(H_{bc}\mathbf1\)</span> fixed and
+infers additive concentration corrections. It replaces the multiplicative
+scaling prior. Choose the common-mean prior and anomaly scale for uncertainty
+in the supplied boundary product.</p>
 </section>
 <section id="choosing-the-averaging-weights">
 <span id="boundary-averaging-weights"></span><h3>Choosing the averaging weights<a class="headerlink" href="#choosing-the-averaging-weights" title="Link to this heading">#</a></h3>
@@ -852,12 +887,16 @@ construction</p></td>
 <td><p><a class="reference internal" href="../reference/openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundAdditiveSensitivity.bind_weights" title="openghg_inversions.models.boundary.BoundAdditiveSensitivity.bind_weights"><code class="xref py py-meth docutils literal notranslate"><span class="pre">bind_weights()</span></code></a>,
 by exact label alignment</p></td>
 </tr>
-<tr class="row-odd"><td><p>Finite anomaly and reference; finite, non-negative, nonzero mass;
+<tr class="row-odd"><td><p>Joint linked rows; state-only data and reference unchanged</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pad_linked_boundary</span></code> in <code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_o2_model</span></code>,
+by construction</p></td>
+</tr>
+<tr class="row-even"><td><p>Finite anomaly and reference; finite, non-negative, nonzero mass;
 the fixed shift <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">M</span> <span class="pre">1</span></code></p></td>
 <td><p><a class="reference internal" href="../reference/openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.BoundCenteredSensitivity.reference_shift" title="openghg_inversions.models.boundary.BoundCenteredSensitivity.reference_shift"><code class="xref py py-meth docutils literal notranslate"><span class="pre">reference_shift()</span></code></a>,
 once at the start of <code class="docutils literal notranslate"><span class="pre">add</span></code> after the recipe’s joint materialization</p></td>
 </tr>
-<tr class="row-even"><td><p>Finite, strictly positive weights</p></td>
+<tr class="row-odd"><td><p>Finite, strictly positive weights</p></td>
 <td><p><a class="reference internal" href="../reference/openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.normalize_centering_weights" title="openghg_inversions.models.boundary.normalize_centering_weights"><code class="xref py py-func docutils literal notranslate"><span class="pre">normalize_centering_weights()</span></code></a>,
 during graph construction after joint materialization; preparation,
 loading and saving do not scan weight values</p></td>
@@ -867,7 +906,7 @@ loading and saving do not scan weight values</p></td>
 </div>
 <p>Bound records do not validate their data on construction or on
 <code class="docutils literal notranslate"><span class="pre">dataclasses.replace</span></code>. Code replacing <code class="docutils literal notranslate"><span class="pre">data</span></code> must preserve the contract;
-this revision provides no supported row transformation for bound records.</p>
+the linked padding helper is the supported row transformation.</p>
 </section>
 </section>
 </section>
@@ -928,6 +967,7 @@ this revision provides no supported row transformation for bound records.</p>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#additive-boundary-corrections">Additive boundary corrections</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#one-whole-window-correction-and-state-anomalies">One whole-window correction and state anomalies</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#anomaly-prior-and-uncertainty">Anomaly prior and uncertainty</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#choosing-the-averaging-weights">Choosing the averaging weights</a></li>
 </ul>
 </li>

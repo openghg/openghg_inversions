@@ -59,7 +59,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Boundary-condition operators" href="centered_boundary_conditions.html" />
-    <link rel="prev" title="CO₂ model recipes" href="co2_models.html" />
+    <link rel="prev" title="Configure CO₂ boundary corrections" href="co2_boundary_corrections.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="devel" />
@@ -386,6 +386,7 @@
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="co2_boundary_corrections.html">Configure CO₂ boundary corrections</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Surface CO₂/O₂ preparation pilot</a></li>
@@ -653,6 +654,9 @@ ordinary CO₂ coherent reduction automatically; see <a class="reference interna
 </section>
 <section id="centered-preparation-handoff">
 <span id="surface-centered-boundary-contract"></span><h2>Centered preparation handoff<a class="headerlink" href="#centered-preparation-handoff" title="Link to this heading">#</a></h2>
+<p>See <a class="reference internal" href="centered_boundary_conditions.html"><span class="doc">Boundary-condition operators</span></a> for definitions of the anomaly and
+mass operators, their mathematical relation to the absolute boundary response,
+and pseudocode for native curtain products, spatial projection and period masks.</p>
 <p>Apply supported observation selection first, then derive missing observation
 errors with <code class="docutils literal notranslate"><span class="pre">prepare_observation_errors</span></code> on the retained population. Explicit
 existing errors remain unchanged. Project the native <code class="docutils literal notranslate"><span class="pre">bc_anomaly_*</span></code> and
@@ -690,13 +694,15 @@ raw-v2 files remain readable; retired baked-v1 and ambiguous centered-v2 files
 must be regenerated. See <a class="reference internal" href="prepared_format_support.html"><span class="doc">Prepared artifact format support</span></a> for the exact map.
 Old rounded <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> alone cannot recover accurate centered operands.</p>
 <p>Standalone CO₂ and linked CO₂/O₂ prepared inputs support saving and reopening
-both ordinary boundaries and centered operands. Linked centered operands use the
-version-2 dedicated prepared-input schema; ordinary linked inputs retain
-version-1 compatibility. See <a class="reference internal" href="prepared_format_support.html"><span class="doc">Prepared artifact format support</span></a> for supported formats.</p>
+both ordinary boundaries and centered operands, in the current dedicated
+prepared-input schemas (version 3 for CO₂, version 5 for linked CO₂/O₂). Older
+internal artifacts must be prepared again. See <a class="reference internal" href="prepared_format_support.html"><span class="doc">Prepared artifact format support</span></a>
+for supported formats.</p>
 <p>The additive-Gaussian and cached fixed-OU CO₂ and linked CO₂/O₂ routes bind raw
-operands to BC periods at model construction. Their model-facing runners and
-direct builders accept <code class="docutils literal notranslate"><span class="pre">bc_freq</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_anchor_time</span></code>. Direct builders
-consume raw <code class="docutils literal notranslate"><span class="pre">boundary_operands</span></code> (in linked models, a mapping keyed by tracer).
+operands to BC periods at model construction. Their model-facing runners accept
+boundary choices, whose <code class="docutils literal notranslate"><span class="pre">frequency</span></code> and <code class="docutils literal notranslate"><span class="pre">anchor_time</span></code> set the periods. Direct
+builders take boundaries already bound to the fit’s observations (in linked
+models, a mapping keyed by tracer).
 Configured and supported saved routes select the same choices in their
 boundary configuration, for example:</p>
 <div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[model.boundary]</span>
@@ -718,17 +724,18 @@ boundary timestamps. Boundary times that also serve as indexed row labels must
 agree with the observation timestamps; conflicting values raise an error.</p>
 <p>Centered inference supports the additive-Gaussian recipe, ordinary fixed-OU
 likelihoods with fixed or inferred amplitudes, and inferred-amplitude fixed OU
-using the matched cached sampler. Configure PyTensor
+using the matched cached sampler. Both multiplicative and additive BC priors
+can use numerical centering; a linked model can retain multiplicative CO2
+boundaries while fitting additive O2 corrections. Configure PyTensor
 <code class="docutils literal notranslate"><span class="pre">floatX=float64</span></code> before model construction; these routes reject an explicit
 float32 choice.</p>
 <p>The concrete CO2 builder accepts <code class="docutils literal notranslate"><span class="pre">likelihood_builder=None</span></code> for the default
 additive-Gaussian likelihood or the exact
 <a class="reference internal" href="../reference/openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood" title="openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">add_fixed_ou_gaussian_likelihood()</span></code></a>
-function when <code class="docutils literal notranslate"><span class="pre">boundary_operands</span></code> is supplied. Arbitrary callbacks and wrappers
-around the built-in function are rejected before operand binding or graph
-construction, matching the prepared-input runner’s supported centered policy.
-Custom likelihood callbacks remain supported when centered boundary operands are
-absent. Standard and multisector model builders still reject centered inputs;
+function when a centered <code class="docutils literal notranslate"><span class="pre">boundary</span></code> is supplied. Arbitrary callbacks and wrappers
+around the built-in function are rejected before graph construction, matching the
+prepared-input runner’s supported centered policy. Custom likelihood callbacks
+remain supported when the boundary is absolute or absent. Standard and multisector model builders still reject centered inputs;
 their preparation operations can produce the reusable canonical handoff shown
 above.</p>
 <p>For the original BC coefficients b, the centered likelihood uses
@@ -741,7 +748,7 @@ annotation restores observed and predictive <code class="docutils literal notran
 once, using retained reference shifts; replay does not need to rebuild the model.
 The supported recipe runners perform this annotation automatically. Callers composing
 PyMC operations directly must restore sample coordinates, then call
-<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.centered_boundary.html#openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives" title="openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives"><code class="xref py py-func docutils literal notranslate"><span class="pre">restore_absolute_predictives()</span></code></a>
+<a class="reference internal" href="../reference/openghg_inversions.postprocessing.boundary_outputs.html#openghg_inversions.postprocessing.boundary_outputs.restore_absolute_predictives" title="openghg_inversions.postprocessing.boundary_outputs.restore_absolute_predictives"><code class="xref py py-func docutils literal notranslate"><span class="pre">restore_absolute_predictives()</span></code></a>
 before serialization or postprocessing.</p>
 <p>The cached sampler preserves the physical BC variables and their priors. Only
 its private quadratic uses active coefficients <code class="docutils literal notranslate"><span class="pre">b_active</span> <span class="pre">-</span> <span class="pre">1</span></code> and design
@@ -773,12 +780,12 @@ and native mixed-cadence reporting remain separate work.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="co2_models.html"
+       href="co2_boundary_corrections.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">CO₂ model recipes</p>
+        <p class="prev-next-title">Configure CO₂ boundary corrections</p>
       </div>
     </a>
     <a class="right-next"

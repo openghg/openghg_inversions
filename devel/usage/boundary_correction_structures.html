@@ -387,6 +387,7 @@
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="co2_boundary_corrections.html">Configure CO₂ boundary corrections</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="surface_preparation.html">Surface CO₂/O₂ preparation pilot</a></li>
@@ -483,11 +484,11 @@ states the structure of <span class="math notranslate nohighlight">\(d\)</span>.
 <span class="math notranslate nohighlight">\(\delta M\mathbf1+A'v\)</span>, scaling the prescribed anomaly by
 dimensionless <span class="math notranslate nohighlight">\(v\)</span>.</p></li>
 </ul>
-<p>Both are choices. A model recipe binds a choice to the prepared centered
-operands of one fit with <code class="docutils literal notranslate"><span class="pre">choice.bind(observations,</span> <span class="pre">sensitivity)</span></code> and adds
-the bound record inside its registered model; no correction artifact is
-prepared or stored. The CO2 runners and configuration do not yet accept these
-choices; that adoption is downstream work.</p>
+<p>Both are choices: pass one as <code class="docutils literal notranslate"><span class="pre">boundary=</span></code> to a CO2 frontend, or one per
+channel to a linked CO2/O2 frontend. The frontend binds it to the prepared
+centered operands of that fit; no correction artifact is prepared or stored.
+The options are recorded in the trace metadata and the arrays the graph uses
+in its constant data.</p>
 <section id="additive-structures">
 <h2>Additive structures<a class="headerlink" href="#additive-structures" title="Link to this heading">#</a></h2>
 <p>States <span class="math notranslate nohighlight">\(j\)</span> are boundary curtains <span class="math notranslate nohighlight">\(k\)</span> and periods <span class="math notranslate nohighlight">\(p\)</span>. With
@@ -580,13 +581,8 @@ sums to zero.</p></li>
     <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span> <span class="mf">0.8</span><span class="p">,</span>
     <span class="n">reference</span><span class="o">=</span><span class="s2">"whole_window_transport_mean"</span><span class="p">,</span>
 <span class="p">)</span>
-
-<span class="c1"># observations: one fit's observation rows; sensitivity: its prepared</span>
-<span class="c1"># RawCenteredSensitivity.</span>
-<span class="n">bound</span> <span class="o">=</span> <span class="n">contrasts</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="n">observations</span><span class="p">,</span> <span class="n">sensitivity</span><span class="p">)</span>
-<span class="c1"># Materialize the bound record together with the recipe's other inputs,</span>
-<span class="c1"># then, inside the recipe's registered model:</span>
-<span class="n">term</span> <span class="o">=</span> <span class="n">bound</span><span class="o">.</span><span class="n">add</span><span class="p">()</span>
+<span class="c1"># boundary=contrasts for one channel, or</span>
+<span class="c1"># boundary={"co2": contrasts, "o2": scaling} for a linked fit.</span>
 </pre></div>
 </div>
 </section>
