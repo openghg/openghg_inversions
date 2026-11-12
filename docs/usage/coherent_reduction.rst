@@ -195,10 +195,56 @@ such as ``SuppliedRestriction`` with ``require_positivity_preserving=True``. The
 bucket-compatible restriction derived by ``PreserveBucketProlongation`` is not
 guaranteed to preserve positivity.
 
-The function does not construct a likelihood, approximate :math:`A`, serialize
-the result, or reconstruct arbitrary native quantities. Do not add another
+The function does not construct a likelihood, approximate :math:`A`, or
+reconstruct arbitrary native quantities. Do not add another
 error term representing the same unresolved flux. Adding covariance components
 also assumes that their errors are independent unless their cross-covariances
 are included explicitly.
 
-See :mod:`openghg_inversions.coherent_reduction` for the public interface.
+Saving products and reductions
+------------------------------
+
+:mod:`openghg_inversions.covariance_artifacts` saves a reduction, or the
+products from ``project_native_covariance``, as a versioned NetCDF or Zarr
+artifact. Each artifact embeds the covariance configuration. It also records
+``inputs_id``, a caller-supplied identifier for the sensitivity :math:`H` and
+mean :math:`m`, which are not stored:
+
+.. code-block:: python
+
+   from openghg_inversions.covariance_artifacts import (
+       CoherentReductionArtifact,
+       load_coherent_reduction,
+       save_coherent_reduction,
+   )
+
+   artifact = CoherentReductionArtifact(
+       reduction=reduction,
+       covariance=covariance,
+       inputs_id=prepared_inputs_id,
+   )
+   save_coherent_reduction(artifact, "reduction.nc")
+   restored = load_coherent_reduction("reduction.nc").reduction
+
+The reduction stores :math:`\Pi`, which defines :math:`\alpha`, with its
+projection provenance. A sparse :math:`\Pi` stays sparse on disk and in
+memory. Products keep their typed labels, including MultiIndex and datetime
+levels, and their units.
+
+A products artifact may omit the dense :math:`U_*` with
+``save_products(..., include_prolongation=False)``.
+``with_prolongation`` then rebuilds it from the embedded covariance,
+:math:`\Pi` and :math:`C_\alpha`. Alternatively, ``prolongation_dtype="float32"``
+halves its size. :math:`U_*` only lifts retained values into native space,
+and :math:`H_\alpha` is stored separately. Every other product stays float64:
+:math:`C_\alpha` is factorized, and :math:`A` involves cancellation. Loading
+refuses any other single-precision product.
+
+``source_id`` identifies the covariance, :math:`\Pi` and ``inputs_id``. Dense
+and diagonal products and the reduction built from the same inputs share it.
+``content_id`` is a SHA-256 digest of everything stored. Loading recomputes
+both and refuses an altered file. The digest is not a signature, and loading
+does not re-derive the numerical relationships between products.
+
+See :mod:`openghg_inversions.coherent_reduction` and
+:mod:`openghg_inversions.covariance_artifacts` for the public interfaces.

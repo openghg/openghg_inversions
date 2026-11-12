@@ -19,8 +19,8 @@ uses a caller-defined physical ``Pi`` chosen independently of ``B``, such as
 one built by :func:`absolute_weighted_regional_mean_restriction`. The kernel
 trusts the covariance action's real self-adjoint positive-definite semantics
 and compatible inverse rather than globally certifying a matrix-free operator.
-Durable artifact identity and persistence are intentionally deferred to the
-artifact-I/O layer.
+Durable artifact identity and persistence belong to
+:mod:`openghg_inversions.covariance_artifacts`.
 """
 
 from __future__ import annotations
@@ -223,6 +223,7 @@ class PreserveBucketProlongation:
             mathematical_name="Pi_U",
             definition="(U.T B^-1 U)^-1 U.T B^-1",
             strategy=self.name,
+            restriction_source="derived",
             units="1",
         )
         return RetainedProjection(
@@ -547,7 +548,9 @@ class NativeCovarianceProducts:
             ``(state_dim, *native_dims)``. It is eager; a sparse payload
             selected by the strategy remains sparse.
         prolongation: Derived dimensionless covariance-natural ``U_*`` with
-            dimensions ``(*native_dims, state_dim)``.
+            dimensions ``(*native_dims, state_dim)``. It is ``None`` only for
+            products loaded from an artifact saved without it; rebuild it
+            with :func:`covariance_natural_prolongation`.
         state_covariance: Positive-definite dimensionless ``C_alpha`` with
             distinct typed row/column state dimensions.
         effective_observation_operator: ``H U_*`` with dimensions
@@ -569,7 +572,7 @@ class NativeCovarianceProducts:
     """
 
     restriction: xr.DataArray
-    prolongation: xr.DataArray
+    prolongation: xr.DataArray | None
     state_covariance: xr.DataArray
     effective_observation_operator: xr.DataArray
     observation_state_cross_covariance: xr.DataArray
@@ -708,6 +711,70 @@ def project_native_covariance(
         strategy=projection.strategy,
         observation_covariance_view=observation_covariance,
     )
+
+
+def covariance_natural_prolongation(
+    covariance: InvertibleNativeCovarianceAction,
+    restriction: xr.DataArray,
+    state_covariance: xr.DataArray,
+    *,
+    rhs_block_size: int = 64,
+) -> xr.DataArray:
+    """Rebuild ``U_* = B Pi.T C_alpha^-1`` from a restriction and its retained covariance.
+
+    Use this for products persisted without their dense prolongation. It
+    repeats the product kernel's derivation: ``B`` is applied to bounded,
+    densified retained-state blocks of ``Pi`` and ``C_alpha`` is factored
+    once, so a sparse ``Pi`` is never densified as a whole. The inputs are
+    borrowed and not mutated.
+
+    Args:
+        covariance: The native covariance action ``B`` that defined the
+            products, for example one restored from an artifact's embedded
+            configuration.
+        restriction: Authoritative ``Pi`` with dimensions
+            ``(state_dim, *native_dims)`` in any order.
+        state_covariance: ``C_alpha = Pi B Pi.T`` on distinct
+            ``(state_dim, state_column_dim)`` axes, in that order.
+        rhs_block_size: Positive number of retained states per covariance
+            application.
+
+    Returns:
+        Dimensionless ``U_*`` with dimensions ``(*native_dims, state_dim)``,
+        matching :attr:`NativeCovarianceProducts.prolongation` up to
+        floating-point roundoff.
+
+    Raises:
+        ValueError: If the block size is not positive, the retained labels of
+            ``Pi`` and ``C_alpha`` differ, or ``C_alpha`` is not a stable
+            positive-definite matrix.
+    """
+    if rhs_block_size <= 0:
+        raise ValueError("rhs_block_size must be positive")
+    native_dims = tuple(covariance.native_dims)
+    state_dim, state_column_dim = (str(dim) for dim in state_covariance.dims)
+    restriction = _materialize_restriction(restriction.transpose(state_dim, *native_dims))
+    # The solve below is positional, so Pi and C_alpha rows must share labels and order.
+    restriction_index = require_unique_index(restriction, state_dim, name="Restriction")
+    if not restriction_index.equals(state_covariance.get_index(state_dim)):
+        raise ValueError("Restriction and C_alpha must share identical retained-state labels in order")
+    b_pi_t = _apply_restriction_blocks(
+        covariance,
+        restriction,
+        native_dims=native_dims,
+        state_dim=state_dim,
+        column_dim=state_column_dim,
+        rhs_block_size=rhs_block_size,
+    )
+    prolongation, _ = _derive_covariance_natural_prolongation(
+        restriction,
+        state_covariance,
+        b_pi_t,
+        native_dims=native_dims,
+        state_dim=state_dim,
+        state_column_dim=state_column_dim,
+    )
+    return prolongation
 
 
 def _apply_restriction_blocks(
