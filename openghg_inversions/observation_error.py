@@ -344,8 +344,10 @@ def aggregation_error_kl_per_observation(
 
     Cost: exact dense algebra, one Cholesky factorization and one symmetric
     eigendecomposition of an ``n x n`` matrix per sigma value, i.e.
-    :math:`O(n^3)` time and :math:`O(n^2)` memory. Use it for tests, small
-    cases or one-off checks on a large node, not inside a sampler.
+    :math:`O(n^3)` time and :math:`O(n^2)` memory (a few ``n x n`` float64
+    matrices, about 250 MB each at ``n = 5,500``). Use it for tests,
+    preparation-time checks or one-off checks on a large node, not inside a
+    sampler.
 
     Args:
         reference_covariance: Dense reference aggregation covariance
@@ -386,18 +388,26 @@ def aggregation_error_kl_per_observation(
         if not np.isfinite(amplitude).all() or np.any(amplitude < 0):
             raise ValueError("sigma values must be finite and non-negative.")
         if correlation is None:
-            noise = np.diag(np.square(base) + np.square(amplitude))
+            total = approximate.copy()
         else:
-            noise = np.diag(np.square(base)) + amplitude[:, None] * correlation * amplitude[None, :]
+            total = amplitude[:, None] * correlation
+            total *= amplitude[None, :]
+            total += approximate
+            amplitude = np.zeros(n)
+        total[np.diag_indices(n)] += np.square(base) + np.square(amplitude)
         try:
-            cholesky = np.linalg.cholesky(approximate + noise)
+            cholesky = np.linalg.cholesky(total)
         except np.linalg.LinAlgError as error:
             raise ValueError(
                 "Approximate total covariance is not positive definite; add independent error or sigma."
             ) from error
+        del total
         whitened = solve_triangular(cholesky, difference, lower=True)
-        whitened = solve_triangular(cholesky, whitened.T, lower=True)
-        eigenvalues = np.linalg.eigvalsh(0.5 * (whitened + whitened.T))
+        whitened = solve_triangular(cholesky, whitened.T, lower=True, overwrite_b=True)
+        del cholesky
+        whitened += whitened.T
+        whitened *= 0.5
+        eigenvalues = np.linalg.eigvalsh(whitened)
         if eigenvalues.min() <= -1.0:
             raise ValueError("Reference total covariance is not positive definite.")
         result.append(0.5 * float(np.sum(eigenvalues - np.log1p(eigenvalues))) / n)

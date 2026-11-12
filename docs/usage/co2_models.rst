@@ -899,34 +899,48 @@ Joint aggregation-error representation
 
 As on the CO2-only route, ``prepare_co2_o2_inputs`` stores the joint
 aggregation covariance :math:`A` as low-rank-plus-diagonal (LRPD),
-:math:`A \approx F F^T + \mathrm{diag}(t)`, with ``aggregation_error_rank=512``
-by default. Pass ``aggregation_error_rank=None`` to keep the exact dense
-matrix. ``aggregation_error_factorization`` chooses how the factor is built:
+:math:`A \approx F F^T + \mathrm{diag}(t)`. ``aggregation_error_rank`` is a
+rank **per species**, 512 by default, so each species keeps the number of
+modes validated on the CO2-only route. Pass ``aggregation_error_rank=None`` to
+keep the exact dense matrix. ``aggregation_error_factorization`` chooses how
+the factor is built:
 
 ``"joint"`` (default)
-   One eigendecomposition of the whole mixed-unit matrix, keeping CO2/O2
-   cross-covariance in the retained modes. The selected modes depend on the
-   relative numerical scale of the two channels' units.
+   One eigendecomposition of the whole matrix with up to ``2 * rank`` modes,
+   keeping CO2/O2 cross-covariance in the retained modes. Each channel is
+   first divided by its root-mean diagonal aggregation error
+   (``channel_scale`` in provenance), so the selected modes do not depend on
+   the channels' units.
 ``"own_species"``
-   Separate factors for the CO2 and O2 blocks, up to the requested rank each,
+   Separate factors for the CO2 and O2 blocks, up to ``rank`` modes each,
    with the cross-covariance blocks dropped. The factor is block-diagonal.
 
 Both forms keep the dense diagonal in :math:`t`. The provenance
-``aggregation_error`` record stores the mode, requested rank, factorization,
-actual factor width, relative Frobenius error against the dense joint matrix,
-the dropped cross-covariance norm and per-block spectral diagnostics. Both the
+``aggregation_error`` record stores the mode, the per-species rank, the rank
+budget, the factorization, the actual factor width (overall and per block),
+the channel scales, the relative Frobenius error and the dropped
+cross-covariance norm (both in channel-scaled units) and per-block spectral
+diagnostics. These come from the block factorizations, so preparation does
+not form a second dense matrix for the approximation. Both the
 fixed-independent and the fixed-OU likelihood consume dense and LRPD inputs;
 at full rank they give the same log density.
 
-Frobenius error is not a likelihood test. Pass per-channel mismatch amplitudes
-as ``aggregation_error_kl_sigma={"co2": [...], "o2": [...]}``, and optionally
-``aggregation_error_kl_tau_hours`` for OU-correlated mismatch within each
-species and site, to record the Gaussian KL per observation between
-:math:`N(0, A + D)` and :math:`N(0, F F^T + \mathrm{diag}(t) + D)` in
-provenance ``aggregation_error_kl``. Here :math:`D` is the prepared independent
-error variance plus the mismatch term. This uses dense
-:math:`O(n^3)` algebra per amplitude, so evaluate a few amplitudes spanning
-the expected posterior range (see
+Frobenius error is not a likelihood test. For LRPD inputs, preparation records
+the Gaussian KL per observation between :math:`N(0, A + D)` and
+:math:`N(0, F F^T + \mathrm{diag}(t) + D)` in provenance
+``aggregation_error_kl``. Here :math:`D` is the prepared independent error
+variance plus the mismatch term :math:`\sigma^2`, independent by default or
+OU-correlated within each species and site with
+``aggregation_error_kl_tau_hours``. By default the mismatch amplitudes are
+0.1, 0.25, 0.5 and 1.0 ppm for CO2 (the #1053 grid), with O2 amplitudes scaled
+by the ratio of the channel scales; the default is skipped with a warning when
+``co2_units`` is not ppm. Supply ``aggregation_error_kl_sigma={"co2": [...],
+"o2": [...]}`` to choose amplitudes, or ``None`` to disable the check with a
+warning. Without a prepared independent error the record is an upper bound:
+adding the same independent noise to both distributions cannot increase the
+KL. The check uses dense :math:`O(n^3)` algebra per amplitude and a few
+:math:`n \times n` float64 matrices (about 1 GB at :math:`2n = 5{,}500`), on
+the same scale as the LRPD eigendecomposition (see
 :func:`~openghg_inversions.observation_error.aggregation_error_kl_per_observation`).
 The error grows quickly as the mismatch amplitude falls.
 

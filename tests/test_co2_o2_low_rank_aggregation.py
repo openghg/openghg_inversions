@@ -37,6 +37,42 @@ def _small_inputs() -> dict[str, object]:
     return inputs
 
 
+def _smooth_two_site_week_inputs(
+    *, cross_correlation: float = 0.6, o2_scale: float = 2.0, length: float = 4.0
+) -> dict[str, object]:
+    """Fourteen rows per channel with a smooth, non-diagonal joint aggregation covariance.
+
+    Each channel block is an exponential kernel over observation index and the
+    cross block is ``cross_correlation`` times the same kernel, so the joint
+    matrix is ``[[1, rho], [rho, 1]] kron K`` scaled per channel, plus a small
+    nugget. The O2 block is ``o2_scale`` times larger in standard deviation.
+    """
+    inputs = _two_site_week_inputs()
+    co2 = inputs["co2_aggregation_covariance"]
+    n = co2.shape[0]
+    index = np.arange(n)
+    kernel = np.exp(-np.abs(index[:, None] - index[None, :]) / length)
+    co2_sd, o2_sd = 0.5, 0.5 * o2_scale
+    inputs["co2_aggregation_covariance"] = co2.copy(data=co2_sd**2 * kernel + 1e-4 * np.eye(n))
+    inputs["o2_aggregation_covariance"] = inputs["o2_aggregation_covariance"].copy(
+        data=o2_sd**2 * kernel + 1e-4 * o2_scale**2 * np.eye(n)
+    )
+    inputs["co2_o2_aggregation_covariance"] = inputs["co2_o2_aggregation_covariance"].copy(
+        data=cross_correlation * co2_sd * o2_sd * kernel
+    )
+    return inputs
+
+
+def _rescale_o2(inputs: dict[str, object], factor: float) -> dict[str, object]:
+    """Express the O2 channel in units ``factor`` times smaller (values ``factor`` times larger)."""
+    inputs = dict(inputs)
+    for name in ("o2_observations", "o2_prior_forward_mean", "o2_sensitivity"):
+        inputs[name] = inputs[name] * factor
+    inputs["o2_aggregation_covariance"] = inputs["o2_aggregation_covariance"] * factor**2
+    inputs["co2_o2_aggregation_covariance"] = inputs["co2_o2_aggregation_covariance"] * factor
+    return inputs
+
+
 def _covariance(n: int, seed: int = 0) -> xr.DataArray:
     """Smooth, full-rank covariance with a decaying spectrum."""
     rng = np.random.default_rng(seed)
@@ -146,14 +182,19 @@ def _logp(prepared, *, tau_hours=None) -> tuple[float, float]:
 @pytest.mark.parametrize("tau_hours", [None, 30.0])
 @pytest.mark.parametrize("factorization", ["joint", "own_species"])
 def test_full_rank_low_rank_likelihood_equals_dense(tau_hours, factorization) -> None:
-    inputs = _two_site_week_inputs()
+    inputs = _smooth_two_site_week_inputs()
     if factorization == "own_species":
+        # Own-species factors are exact only when the cross block is zero.
         inputs["co2_o2_aggregation_covariance"] = inputs["co2_o2_aggregation_covariance"] * 0.0
     dense = prepare_co2_o2_inputs(**inputs, aggregation_error_rank=None)
     low_rank = prepare_co2_o2_inputs(**inputs, aggregation_error_factorization=factorization)
     assert dense.aggregation_error.mode == "dense"
     assert low_rank.aggregation_error.mode == "low_rank"
     assert low_rank.provenance["aggregation_error"]["rank"] == 512
+    assert low_rank.provenance["aggregation_error"]["actual_rank"] == 28
+    np.testing.assert_allclose(
+        dense_aggregation_covariance(low_rank.aggregation_error), dense.aggregation_error.covariance.values, atol=1e-12
+    )
     # The fixed-independent graph runs in floatX (float32 here); fixed OU evaluates in float64.
     rtol = 1e-5 if tau_hours is None else 1e-9
     np.testing.assert_allclose(_logp(low_rank, tau_hours=tau_hours), _logp(dense, tau_hours=tau_hours), rtol=rtol)
@@ -165,7 +206,7 @@ def test_truncated_rank_changes_likelihood_and_records_kl() -> None:
     sigma = {"co2": [0.05, 0.5], "o2": [0.05, 0.5]}
     joint = prepare_co2_o2_inputs(
         **inputs,
-        aggregation_error_rank=4,
+        aggregation_error_rank=2,
         independent_error_floor={"co2": 0.1, "o2": 0.1},
         aggregation_error_kl_sigma=sigma,
         aggregation_error_kl_tau_hours=5.0,
@@ -179,11 +220,13 @@ def test_truncated_rank_changes_likelihood_and_records_kl() -> None:
     )
     assert _logp(joint) != pytest.approx(_logp(dense))
     record = joint.provenance["aggregation_error"]
-    assert record["factorization"] == "joint" and record["actual_rank"] == 4
+    # The rank is per species: the joint factor keeps 2 * rank modes.
+    assert record["factorization"] == "joint" and record["rank_budget"] == 4 and record["actual_rank"] == 4
     assert record["relative_frobenius_reconstruction_error"] > 0
     kl = joint.provenance["aggregation_error_kl"]
     assert kl["kernel"] == "fixed OU by species and site" and kl["tau_hours"] == 5.0
-    assert kl["independent_error"] == "prepared independent_error_sd"
+    assert kl["independent_error"] == "prepared independent_error_sd" and kl["bound"] == "exact for this D"
+    assert kl["sigma_rule"] == "supplied"
     assert kl["kl_per_observation"][0] > kl["kl_per_observation"][1] > 0
     expected = aggregation_error_kl_per_observation(
         dense.aggregation_error.covariance,
@@ -290,7 +333,8 @@ def test_independent_error_floor_is_explicit_and_recorded() -> None:
         ({"independent_error_floor": {"co2": True, "o2": 1.0}}, "real number"),
         ({"aggregation_error_rank": 0}, "positive integer"),
         ({"aggregation_error_factorization": "per_site"}, "'joint' or 'own_species'"),
-        ({"aggregation_error_kl_tau_hours": 5.0}, "requires aggregation_error_kl_sigma"),
+        ({"aggregation_error_kl_sigma": None, "aggregation_error_kl_tau_hours": 5.0}, "requires aggregation_error_kl_sigma"),
+        ({"aggregation_error_rank": None, "aggregation_error_kl_sigma": {"co2": [1.0], "o2": [1.0]}}, "dense A is exact"),
         ({"aggregation_error_kl_sigma": {"co2": [1.0], "o2": []}}, "equal-length"),
         ({"aggregation_error_kl_sigma": {"co2": [1.0], "o2": [1.0]}, "aggregation_error_kl_tau_hours": 5.0}, "'site'"),
         ({"provenance": {"aggregation_error": "hand-built rank 256"}}, "recorded by preparation"),
@@ -299,3 +343,117 @@ def test_independent_error_floor_is_explicit_and_recorded() -> None:
 def test_rejects_invalid_low_rank_options(options, message) -> None:
     with pytest.raises(ValueError, match=message):
         prepare_co2_o2_inputs(**{**_small_inputs(), **options})
+
+
+@pytest.mark.parametrize("rank", [3, 512])
+def test_own_species_factors_preserve_the_smooth_diagonal_and_drop_only_cross(rank) -> None:
+    inputs = _smooth_two_site_week_inputs()
+    dense = prepare_co2_o2_inputs(**inputs, aggregation_error_rank=None).aggregation_error.covariance.values
+    own = prepare_co2_o2_inputs(**inputs, aggregation_error_rank=rank, aggregation_error_factorization="own_species")
+    record = own.provenance["aggregation_error"]
+    assert record["rank_budget"] == {"co2": rank, "o2": rank}
+    assert record["actual_rank_by_block"] == {"co2": min(rank, 14), "o2": min(rank, 14)}
+    approximate = dense_aggregation_covariance(own.aggregation_error)
+    np.testing.assert_allclose(np.diag(approximate), np.diag(dense), rtol=1e-12)
+    np.testing.assert_allclose(own.aggregation_error.marginal_variance, np.diag(dense), rtol=1e-12)
+    assert record["diagonal_preservation_error"] < 1e-12
+    species = own.observations.species.values
+    cross = np.ix_(species == "co2", species == "o2")
+    assert np.abs(dense[cross]).max() > 0.1
+    np.testing.assert_array_equal(approximate[cross], 0.0)
+    # Relative errors are in channel-scaled units: divide each channel by its scale.
+    scale = np.where(species == "co2", record["channel_scale"]["co2"], record["channel_scale"]["o2"])
+    scaled = dense / np.outer(scale, scale)
+    scaled_error = (dense - approximate) / np.outer(scale, scale)
+    np.testing.assert_allclose(
+        record["relative_frobenius_reconstruction_error"],
+        np.linalg.norm(scaled_error) / np.linalg.norm(scaled),
+        rtol=1e-9,
+    )
+    np.testing.assert_allclose(
+        record["dropped_cross_covariance_relative_frobenius"],
+        np.sqrt(2.0) * np.linalg.norm(scaled[cross]) / np.linalg.norm(scaled),
+        rtol=1e-9,
+    )
+    if rank == 512:
+        np.testing.assert_allclose(
+            record["relative_frobenius_reconstruction_error"],
+            record["dropped_cross_covariance_relative_frobenius"],
+            rtol=1e-9,
+        )
+
+
+def test_joint_rank_is_per_species_and_preserves_the_smooth_diagonal() -> None:
+    inputs = _smooth_two_site_week_inputs()
+    dense = prepare_co2_o2_inputs(**inputs, aggregation_error_rank=None).aggregation_error.covariance.values
+    joint = prepare_co2_o2_inputs(**inputs, aggregation_error_rank=3)
+    record = joint.provenance["aggregation_error"]
+    assert record["rank"] == 3 and record["rank_meaning"] == "per species"
+    assert record["rank_budget"] == 6 and record["actual_rank"] == 6
+    assert record["channel_scale"]["o2"] == pytest.approx(2.0 * record["channel_scale"]["co2"])
+    approximate = dense_aggregation_covariance(joint.aggregation_error)
+    np.testing.assert_allclose(np.diag(approximate), np.diag(dense), rtol=1e-12)
+    species = joint.observations.species.values
+    # The joint factor keeps cross-covariance that own-species factors drop.
+    assert np.abs(approximate[np.ix_(species == "co2", species == "o2")]).max() > 0.1
+    scale = np.where(species == "co2", record["channel_scale"]["co2"], record["channel_scale"]["o2"])
+    np.testing.assert_allclose(
+        record["relative_frobenius_reconstruction_error"],
+        np.linalg.norm((dense - approximate) / np.outer(scale, scale)) / np.linalg.norm(dense / np.outer(scale, scale)),
+        rtol=1e-9,
+    )
+
+
+@pytest.mark.parametrize("factorization", ["joint", "own_species"])
+def test_factorization_and_default_kl_do_not_depend_on_o2_units(factorization) -> None:
+    inputs = _smooth_two_site_week_inputs(o2_scale=1.0)
+    options = {"aggregation_error_rank": 2, "aggregation_error_factorization": factorization}
+    base = prepare_co2_o2_inputs(**inputs, **options)
+    rescaled = prepare_co2_o2_inputs(**_rescale_o2(inputs, 5.0), **options)
+    species = base.observations.species.values
+    row_factor = np.where(species == "o2", 5.0, 1.0)
+    np.testing.assert_allclose(
+        dense_aggregation_covariance(rescaled.aggregation_error),
+        dense_aggregation_covariance(base.aggregation_error) * np.outer(row_factor, row_factor),
+        rtol=1e-9,
+        atol=1e-12,
+    )
+    base_kl, rescaled_kl = (prepared.provenance["aggregation_error_kl"] for prepared in (base, rescaled))
+    np.testing.assert_allclose(rescaled_kl["sigma"]["o2"], 5.0 * np.asarray(base_kl["sigma"]["o2"]), rtol=1e-12)
+    np.testing.assert_allclose(rescaled_kl["kl_per_observation"], base_kl["kl_per_observation"], rtol=1e-8)
+
+
+def test_default_kl_is_recorded_on_the_1053_grid_as_an_upper_bound() -> None:
+    inputs = _smooth_two_site_week_inputs()
+    dense = prepare_co2_o2_inputs(**inputs, aggregation_error_rank=None)
+    assert "aggregation_error_kl" not in dense.provenance
+    low_rank = prepare_co2_o2_inputs(**inputs, aggregation_error_rank=2)
+    kl = low_rank.provenance["aggregation_error_kl"]
+    assert kl["sigma"]["co2"] == [0.1, 0.25, 0.5, 1.0]
+    np.testing.assert_allclose(kl["sigma"]["o2"], [0.2, 0.5, 1.0, 2.0], rtol=1e-6)
+    assert kl["sigma_rule"].startswith("default")
+    assert kl["kernel"] == "diagonal"
+    assert kl["independent_error"].startswith("none") and kl["bound"].startswith("upper bound")
+    species = low_rank.observations.species.values
+    expected = aggregation_error_kl_per_observation(
+        dense.aggregation_error.covariance,
+        low_rank.aggregation_error,
+        sigma=[np.where(species == "co2", co2, o2) for co2, o2 in zip(kl["sigma"]["co2"], kl["sigma"]["o2"])],
+    )
+    np.testing.assert_allclose(kl["kl_per_observation"], expected)
+    assert np.all(np.diff(kl["kl_per_observation"]) < 0)
+    # Adding run-time independent error to both sides can only reduce the KL.
+    floored = prepare_co2_o2_inputs(**inputs, aggregation_error_rank=2, independent_error_floor={"co2": 0.1, "o2": 0.2})
+    floored_kl = floored.provenance["aggregation_error_kl"]
+    assert floored_kl["bound"] == "exact for this D"
+    assert np.all(np.asarray(floored_kl["kl_per_observation"]) < np.asarray(kl["kl_per_observation"]))
+
+
+def test_missing_kl_record_warns() -> None:
+    inputs = _smooth_two_site_week_inputs()
+    with pytest.warns(UserWarning, match="No aggregation-error KL diagnostic"):
+        disabled = prepare_co2_o2_inputs(**inputs, aggregation_error_rank=2, aggregation_error_kl_sigma=None)
+    assert disabled.provenance["aggregation_error_kl"] == {"recorded": False, "reason": "disabled by caller"}
+    with pytest.warns(UserWarning, match="co2_units is 'ppb'"):
+        other_units = prepare_co2_o2_inputs(**{**inputs, "co2_units": "ppb", "o2_units": "ppb"}, aggregation_error_rank=2)
+    assert other_units.provenance["aggregation_error_kl"]["recorded"] is False
