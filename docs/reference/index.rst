@@ -391,7 +391,11 @@ scores country and sector-total posteriors: z-scores, PIT values, central-interv
 membership and aggregate coverage with Wilson intervals. Grouped totals are summed
 from joint draws, never from summary moments. Functionals with a tiny posterior SD
 (an absolute floor, or a fraction of the prior SD) or with ``retained_only``
-uncertainty are flagged and left out of the unflagged RMS z:
+uncertainty are flagged and left out of the unflagged RMS z. The input must be
+joint posterior draws of the functionals taken from the trace; posterior summaries
+such as ``co2_country_flux_outputs`` cannot be scored. Set ``uncertainty_scope`` on
+the draws (a missing scope warns, or raises with ``require_scope=True``), and note
+that overlapping groups make the Wilson coverage intervals too narrow:
 
 .. code-block:: python
 

@@ -28,6 +28,7 @@ and Dask-backed draws are loaded.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Hashable, Mapping, Sequence
 
 import numpy as np
@@ -105,13 +106,23 @@ def _retained_only(
     dim: Hashable,
     groups: Mapping[str, Sequence[Hashable]] | None,
     scopes: Sequence[str],
+    require_scope: bool,
 ) -> xr.DataArray:
     """Flag functionals whose uncertainty scope is retained-state only.
 
     A group is flagged if any member is, because the group SD then also leaves
-    out unresolved variance.
+    out unresolved variance. A missing scope warns, or raises if required.
     """
-    if "uncertainty_scope" in draws.coords and dim in draws["uncertainty_scope"].dims:
+    per_functional = "uncertainty_scope" in draws.coords and dim in draws["uncertainty_scope"].dims
+    if not per_functional and "uncertainty_scope" not in draws.attrs:
+        message = (
+            "draws declare no uncertainty_scope (attribute or coordinate), so retained-only "
+            "uncertainty cannot be detected and the functionals are scored as complete."
+        )
+        if require_scope:
+            raise ValueError(message)
+        warnings.warn(message, UserWarning, stacklevel=3)
+    if per_functional:
         flags = xr.DataArray(
             np.isin(draws["uncertainty_scope"].values, list(scopes)),
             dims=(dim,),
@@ -132,6 +143,52 @@ def _retained_only(
     )
 
 
+def _align_truth(truth: xr.DataArray, draws: xr.DataArray, sample_dims: Sequence[Hashable]) -> xr.DataArray:
+    """Reindex the truth to the draws' labels, raising on missing or extra labels.
+
+    This runs before any summing so that a label missing from the truth cannot
+    be dropped silently by a sum.
+    """
+    expected = [dim for dim in draws.dims if dim not in sample_dims]
+    if set(truth.dims) != set(expected):
+        raise ValueError(
+            f"truth dimensions {truth.dims} must match the non-sample draw dimensions {tuple(expected)}."
+        )
+    labelled = {}
+    for dim in expected:
+        if dim not in draws.indexes:
+            if truth.sizes[dim] != draws.sizes[dim]:
+                raise ValueError(f"truth and draws differ in the size of {dim!r}.")
+        elif dim not in truth.indexes:
+            raise ValueError(f"truth has no labels on {dim!r}.")
+        else:
+            missing = draws.indexes[dim].difference(truth.indexes[dim])
+            extra = truth.indexes[dim].difference(draws.indexes[dim])
+            if len(missing) or len(extra):
+                raise ValueError(
+                    f"truth and draws disagree on {dim!r}: missing from truth {list(missing)}, "
+                    f"not in draws {list(extra)}."
+                )
+            labelled[dim] = draws.indexes[dim]
+    return truth.reindex(labelled).transpose(*expected)
+
+
+def _warn_if_overlapping(groups: Mapping[str, Sequence[Hashable]]) -> None:
+    """Warn when a member belongs to more than one group."""
+    seen: set[Hashable] = set()
+    shared: set[Hashable] = set()
+    for members in groups.values():
+        shared |= seen & set(members)
+        seen |= set(members)
+    if shared:
+        warnings.warn(
+            f"Groups overlap on {sorted(shared, key=str)}; overlapping or nested groups are correlated, "
+            "so the Wilson intervals on coverage, which assume independent functionals, are too narrow.",
+            UserWarning,
+            stacklevel=3,
+        )
+
+
 def _prepare(
     draws: xr.DataArray,
     dim: Hashable,
@@ -150,7 +207,9 @@ def _central_interval_membership(
     members = []
     for probability in intervals:
         tail = (1.0 - probability) / 2.0
-        bounds = draws.quantile([tail, 1.0 - tail], dim=sample_dims).reset_coords(drop=True)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            bounds = draws.quantile([tail, 1.0 - tail], dim=sample_dims).reset_coords(drop=True)
         inside = (truth >= bounds.isel(quantile=0, drop=True)) & (truth <= bounds.isel(quantile=1, drop=True))
         members.append(inside.expand_dims(interval=[probability]))
     return xr.concat(members, dim="interval")
@@ -170,6 +229,7 @@ def functional_coverage(
     sample_dims: Sequence[Hashable] = ("chain", "draw"),
     confidence: float = 0.95,
     retained_only_scopes: Sequence[str] = RETAINED_ONLY_SCOPES,
+    require_scope: bool = False,
 ) -> xr.Dataset:
     """Score the calibration of posterior functionals against a known truth.
 
@@ -177,16 +237,32 @@ def functional_coverage(
     members per draw, then calculate every statistic from the resulting draws.
     The truth is summed in the same way.
 
+    The draws must be joint posterior draws of the functionals, for example
+    country totals calculated from the posterior samples in the trace. Posterior
+    summaries (means and SDs), such as the output of
+    ``co2_country_flux_outputs``, cannot be used: they carry no joint draws.
+
+    A NaN in any draw of a functional makes that functional unscorable: its
+    statistics are NaN and it is flagged ``nan_draws``, on grouped and
+    ungrouped paths alike. Coverage Wilson intervals treat the functionals as
+    independent, which countries and especially overlapping groups (FRA within
+    EU within ALL) are not, so the intervals are optimistic; a warning is
+    raised for overlapping groups.
+
     Args:
         draws: Posterior draws of the functionals, with the ``sample_dims``
             present and ``functional_dim``; for example country totals, with a
-            ``sector`` dimension to sum over.
+            ``sector`` dimension to sum over. Set ``attrs["uncertainty_scope"]``
+            (or an ``uncertainty_scope`` coordinate) to say whether they are
+            complete; see ``require_scope``.
         truth: True values with the dimensions of ``draws`` apart from the
             sample dimensions, in the same units. Dimensions in ``sum_dims``
-            are summed. Must align exactly with ``draws``.
+            are summed. Labels are checked against ``draws`` before summing and
+            reordered to match; missing or extra labels raise.
         groups: Optional mapping from a group name to the members of
             ``functional_dim`` it sums, such as ``{"EU": ["FRA", "DEU"]}``.
-            Only the named groups are scored, and groups may overlap. Without
+            Only the named groups are scored. Groups may overlap, but then the
+            Wilson intervals are too narrow and a warning is raised. Without
             it every member of ``functional_dim`` is scored on its own.
         intervals: Probabilities of the central posterior intervals to check.
         min_sd: Flag functionals whose posterior SD is below this absolute
@@ -205,28 +281,32 @@ def functional_coverage(
             ``retained_only``. The scope is read from ``draws.attrs`` (all
             functionals) or from an ``uncertainty_scope`` coordinate along
             ``functional_dim`` (per functional).
+        require_scope: Raise if ``draws`` declare no ``uncertainty_scope``
+            instead of warning and scoring them as complete.
 
     Returns:
         Dataset with, per functional (on ``functional_dim`` and any other
         dimension left in ``draws``): ``mean``, ``sd`` (ddof 1), ``truth``,
         ``z`` = ``(mean - truth) / sd``, ``pit`` (fraction of draws below the
         truth, counting ties as half), ``in_interval`` (on ``interval``),
-        ``sd_below_floor``, ``retained_only`` and ``excluded``, true where the
-        functional is flagged or has a non-finite ``z``. ``prior_sd`` is
+        ``sd_below_floor``, ``retained_only``, ``nan_draws`` and ``excluded``,
+        true where the functional is flagged or has a non-finite ``z``. ``prior_sd`` is
         included when ``prior_draws`` is given.
 
-        Aggregates over all functionals, for ``subset`` ``"all"`` and
-        ``"unflagged"`` (excluding ``excluded``): ``n``, ``coverage``,
-        ``coverage_lower`` and ``coverage_upper`` (Wilson, per ``interval``),
-        and ``rms_z`` over the finite z-scores. Functionals with a non-finite
-        truth are left out of the coverage counts. The nominal and Wilson
-        confidence levels are in ``attrs``.
+        Aggregates for ``subset`` ``"all"`` (every functional with a finite
+        ``z``) and ``"unflagged"`` (also excluding ``excluded``): ``n``,
+        ``coverage``, ``coverage_lower`` and ``coverage_upper`` (Wilson, per
+        ``interval``) and ``rms_z``. Coverage and ``rms_z`` use the same
+        functionals within a subset. ``n_unscored`` counts the functionals
+        left out of ``"all"`` because ``z`` is not finite (zero SD, NaN draws
+        or missing truth). The Wilson confidence level is in ``attrs``.
 
     Raises:
         ValueError: If the draws have no sample dimension or fewer than two
             draws, ``intervals`` or ``confidence`` are outside (0, 1),
             ``min_sd_fraction_of_prior`` is given without ``prior_draws``, a
-            group is empty or has unknown members, or the truth does not
+            group is empty or has unknown members, ``require_scope`` is true
+            and no scope is declared, or the truth does not
             align with the draws.
     """
     if any(not 0.0 < probability < 1.0 for probability in intervals):
@@ -239,27 +319,38 @@ def functional_coverage(
     if np.prod([draws.sizes[dim] for dim in sdims]) < 2:
         raise ValueError("At least two draws are needed to estimate a posterior SD.")
 
+    truth = _align_truth(truth, draws, sdims)
+    if groups is not None:
+        _warn_if_overlapping(groups)
     grouped = _prepare(draws, functional_dim, sum_dims, groups)
-    retained = _retained_only(draws, functional_dim, groups, retained_only_scopes)
+    retained = _retained_only(draws, functional_dim, groups, retained_only_scopes, require_scope)
     truth = _prepare(truth, functional_dim, sum_dims, groups)
     grouped, truth = xr.align(grouped, truth.reset_coords(drop=True), join="exact")
     grouped = grouped.reset_coords(drop=True)
+    # A NaN in any draw makes the functional unscorable, on the grouped and ungrouped paths alike.
+    nan_draws = grouped.isnull().any(sdims)
+    grouped = grouped.where(~nan_draws)
 
-    mean = grouped.mean(sdims)
-    sd = grouped.std(sdims, ddof=1)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN functionals are flagged, not warned about
+        mean = grouped.mean(sdims)
+        sd = grouped.std(sdims, ddof=1)
     with np.errstate(divide="ignore", invalid="ignore"):
         z = (mean - truth) / sd
     z = z.where(sd > 0)
     n_draws = float(np.prod([grouped.sizes[dim] for dim in sdims]))
     pit = ((grouped < truth).sum(sdims) + 0.5 * (grouped == truth).sum(sdims)) / n_draws
-    pit = pit.where(truth.notnull())
+    pit = pit.where(truth.notnull() & ~nan_draws)
     in_interval = _central_interval_membership(grouped, truth, intervals, sdims)
 
     below_floor = xr.zeros_like(sd, dtype=bool)
     result = {"mean": mean, "sd": sd, "truth": truth, "z": z, "pit": pit}
     if prior_draws is not None:
-        prior_sd = _prepare(prior_draws, functional_dim, sum_dims, groups).reset_coords(drop=True)
-        prior_sd = prior_sd.std(_sample_dims(prior_draws, sample_dims), ddof=1)
+        prior = _prepare(prior_draws, functional_dim, sum_dims, groups).reset_coords(drop=True)
+        prior_dims = _sample_dims(prior_draws, sample_dims)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            prior_sd = prior.where(~prior.isnull().any(prior_dims)).std(prior_dims, ddof=1)
         prior_sd, sd = xr.align(prior_sd, sd, join="exact")
         result["prior_sd"] = prior_sd
         if min_sd_fraction_of_prior is not None:
@@ -268,11 +359,12 @@ def functional_coverage(
         below_floor = below_floor | (sd < min_sd)
     retained = retained.broadcast_like(sd)
 
-    excluded = below_floor | retained | ~np.isfinite(z)
+    excluded = below_floor | retained | nan_draws | ~np.isfinite(z)
     result.update(
         in_interval=in_interval,
         sd_below_floor=below_floor,
         retained_only=retained,
+        nan_draws=nan_draws,
         excluded=excluded,
     )
     dataset = xr.Dataset(result)
@@ -289,15 +381,15 @@ def _aggregate(scores: xr.Dataset, confidence: float) -> xr.Dataset:
     """Coverage with Wilson intervals and RMS z over all and unflagged functionals."""
     dims = list(scores["sd"].dims)
     pieces = []
-    for subset, keep in (("all", xr.ones_like(scores["excluded"])), ("unflagged", ~scores["excluded"])):
-        has_truth = scores["truth"].notnull() & keep
-        trials = has_truth.sum(dims)
-        hits = (scores["in_interval"] & has_truth).sum(dims)
+    scored = np.isfinite(scores["z"])
+    for subset, keep in (("all", scored), ("unflagged", ~scores["excluded"])):
+        trials = keep.sum(dims)
+        hits = (scores["in_interval"] & keep).sum(dims)
         wilson = wilson_interval(hits, trials, confidence)
         kept_z = scores["z"].where(keep)
         piece = xr.Dataset(
             {
-                "n": keep.sum(dims),
+                "n": trials,
                 "coverage": wilson["proportion"],
                 "coverage_lower": wilson["lower"],
                 "coverage_upper": wilson["upper"],
@@ -305,4 +397,6 @@ def _aggregate(scores: xr.Dataset, confidence: float) -> xr.Dataset:
             }
         )
         pieces.append(piece.expand_dims(subset=[subset]))
-    return xr.concat(pieces, dim="subset")
+    aggregate = xr.concat(pieces, dim="subset")
+    aggregate["n_unscored"] = (~scored).sum(dims)
+    return aggregate

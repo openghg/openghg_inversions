@@ -11,7 +11,9 @@ def _draws(values, dim="country", labels=None):
     """Wrap draws of shape (chain, draw, functional) in a DataArray."""
     values = np.asarray(values, dtype=float)
     labels = labels if labels is not None else list(range(values.shape[-1]))
-    return xr.DataArray(values, dims=("chain", "draw", dim), coords={dim: labels})
+    return xr.DataArray(
+        values, dims=("chain", "draw", dim), coords={dim: labels}, attrs={"uncertainty_scope": "complete"}
+    )
 
 
 def _truth(values, dim="country", labels=None):
@@ -76,6 +78,7 @@ def test_sum_over_sectors_then_groups_and_overlapping_groups():
         values,
         dims=("chain", "draw", "country", "sector"),
         coords={"country": ["FRA", "DEU", "GBR"], "sector": ["energy", "waste"]},
+        attrs={"uncertainty_scope": "complete"},
     )
     truth = xr.DataArray(
         [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
@@ -83,12 +86,13 @@ def test_sum_over_sectors_then_groups_and_overlapping_groups():
         coords=draws.coords["country"].coords | draws.coords["sector"].coords,
     )
 
-    result = functional_coverage(
-        draws,
-        truth,
-        groups={"FRA": ["FRA"], "EU": ["FRA", "DEU"], "ALL": ["FRA", "DEU", "GBR"]},
-        sum_dims=("sector",),
-    )
+    with pytest.warns(UserWarning, match="Groups overlap on"):
+        result = functional_coverage(
+            draws,
+            truth,
+            groups={"FRA": ["FRA"], "EU": ["FRA", "DEU"], "ALL": ["FRA", "DEU", "GBR"]},
+            sum_dims=("sector",),
+        )
 
     expected = values.sum(-1)
     assert result["mean"].sel(country="EU") == pytest.approx(expected[..., :2].sum(-1).mean())
@@ -141,18 +145,45 @@ def test_pit_ties_and_degenerate_draws():
     assert bool(result["excluded"].item())
     assert result["in_interval"].all()  # the truth sits on the degenerate interval
     assert np.isnan(result["rms_z"].sel(subset="unflagged").item())
+    # Zero-SD functionals leave both coverage and rms_z of "all", and are counted.
+    assert result["n"].sel(subset="all") == 0
+    assert result["n_unscored"] == 1
+    assert np.isnan(result["coverage"].sel(subset="all", interval=0.95).item())
 
     ties = _draws([[[0.0], [1.0]], [[1.0], [2.0]]])
     assert functional_coverage(ties, _truth([1.0]))["pit"].item() == 0.5
 
 
+def _ramp(n_functionals):
+    """Draws 0..99 for every functional, on (chain=2, draw=50, functional)."""
+    ramp = np.arange(100.0).reshape(2, 50, 1)
+    return np.repeat(ramp, n_functionals, axis=-1)
+
+
 def test_missing_truth_is_not_counted():
-    draws = _draws(np.random.default_rng(6).normal(size=(2, 50, 3)))
-    result = functional_coverage(draws, _truth([0.0, np.nan, 0.0]))
+    # The truth is inside the interval for functional 0, outside for 2, and missing for 1.
+    result = functional_coverage(_draws(_ramp(3)), _truth([50.0, np.nan, 1000.0]))
     assert np.isnan(result["pit"].sel(country=1).item())
-    assert result["n"].sel(subset="all") == 3
-    trials = result["coverage"].sel(subset="all", interval=0.95)
-    assert trials.item() in {0.0, 0.5, 1.0}  # two scored functionals
+    assert result["n"].sel(subset="all") == 2
+    assert result["n_unscored"] == 1
+    for interval in (0.68, 0.95):
+        assert result["coverage"].sel(subset="all", interval=interval).item() == 0.5
+        assert result["coverage"].sel(subset="unflagged", interval=interval).item() == 0.5
+
+
+def test_coverage_counts_hits_exactly():
+    # Four functionals with draws 0..99: truth 50 is inside, 1000 is outside every interval.
+    draws = _draws(_ramp(4))
+    truth = _truth([50.0, 50.0, 50.0, 1000.0])
+    result = functional_coverage(draws, truth)
+    assert result["n"].sel(subset="all") == 4
+    for interval in (0.68, 0.95):
+        assert result["coverage"].sel(subset="all", interval=interval).item() == 0.75
+    assert (
+        result["coverage_lower"].sel(subset="all", interval=0.95)
+        < 0.75
+        < result["coverage_upper"].sel(subset="all", interval=0.95)
+    )
 
 
 def test_retained_only_from_attrs_and_coordinate():
@@ -174,16 +205,20 @@ def test_retained_only_from_attrs_and_coordinate():
     assert functional_coverage(conditional, truth)["retained_only"].all()
 
     per_functional = draws.assign_coords(uncertainty_scope=("country", ["full", "retained_only", "full"]))
-    result = functional_coverage(
-        per_functional, truth, groups={"B": ["B"], "AC": ["A", "C"], "ABC": ["A", "B", "C"]}
-    )
+    with pytest.warns(UserWarning, match="Groups overlap"):
+        result = functional_coverage(
+            per_functional, truth, groups={"B": ["B"], "AC": ["A", "C"], "ABC": ["A", "B", "C"]}
+        )
     assert result["retained_only"].values.tolist() == [True, False, True]
 
 
 def test_stacked_sample_dimension():
     rng = np.random.default_rng(8)
     draws = xr.DataArray(
-        rng.normal(size=(300, 2)), dims=("sample", "country"), coords={"country": ["A", "B"]}
+        rng.normal(size=(300, 2)),
+        dims=("sample", "country"),
+        coords={"country": ["A", "B"]},
+        attrs={"uncertainty_scope": "complete"},
     )
     result = functional_coverage(draws, _truth([0.0, 0.0], labels=["A", "B"]), sample_dims=("sample",))
     assert result["sd"].sel(country="A") == pytest.approx(draws.sel(country="A").std(ddof=1).item())
@@ -217,3 +252,93 @@ def test_input_validation():
         functional_coverage(draws, truth, functional_dim="region")
     with pytest.raises(ValueError):  # truth on different countries
         functional_coverage(draws, _truth([0.0, 0.0], labels=["A", "C"]))
+
+
+def _sector_draws(values, sectors=("energy", "waste")):
+    return xr.DataArray(
+        values,
+        dims=("chain", "draw", "country", "sector"),
+        coords={"country": ["FRA", "DEU"], "sector": list(sectors)},
+        attrs={"uncertainty_scope": "complete"},
+    )
+
+
+def test_truth_missing_a_sector_label_raises_before_summing():
+    draws = _sector_draws(np.random.default_rng(10).normal(size=(2, 20, 2, 2)))
+    full = xr.DataArray(
+        np.ones((2, 2)),
+        dims=("country", "sector"),
+        coords={"country": ["FRA", "DEU"], "sector": ["energy", "waste"]},
+    )
+    with pytest.raises(ValueError, match="missing from truth.*waste"):
+        functional_coverage(draws, full.sel(sector=["energy"]), sum_dims=("sector",))
+    extra = full.reindex(sector=["energy", "waste", "transport"], fill_value=0.0)
+    with pytest.raises(ValueError, match="not in draws.*transport"):
+        functional_coverage(draws, extra, sum_dims=("sector",))
+    with pytest.raises(ValueError, match="truth dimensions"):
+        functional_coverage(draws, full.sum("sector"), sum_dims=("sector",))
+
+
+def test_truth_in_a_different_order_is_reindexed():
+    rng = np.random.default_rng(11)
+    draws = _sector_draws(rng.normal(size=(2, 30, 2, 2)))
+    truth = xr.DataArray(
+        [[1.0, 2.0], [3.0, 4.0]],
+        dims=("country", "sector"),
+        coords={"country": ["FRA", "DEU"], "sector": ["energy", "waste"]},
+    )
+    shuffled = truth.sel(country=["DEU", "FRA"], sector=["waste", "energy"]).transpose("sector", "country")
+    expected = functional_coverage(draws, truth, sum_dims=("sector",))
+    result = functional_coverage(draws, shuffled, sum_dims=("sector",))
+    xr.testing.assert_identical(result, expected)
+    assert result["truth"].sel(country="FRA").item() == 3.0
+
+
+@pytest.mark.parametrize("groups", [None, {"AB": ["A", "B"]}])
+def test_nan_draw_makes_the_functional_unscorable_on_both_paths(groups):
+    values = np.random.default_rng(12).normal(size=(2, 40, 2))
+    values[1, 7, 1] = np.nan  # one NaN draw in member B
+    result = functional_coverage(
+        _draws(values, labels=["A", "B"]), _truth([0.0, 0.0], labels=["A", "B"]), groups=groups
+    )
+    bad = "B" if groups is None else "AB"
+    good = "A" if groups is None else "AB"
+    assert result["nan_draws"].sel(country=bad)
+    for name in ("mean", "sd", "z", "pit"):
+        assert np.isnan(result[name].sel(country=bad).item())
+    assert not result["in_interval"].sel(country=bad).any()
+    assert result["excluded"].sel(country=bad)
+    assert result["n_unscored"] == 1
+    if groups is None:
+        assert not result["nan_draws"].sel(country=good)
+        assert np.isfinite(result["z"].sel(country=good).item())
+        assert result["n"].sel(subset="all") == 1
+    else:
+        assert result["n"].sel(subset="all") == 0
+
+
+def test_missing_scope_warns_and_can_be_required():
+    draws = _draws(np.random.default_rng(13).normal(size=(2, 20, 2)))
+    draws.attrs.clear()
+    truth = _truth([0.0, 0.0])
+    with pytest.warns(UserWarning, match="no uncertainty_scope"):
+        result = functional_coverage(draws, truth)
+    assert not result["retained_only"].any()
+    with pytest.raises(ValueError, match="no uncertainty_scope"):
+        functional_coverage(draws, truth, require_scope=True)
+    # A declared scope, attribute or coordinate, neither warns nor raises.
+    draws.attrs["uncertainty_scope"] = "complete"
+    functional_coverage(draws, truth, require_scope=True)
+    coordinate = draws.copy()
+    coordinate.attrs.clear()
+    coordinate = coordinate.assign_coords(uncertainty_scope=("country", ["complete", "complete"]))
+    functional_coverage(coordinate, truth, require_scope=True)
+
+
+def test_overlapping_groups_warn_but_disjoint_groups_do_not(recwarn):
+    draws = _draws(np.random.default_rng(14).normal(size=(2, 20, 3)), labels=["A", "B", "C"])
+    truth = _truth([0.0, 0.0, 0.0], labels=["A", "B", "C"])
+    functional_coverage(draws, truth, groups={"AB": ["A", "B"], "C": ["C"]})
+    assert not [w for w in recwarn if issubclass(w.category, UserWarning)]
+    with pytest.warns(UserWarning, match="Groups overlap on \\['B'\\]"):
+        functional_coverage(draws, truth, groups={"AB": ["A", "B"], "BC": ["B", "C"]})
