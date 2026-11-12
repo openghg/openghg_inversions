@@ -33,8 +33,10 @@ assumptions:
 * check results from dynamic extensions, such as custom strategies, where
   they re-enter package code;
 * let the operation that needs an invariant enforce it: check a positive
-  batch size before batching, and let a required Cholesky factorization report
-  a matrix which cannot be used as positive definite; and
+  batch size before batching, and let a required Cholesky factorization,
+  together with a condition estimate from its factor, report a matrix which
+  cannot be used as positive definite (see `Singular and nearly singular
+  matrices`_); and
 * validate serialized or cached artifacts in their loader against a published
   schema, rather than repeating those checks in every downstream kernel.
 
@@ -50,6 +52,31 @@ extension boundary, prevents a library's permissive behaviour from changing
 the calculation's meaning, or gives a materially clearer failure before
 expensive or irreversible work. Otherwise, an equation-level test is often
 the clearer home for the invariant.
+
+Singular and nearly singular matrices
+-------------------------------------
+
+Do not infer rank from whether a Cholesky factorization fails. Whether an
+exactly singular matrix passes depends on the LAPACK build and on the values:
+Apple Accelerate, which macOS NumPy wheels use, often factors one with a tiny
+positive last pivot, where OpenBLAS usually fails. A wrong answer computed
+from that factor need not look wrong later. For a redundant bucket basis, the
+noisy inverse of the Gram matrix gave a restriction whose retained covariance
+was well conditioned, so downstream checks accepted an invalid result in about
+a third of trials.
+
+When rank matters, factorize once and check the reciprocal condition estimate
+that LAPACK ``dpocon`` computes from the factor, as
+``openghg_inversions.basis.covariance_products`` does for both the bucket
+Gram matrix and :math:`C_\alpha`. This needs no eigendecomposition. Choose
+the threshold for the calculation that consumes the matrix, and test the
+singular case with a factorization that accepts it, so the test does not pass
+only because the local LAPACK happens to reject it. The investigation, with
+the history and trial counts, is recorded on `pull request 1055
+<https://github.com/openghg/openghg_inversions/pull/1055#issuecomment-6817880924>`_.
+Use an eigendecomposition when the eigenvalues are themselves needed, for
+example to check positive semidefiniteness of a matrix that may legitimately
+be singular.
 
 Make established contracts visible in types
 -------------------------------------------

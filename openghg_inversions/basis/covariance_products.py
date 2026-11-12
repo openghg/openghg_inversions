@@ -183,22 +183,30 @@ class PreserveBucketProlongation:
         gram_values = np.asarray(gram.values, dtype=np.float64)
         gram_values = (gram_values + gram_values.T) * 0.5
 
-        # Buckets that are linearly dependent under B^-1 make G singular. Some
-        # LAPACK backends let Cholesky succeed on a numerically singular matrix,
-        # so the eigenvalue ratio is checked before factorizing.
+        # Buckets that are linearly dependent under B^-1 make G singular.
+        # Cholesky alone does not detect that: Apple Accelerate can accept an
+        # exactly singular G, and the noisy G^-1 then gives a Pi with
+        # independent garbage rows that later checks on C_alpha accept. The
+        # condition estimate from the same factor rejects it. Using the
+        # kernel's threshold rejects essentially nothing the kernel would
+        # accept: a valid Pi_U has C_alpha = G^-1, whose condition number
+        # equals G's.
         if not np.isfinite(gram_values).all():
             raise ValueError("The bucket prolongation Gram matrix must contain only finite values")
-        eigenvalues = np.linalg.eigvalsh(gram_values)
-        if eigenvalues.size and eigenvalues[0] <= len(eigenvalues) * np.finfo(np.float64).eps * eigenvalues[-1]:
-            raise ValueError("The bucket prolongation contains redundant retained states")
         try:
-            factor = cho_factor(gram_values, lower=True, check_finite=True)
-            inverse_gram_values = cho_solve(factor, np.eye(gram_values.shape[0]), check_finite=False)
+            factor, reciprocal_condition = _cholesky_with_condition(gram_values)
         except np.linalg.LinAlgError as exc:
             raise ValueError(
                 "The bucket prolongation contains redundant retained states; "
                 "U.T B^-1 U must be positive definite"
             ) from exc
+        if reciprocal_condition < MIN_RETAINED_RECIPROCAL_CONDITION:
+            raise ValueError(
+                "The bucket prolongation contains redundant or nearly redundant retained states; "
+                f"U.T B^-1 U has estimated reciprocal 1-norm condition {reciprocal_condition:.3e} "
+                f"(minimum {MIN_RETAINED_RECIPROCAL_CONDITION:.3e})"
+            )
+        inverse_gram_values = cho_solve(factor, np.eye(gram_values.shape[0]), check_finite=False)
 
         # Pi_U = G^-1 (B^-1 U).T, contracting G^-1's column axis with B^-1 U's.
         inverse_gram = square_matrix(
@@ -905,6 +913,34 @@ def _label(index: pd.Index, position: int) -> object:
     return label.item() if isinstance(label, np.generic) else label
 
 
+def _cholesky_with_condition(matrix: np.ndarray) -> tuple[tuple[np.ndarray, bool], float]:
+    """Cholesky-factor a symmetric matrix and estimate its reciprocal condition.
+
+    A successful Cholesky factorization does not prove that a matrix is
+    numerically nonsingular: some LAPACK builds, such as Apple Accelerate,
+    accept an exactly singular matrix with a tiny positive last pivot. The
+    LAPACK ``dpocon`` estimate reuses the factor, so callers can reject such a
+    matrix without an eigendecomposition. See
+    ``docs/development/validation_and_xarray.rst``.
+
+    Args:
+        matrix: Real symmetric matrix expected to be positive definite.
+
+    Returns:
+        The lower Cholesky factor in :func:`scipy.linalg.cho_factor` form,
+        and the estimated reciprocal 1-norm condition number.
+
+    Raises:
+        numpy.linalg.LinAlgError: If the factorization or condition estimate
+            fails.
+    """
+    factor = cho_factor(matrix, lower=True, check_finite=True)
+    reciprocal_condition, condition_info = dpocon(factor[0], np.linalg.norm(matrix, ord=1), uplo="L")
+    if condition_info != 0:
+        raise np.linalg.LinAlgError(f"LAPACK condition estimation failed with info={condition_info}")
+    return factor, float(reciprocal_condition)
+
+
 def _derive_covariance_natural_prolongation(
     restriction: xr.DataArray,
     state_covariance: xr.DataArray,
@@ -936,16 +972,7 @@ def _derive_covariance_natural_prolongation(
     """
     covariance_values = np.asarray(state_covariance.values, dtype=np.float64)
     try:
-        factor = cho_factor(covariance_values, lower=True, check_finite=True)
-        reciprocal_condition, condition_info = dpocon(
-            factor[0],
-            np.linalg.norm(covariance_values, ord=1),
-            uplo="L",
-        )
-        if condition_info != 0:
-            raise np.linalg.LinAlgError(
-                f"LAPACK condition estimation failed with info={condition_info}"
-            )
+        factor, reciprocal_condition = _cholesky_with_condition(covariance_values)
         if reciprocal_condition < MIN_RETAINED_RECIPROCAL_CONDITION:
             raise ValueError(
                 "C_alpha is too ill-conditioned for a stable retained solve "

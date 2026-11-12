@@ -6,6 +6,7 @@ import pytest
 import xarray as xr
 from dask import delayed
 from dask import array as da
+from scipy.linalg import cho_factor as real_cho_factor
 
 from openghg_inversions.basis.covariance_products import (
     NativeCovarianceProducts,
@@ -751,8 +752,15 @@ def test_projection_strategy_restriction_must_be_real() -> None:
         _project(covariance, basis_operator, h, strategy=ComplexStrategy())
 
 
-def test_redundant_bucket_states_are_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Linearly dependent retained coordinates fail instead of being pseudoinverted."""
+@pytest.mark.parametrize("cholesky", ["platform", "accepts-singular"])
+def test_redundant_bucket_states_are_rejected(monkeypatch: pytest.MonkeyPatch, cholesky: str) -> None:
+    """Linearly dependent retained coordinates fail instead of being pseudoinverted.
+
+    Whether Cholesky accepts the exactly singular Gram matrix depends on the
+    LAPACK build: OpenBLAS usually rejects it, while Apple Accelerate often
+    factors it with a tiny positive last pivot. The second case mimics
+    Accelerate on every platform, so the condition check must reject it.
+    """
     covariance, basis_operator, _, _ = _problem()
     prolongation = to_dense(basis_operator.basis_matrix).compute()
     redundant = xr.concat(
@@ -762,18 +770,26 @@ def test_redundant_bucket_states_are_rejected(monkeypatch: pytest.MonkeyPatch) -
         ],
         dim=xr.IndexVariable("state", ["west", "west-copy"]),
     ).transpose("lat", "lon", "state")
+    accepted = []
 
-    def unexpected_cholesky(*args, **kwargs):
-        """Ensure rejection does not depend on the Cholesky implementation."""
-        pytest.fail("A redundant Gram matrix must be rejected before Cholesky")
+    if cholesky == "accepts-singular":
 
-    monkeypatch.setattr("openghg_inversions.basis.covariance_products.cho_factor", unexpected_cholesky)
+        def accepting_cholesky(matrix, *args, **kwargs):
+            """Factor a singular matrix with a tiny positive last pivot, as Accelerate can."""
+            shift = 4 * np.finfo(np.float64).eps * np.abs(np.diag(matrix)).max()
+            factor = real_cho_factor(matrix + shift * np.eye(matrix.shape[0]), *args, **kwargs)
+            accepted.append(True)
+            return factor
+
+        monkeypatch.setattr("openghg_inversions.basis.covariance_products.cho_factor", accepting_cholesky)
+
     with pytest.raises(ValueError, match="positive definite|redundant|rank"):
         PreserveBucketProlongation(redundant).projection(
             covariance,
             native_dims=covariance.native_dims,
             state_dim="state",
         )
+    assert accepted == ([True] if cholesky == "accepts-singular" else [])
 
 
 def test_products_require_exact_native_sensitivity_alignment() -> None:
