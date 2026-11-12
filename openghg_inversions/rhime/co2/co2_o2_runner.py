@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from collections.abc import Mapping
 from typing import Any, Literal
 
@@ -23,7 +24,7 @@ from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
-from .co2_o2_model import _validate_channel_offset_options, build_co2_o2_model
+from .co2_o2_model import _build_co2_o2_model, _validate_channel_offset_options
 from .co2_o2_preparation import Co2O2PreparedInputs
 
 _CO2_O2_VARIABLE_ROLES = {
@@ -77,7 +78,29 @@ def _materialize_co2_o2_replay_inputs(
     prepared: Co2O2PreparedInputs, independent_error_sd: xr.DataArray | None,
     boundary: Mapping[str, Bound], *, prior_parameters: Mapping[str, Any],
 ) -> tuple[tuple[xr.DataArray, ...], dict[str, Bound], dict[str, Any]]:
-    """Compute core, bound boundary and selected priors together for PyMC."""
+    """Resolve fixed errors and compute core, bound boundary and priors together for PyMC.
+
+    Args:
+        prepared: Borrowed joint observations, affine intercept, native-channel
+            sensitivities, and optional saved independent-error vector.
+        independent_error_sd: Explicit error vector, or None to use saved errors.
+            When both exist, their labels, row units, and values must agree.
+        boundary: Channel-keyed boundaries already bound lazily to the
+            preparation.
+        prior_parameters: Prior parameter mappings, possibly with labelled
+            array values, keyed by the caller's names.
+
+    Returns:
+        Materialized observations, intercept, CO2 and O2 sensitivities, and
+        resolved error vector; the eager bound boundaries; and the eager prior
+        parameters under the supplied keys. Payloads and lazy auxiliary
+        coordinates share one computation; borrowed arrays are not mutated.
+
+    Raises:
+        ValueError: If no error vector is available, labels or row units differ,
+            values are not finite positive real numbers, or saved and explicit
+            errors disagree.
+    """
     saved_error = getattr(prepared, "independent_error_sd", None)
     if independent_error_sd is None:
         independent_error_sd = saved_error
@@ -206,11 +229,27 @@ def _annotate_co2_o2_trace(
 
 
 def _bind_co2_o2_boundaries(
-    prepared: Co2O2PreparedInputs, boundary: Mapping[str, Choice] | None,
+    prepared: Co2O2PreparedInputs, boundary: Mapping[str, Choice | None] | None,
 ) -> dict[str, Bound]:
-    """Bind each channel's boundary choice once to its native prepared transport."""
+    """Bind each channel's boundary choice once to its native prepared transport.
+
+    A ``None`` value disables that channel's boundary explicitly. A channel with
+    prepared transport but no entry at all is omitted with a warning, because
+    the fit then silently ignores boundary transport the preparation provides.
+    """
     if boundary is not None and (not isinstance(boundary, Mapping) or set(boundary) - {"co2", "o2"}):
         raise ValueError("boundary must be a mapping keyed only by 'co2' and 'o2'.")
+    prepared_channels = set(getattr(prepared, "boundary_operands", {})) | set(
+        getattr(prepared, "boundary_sensitivity", {})
+    )
+    ignored = sorted(prepared_channels - set(boundary or {}))
+    if ignored:
+        warnings.warn(
+            f"Prepared boundary transport for {ignored!r} is not used: those channels have no boundary "
+            "choice. Pass a choice to fit it, or None to disable it explicitly.",
+            UserWarning,
+            stacklevel=3,
+        )
     result = {}
     for channel, sensitivity in (("co2", prepared.co2_sensitivity), ("o2", prepared.o2_sensitivity)):
         choice = (boundary or {}).get(channel)
@@ -247,7 +286,7 @@ def build_rhime_co2_o2(
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
-    boundary: Mapping[str, Choice] | None = None,
+    boundary: Mapping[str, Choice | None] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     tau_hours: float | Mapping[str, float] | None = None,
@@ -280,7 +319,7 @@ def build_rhime_co2_o2(
     observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = (
         materialized
     )
-    model = build_co2_o2_model(
+    model = _build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
         co2_sensitivity=co2_sensitivity,
@@ -333,7 +372,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
-    boundary: Mapping[str, Choice] | None = None,
+    boundary: Mapping[str, Choice | None] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     sampler: RhimeSampler | Literal["default"] = "default",
@@ -372,8 +411,9 @@ def run_rhime_co2_o2_from_prepared_inputs(
             policy.
         boundary: Optional boundary choices keyed by ``co2``/``o2``. Each is
             bound once to that channel's prepared absolute sensitivity or
-            centered operands (with any prepared centering weights). Omitted
-            channels have no boundary term.
+            centered operands (with any prepared centering weights). ``None``
+            disables a channel's boundary; omitted channels have no boundary
+            term, with a warning when the preparation has their transport.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
             with the same meanings as the CO2 offset component. Baseline terms

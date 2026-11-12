@@ -13,7 +13,7 @@ background concentration. For example, resolving ppm or smaller changes in
 O2 near 200,000 ppm requires retaining many significant digits. We explain
 both the effect of quantized footprint weights and the order of arithmetic
 operations below. See :doc:`surface_preparation` for the preparation workflow
-and :doc:`co2_models` for supported runners and prior configuration.
+and :doc:`co2_boundary_corrections` for supported runners and prior configuration.
 
 Transport, concentrations and the boundary basis
 ------------------------------------------------
@@ -244,8 +244,9 @@ to specify uncertainty in the common boundary correction separately from
 uncertainty in departures from it. The weighted structure gives
 :math:`\delta` its scalar prior and makes it independent of the constrained
 Gaussian anomalies. Decomposing independent corrections into their mean and
-departures would generally give a different joint prior. See :doc:`co2_models`
-for its covariance, scale interpretation and supported configuration, and
+departures would generally give a different joint prior. Its covariance and
+scale interpretation are derived in :ref:`boundary-anomaly-prior-uncertainty`.
+See :doc:`co2_boundary_corrections` for supported configuration, and
 :doc:`boundary_correction_structures` for per-period contrasts, independent
 state anomalies, per-period mean shifts and anomaly scaling.
 
@@ -270,6 +271,50 @@ constraints are needed to distinguish them in that case.
    reproduce site contrasts. See :doc:`../development/boundary_offset_identifiability`
    for examples and the distinction between relative site effects and physical
    bias attribution.
+
+.. _boundary-anomaly-prior-uncertainty:
+
+Anomaly prior and uncertainty
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+There are :math:`K` labelled region--period boundary states.
+Define :math:`\Pi=I-\mathbf{1}w^\mathsf{T}`, where :math:`\mathbf{1}` is the
+length-:math:`K` vector of ones. The anomaly prior is
+
+.. math::
+
+   u &\sim \mathcal{N}\!\left(0,\,s_{bc}^{2}\Pi\Pi^\mathsf{T}\right), \\
+   \delta &\sim p_{\delta}, \qquad \delta\ \text{independent of}\ u.
+
+The finite, nonnegative fixed scale :math:`s_{bc}` is ``anomaly_scale`` in
+concentration units. For a positive scale it is the standard deviation of
+independent Gaussian corrections *before* subtracting their weighted mean.
+The implementation uses only :math:`K-1` independent coordinates to sample
+the constrained anomalies. Set ``anomaly_scale=0`` to infer only the common
+level from ``mean_prior``: all anomalies are exactly zero and no
+contrast variables are sampled. For a single boundary state, the anomaly is
+also exactly zero at any accepted scale. Negative and nonfinite scales are
+rejected.
+
+Centring changes individual anomaly variances and induces correlations:
+
+.. math::
+
+   \operatorname{Var}(u_j)
+      &= s_{bc}^{2}\left(1-2w_j+\sum_k w_k^2\right), \\
+   \operatorname{Var}(u_j-u_k) &= 2s_{bc}^{2},\qquad j\ne k.
+
+In particular, equal weights give marginal anomaly standard deviation
+:math:`s_{bc}\sqrt{1-1/K}`. The scale controls pairwise departures independently
+of the prior for the common mean; it is not the marginal standard deviation
+of each anomaly. The variance consequence of a sum-to-zero constraint is also
+explained in `Stan's marginal-distribution discussion
+<https://mc-stan.org/docs/stan-users-guide/regression.html#marginal-distribution-of-sum-to-zero-components>`_.
+
+This prior keeps the projected baseline :math:`H_{bc}\mathbf1` fixed and
+infers additive concentration corrections. It replaces the multiplicative
+scaling prior. Choose the common-mean prior and anomaly scale for uncertainty
+in the supplied boundary product.
 
 .. _boundary-averaging-weights:
 

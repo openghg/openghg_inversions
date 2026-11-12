@@ -156,7 +156,7 @@ def test_single_choice_frontends_compute_shared_payload_once_and_replay(
     choice = _choice(additive, shared)
     calls = _record_binding(monkeypatch)
     module = co2_cached_sigma_runner if cached else co2_runner
-    name = "build_co2_cached_sigma_model" if cached else "build_co2_model"
+    name = "_build_co2_cached_sigma_model" if cached else "_build_co2_model"
     builder = getattr(module, name)
     forwarded = []
 
@@ -248,7 +248,7 @@ def test_linked_choice_frontends_retain_channel_records_and_scientific_closure(
     else:
         runner = module.run_rhime_co2_o2_from_prepared_inputs
         options = {}
-    name = "build_co2_o2_cached_sigma_model" if cached else "build_co2_o2_model"
+    name = "_build_co2_o2_cached_sigma_model" if cached else "_build_co2_o2_model"
     builder = getattr(module, name)
     forwarded = []
 
