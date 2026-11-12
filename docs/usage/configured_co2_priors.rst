@@ -8,6 +8,8 @@ inputs at model construction; only the biosphere calibration is resolved once
 and saved. Existing model defaults are unchanged. These APIs require the
 package's supported Python 3.12 or 3.13 runtime.
 
+.. _co2-configured-boundary-structures:
+
 Boundary structures in configuration
 ------------------------------------
 
