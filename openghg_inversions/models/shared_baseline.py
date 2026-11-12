@@ -278,7 +278,15 @@ class SharedBaseline:
     data: xr.Dataset
 
     def outputs(self, prefix: str = "") -> Outputs:
-        """Declare the atmospheric level's roles and units and the bound choice's metadata."""
+        """Declare the atmospheric level's roles and units and the bound choice's metadata.
+
+        Args:
+            prefix: Channel prefix applied to sampled role names, such as
+                ``"o2_"`` for linked recipes. Choice metadata stays unprefixed.
+
+        Returns:
+            The roles, units and metadata of this bound baseline's outputs.
+        """
         boundary = self.choice.boundary
         units = self.data.attrs["units"]
         roles = {"boundary_mean_shift": "bc_mean_shift", "boundary_mean_shift_concentration": "mu_bc_mean_shift"}
