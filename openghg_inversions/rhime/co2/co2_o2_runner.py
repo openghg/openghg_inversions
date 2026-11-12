@@ -520,6 +520,15 @@ def annotate_co2_o2_trace(
     preparation provenance and used priors. Fixed-OU traces additionally retain
     species/site grouping and joint likelihood/predictive scope. The trace is
     updated and returned; no graph is constructed or inference performed.
+
+    Args:
+        trace: Trace with restored coordinates, updated in place.
+        built: Build result whose model produced ``trace``.
+        biosphere_prior: Optional resolved retained-state calibration to
+            persist with the trace.
+
+    Returns:
+        The annotated ``trace``.
     """
     trace.attrs["rhime_boundary_format_version"] = BOUNDARY_FORMAT_VERSION
     restore_absolute_predictives(trace)
