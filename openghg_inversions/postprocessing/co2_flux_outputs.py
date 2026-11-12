@@ -6,22 +6,29 @@ import json
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+import numpy as np
 import xarray as xr
 from openghg.util import cf_ureg, molar_mass  # pyright: ignore[reportPrivateImportUsage]
 
-from openghg_inversions.array_ops import sparse_xr_dot, to_dense
+from openghg_inversions.array_ops import same_index, sparse_xr_dot, to_dense
 from openghg_inversions.basis.affine_flux_map import _in_dimensionless_units
 
 from ._basis_products import bounded_affine_flux_map
 from .countries import Countries, _bounded_projection
 from .inversion_output import trace_group
 from .stats import calculate_stats
+from .unresolved_functionals import UnresolvedFunctionalConditioning, complete_functional_draws
 
 if TYPE_CHECKING:
     from openghg_inversions.rhime.co2.co2_affine_output import BoundCo2AffineFluxMap
 
 
-__all__ = ["co2_native_flux_outputs", "co2_country_flux_outputs"]
+__all__ = ["co2_native_flux_outputs", "co2_country_flux_outputs", "co2_country_functionals"]
+
+COUNTRY_FUNCTIONAL_DIM = "country_functional"
+FUNCTIONAL_SOURCE = "functional_source"
+COMPLETE_NATIVE = "complete_native"
+ANNUALIZATION = "365-day year; grams of CO2, not grams of carbon"
 
 
 def _output_inputs(
@@ -154,10 +161,79 @@ def co2_native_flux_outputs(trace: xr.DataTree, bound: BoundCo2AffineFluxMap) ->
     return _with_metadata(xr.merge(outputs), attrs, units="mol m-2 s-1")
 
 
+def _weighted_country_flux(bound: BoundCo2AffineFluxMap, countries: Countries) -> xr.DataArray:
+    """Return signed country weights ``A F`` in grams of CO2 per year per unit scaling."""
+    flux, matrix, area = xr.align(
+        bound.affine_map.flux, countries.matrix, countries.area_grid, join="exact", copy=False
+    )
+    if set(matrix.dims) != {"country", "lat", "lon"} or set(area.dims) != {"lat", "lon"}:
+        raise ValueError("Country membership and area must use country/lat/lon and lat/lon dimensions.")
+    return (
+        flux.astype("float64")
+        * matrix
+        * area
+        * _flux_unit_scale(bound)
+        * (365 * 24 * 3600)
+        * molar_mass("co2")
+    )
+
+
+def co2_country_functionals(bound: BoundCo2AffineFluxMap, countries: Countries) -> xr.DataArray:
+    """Return CO2 country totals as labelled native linear functionals ``Q``.
+
+    Pass the result to :func:`openghg_inversions.coherent_reduction.reduce_native_gaussian`
+    as ``functionals`` with ``functional_dim="country_functional"`` to prepare
+    the products that :func:`co2_country_flux_outputs` needs for complete
+    country uncertainty.
+
+    Args:
+        bound (openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap):
+            Reconstruction whose signed reference flux defines the totals.
+        countries: Country membership and cell areas on the map's grid.
+
+    Returns:
+        ``Q`` on ``("country_functional", *native_dims)`` in ``g yr-1`` per
+        unit scaling. A multisource map has one row per country and source,
+        labelled by the ``country`` and ``functional_source`` levels, so the
+        joint covariance of source terms is kept; a single-source map has
+        one row per country. The payload stays sparse when the country
+        matrix is sparse.
+
+    Raises:
+        ValueError: If the country grid does not exactly match the map, or
+            the flux has dimensions other than the native ones, such as time.
+    """
+    weighted = _weighted_country_flux(bound, countries)
+    native_dims = bound.affine_map.native_dims
+    extra = set(weighted.dims) - {"country", *native_dims}
+    if extra:
+        raise ValueError(
+            f"Country functionals require a flux on native dimensions only; got extra {sorted(extra)!r}."
+        )
+    levels = ["country"]
+    if len(native_dims) == 3:
+        source_dim = native_dims[0]
+        sources = weighted[source_dim]
+        selector = xr.DataArray(
+            np.eye(sources.size),
+            dims=(FUNCTIONAL_SOURCE, source_dim),
+            coords={FUNCTIONAL_SOURCE: sources.values, source_dim: sources.values},
+        )
+        weighted = weighted * selector
+        levels.append(FUNCTIONAL_SOURCE)
+    functionals = weighted.stack({COUNTRY_FUNCTIONAL_DIM: levels})
+    functionals = functionals.transpose(COUNTRY_FUNCTIONAL_DIM, *native_dims)
+    return functionals.rename("country_functionals").assign_attrs(
+        units="g yr-1", annualization=ANNUALIZATION, mathematical_name="Q"
+    )
+
+
 def co2_country_flux_outputs(
     trace: xr.DataTree,
     bound: BoundCo2AffineFluxMap,
     countries: Countries,
+    *,
+    unresolved: UnresolvedFunctionalConditioning | None = None,
 ) -> xr.Dataset:
     """Summarize affine CO2 country flux without constructing native flux draws.
 
@@ -171,6 +247,11 @@ def co2_country_flux_outputs(
         countries: Country membership and cell areas on exactly the map's
             indexed ``lat, lon`` grid. No regridding or partial overlap is used.
             ``Countries.area_grid`` is in square metres.
+        unresolved: Optional products and per-draw conditioning inputs for
+            the unresolved native state of the functionals returned by
+            :func:`co2_country_functionals` for the same ``bound`` and
+            ``countries``. When given, country totals are complete native
+            functionals rather than retained-state-conditional ones.
 
     Returns:
         xarray.Dataset:
@@ -184,32 +265,32 @@ def co2_country_flux_outputs(
             ordinary country projections, chunking their output dimensions within
             the summary point budget; sample chunks for quantiles are consolidated.
             Existing producers must already have bounded task payloads. Inputs are
-            borrowed.
+            borrowed. ``uncertainty_scope`` is ``"retained_state_conditional"``
+            without ``unresolved`` and ``"complete_native"`` with it.
 
     Raises:
-        ValueError: If input requirements or exact country-grid alignment fail.
+        ValueError: If input requirements or exact country-grid alignment
+            fail, or if ``unresolved`` was prepared for a different country
+            functional or native mean.
 
     Notes:
         Country reference values ``A F m`` and responses ``A F U*`` are formed
-        before applying any sample axes. The result carries the conditional
-        uncertainty scope and reconstruction identity; unresolved native
-        covariance is not included. Source totals are summed per draw.
+        before applying any sample axes. Without ``unresolved``, the
+        unresolved native state is not included: country totals and their
+        spread describe ``Q m + D (alpha - Pi m)`` only. With it, each draw
+        also gets the conditional mean of ``Q x_perp`` and one draw from its
+        conditional covariance (prior draws: its prior covariance), using
+        the products' ``D``; this is an eager per-draw boundary. Source
+        totals are summed per draw.
     """
     samples, source_dim, attrs = _output_inputs(trace, bound)
+    attrs["annualization"] = ANNUALIZATION
+    if unresolved is not None:
+        return _complete_country_outputs(
+            samples, bound, countries, unresolved, source_dim=source_dim, attrs=attrs
+        )
     affine = bound.affine_map
-    flux, matrix, area = xr.align(
-        affine.flux, countries.matrix, countries.area_grid, join="exact", copy=False
-    )
-    if set(matrix.dims) != {"country", "lat", "lon"} or set(area.dims) != {"lat", "lon"}:
-        raise ValueError("Country membership and area must use country/lat/lon and lat/lon dimensions.")
-    weighted_flux = (
-        flux.astype("float64")
-        * matrix
-        * area
-        * _flux_unit_scale(bound)
-        * (365 * 24 * 3600)
-        * molar_mass("co2")
-    )
+    weighted_flux = _weighted_country_flux(bound, countries)
     # These package-internal affine helpers preserve exact state validation,
     # dimensionless conversion and lazy bucket/explicit prolongation. Reusing
     # them avoids introducing a second reconstruction or quantity-map API.
@@ -227,5 +308,56 @@ def co2_country_flux_outputs(
             reference = _bounded_projection(reference, [])
         draws = reference + xr.dot(response, centred.astype("float64"), dim=affine.state_dim)
         outputs.append(_summarize(draws, prefix="country", group=group, source_dim=source_dim))
-    attrs["annualization"] = "365-day year; grams of CO2, not grams of carbon"
+    return _with_metadata(xr.merge(outputs), attrs, units="g yr-1")
+
+
+def _complete_country_outputs(
+    samples: dict[str, xr.DataArray],
+    bound: BoundCo2AffineFluxMap,
+    countries: Countries,
+    unresolved: UnresolvedFunctionalConditioning,
+    *,
+    source_dim: str | None,
+    attrs: dict[str, str],
+) -> xr.Dataset:
+    """Summarize complete native country functionals, conditioning each posterior draw."""
+    products = unresolved.products
+    if products.functional_dim != COUNTRY_FUNCTIONAL_DIM:
+        raise ValueError(f"Country functional products must use the {COUNTRY_FUNCTIONAL_DIM!r} dimension.")
+    functionals = co2_country_functionals(bound, countries)
+    native_mean = _in_dimensionless_units(bound.affine_map.native_mean, name="native_mean")
+    expected_mean = to_dense(sparse_xr_dot(functionals, native_mean, dim=list(bound.affine_map.native_dims)))
+    if not same_index(
+        products.functional_mean.indexes[COUNTRY_FUNCTIONAL_DIM], functionals.indexes[COUNTRY_FUNCTIONAL_DIM]
+    ):
+        raise ValueError("Unresolved functional products were prepared for different countries or sources.")
+    # Q m does not depend on the partition, so it identifies the functional
+    # and native mean the products were prepared for.
+    if not np.allclose(products.functional_mean.values, expected_mean.values, rtol=1e-9, atol=0.0):
+        raise ValueError(
+            "Unresolved functional products were prepared for a different country functional or native mean."
+        )
+
+    rng = np.random.default_rng(unresolved.seed)
+    outputs = []
+    for group, state in samples.items():
+        centred, _ = bound.affine_map._centred_state(state, bound.reference_state)
+        posterior = group == "posterior"
+        draws = complete_functional_draws(
+            centred,
+            products,
+            residual=unresolved.residual if posterior else None,
+            solve=unresolved.solve if posterior else None,
+            noise_varies_by_draw=unresolved.noise_varies_by_draw,
+            rng=rng,
+        )
+        if posterior:
+            eigenvalue = draws.attrs["conditional_covariance_min_eigenvalue"]
+            attrs["conditional_covariance_min_eigenvalue"] = f"{eigenvalue:.3e}"
+        draws = draws.unstack(COUNTRY_FUNCTIONAL_DIM)
+        if source_dim is not None:
+            draws = draws.rename({FUNCTIONAL_SOURCE: source_dim})
+        outputs.append(_summarize(draws, prefix="country", group=group, source_dim=source_dim))
+    attrs["uncertainty_scope"] = COMPLETE_NATIVE
+    attrs["unresolved_conditioning"] = unresolved.description
     return _with_metadata(xr.merge(outputs), attrs, units="g yr-1")
