@@ -383,6 +383,30 @@ calculating a score does not apply a scientific acceptance threshold.
    openghg_inversions.inference.diagnostics.posterior_summary
    openghg_inversions.postprocessing.metrics.bayes_r2_by_site
    openghg_inversions.postprocessing.metrics.bayes_r2_by_site_resample
+   openghg_inversions.postprocessing.functional_coverage.functional_coverage
+
+For synthetic (OSSE) runs with a known truth,
+:func:`~openghg_inversions.postprocessing.functional_coverage.functional_coverage`
+scores country and sector-total posteriors: z-scores, PIT values, central-interval
+membership and aggregate coverage with Wilson intervals. Grouped totals are summed
+from joint draws, never from summary moments. Functionals with a tiny posterior SD
+(an absolute floor, or a fraction of the prior SD) or with ``retained_only``
+uncertainty are flagged and left out of the unflagged RMS z:
+
+.. code-block:: python
+
+   from openghg_inversions.postprocessing.functional_coverage import functional_coverage
+
+   scores = functional_coverage(
+       country_draws,  # dims: chain, draw, country, sector
+       country_truth,  # dims: country, sector
+       groups={"EU": ["FRA", "DEU", "ITA"], "LUX": ["LUX"]},
+       sum_dims=("sector",),
+       min_sd_fraction_of_prior=0.01,
+       prior_draws=country_prior_draws,
+   )
+   scores["coverage"].sel(subset="unflagged")  # empirical coverage per interval
+   scores["rms_z"].sel(subset="unflagged")  # should be near 1 when calibrated
 
 Legacy compatibility APIs
 -------------------------

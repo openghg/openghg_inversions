@@ -14,6 +14,7 @@ openghg\_inversions.postprocessing
    openghg_inversions.postprocessing.contracts
    openghg_inversions.postprocessing.countries
    openghg_inversions.postprocessing.diagnostics
+   openghg_inversions.postprocessing.functional_coverage
    openghg_inversions.postprocessing.inversion_output
    openghg_inversions.postprocessing.legacy_outputs
    openghg_inversions.postprocessing.linked_paris_outputs
