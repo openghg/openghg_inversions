@@ -55,9 +55,9 @@ The classes have the following distinct roles.
        that returned restriction.
    * - ``SuppliedRestriction``
      - Supplied-:math:`\Pi`-first strategy holding a physical restriction
-       chosen independently of :math:`B`. It checks the restriction's labels,
-       values, and LogNormal admissibility, and records that provenance on the
-       returned restriction.
+       chosen independently of :math:`B`. It checks the restriction's labels
+       and values, optionally requires it to preserve positivity, and records
+       that provenance on the returned restriction.
    * - ``absolute_weighted_regional_mean_restriction``
      - Builds the sparse source-blocked regional mean weighted by
        :math:`|q|`, the production policy described below, for use with
@@ -196,7 +196,8 @@ region :math:`r`, and native cell :math:`i`,
    \frac{|q_{si}|}{\sum_{j\in r}|q_{sj}|}.
 
 Each row is exactly nonnegative and sums to one by construction, so the result
-is admissible for a LogNormal retained state without any tolerance. Using
+preserves positivity, as a LogNormal retained state needs, without any
+tolerance. Using
 absolute weights is not the same as scaling the net signed regional flux. For a
 region of two cells with :math:`q = (-2, +1)`, the retained scaling is the
 positive weighted mean :math:`\alpha = (2x_1 + x_2)/3`. Scaling the net flux
@@ -214,16 +215,18 @@ cells, this numbering matches ``MultiSourceBucketBasisOperator``. The payload is
 sparse, with at most one weight per active cell.
 
 For positive native scaling :math:`x`, the retained scaling
-:math:`\alpha = \Pi x` is guaranteed positive only when :math:`\Pi` is
-nonnegative with positive weight in every row. With
-``retained_distribution="lognormal"`` the strategy refuses a signed restriction
-or an all-zero row. The Gaussian default accepts signed weights, but every
-restriction still needs full row rank: an all-zero row makes :math:`C_\alpha`
-singular, and the retained Cholesky factorization rejects it. The derived lift
-:math:`U_*` may be signed in either case, because it is a linear conditional
-mean rather than a positive scaling map. The returned restriction records
-``restriction_source="supplied"``, the declared retained distribution, and the
-``nonnegative``, ``row_normalized``, and ``lognormal_admissible`` diagnostics.
+:math:`\alpha = \Pi x` is guaranteed positive exactly when :math:`\Pi` is
+nonnegative with positive weight in every row; such a :math:`\Pi` preserves
+positivity. A LogNormal retained state needs this, so pass
+``require_positivity_preserving=True`` for one, and the strategy then refuses a
+signed restriction or an all-zero row. By default, signed weights are accepted,
+but every restriction still needs full row rank: an all-zero row makes
+:math:`C_\alpha` singular, and the retained Cholesky factorization rejects it.
+The derived lift :math:`U_*` may be signed in either case, because it is a
+linear conditional mean rather than a positive scaling map. The returned
+restriction records ``restriction_source="supplied"``, whether positivity
+preservation was required, and the ``nonnegative``, ``positive_row_sums``,
+``row_normalized``, and ``positivity_preserving`` diagnostics.
 Durable persistence of this record belongs to the artifact-I/O layer.
 
 The retained solve also records a cheap LAPACK reciprocal 1-norm condition

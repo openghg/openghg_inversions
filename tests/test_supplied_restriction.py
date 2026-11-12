@@ -242,7 +242,7 @@ def test_supplied_restriction_products_match_dense_oracle(
     restriction = _restriction()
 
     products = _project(
-        SuppliedRestriction(restriction, retained_distribution="lognormal"),
+        SuppliedRestriction(restriction, require_positivity_preserving=True),
         class_blocked=class_blocked,
         observation_covariance=observation_covariance,
         observation_batch_size=3,
@@ -273,7 +273,7 @@ def test_supplied_restriction_products_match_dense_oracle(
 def test_supplied_restriction_keeps_labels_provenance_and_sparse_storage() -> None:
     """The products carry the supplied sparse Pi, its labels, and admissibility record."""
     restriction = _restriction()
-    strategy = SuppliedRestriction(restriction, retained_distribution="lognormal")
+    strategy = SuppliedRestriction(restriction, require_positivity_preserving=True)
 
     result = _project(strategy).restriction
 
@@ -285,21 +285,16 @@ def test_supplied_restriction_keeps_labels_provenance_and_sparse_storage() -> No
     assert result.attrs["policy"] == "absolute-weighted regional mean"
     assert result.attrs["definition"] == restriction.attrs["definition"]
     assert result.attrs["restriction_source"] == "supplied"
-    assert result.attrs["retained_distribution"] == "lognormal"
-    assert result.attrs["lognormal_admissible"] is True
+    assert result.attrs["positivity_preserving_required"] is True
+    assert result.attrs["positivity_preserving"] is True
+    assert result.attrs["positive_row_sums"] is True
     assert result.attrs["nonnegative"] is True
     assert result.attrs["row_normalized"] is True
     assert result.attrs["units"] == "1"
     assert "restriction_source" not in restriction.attrs
 
 
-def test_unknown_retained_distribution_is_rejected_at_construction() -> None:
-    """A misspelled retained family fails before any projection work."""
-    with pytest.raises(ValueError, match="retained_distribution must be 'gaussian' or 'lognormal'"):
-        SuppliedRestriction(_restriction(), retained_distribution="LogNormal")  # type: ignore[arg-type]
-
-
-def test_signed_restriction_is_refused_for_lognormal_and_allowed_for_gaussian() -> None:
+def test_signed_restriction_is_refused_only_when_positivity_is_required() -> None:
     """Only a nonnegative Pi guarantees positive retained scalings."""
 
     def make_signed(values: np.ndarray) -> None:
@@ -309,15 +304,16 @@ def test_signed_restriction_is_refused_for_lognormal_and_allowed_for_gaussian() 
     restriction = _replace_values(_restriction(), make_signed)
 
     with pytest.raises(ValueError, match=r"row \('GPP', 1\) has weight -1\.000e-18"):
-        _project(SuppliedRestriction(restriction, retained_distribution="lognormal"))
+        _project(SuppliedRestriction(restriction, require_positivity_preserving=True))
     products = _project(SuppliedRestriction(restriction))
 
-    assert products.restriction.attrs["lognormal_admissible"] is False
+    assert products.restriction.attrs["positivity_preserving"] is False
+    assert products.restriction.attrs["positivity_preserving_required"] is False
     assert products.restriction.attrs["nonnegative"] is False
 
 
-def test_zero_row_is_refused_for_lognormal() -> None:
-    """A LogNormal retained scaling needs positive weight in every row."""
+def test_zero_row_is_refused_when_positivity_is_required() -> None:
+    """A positivity-preserving restriction needs positive weight in every row."""
 
     def zero_row(values: np.ndarray) -> None:
         """Remove every weight from one retained row."""
@@ -325,16 +321,16 @@ def test_zero_row_is_refused_for_lognormal() -> None:
 
     strategy = SuppliedRestriction(
         _replace_values(_restriction(), zero_row),
-        retained_distribution="lognormal",
+        require_positivity_preserving=True,
     )
 
     with pytest.raises(ValueError, match=r"positive weight in every restriction row; row \('GPP', 1\)"):
         strategy.projection(_covariance(False)[0], native_dims=NATIVE_DIMS, state_dim="state")
 
 
-def test_admissible_restriction_permits_a_signed_conditional_lift() -> None:
-    """The covariance-natural lift may be signed while Pi remains admissible."""
-    products = _project(SuppliedRestriction(_restriction(), retained_distribution="lognormal"))
+def test_positivity_preserving_restriction_permits_a_signed_conditional_lift() -> None:
+    """The covariance-natural lift may be signed while Pi preserves positivity."""
+    products = _project(SuppliedRestriction(_restriction(), require_positivity_preserving=True))
 
     assert float(products.prolongation.min()) < 0.0
 
@@ -415,7 +411,7 @@ def test_supplied_restriction_moments_and_monte_carlo_close() -> None:
 
     reduction = reduce_native_gaussian(
         covariance=covariance,
-        strategy=SuppliedRestriction(restriction, retained_distribution="lognormal"),
+        strategy=SuppliedRestriction(restriction, require_positivity_preserving=True),
         state_dim="state",
         native_mean=_labelled(mean_values, NATIVE_DIMS),
         native_sensitivity=_sensitivity(),
@@ -488,7 +484,7 @@ def test_production_shape_restriction_stays_sparse_with_bounded_memory() -> None
         coords={SOURCE_DIM: list(source_rows), **coords},
     )
     restriction = absolute_weighted_regional_mean_restriction(regions, weights)
-    projection = SuppliedRestriction(restriction, retained_distribution="lognormal").projection(
+    projection = SuppliedRestriction(restriction, require_positivity_preserving=True).projection(
         None,  # type: ignore[arg-type]
         native_dims=NATIVE_DIMS,
         state_dim="state",
@@ -508,5 +504,5 @@ def test_production_shape_restriction_stays_sparse_with_bounded_memory() -> None
     assert isinstance(prepared.restriction.data, sparse.COO)
     assert 40_000 < prepared.restriction.data.nnz < 96_768
     assert prepared.restriction.attrs["row_normalized"] is True
-    assert prepared.restriction.attrs["lognormal_admissible"] is True
+    assert prepared.restriction.attrs["positivity_preserving"] is True
     assert peak < 0.1 * dense_bytes

@@ -15,11 +15,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from dask.base import compute
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.array_ops import to_dense
+from openghg_inversions.array_ops import materialize_together
 from openghg_inversions.basis.covariance_products import (
     NativeCovarianceProducts,
     RetainedProjectionStrategy,
@@ -106,9 +105,7 @@ def reduce_native_gaussian(
     # but m meets only xr.dot, whose default inner join could silently discard
     # native cells. This index-only check executes no lazy payload.
     mean, sensitivity = xr.align(mean, sensitivity, join="exact", copy=False)
-    mean_data, sensitivity_data = compute(to_dense(mean).data, to_dense(sensitivity).data)
-    mean = mean.copy(data=mean_data)
-    sensitivity = sensitivity.copy(data=sensitivity_data)
+    mean, sensitivity = materialize_together(mean, sensitivity, purpose="native mean m and sensitivity H")
 
     products = project_native_covariance(
         covariance=covariance,
@@ -169,6 +166,9 @@ def _reduce_native_covariance_products(
         **linear_units,
     )
 
+    # A = H B H.T - H_alpha C_alpha H_alpha.T, formed positionally in NumPy.
+    # H_alpha's state columns and both C_alpha axes follow Pi's state index,
+    # so their orders already agree.
     unresolved_values = (
         np.asarray(native_observation_covariance.values, dtype=np.float64)
         - np.asarray(effective_operator.values, dtype=np.float64)

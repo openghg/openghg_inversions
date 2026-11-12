@@ -190,8 +190,8 @@ model-mismatch error is small.
 The conditional model is exact for a Gaussian native state and error
 independent of that state. Using the resulting moments with a LogNormal
 retained state is a moment-matched approximation. A positive sampled state
-requires a separately established nonnegative physical restriction, such as
-``SuppliedRestriction`` with ``retained_distribution="lognormal"``. The
+requires a separately established positivity-preserving physical restriction,
+such as ``SuppliedRestriction`` with ``require_positivity_preserving=True``. The
 bucket-compatible restriction derived by ``PreserveBucketProlongation`` is not
 guaranteed to preserve positivity.
 

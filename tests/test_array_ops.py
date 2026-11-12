@@ -17,12 +17,50 @@ from openghg_inversions.array_ops import (
     get_xr_dummies,
     iter_multi_index_level_slices,
     jax_to_numpy,
+    materialize_together,
     require_unique_index,
     same_index,
     select_gathered_data_array,
     to_dense,
     validate_covariance_coordinates,
 )
+
+
+def test_materialize_together_runs_a_shared_graph_once_and_keeps_coordinates_lazy(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Related payloads compute in one call; coordinates stay lazy; sparse becomes dense."""
+    executions = []
+
+    @delayed
+    def shared_values() -> tuple[np.ndarray, np.ndarray]:
+        executions.append("payload")
+        return np.array([1.0, 0.0]), np.array([[2.0, 3.0]])
+
+    @delayed
+    def auxiliary_values() -> np.ndarray:
+        executions.append("coordinate")
+        return np.array([5.0, 6.0])
+
+    shared = shared_values()
+    auxiliary = da.from_delayed(auxiliary_values(), shape=(2,), dtype=float)
+    first = xr.DataArray(
+        da.from_delayed(shared[0], shape=(2,), dtype=float).map_blocks(sparse.COO.from_numpy),
+        dims="cell",
+        coords={"cell": [0, 1], "auxiliary": ("cell", auxiliary)},
+        name="first",
+    )
+    second = xr.DataArray(da.from_delayed(shared[1], shape=(1, 2), dtype=float), dims=("row", "cell"), name="second")
+
+    with caplog.at_level("DEBUG", logger="openghg_inversions.array_ops"):
+        first_result, second_result = materialize_together(first, second, purpose="test boundary")
+
+    assert executions == ["payload"]
+    assert isinstance(first_result.data, np.ndarray)
+    np.testing.assert_array_equal(first_result.data, [1.0, 0.0])
+    np.testing.assert_array_equal(second_result.data, [[2.0, 3.0]])
+    assert first_result.auxiliary.data is first.auxiliary.data
+    assert "Materializing test boundary: first(2,) (lazy), second(1, 2) (lazy)" in caplog.text
 
 
 @pytest.mark.parametrize("sparse_payload", [False, True])

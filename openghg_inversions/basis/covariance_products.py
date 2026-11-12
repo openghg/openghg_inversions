@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+import logging
 from typing import assert_never, Literal, Protocol
 
 from dask.base import compute
@@ -39,14 +40,17 @@ from scipy.linalg.lapack import dpocon  # type: ignore[attr-defined]
 import xarray as xr
 
 from openghg_inversions._labelled_matrices import (
+    coordinates_on_dims,
     matrix_column_dim,
-    renamed_column_coordinates,
+    square_matrix,
     to_column_axis,
 )
-from openghg_inversions.array_ops import require_unique_index, to_dense
+from openghg_inversions.array_ops import materialize_together, require_unique_index, to_dense
 from openghg_inversions.borrowed import BorrowedDataArray, borrow
 from openghg_inversions.native_covariance import InvertibleNativeCovarianceAction
 
+
+logger = logging.getLogger(__name__)
 
 MIN_RETAINED_RECIPROCAL_CONDITION = float(np.sqrt(np.finfo(np.float64).eps))
 ROW_NORMALIZATION_TOLERANCE = 1e-12
@@ -152,9 +156,15 @@ class PreserveBucketProlongation:
         Raises:
             ValueError: If ``U`` is invalid or lacks full column rank.
         """
+        # With the Gram matrix G = U.T B^-1 U, the restriction is
+        #   Pi_U = G^-1 (B^-1 U).T.
+        # Then C_alpha = Pi_U B Pi_U.T = G^-1, and the kernel's derived lift
+        # U_* = B Pi_U.T C_alpha^-1 = B (B^-1 U G^-1) G = U recovers the buckets.
         prolongation = self._basis_prolongation.transpose(*native_dims, state_dim)
-        (prolongation_data,) = compute(to_dense(prolongation).data)
-        prolongation = prolongation.copy(data=prolongation_data)
+        (prolongation,) = materialize_together(prolongation, purpose="bucket prolongation U")
+
+        # B^-1 U, with its state axis renamed to a distinct column dimension so
+        # that the Gram product contracts only the native axes.
         state_column_dim = matrix_column_dim(
             state_dim,
             {str(name) for name in (*prolongation.dims, *prolongation.coords)},
@@ -165,11 +175,17 @@ class PreserveBucketProlongation:
             column_dim=state_column_dim,
             leading_dims=native_dims,
         )
+
+        # G = U.T B^-1 U, averaged with its transpose to remove rounding asymmetry.
         gram = xr.dot(prolongation, precision_prolongation, dim=list(native_dims)).transpose(
             state_dim, state_column_dim
         )
         gram_values = np.asarray(gram.values, dtype=np.float64)
         gram_values = (gram_values + gram_values.T) * 0.5
+
+        # Buckets that are linearly dependent under B^-1 make G singular. Some
+        # LAPACK backends let Cholesky succeed on a numerically singular matrix,
+        # so the eigenvalue ratio is checked before factorizing.
         if not np.isfinite(gram_values).all():
             raise ValueError("The bucket prolongation Gram matrix must contain only finite values")
         eigenvalues = np.linalg.eigvalsh(gram_values)
@@ -177,31 +193,22 @@ class PreserveBucketProlongation:
             raise ValueError("The bucket prolongation contains redundant retained states")
         try:
             factor = cho_factor(gram_values, lower=True, check_finite=True)
-            covariance_values = cho_solve(factor, np.eye(gram_values.shape[0]), check_finite=False)
+            inverse_gram_values = cho_solve(factor, np.eye(gram_values.shape[0]), check_finite=False)
         except np.linalg.LinAlgError as exc:
             raise ValueError(
                 "The bucket prolongation contains redundant retained states; "
                 "U.T B^-1 U must be positive definite"
             ) from exc
-        state_coordinates = {
-            str(name): coordinate
-            for name, coordinate in prolongation.coords.items()
-            if set(coordinate.dims).issubset({state_dim})
-        }
-        state_covariance = xr.DataArray(
-            covariance_values,
-            dims=(state_dim, state_column_dim),
-            coords={
-                **state_coordinates,
-                **renamed_column_coordinates(
-                    prolongation,
-                    row_dim=state_dim,
-                    column_dim=state_column_dim,
-                ),
-            },
+
+        # Pi_U = G^-1 (B^-1 U).T, contracting G^-1's column axis with B^-1 U's.
+        inverse_gram = square_matrix(
+            inverse_gram_values,
+            prolongation,
+            row_dim=state_dim,
+            column_dim=state_column_dim,
             attrs={"units": "1"},
         )
-        restriction = xr.dot(state_covariance, precision_prolongation, dim=state_column_dim).transpose(
+        restriction = xr.dot(inverse_gram, precision_prolongation, dim=state_column_dim).transpose(
             state_dim, *native_dims
         )
         restriction = restriction.rename("restriction").assign_attrs(
@@ -228,13 +235,14 @@ class SuppliedRestriction:
     restrictions, and other physical restrictions are all accepted. The
     restriction's state coordinate labels every retained product.
 
-    A LogNormal retained scaling ``alpha = Pi x`` is positive for every
-    positive native scaling ``x`` only when ``Pi`` is nonnegative with a
-    positive weight in each row. ``retained_distribution="lognormal"``
-    therefore refuses a signed restriction or an all-zero row; the derived lift
-    ``U_*`` may still be signed because it is a linear conditional mean, not a
-    positive scaling map. Row normalization is recorded, not required, because
-    preserving a mean-one scaling is a policy choice of the caller.
+    ``alpha = Pi x`` is positive for every positive native scaling ``x``
+    exactly when every entry of ``Pi`` is nonnegative and every row has
+    positive weight; call such a ``Pi`` positivity preserving. A LogNormal
+    retained state needs this, so pass ``require_positivity_preserving=True``
+    for one. The derived lift ``U_*`` may still be signed, because it is a
+    linear conditional mean, not a positive scaling map. Row normalization is
+    recorded, not required, because preserving a mean-one scaling is a policy
+    choice of the caller.
 
     Args:
         restriction: Dimensionless ``Pi`` with dimensions exactly
@@ -243,32 +251,24 @@ class SuppliedRestriction:
             projection is computed. It may be NumPy, ``sparse`` or
             Dask-backed; a sparse payload must have zero fill value and is
             kept sparse.
-        retained_distribution: Retained-state prior family used to decide
-            admissibility. ``"gaussian"`` accepts any finite real full-row-rank
-            restriction.
+        require_positivity_preserving: Refuse a restriction with a negative
+            entry or a row without positive weight. Without it, any finite
+            real full-row-rank restriction is accepted.
         name: Stable strategy identifier recorded with the products.
     """
 
-    __slots__ = ("_name", "_restriction", "_retained_distribution")
+    __slots__ = ("_name", "_require_positivity_preserving", "_restriction")
 
     def __init__(
         self,
         restriction: xr.DataArray,
         *,
-        retained_distribution: Literal["gaussian", "lognormal"] = "gaussian",
+        require_positivity_preserving: bool = False,
         name: str = "supplied_restriction",
     ) -> None:
-        """Hold the borrowed restriction and its admissibility setting.
-
-        Raises:
-            ValueError: If ``retained_distribution`` is not a supported family.
-        """
-        if retained_distribution not in ("gaussian", "lognormal"):
-            raise ValueError(
-                f"retained_distribution must be 'gaussian' or 'lognormal'; got {retained_distribution!r}"
-            )
+        """Hold the borrowed restriction and its positivity requirement."""
         self._restriction = restriction
-        self._retained_distribution = retained_distribution
+        self._require_positivity_preserving = require_positivity_preserving
         self._name = name
 
     @property
@@ -277,9 +277,9 @@ class SuppliedRestriction:
         return borrow(self._restriction)
 
     @property
-    def retained_distribution(self) -> Literal["gaussian", "lognormal"]:
-        """Return the retained-state prior family used for admissibility."""
-        return self._retained_distribution
+    def require_positivity_preserving(self) -> bool:
+        """Return whether a signed restriction or a row without weight is refused."""
+        return self._require_positivity_preserving
 
     @property
     def name(self) -> str:
@@ -308,45 +308,51 @@ class SuppliedRestriction:
 
         Returns:
             The materialized restriction, with sparse payloads kept sparse and
-            attributes recording its supplied provenance and admissibility.
+            attributes recording its supplied provenance and positivity
+            diagnostics.
 
         Raises:
-            ValueError: If dimensions, labels, or values are invalid, or the
-                restriction is not admissible for a LogNormal retained state.
+            ValueError: If dimensions, labels, or values are invalid, or
+                positivity preservation is required and ``Pi`` lacks it.
         """
         del covariance
+
         # transpose rejects missing or extra dimensions.
         restriction = self._restriction.transpose(state_dim, *native_dims)
         state_index = require_unique_index(restriction, state_dim, name="Supplied restriction")
         restriction = _materialize_restriction(restriction)
-        row_minima, row_sums = _restriction_row_diagnostics(restriction, state_dim=state_dim)
-        nonnegative = bool(np.all(row_minima >= 0.0))
-        positive_rows = bool(np.all(row_sums > 0.0))
-        if self._retained_distribution == "lognormal":
+
+        most_negative_weights, row_sums = _restriction_row_diagnostics(restriction, state_dim=state_dim)
+        nonnegative = bool(np.all(most_negative_weights >= 0.0))
+        positive_row_sums = bool(np.all(row_sums > 0.0))
+        row_normalized = bool(np.all(np.abs(row_sums - 1.0) <= ROW_NORMALIZATION_TOLERANCE))
+
+        if self._require_positivity_preserving:
             if not nonnegative:
-                row = int(np.argmin(row_minima))
+                row = int(np.argmin(most_negative_weights))
                 raise ValueError(
-                    "A LogNormal retained state requires a nonnegative restriction; "
-                    f"row {_label(state_index, row)!r} has weight {row_minima[row]:.3e}. A signed "
+                    "A positivity-preserving restriction must be nonnegative; "
+                    f"row {_label(state_index, row)!r} has weight {most_negative_weights[row]:.3e}. A signed "
                     "Pi can map positive native scalings to nonpositive retained scalings"
                 )
-            if not positive_rows:
+            if not positive_row_sums:
                 row = int(np.argmin(row_sums))
                 raise ValueError(
-                    "A LogNormal retained state requires positive weight in every "
+                    "A positivity-preserving restriction needs positive weight in every "
                     f"restriction row; row {_label(state_index, row)!r} sums to {row_sums[row]:.3e}"
                 )
-        row_normalized = bool(np.all(np.abs(row_sums - 1.0) <= ROW_NORMALIZATION_TOLERANCE))
+
         # Keep any caller-recorded definition, such as the builder's weighting
         # formula; restriction_source records that Pi was supplied.
         restriction = restriction.rename("restriction").assign_attrs(
             mathematical_name="Pi",
             strategy=self._name,
             restriction_source="supplied",
-            retained_distribution=self._retained_distribution,
+            positivity_preserving_required=self._require_positivity_preserving,
             nonnegative=nonnegative,
+            positive_row_sums=positive_row_sums,
             row_normalized=row_normalized,
-            lognormal_admissible=nonnegative and positive_rows,
+            positivity_preserving=nonnegative and positive_row_sums,
             units="1",
         )
         return RetainedProjection(restriction=restriction, strategy=self._name)
@@ -363,19 +369,21 @@ def absolute_weighted_regional_mean_restriction(
 ) -> xr.DataArray:
     """Build a source-blocked regional mean weighted by absolute cell totals.
 
-    For source ``s``, region ``r`` and native cell ``i`` with signed weight
+    This is one restriction policy for :class:`SuppliedRestriction`. For
+    source ``s``, region ``r`` and native cell ``i`` with signed weight
     ``q_si``, the restriction is
 
     ``Pi_(s,r),(s',i) = 1[s = s'] 1[i in r] |q_si| / sum_(j in r) |q_sj|``.
 
     Each row is therefore exactly nonnegative, sums to one, and averages
     native scaling factors within one source and one region, so the result is
-    admissible for a LogNormal retained state. The verification-games 14-site
-    production runs use ``q_si = mean(prior flux)_si * cell_area_i``. This is
-    one supplied policy for :class:`SuppliedRestriction`, not a default.
+    positivity preserving, as a LogNormal retained state needs. One choice of
+    weights is ``q_si = mean(prior flux)_si * cell_area_i``, which weights each
+    regional mean by its cells' prior emissions.
 
     Inputs are materialized together at this eager boundary. The result is
-    sparse, with one stored weight per active native cell.
+    sparse, with at most one stored weight per active native cell; cells with
+    zero weight store nothing.
 
     Args:
         regions: Non-empty insertion-ordered mapping from source label to an
@@ -409,6 +417,7 @@ def absolute_weighted_regional_mean_restriction(
             match, region labels are not integers, weights are not finite, or
             an active region has zero total absolute weight.
     """
+    # Check the source axis of the weights against the region maps.
     if not regions:
         raise ValueError("regions must contain at least one source")
     sources = list(regions)
@@ -424,7 +433,10 @@ def absolute_weighted_regional_mean_restriction(
         )
     spatial_dims = tuple(str(dim) for dim in weights.dims if dim != native_source_dim)
     weights = weights.transpose(native_source_dim, *spatial_dims)
-    labels = []
+
+    # Check each region map, align it exactly with the weights' spatial grid,
+    # then materialize all maps and weights together.
+    aligned_regions = []
     for source in sources:
         source_regions = regions[source]
         if set(source_regions.dims) != set(spatial_dims):
@@ -443,40 +455,49 @@ def absolute_weighted_regional_mean_restriction(
             copy=False,
             exclude=[native_source_dim],
         )
-        labels.append(to_dense(source_regions).data)
-    label_values, weight_values = compute(labels, to_dense(weights).data)
-    weight_values = np.asarray(weight_values)
+        aligned_regions.append(source_regions)
+    *materialized_regions, weights = materialize_together(
+        *aligned_regions, weights, purpose="regional-mean region maps and weights"
+    )
+    weight_values = np.asarray(weights.data)
     if np.iscomplexobj(weight_values) or not np.all(np.isfinite(weight_values)):
         raise ValueError("weights must contain finite real values")
 
+    # Build the sparse entries one source block at a time. Each source's rows
+    # follow the rows of the sources before it, starting at row_offset.
     spatial_shape = weight_values.shape[1:]
     state_labels: list[tuple[str, int]] = []
+    row_offset = 0
     row_blocks, source_blocks, cell_blocks, value_blocks = [], [], [], []
-    for source_index, (source, source_labels) in enumerate(zip(sources, label_values, strict=True)):
-        flat_labels = np.asarray(source_labels).reshape(-1)
+    for source_index, (source, source_regions) in enumerate(zip(sources, materialized_regions, strict=True)):
+        flat_labels = np.asarray(source_regions.data).reshape(-1)
         absolute = np.abs(weight_values[source_index].reshape(-1))
         active_cells = np.flatnonzero(flat_labels >= 0)
+
         # The inverse maps each active cell's arbitrary region label to its
         # consecutive local row 0, 1, ... in ascending label order. bincount
         # then sums |q| per local row, giving each region's denominator.
         source_region_labels, local_rows = np.unique(flat_labels[active_cells], return_inverse=True)
-        totals = np.bincount(local_rows, weights=absolute[active_cells], minlength=source_region_labels.size)
+        region_count = source_region_labels.size
+        totals = np.bincount(local_rows, weights=absolute[active_cells], minlength=region_count)
         if np.any(totals <= 0.0):
             region = int(source_region_labels[np.argmax(totals <= 0.0)])
             raise ValueError(f"Region {region} of source {source!r} has zero total absolute weight")
-        # Earlier sources' rows come first, so offset local rows into the
-        # full multi-source state.
-        row_blocks.append(len(state_labels) + local_rows)
+
+        row_blocks.append(row_offset + local_rows)
         source_blocks.append(np.full(active_cells.size, source_index))
         cell_blocks.append(active_cells)
         value_blocks.append(absolute[active_cells] / totals[local_rows])
-        state_labels.extend((source, position) for position in range(source_region_labels.size))
+        state_labels.extend((source, position) for position in range(region_count))
+        row_offset += region_count
     if not state_labels:
         raise ValueError("regions must contain at least one active (nonnegative) region label")
 
+    # Assemble Pi. COO coordinates are (state row, native source, *spatial
+    # indices); unravel_index turns flattened active cells back into grid
+    # indices. An active cell with zero weight contributes nothing to its
+    # regional mean, so it is not stored and the COO holds no explicit zeros.
     cells = np.concatenate(cell_blocks)
-    # COO coordinates are (state row, native source, *spatial indices);
-    # unravel_index turns flattened active cells back into grid indices.
     coordinates = np.vstack(
         [
             np.concatenate(row_blocks),
@@ -491,16 +512,14 @@ def absolute_weighted_regional_mean_restriction(
         values[stored],
         shape=(len(state_labels), len(sources), *spatial_shape),
     )
-    native_coords = {
-        str(name): coordinate
-        for name, coordinate in weights.coords.items()
-        if set(coordinate.dims).issubset({native_source_dim, *spatial_dims})
-    }
+
+    # Label Pi: native coordinates come from the weights, and the state is a
+    # (source, region) MultiIndex in row order.
     state_index = pd.MultiIndex.from_tuples(state_labels, names=(source_dim, region_dim))
     return xr.DataArray(
         data,
         dims=(state_dim, native_source_dim, *spatial_dims),
-        coords=native_coords,
+        coords=coordinates_on_dims(weights, {native_source_dim, *spatial_dims}),
         name="restriction",
         attrs={
             "mathematical_name": "Pi",
@@ -594,17 +613,21 @@ def project_native_covariance(
     native_dims = tuple(covariance.native_dims)
     if observation_batch_size <= 0:
         raise ValueError("observation_batch_size must be positive")
-    batch_size = observation_batch_size
-    # The covariance action owns the native grid: each apply or solve aligns
-    # its right-hand side exactly, so Pi, U and H are checked where they meet B.
+
+    # Resolve Pi and materialize H. The covariance action owns the native grid:
+    # each apply or solve aligns its right-hand side exactly, so Pi, U and H
+    # are checked where they meet B.
     projection = _prepare_projection(
         strategy.projection(covariance, native_dims=native_dims, state_dim=state_dim),
         native_dims=native_dims,
         state_dim=state_dim,
     )
     sensitivity = native_sensitivity.transpose(observation_dim, *native_dims)
-    (sensitivity_data,) = compute(to_dense(sensitivity).data)
-    sensitivity = sensitivity.copy(data=sensitivity_data)
+    (sensitivity,) = materialize_together(sensitivity, purpose="native sensitivity H")
+
+    # Retained-state products. state_column_dim is a fresh name for the
+    # second state axis of B Pi.T and C_alpha, so xarray never contracts both
+    # state axes at once.
     occupied_names = {
         str(name) for array in (sensitivity, projection.restriction) for name in (*array.dims, *array.coords)
     }
@@ -615,9 +638,11 @@ def project_native_covariance(
         native_dims=native_dims,
         state_dim=state_dim,
         column_dim=state_column_dim,
-        rhs_block_size=batch_size,
+        rhs_block_size=observation_batch_size,
     )
-    # A sparse Pi contracts over its stored weights only; no dense blocks needed.
+    # C_alpha = Pi B Pi.T. A sparse Pi contracts over its stored weights only,
+    # with no dense blocks; the result is a dense d x d matrix for d retained
+    # states. Averaging with its transpose removes rounding asymmetry.
     state_covariance = xr.dot(projection.restriction, b_pi_t, dim=list(native_dims)).transpose(
         state_dim, state_column_dim
     )
@@ -640,6 +665,8 @@ def project_native_covariance(
         estimated_reciprocal_condition_number=reciprocal_condition,
         condition_number_norm="1",
     )
+
+    # Observation-space products, which carry the units of H.
     h_units = sensitivity.attrs.get("units")
     linear_units = {"units": h_units} if h_units is not None else {}
     effective_operator = xr.dot(sensitivity, prolongation, dim=list(native_dims)).transpose(
@@ -660,8 +687,9 @@ def project_native_covariance(
         native_dims=native_dims,
         observation_dim=observation_dim,
         output=observation_covariance,
-        batch_size=batch_size,
+        batch_size=observation_batch_size,
     )
+
     return NativeCovarianceProducts(
         restriction=projection.restriction,
         prolongation=prolongation,
@@ -713,6 +741,10 @@ def _observation_covariance(
         dense_output = False
     else:
         assert_never(output)
+
+    # Each block applies B to batch_size columns of H.T, renamed to a distinct
+    # column dimension, then contracts with H over the native axes. `values`
+    # holds the full matrix, or only its diagonal.
     column_dim = matrix_column_dim(
         observation_dim,
         {str(name) for name in (*sensitivity.dims, *sensitivity.coords)},
@@ -722,6 +754,8 @@ def _observation_covariance(
         (count, count) if dense_output else count,
         dtype=np.result_type(sensitivity.dtype, np.float64),
     )
+    # The rounding error of a sum of n terms is bounded by about
+    # n * eps * sum(|terms|); the factor 8 adds headroom above that bound.
     diagonal_error_bounds = None if dense_output else np.empty(count, dtype=np.float64)
     native_size = int(np.prod([sensitivity.sizes[dim] for dim in native_dims]))
     machine_epsilon = np.finfo(np.dtype(values.dtype)).eps
@@ -739,37 +773,28 @@ def _observation_covariance(
             block = xr.dot(sensitivity, b_rhs, dim=list(native_dims)).transpose(observation_dim, column_dim)
             values[:, start:stop] = np.asarray(block.values)
         else:
+            # diag(H B H.T)_k = sum_i H_ki (B H.T)_ik, one native sum per observation.
             terms = rhs * b_rhs
             values[start:stop] = np.asarray(terms.sum(dim=list(native_dims)).values)
             assert diagonal_error_bounds is not None
-            contraction_magnitudes = np.asarray(
-                abs(terms).sum(dim=list(native_dims)).values,
-                dtype=np.float64,
-            )
-            diagonal_error_bounds[start:stop] = contraction_error_factor * np.maximum(
-                contraction_magnitudes,
-                0.0,
-            )
+            contraction_magnitudes = np.asarray(abs(terms).sum(dim=list(native_dims)).values, dtype=np.float64)
+            diagonal_error_bounds[start:stop] = contraction_error_factor * contraction_magnitudes
+
     units = sensitivity.attrs.get("units")
     unit_attrs = {"units": f"({units})^2"} if units is not None else {}
-    row_coords = {
-        str(name): coordinate
-        for name, coordinate in sensitivity.coords.items()
-        if set(coordinate.dims).issubset({observation_dim})
-    }
     if dense_output:
-        values = (values + values.T) * 0.5
-        result = xr.DataArray(
-            values,
-            dims=(observation_dim, column_dim),
-            coords={
-                **row_coords,
-                **renamed_column_coordinates(sensitivity, row_dim=observation_dim, column_dim=column_dim),
-            },
-            attrs=unit_attrs,
+        # Averaging with the transpose removes rounding asymmetry between blocks.
+        return square_matrix(
+            (values + values.T) * 0.5,
+            sensitivity,
+            row_dim=observation_dim,
+            column_dim=column_dim,
             name="native_observation_covariance",
+            attrs={**unit_attrs, "mathematical_name": "H B H.T"},
         )
-        return result.assign_attrs(mathematical_name="H B H.T")
+
+    # A diagonal entry is a variance. Negative values within the rounding bound
+    # are clipped to zero; larger ones mean B is not positive semidefinite.
     assert diagonal_error_bounds is not None
     if np.any(values < -diagonal_error_bounds):
         raise ValueError("diag(H B H.T) contains materially negative covariance values")
@@ -777,7 +802,7 @@ def _observation_covariance(
     result = xr.DataArray(
         values,
         dims=observation_dim,
-        coords=row_coords,
+        coords=coordinates_on_dims(sensitivity, {observation_dim}),
         attrs={
             **unit_attrs,
             "mathematical_name": "diag(H B H.T)",
@@ -820,6 +845,8 @@ def _materialize_restriction(restriction: xr.DataArray) -> xr.DataArray:
         ValueError: If a sparse payload has nonzero fill value or any stored
             value is complex or non-finite.
     """
+    # Unlike array_ops.materialize_together, this boundary keeps sparse Pi sparse.
+    logger.debug("Materializing retained restriction Pi%s, keeping sparse storage", tuple(restriction.shape))
     (data,) = compute(restriction.data)
     if isinstance(data, SparseArray):
         data = COO(data)
@@ -839,20 +866,35 @@ def _restriction_row_diagnostics(
     *,
     state_dim: str,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return each row's minimum (capped at zero) and sum for eager ``Pi``, without densifying."""
+    """Return each row's most negative weight and its sum for eager ``Pi``, without densifying.
+
+    The most negative weight is ``min(0, row minimum)``: zero for a row with no
+    negative entry, otherwise its smallest entry. Callers only need to find
+    negative entries and report one, so starting from zero avoids scanning the
+    implicit zeros of a sparse row.
+
+    Args:
+        restriction: Eager ``Pi`` with ``state_dim`` first, as returned by
+            :func:`_materialize_restriction` after canonical transposition.
+        state_dim: Retained-state dimension.
+
+    Returns:
+        The most negative weight and the sum of each row, as float arrays.
+    """
     data = restriction.data
     row_count = restriction.sizes[state_dim]
     native_axes = tuple(axis for axis, dim in enumerate(restriction.dims) if dim != state_dim)
-    row_minima = np.zeros(row_count, dtype=np.float64)
+    most_negative_weights = np.zeros(row_count, dtype=np.float64)
     if isinstance(data, COO):
-        np.minimum.at(row_minima, data.coords[0], data.data)
+        # coords[0] is each stored entry's row, because state_dim is axis 0.
+        np.minimum.at(most_negative_weights, data.coords[0], data.data)
         row_sums = data.sum(axis=native_axes).todense()
     else:
         values = np.asarray(data).reshape(row_count, -1)
-        if values.shape[1]:
-            row_minima = np.minimum(row_minima, values.min(axis=1))
+        if values.shape[1]:  # min() fails on rows with no native cells
+            most_negative_weights = np.minimum(most_negative_weights, values.min(axis=1))
         row_sums = values.sum(axis=1)
-    return row_minima, np.asarray(row_sums, dtype=np.float64)
+    return most_negative_weights, np.asarray(row_sums, dtype=np.float64)
 
 
 def _label(index: pd.Index, position: int) -> object:
@@ -923,22 +965,12 @@ def _derive_covariance_natural_prolongation(
         ).T.reshape((*native_shape, restriction.sizes[state_dim]))
     except np.linalg.LinAlgError as exc:
         raise ValueError("C_alpha must be positive definite to derive U_*") from exc
-    coords = {
-        str(name): coordinate
-        for name, coordinate in b_pi_t.coords.items()
-        if set(coordinate.dims).issubset(native_dims)
-    }
-    coords.update(
-        {
-            str(name): coordinate
-            for name, coordinate in restriction.coords.items()
-            if set(coordinate.dims).issubset({state_dim})
-        }
-    )
+
+    # U_* takes its native labels from B Pi.T and its state labels from Pi.
     return xr.DataArray(
         solved,
         dims=(*native_dims, state_dim),
-        coords=coords,
+        coords={**coordinates_on_dims(b_pi_t, native_dims), **coordinates_on_dims(restriction, {state_dim})},
         attrs={
             "mathematical_name": "U_*",
             "definition": "B Pi.T C_alpha^-1",
