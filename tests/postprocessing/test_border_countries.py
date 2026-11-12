@@ -1,6 +1,7 @@
 """Toy oracles for border-preserving country checks and whole-region country totals."""
 
 import json
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -264,9 +265,10 @@ def test_bucket_labels_are_read_from_prolongation(kind):
 
     # Both bucket bases follow every border; OCEAN is the sea region.
     assert exact.country.values.tolist() == ["FRANCE", "GERMANY", "SPAIN", "OCEAN"]
-    # A bucket reconstruction has no unresolved component: every row is exact.
-    assert set(exact.country_total_method.values) == {EXACT_REGION_SUM}
-    assert (exact.restriction_residual == 0).all()
+    # Bucket maps also come from a coherent reduction; without Pi nothing is certified exact.
+    assert set(exact.country_total_method.values) == {REGION_SUM_RETAINED_CONDITIONAL}
+    assert np.isnan(exact.restriction_residual).all()
+    assert exact.attrs["restriction_residual_basis"].startswith("not computed")
     xr.testing.assert_allclose(exact.reset_coords(drop=True), native.reset_coords(drop=True), rtol=1e-6)
     # A bucket region total is the region's flux total times its scaling draw.
     france = FOSSIL.values == 1
@@ -374,6 +376,8 @@ def test_negligible_sector_is_opt_in_reported_and_never_exact():
     relaxed = check_border_preserving_countries(labels, _membership(), support, negligible_source_share=1e-6)
     assert relaxed.qualifying == ("FRANCE", "GERMANY", "SPAIN")
     assert relaxed.negligible_sources("FRANCE") == ("ocean",)
+    assert not relaxed.exact_borders("FRANCE")
+    assert relaxed.exact_borders("SPAIN")
     # The ocean region is left out of FRANCE's region sum, so FRANCE leaks a little.
     assert relaxed.leak_fraction("FRANCE") == pytest.approx(1e-9 / 6, rel=1e-6)
     attrs = relaxed.to_attrs()
@@ -401,11 +405,8 @@ def test_region_sums_under_a_positive_tolerance_record_their_leak():
     )
 
     methods = dict(zip(result.country.values, result.country_total_method.values))
-    assert methods == {
-        "FRANCE": REGION_SUM_RETAINED_CONDITIONAL,
-        "GERMANY": REGION_SUM_RETAINED_CONDITIONAL,
-        "SPAIN": EXACT_REGION_SUM,
-    }
+    assert set(methods.values()) == {REGION_SUM_RETAINED_CONDITIONAL}
+    assert float(result.border_leak_fraction.sel(country="SPAIN")) == 0.0
     cell = area.values[0, 1]
     for country in ("FRANCE", "GERMANY"):
         country_area = float((membership.sel(country=country) * area).sum())
@@ -575,3 +576,46 @@ def test_co2_output_option_writes_only_border_preserving_countries_for_every_sec
     _, everything = _affine_products(trace, bound, countries, sectors)
     assert everything.country.values.tolist() == ["FRANCE", "GERMANY", "SPAIN", "OCEAN"]
     assert "country_total_method" not in everything.coords
+
+
+@pytest.mark.parametrize("matched", [False, True], ids=["generic-B", "B-proportional-to-1/Fa"])
+def test_coherent_bucket_maps_are_exact_only_when_bucket_restriction_contains_the_functional(matched):
+    """PreserveBucketProlongation: Pi_U = (U^T B^-1 U)^-1 U^T B^-1 with a diagonal native B.
+
+    A whole-region functional Q = F a lies in the row space of Pi_U only when B Q^T is
+    constant within each region, here when B_ii is proportional to 1 / (F_i a_i).
+    """
+    bound, trace = _affine_fixture("bucket")
+    rng = np.random.default_rng(11)
+    countries = _countries()
+    area = countries.area_grid.values.astype("float64")
+    flux = bound.affine_map.flux.copy(data=rng.uniform(0.5, 3.0, (4, 6)))  # Same sign, constant.
+    bound = replace(bound, artifact=replace(bound.artifact, affine_map=replace(bound.affine_map, flux=flux)))
+    weights = (flux.values * area).ravel()
+    variances = 1.0 / weights if matched else rng.uniform(0.2, 2.0, weights.size)
+    covariance = np.diag(variances)
+    # Bucket prolongation U: one column per FOSSIL region, in the operator's state order.
+    u = (FOSSIL.values.ravel()[:, None] == np.arange(1, 5)[None, :]).astype(float)
+    states = bound.affine_map.prolongation.basis_matrix["region"].values
+    inverse = np.diag(1.0 / variances)
+    pi = np.linalg.solve(u.T @ inverse @ u, u.T @ inverse)
+    restriction = xr.DataArray(
+        pi.reshape(-1, 4, 6),
+        dims=("region", "lat", "lon"),
+        coords={"region": states, **COORDS},
+    )
+
+    result = co2_region_sum_country_outputs(trace, bound, countries, restriction=restriction)
+
+    unresolved = covariance - covariance @ pi.T @ np.linalg.solve(pi @ covariance @ pi.T, pi @ covariance)
+    shares = []
+    for label in (1, 2, 3, 4):
+        q = np.where(FOSSIL.values.ravel() == label, weights, 0.0)
+        shares.append(q @ unresolved @ q / (q @ covariance @ q))
+    residual = result.restriction_residual.values
+    if matched:
+        assert set(result.country_total_method.values) == {EXACT_REGION_SUM}
+        assert residual.max() < 1e-10 and max(shares) < 1e-10
+    else:
+        assert set(result.country_total_method.values) == {REGION_SUM_RETAINED_CONDITIONAL}
+        assert residual.min() > 1e-2 and min(shares) > 1e-3

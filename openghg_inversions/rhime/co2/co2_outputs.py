@@ -385,7 +385,13 @@ def _basic_product(components: xr.Dataset) -> xr.Dataset:
 
 
 def _border_labels(prepared: Co2PreparedInputs, bound: BoundCo2AffineFluxMap) -> dict[str, xr.DataArray] | None:
-    """Return per-source region labels for border checks; bucket maps supply their own."""
+    """Return per-source region labels for border checks; bucket maps supply their own.
+
+    For explicit maps the prepared bucket labels are assumed to be the regions
+    the coherent restriction averages over; they are not checked against ``Pi``,
+    which the saved reconstruction does not carry. Rows are then never labelled
+    ``exact_region_sum``.
+    """
     if not isinstance(bound.affine_map.prolongation, xr.DataArray):
         return None
     operator = prepared.basis_functions.operator

@@ -12,9 +12,12 @@ an absolute-flux-weighted regional mean that holds for a whole region only
 when the signed flux keeps one sign and one spatial pattern over time.
 :func:`co2_region_sum_country_outputs` therefore labels a country
 ``exact_region_sum`` only when its border check has no leak and its
-row-space residual is negligible (or the map is a bucket reconstruction,
-which has no unresolved part). Other border-preserving countries are labelled
-``region_sum_retained_conditional``.
+functional passes a row-space test against a supplied ``Pi``. Every bound CO2
+map comes from a coherent reduction, bucket prolongations included (for
+``PreserveBucketProlongation``, ``Pi_U = (U^T B^-1 U)^-1 U^T B^-1``), so the
+map alone never certifies completeness. Other border-preserving countries are
+labelled ``region_sum_retained_conditional``: border preservation makes the
+unresolved part small, but complete totals need the unresolved term.
 
 "Country" means any row of a membership matrix with dimensions
 ``(country, lat, lon)``, such as :attr:`Countries.matrix`, or the classes a
@@ -72,12 +75,12 @@ RETAINED_STATE_FUNCTIONAL = "retained_state_functional"
 COUNTRY_TOTAL_METHODS = {
     EXACT_REGION_SUM: (
         "Sum of whole-region totals with no border leak, and the country functional lies in the "
-        "row space of the restriction (or the reconstruction is bucket), so no unresolved native "
-        "variance is omitted."
+        "row space of the supplied restriction Pi, so no unresolved native variance is omitted."
     ),
     REGION_SUM_RETAINED_CONDITIONAL: (
         "Sum of whole-region totals within the border tolerance; retained-state conditional, so "
-        "unresolved native variance may be omitted and any border leak is recorded."
+        "unresolved native variance may be omitted (no Pi supplied, or the functional is outside "
+        "its row space) and any border leak is recorded."
     ),
     RETAINED_STATE_FUNCTIONAL: (
         "Ordinary retained-state country functional of a country whose border basis regions cross; "
@@ -191,6 +194,14 @@ class BorderCheck:
             source for source, border in self.sources[country].items() if border.status == "negligible"
         )
 
+    def exact_borders(self, country: str) -> bool:
+        """Return whether ``country`` qualifies with no leak at all and no negligible source."""
+        return (
+            country in self.qualifying
+            and not self.negligible_sources(country)
+            and all(border.leak_fraction == 0.0 for border in self.sources[country].values())
+        )
+
     def leak_fraction(self, country: str) -> float:
         """Return the country's border leak, as a share of its support summed over sources."""
         return float(sum(border.share * border.leak_fraction for border in self.sources[country].values()))
@@ -207,7 +218,7 @@ class BorderCheck:
         """
         details = {}
         for country, borders in self.sources.items():
-            if country in self.qualifying and self.leak_fraction(country) <= _ROUNDING:
+            if self.exact_borders(country):
                 continue
             regions_by_source: dict[str, list[dict[str, float | int]]] = {}
             for leak in self.failures.get(country, ()):
@@ -700,14 +711,14 @@ def co2_region_sum_country_outputs(
     summed over sources per draw, is the sum of its whole regions' totals.
     Each country is labelled with one of :data:`COUNTRY_TOTAL_METHODS`:
 
-    * ``exact_region_sum``: no border leak, and the region-sum functional of
-      every source and time lies in the row space of the restriction
-      (relative residual at most ``residual_tolerance``), or the map is a
-      bucket reconstruction;
+    * ``exact_region_sum``: no border leak (:meth:`BorderCheck.exact_borders`),
+      and the region-sum functional of every source and time lies in the row
+      space of the supplied ``restriction`` (relative residual at most
+      ``residual_tolerance``);
     * ``region_sum_retained_conditional``: qualifies otherwise, for example
-      with a mixed-sign or time-varying flux under an
-      absolute-flux-weighted restriction, without ``restriction``, or with a
-      leak within ``tolerance``;
+      without ``restriction`` (including bucket maps from a coherent
+      reduction), with a mixed-sign or time-varying flux under an
+      absolute-flux-weighted restriction, or with a leak within ``tolerance``;
     * ``retained_state_functional``: a non-qualifying country, written only
       with ``country_outputs="all"``.
 
@@ -722,9 +733,10 @@ def co2_region_sum_country_outputs(
             ``None`` reads them from a bucket prolongation; an explicit map must
             pass the labels of the regions its restriction averages over.
             Negative labels are inactive cells.
-        restriction: The restriction ``Pi`` of an explicit map, on
-            ``(state, *native_dims)``. Without it an explicit map's countries
-            are never labelled exact.
+        restriction: The restriction ``Pi`` of the coherent reduction, on
+            ``(state, *native_dims)``, for bucket and explicit maps alike
+            (``Pi_U`` for ``PreserveBucketProlongation``). Without it no country
+            is labelled exact.
         membership: Optional ``(country, lat, lon)`` fractions replacing
             ``countries.matrix``, for example :func:`region_class_membership`
             of the classes the basis was built with. ``countries`` then supplies
@@ -745,8 +757,8 @@ def co2_region_sum_country_outputs(
     Returns:
         xarray.Dataset: The variables of ``co2_country_flux_outputs``, with
         country coordinates ``country_total_method``, ``border_leak_fraction``
-        and ``restriction_residual`` (largest over sources and times; ``0`` for
-        bucket maps, ``NaN`` when not computed). Global attributes add the check
+        and ``restriction_residual`` (largest over sources and times; ``NaN``
+        without ``restriction``). Global attributes add the check
         (:meth:`BorderCheck.to_attrs`), ``country_total_method_definitions``,
         ``country_outputs`` and per-source residuals. The uncertainty scope
         stays ``retained_state_conditional``; only ``exact_region_sum`` rows
@@ -789,7 +801,7 @@ def co2_region_sum_country_outputs(
             continue
         leak = check.leak_fraction(country)
         residual = max(residuals[country].values(), default=0.0) if country in residuals else np.nan
-        exact = leak <= _ROUNDING and bool(residual <= residual_tolerance)
+        exact = check.exact_borders(country) and bool(residual <= residual_tolerance)
         methods.append(EXACT_REGION_SUM if exact else REGION_SUM_RETAINED_CONDITIONAL)
         leaks.append(leak)
         worst.append(residual)
@@ -801,13 +813,11 @@ def co2_region_sum_country_outputs(
     result.attrs["country_total_method_definitions"] = json.dumps(COUNTRY_TOTAL_METHODS, sort_keys=True)
     result.attrs["restriction_residual_tolerance"] = repr(residual_tolerance)
     result.attrs["restriction_residuals"] = json.dumps(residuals, sort_keys=True)
-    if isinstance(bound.affine_map.prolongation, xr.DataArray):
-        basis = (
-            "supplied restriction" if restriction is not None else "not computed (no restriction supplied)"
-        )
-    else:
-        basis = "bucket reconstruction (no unresolved component)"
-    result.attrs["restriction_residual_basis"] = basis
+    result.attrs["restriction_residual_basis"] = (
+        "supplied restriction"
+        if restriction is not None
+        else "not computed: no restriction supplied, so totals may omit unresolved native variance"
+    )
     return result
 
 
@@ -821,15 +831,11 @@ def _residuals(
 ) -> dict[str, dict[str, float]]:
     """Return, per qualifying country and source, the largest row-space residual over time.
 
-    Bucket maps have no unresolved component, so their residual is zero. An
-    explicit map without a restriction has no entry. A source without support
-    in a country has residual zero.
+    Without a restriction there is no entry: bucket and explicit maps both come
+    from a coherent reduction whose unresolved part the map does not carry. A
+    source without support in a country has residual zero.
     """
-    if not check.qualifying:
-        return {}
-    if not isinstance(bound.affine_map.prolongation, xr.DataArray):
-        return {country: {str(source): 0.0 for source in labels} for country in check.qualifying}
-    if restriction is None:
+    if not check.qualifying or restriction is None:
         return {}
     state_dim = bound.affine_map.state_dim
     union = region_sum_membership(check, labels, source_dim=source_dim or "source")

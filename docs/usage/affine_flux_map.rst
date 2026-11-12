@@ -211,10 +211,13 @@ even when no border is crossed.
 labels each country with ``country_total_method``:
 
 * ``exact_region_sum``: no border leak, and the row-space residual of every
-  source and time is negligible (pass ``restriction=Pi`` for an explicit map;
-  bucket maps have no unresolved part);
+  source and time against the supplied ``restriction=Pi`` is negligible;
 * ``region_sum_retained_conditional``: a border-preserving region sum without
-  that guarantee;
+  that guarantee. This includes every map without ``restriction``. Bucket
+  prolongations also come from a coherent reduction: for
+  ``PreserveBucketProlongation``, ``Pi_U = (U^T B^-1 U)^-1 U^T B^-1``, and a
+  whole-region functional lies in its row space only when ``B Q^T`` is
+  constant within each region;
 * ``retained_state_functional``: a country whose border is crossed, written only
   with ``country_outputs="all"``.
 
@@ -238,8 +241,11 @@ them. Passing ``membership=region_class_membership(region_classes)`` reports
 the classes the basis was built with instead of countries. In a CO2 run, set
 ``country_outputs = "border_preserving_only"`` in ``Co2OutputOptions`` (basic
 output with a ``country_file``). Labels then come from the prepared bucket
-basis. The saved reconstruction does not carry ``Pi``, so an explicit map's
-rows are labelled ``region_sum_retained_conditional`` there.
+basis. The saved reconstruction does not carry ``Pi``, so rows there are
+labelled ``region_sum_retained_conditional``. Border preservation makes the
+unresolved part small (in one OPE-188 study at least 99.6% of each focus
+country's prior variance was resolved), but complete country totals still
+need the unresolved term.
 
 Both products retain prepared-artifact identity, reconstruction provenance and
 ``uncertainty_scope="retained_state_conditional"``. Their intervals exclude
