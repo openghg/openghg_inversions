@@ -11,12 +11,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
-from dask import compute as dask_compute
-from dask.array import Array as DaskArray
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.array_ops import to_dense, validate_covariance_coordinates
+from openghg_inversions.array_ops import materialize_together, validate_covariance_coordinates
 
 AggregationErrorMode: TypeAlias = Literal["auto", "none", "dense", "low_rank", "diagonal"]
 
@@ -148,7 +146,7 @@ def prepare_low_rank_aggregation_error(
     if isinstance(rank, bool) or not isinstance(rank, int) or not 1 <= rank <= nmeasure:
         raise ValueError(f"`rank` must be an integer from 1 to {nmeasure}; got {rank!r}.")
 
-    (covariance,) = _materialize_together(covariance)
+    (covariance,) = materialize_together(covariance, purpose="aggregation-error covariance for factorization")
     values = np.asarray(
         _numeric_finite("covariance", covariance, owner="Low-rank approximation input"),
         dtype=float,
@@ -410,28 +408,6 @@ def _numeric_finite(
     return values
 
 
-def _materialize_together(*arrays: xr.DataArray) -> tuple[xr.DataArray, ...]:
-    """Densify sparse payloads and eagerly materialize related arrays.
-
-    Related Dask payloads are computed together to preserve shared graphs.
-    Borrowed inputs are not mutated; eager returns are either the original
-    labelled arrays or shallow copies containing the computed dense values.
-
-    Args:
-        *arrays: Labelled arrays that share a materialization boundary.
-
-    Returns:
-        Arrays with eager dense payloads in the original order.
-    """
-    dense_arrays = tuple(to_dense(array) for array in arrays)
-    if all(not isinstance(array.data, DaskArray) for array in dense_arrays):
-        return dense_arrays
-    computed = dask_compute(*(array.data for array in dense_arrays))
-    return tuple(
-        array.copy(deep=False, data=values) for array, values in zip(dense_arrays, computed, strict=True)
-    )
-
-
 def _validate_vector(
     data: xr.Dataset,
     name: str,
@@ -633,7 +609,9 @@ def resolve_aggregation_error(
             )
         if standard_deviation.sizes[output_dim] != nmeasure:
             raise ValueError(f"Aggregation-error input {AGGREGATION_ERROR_SD!r} is not observation-aligned.")
-        (standard_deviation,) = _materialize_together(standard_deviation)
+        (standard_deviation,) = materialize_together(
+            standard_deviation, purpose="aggregation-error standard deviation"
+        )
         values = _numeric_finite(AGGREGATION_ERROR_SD, standard_deviation)
         if (values < 0).any():
             raise ValueError(
@@ -672,7 +650,7 @@ def resolve_aggregation_error(
             dim=output_dim,
             covariance_dim=covariance_dim,
         )
-        (covariance,) = _materialize_together(covariance)
+        (covariance,) = materialize_together(covariance, purpose="aggregation-error covariance")
         values = _numeric_finite(AGGREGATION_ERROR_COVARIANCE, covariance)
         _validate_dense_covariance_values(
             values,
@@ -708,7 +686,9 @@ def resolve_aggregation_error(
             f"Aggregation-error input {DIAGONAL_RESIDUAL_VARIANCE!r} is not observation-aligned."
         )
 
-    factor, diagonal = _materialize_together(factor, diagonal)
+    factor, diagonal = materialize_together(
+        factor, diagonal, purpose="low-rank aggregation-error factor and diagonal"
+    )
     factor_values = _numeric_finite(LOW_RANK_FACTOR, factor)
     diagonal_values = _numeric_finite(DIAGONAL_RESIDUAL_VARIANCE, diagonal)
     if (diagonal_values < 0).any():

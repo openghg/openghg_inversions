@@ -36,7 +36,7 @@ Supported numerical envelopes
        unstacked curtain/period averaging weights. The embedded ``rhime_inputs``
        tree follows the generic format rules above.
    * - ``openghg_inversions.co2_o2_prepared_inputs``
-     - 4
+     - 5
      - Linked channels with absolute or independently labelled centered
        transport and optional unstacked curtain/period averaging weights.
 
