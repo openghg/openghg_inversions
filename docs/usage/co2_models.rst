@@ -894,6 +894,52 @@ physical-unit outputs and provenance. The displayed row stack is the
 mathematical model: every sensitivity and covariance block must still be produced
 by the same reduction.
 
+Joint aggregation-error representation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+As on the CO2-only route, ``prepare_co2_o2_inputs`` stores the joint
+aggregation covariance :math:`A` as low-rank-plus-diagonal (LRPD),
+:math:`A \approx F F^T + \mathrm{diag}(t)`, with ``aggregation_error_rank=512``
+by default. Pass ``aggregation_error_rank=None`` to keep the exact dense
+matrix. ``aggregation_error_factorization`` chooses how the factor is built:
+
+``"joint"`` (default)
+   One eigendecomposition of the whole mixed-unit matrix, keeping CO2/O2
+   cross-covariance in the retained modes. The selected modes depend on the
+   relative numerical scale of the two channels' units.
+``"own_species"``
+   Separate factors for the CO2 and O2 blocks, up to the requested rank each,
+   with the cross-covariance blocks dropped. The factor is block-diagonal.
+
+Both forms keep the dense diagonal in :math:`t`. The provenance
+``aggregation_error`` record stores the mode, requested rank, factorization,
+actual factor width, relative Frobenius error against the dense joint matrix,
+the dropped cross-covariance norm and per-block spectral diagnostics. Both the
+fixed-independent and the fixed-OU likelihood consume dense and LRPD inputs;
+at full rank they give the same log density.
+
+Frobenius error is not a likelihood test. Pass per-channel mismatch amplitudes
+as ``aggregation_error_kl_sigma={"co2": [...], "o2": [...]}``, and optionally
+``aggregation_error_kl_tau_hours`` for OU-correlated mismatch within each
+species and site, to record the Gaussian KL per observation between
+:math:`N(0, A + D)` and :math:`N(0, F F^T + \mathrm{diag}(t) + D)` in
+provenance ``aggregation_error_kl``. Here :math:`D` is the prepared independent
+error variance plus the mismatch term. This uses dense
+:math:`O(n^3)` algebra per amplitude, so evaluate a few amplitudes spanning
+the expected posterior range (see
+:func:`~openghg_inversions.observation_error.aggregation_error_kl_per_observation`).
+The error grows quickly as the mismatch amplitude falls.
+
+``independent_error_floor={"co2": ..., "o2": ...}`` is an explicit
+per-channel minimum independent standard deviation in each channel's units.
+The stored ``independent_error_sd`` is the per-row maximum of any supplied
+vector and the floor, or the floor alone. There is no default floor, and the
+choice is recorded in provenance ``independent_error_floor``. A purely
+numerical floor, such as 1e-6 ppm, leaves the LRPD remainder unregularized when
+the inferred mismatch amplitude is small. Prefer a value representing genuine
+independent error, at least about 0.1 ppm for hourly CO2 and the equivalent in
+O2 units, and check the KL record at the low end of the posterior amplitudes.
+
 The graph names the gathered linear signal ``co2_o2_flux_contribution`` and the
 complete affine sum and likelihood mean ``modelled_concentration``. In
 model-variable vocabulary,
@@ -965,8 +1011,8 @@ uses saved errors when both channel error settings are omitted; otherwise it
 expands the configured scalars and checks the same match.
 
 The versioned prepared artifact preserves the joint observations and affine
-intercept, separate native channel sensitivities, joint aggregation covariance
-including cross-channel blocks, retained prior, signed-ratio data or its
+intercept, separate native channel sensitivities, the dense or LRPD joint
+aggregation covariance (dense including cross-channel blocks), retained prior, signed-ratio data or its
 unavailability reason, optional boundary sensitivities, and provenance.
 Unequal channel lengths, MultiIndex identities and per-row units survive the
 round trip. Mixed integer/string labels, such as integer ``1`` and string

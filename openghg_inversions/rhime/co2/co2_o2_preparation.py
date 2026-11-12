@@ -14,7 +14,7 @@ error payloads and unit coordinates for the loading or model boundary.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 import json
 from numbers import Integral
@@ -32,8 +32,14 @@ from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathe
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
+    DIAGONAL_RESIDUAL_VARIANCE,
+    LOW_RANK_FACTOR,
     AggregationError,
+    aggregation_error_kl_per_observation,
+    block_ou_correlation,
+    prepare_low_rank_aggregation_error,
     resolve_aggregation_error,
+    select_aggregation_error_mode,
 )
 
 if TYPE_CHECKING:
@@ -48,7 +54,9 @@ from openghg_inversions.serialization import (
 
 
 CO2_O2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_o2_prepared_inputs"
-CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 5
+CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 6
+Co2O2AggregationErrorFactorization = Literal["joint", "own_species"]
+_RECORDED_PROVENANCE_KEYS = ("aggregation_error", "independent_error_floor", "aggregation_error_kl")
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -84,10 +92,14 @@ class Co2O2PreparedInputs:
             scalar state-resolved ratios cannot be exposed because the paired
             native O2 flux embeds spatial ratios before convolution. Exactly
             one of this value and ``o2_co2_flux_ratio`` is present.
-        aggregation_error: Validated dense joint aggregation error. Covariance
-            rows use ``observation`` and columns use ``observation_cov`` in
-            block order ``[[CO2, CO2/O2], [CO2/O2.T, O2]]``; per-axis unit
-            coordinates describe mixed-unit entries.
+        aggregation_error: Validated dense or low-rank-plus-diagonal joint
+            aggregation error. Dense covariance rows use ``observation`` and
+            columns use ``observation_cov`` in block order
+            ``[[CO2, CO2/O2], [CO2/O2.T, O2]]``; per-axis unit coordinates
+            describe mixed-unit entries. A low-rank factor uses
+            ``("observation", "agg_rank")`` with row units, and its diagonal
+            tail uses ``observation`` with squared row units. The provenance
+            ``aggregation_error`` record states the rank and factorization.
         retained_prior: Correlated prior over shared GPP/TER/FF and separate
             CO2- and O2-ocean retained states.
         provenance: JSON-serializable preparation and data provenance.
@@ -126,12 +138,10 @@ class Co2O2PreparedInputs:
             A versioned DataTree retaining borrowed lazy array payloads.
 
         Raises:
-            ValueError: If dense aggregation covariance is absent, boundary
+            ValueError: If dense or low-rank aggregation error is absent, boundary
                 channels or operands are invalid, or metadata cannot be serialized.
         """
-        covariance = self.aggregation_error.covariance
-        if self.aggregation_error.mode != "dense" or covariance is None:
-            raise ValueError("CO2/O2 prepared inputs require dense aggregation error.")
+        aggregation_arrays = _aggregation_error_arrays(self.aggregation_error)
         if set(self.boundary_operands) - {"co2", "o2"} or set(self.boundary_operands) & set(self.boundary_sensitivity):
             raise ValueError("boundary_operands requires distinct co2/o2 channels from boundary_sensitivity.")
         if set(self.boundary_sensitivity) - {"co2", "o2"}:
@@ -142,7 +152,7 @@ class Co2O2PreparedInputs:
             "joint": {
                 "observed_concentration": self.observations,
                 "fixed_prior_contribution": self.fixed_prior_contribution,
-                AGGREGATION_ERROR_COVARIANCE: covariance,
+                **aggregation_arrays,
             },
             "co2_sensitivity": {"co2_effective_sensitivity": self.co2_sensitivity},
             "o2_sensitivity": {"o2_effective_sensitivity": self.o2_sensitivity},
@@ -195,7 +205,7 @@ class Co2O2PreparedInputs:
 
         Returns:
             Validated scientific inputs. Observations, fixed intercept, dense
-            covariance, prior moments, ocean-loading slices, available ratio
+            covariance or low-rank factor and tail, prior moments, ocean-loading slices, available ratio
             values, and independent error are materialized for validation;
             sensitivity payloads may otherwise remain lazy.
 
@@ -243,15 +253,23 @@ class Co2O2PreparedInputs:
         if prior.state_dim != prior_data.attrs["state_dim"]:
             raise ValueError("Serialized retained-prior state_dim does not match its arithmetic mean.")
         joint = datasets["joint"]
+        mode = select_aggregation_error_mode(joint, "auto")
+        if mode not in ("dense", "low_rank"):
+            raise ValueError("CO2/O2 prepared inputs require dense or low-rank aggregation error.")
         aggregation_error = resolve_aggregation_error(
-            joint, "dense", output_dim="observation", covariance_dim="observation_cov"
+            joint, mode, output_dim="observation", covariance_dim="observation_cov"
         )
-        covariance = aggregation_error.covariance
-        if covariance is None:
-            raise ValueError("CO2/O2 prepared inputs require dense aggregation error.")
         aggregation_error = replace(
             aggregation_error,
-            covariance=covariance.rename(_stored_array(joint, AGGREGATION_ERROR_COVARIANCE).name),
+            **{
+                field_name: getattr(aggregation_error, field_name).rename(_stored_array(joint, variable).name)
+                for field_name, variable in (
+                    ("covariance", AGGREGATION_ERROR_COVARIANCE),
+                    ("factor", LOW_RANK_FACTOR),
+                    ("diagonal_variance", DIAGONAL_RESIDUAL_VARIANCE),
+                )
+                if getattr(aggregation_error, field_name) is not None
+            },
         )
         reason = tree.attrs.get("o2_co2_flux_ratio_unavailable_reason")
         if not isinstance(reason, str):
@@ -336,6 +354,22 @@ class Co2O2PreparedInputs:
             OSError: If the artifact cannot be opened.
         """
         return cls.from_datatree(open_datatree_loaded(file_path))
+
+
+def _aggregation_error_arrays(aggregation_error: AggregationError) -> dict[str, xr.DataArray]:
+    """Return the stored arrays of a dense or low-rank joint aggregation error."""
+    if aggregation_error.mode == "dense" and aggregation_error.covariance is not None:
+        return {AGGREGATION_ERROR_COVARIANCE: aggregation_error.covariance}
+    if (
+        aggregation_error.mode == "low_rank"
+        and aggregation_error.factor is not None
+        and aggregation_error.diagonal_variance is not None
+    ):
+        return {
+            LOW_RANK_FACTOR: aggregation_error.factor,
+            DIAGONAL_RESIDUAL_VARIANCE: aggregation_error.diagonal_variance,
+        }
+    raise ValueError("CO2/O2 prepared inputs require dense or low-rank aggregation error.")
 
 
 def _axis(array: xr.DataArray, name: str) -> str:
@@ -516,18 +550,20 @@ def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
         raise ValueError("O2 sensitivity requires valid signed-ratio provenance.") from exc
     if not isinstance(actual_record, dict):
         raise ValueError("O2 sensitivity signed-ratio provenance must be a JSON object.")
-    covariance = prepared.aggregation_error.covariance
-    if prepared.aggregation_error.mode != "dense" or covariance is None:
-        raise ValueError("CO2/O2 prepared inputs require dense aggregation error.")
-    column_units = covariance.coords.get("observation_units_cov")
-    if (
-        column_units is None
-        or column_units.dims != ("observation_cov",)
-        or not np.array_equal(dask_compute(column_units.data)[0], unit_values)
-    ):
-        raise ValueError(
-            "Aggregation covariance observation_units_cov must match prepared observation units."
-        )
+    for name, array in _aggregation_error_arrays(prepared.aggregation_error).items():
+        if array.dims[0] != "observation" or not _same_index(array.indexes["observation"], index):
+            raise ValueError(f"Aggregation-error {name} rows must match the prepared observations.")
+        unit_coordinates = {"observation_units": "observation"}
+        if name == AGGREGATION_ERROR_COVARIANCE:
+            unit_coordinates = {"observation_units_cov": "observation_cov"}
+        for coordinate, dim in unit_coordinates.items():
+            units_on_axis = array.coords.get(coordinate)
+            if (
+                units_on_axis is None
+                or units_on_axis.dims != (dim,)
+                or not np.array_equal(dask_compute(units_on_axis.data)[0], unit_values)
+            ):
+                raise ValueError(f"Aggregation-error {name} {coordinate} must match prepared observation units.")
     _validate_centered_channels(prepared.boundary_operands, prepared.boundary_sensitivity, prepared.co2_sensitivity, prepared.o2_sensitivity, channel_units["co2"], channel_units["o2"])
     if set(prepared.boundary_sensitivity) - {"co2", "o2"}:
         raise ValueError("boundary_sensitivity must be keyed only by co2 and o2.")
@@ -781,6 +817,184 @@ def _joint_covariance(
     )
 
 
+def _low_rank_joint_aggregation_error(
+    dense: AggregationError,
+    *,
+    rank: int,
+    factorization: Co2O2AggregationErrorFactorization,
+) -> tuple[AggregationError, dict[str, Any]]:
+    """Approximate the validated dense joint covariance by factor plus diagonal.
+
+    ``"joint"`` keeps the leading ``rank`` modes of the whole mixed-unit matrix,
+    including CO2/O2 cross-covariance. ``"own_species"`` factorizes the CO2 and
+    O2 blocks separately (up to ``rank`` modes each) and drops the cross blocks,
+    giving a block-diagonal factor. Both keep the dense diagonal in the tail.
+    """
+    covariance = dense.covariance
+    assert covariance is not None
+    values = np.asarray(covariance.values, dtype=float)
+    nobs = values.shape[0]
+    species = covariance.indexes["observation"].get_level_values("species").to_numpy()
+    if factorization == "joint":
+        blocks = {"joint": np.ones(nobs, dtype=bool)}
+    elif factorization == "own_species":
+        blocks = {channel: species == channel for channel in ("co2", "o2")}
+    else:
+        raise ValueError("aggregation_error_factorization must be 'joint' or 'own_species'.")
+    factors = []
+    diagonal = np.zeros(nobs)
+    block_diagnostics: dict[str, Any] = {}
+    for name, rows in blocks.items():
+        positions = np.flatnonzero(rows)
+        block = covariance.isel(observation=positions, observation_cov=positions)
+        approximation = prepare_low_rank_aggregation_error(
+            block,
+            rank=min(rank, positions.size),
+            output_dim="observation",
+            covariance_dim="observation_cov",
+        )
+        selected = approximation.aggregation_error
+        assert selected.factor is not None and selected.diagonal_variance is not None
+        block_factor = np.zeros((nobs, selected.factor.shape[1]))
+        block_factor[positions] = selected.factor.values
+        factors.append(block_factor)
+        diagonal[positions] = selected.diagonal_variance.values
+        block_diagnostics[name] = dict(approximation.diagnostics)
+    factor_values = np.concatenate(factors, axis=1)
+    approximate = factor_values @ factor_values.T + np.diag(diagonal)
+    norm = float(np.linalg.norm(values))
+    marginal_variance = np.einsum("ij,ij->i", factor_values, factor_values) + diagonal
+    cross = values[np.ix_(species == "co2", species == "o2")]
+    record: dict[str, Any] = {
+        "mode": "low_rank",
+        "rank": rank,
+        "factorization": factorization,
+        "actual_rank": int(factor_values.shape[1]),
+        "relative_frobenius_reconstruction_error": (
+            float(np.linalg.norm(values - approximate)) / norm if norm else 0.0
+        ),
+        "dropped_cross_covariance_relative_frobenius": (
+            float(np.sqrt(2.0) * np.linalg.norm(cross)) / norm
+            if norm and factorization == "own_species"
+            else 0.0
+        ),
+        "diagonal_preservation_error": float(np.max(np.abs(np.diag(values) - marginal_variance))),
+        "blocks": block_diagnostics,
+    }
+    rows = covariance.isel(observation_cov=0, drop=True).drop_attrs()
+    factor = (
+        rows.expand_dims(agg_rank=factor_values.shape[1], axis=1)
+        .copy(data=factor_values)
+        .assign_coords(agg_rank=np.arange(factor_values.shape[1]))
+        .rename(LOW_RANK_FACTOR)
+        .assign_attrs(units="observation_units")
+    )
+    diagonal_variance = (
+        rows.copy(data=diagonal)
+        .rename(DIAGONAL_RESIDUAL_VARIANCE)
+        .assign_attrs(units="observation_units * observation_units")
+    )
+    return (
+        AggregationError(
+            mode="low_rank",
+            marginal_variance=marginal_variance,
+            factor=factor,
+            diagonal_variance=diagonal_variance,
+        ),
+        record,
+    )
+
+
+def _channel_values(values: Mapping[str, Any] | None, name: str) -> dict[str, Any] | None:
+    """Require one entry for each of the co2 and o2 channels."""
+    if values is None:
+        return None
+    if not isinstance(values, Mapping) or set(values) != {"co2", "o2"}:
+        raise ValueError(f"{name} must be a mapping with exactly 'co2' and 'o2' entries.")
+    return dict(values)
+
+
+def _positive_number(value: object, name: str, *, allow_zero: bool = False) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float, np.integer, np.floating)):
+        raise ValueError(f"{name} must be a real number.")
+    number = float(value)
+    if not np.isfinite(number) or number < 0 or (number == 0 and not allow_zero):
+        raise ValueError(f"{name} must be finite and {'non-negative' if allow_zero else 'positive'}.")
+    return number
+
+
+def _apply_independent_error_floor(
+    observations: xr.DataArray,
+    independent_error_sd: xr.DataArray | None,
+    floor: Mapping[str, float] | None,
+) -> tuple[xr.DataArray | None, dict[str, Any]]:
+    """Apply an explicit per-channel minimum independent error and describe it."""
+    floor = _channel_values(floor, "independent_error_floor")
+    if floor is None:
+        source = "supplied independent_error_sd" if independent_error_sd is not None else "none; supply at run time"
+        return independent_error_sd, {"floor": None, "source": source}
+    floor = {channel: _positive_number(value, f"independent_error_floor[{channel!r}]") for channel, value in floor.items()}
+    species = observations.indexes["observation"].get_level_values("species").to_numpy()
+    floor_values = np.where(species == "co2", floor["co2"], floor["o2"])
+    floor_array = (
+        observations.copy(data=floor_values)
+        .rename("independent_error_sd")
+        .assign_attrs(units="mixed; see observation_units coordinate")
+    )
+    record: dict[str, Any] = {"floor": floor, "rule": "per-row max(independent_error_sd, floor)"}
+    if independent_error_sd is None:
+        record["source"] = "floor only"
+        return floor_array, record
+    record["source"] = "supplied independent_error_sd with floor"
+    return independent_error_sd.where(independent_error_sd >= floor_array, floor_array), record
+
+
+def _aggregation_error_kl_record(
+    observations: xr.DataArray,
+    dense: AggregationError,
+    approximation: AggregationError,
+    independent_error_sd: xr.DataArray | None,
+    sigma: Mapping[str, Sequence[float]],
+    tau_hours: float | None,
+) -> dict[str, Any]:
+    """Evaluate the dense-vs-approximate Gaussian KL per observation for a sigma range."""
+    sigma = cast(dict[str, Sequence[float]], _channel_values(sigma, "aggregation_error_kl_sigma"))
+    lists = {
+        channel: [_positive_number(value, f"aggregation_error_kl_sigma[{channel!r}]", allow_zero=True) for value in values]
+        for channel, values in sigma.items()
+    }
+    if len(lists["co2"]) != len(lists["o2"]) or not lists["co2"]:
+        raise ValueError("aggregation_error_kl_sigma requires equal-length, non-empty co2 and o2 sequences.")
+    species = observations.indexes["observation"].get_level_values("species").to_numpy()
+    rows = [np.where(species == "co2", co2, o2) for co2, o2 in zip(lists["co2"], lists["o2"], strict=True)]
+    correlation = None
+    if tau_hours is not None:
+        tau_hours = _positive_number(tau_hours, "aggregation_error_kl_tau_hours")
+        for name in ("site", "time"):
+            if name not in observations.coords or observations[name].dims != ("observation",):
+                raise ValueError(f"OU KL diagnostics require observation-aligned {name!r} coordinates.")
+        sites = np.asarray(dask_compute(observations["site"].data)[0]).astype(str)
+        groups, _ = pd.factorize(np.char.add(np.char.add(species.astype(str), ":"), sites), sort=False)
+        correlation = block_ou_correlation(np.asarray(dask_compute(observations["time"].data)[0]), groups, tau_hours)
+    error = None if independent_error_sd is None else np.asarray(dask_compute(to_dense(independent_error_sd).data)[0])
+    assert dense.covariance is not None
+    kl = aggregation_error_kl_per_observation(
+        dense.covariance.values,
+        approximation,
+        sigma=rows,
+        independent_error_sd=error,
+        sigma_correlation=correlation,
+    )
+    return {
+        "statistic": "KL(N(0, A + D) || N(0, A_approx + D)) / n_observation, nats",
+        "sigma": lists,
+        "kernel": "diagonal" if tau_hours is None else "fixed OU by species and site",
+        "tau_hours": tau_hours,
+        "independent_error": "prepared independent_error_sd" if error is not None else "none",
+        "kl_per_observation": [float(value) for value in kl],
+    }
+
+
 def prepare_co2_o2_inputs(
     *,
     co2_observations: xr.DataArray,
@@ -802,6 +1016,11 @@ def prepare_co2_o2_inputs(
     boundary_operands: Mapping[str, xr.Dataset] | None = None,
     bc_centering_weights: Mapping[str, xr.DataArray] | None = None,
     independent_error_sd: xr.DataArray | None = None,
+    independent_error_floor: Mapping[str, float] | None = None,
+    aggregation_error_rank: int | None = 512,
+    aggregation_error_factorization: Co2O2AggregationErrorFactorization = "joint",
+    aggregation_error_kl_sigma: Mapping[str, Sequence[float]] | None = None,
+    aggregation_error_kl_tau_hours: float | None = None,
 ) -> Co2O2PreparedInputs:
     """Validate coherent-reduction channel products and form one joint likelihood.
 
@@ -867,25 +1086,79 @@ def prepare_co2_o2_inputs(
             and observation_units. Eager values are checked here; lazy payloads
             and unit coordinates are checked at the loading or model
             boundary. This borrowed array is retained for replay.
+        independent_error_floor: Optional explicit minimum independent-error
+            standard deviation per channel, ``{"co2": ..., "o2": ...}``, each
+            positive in its channel units. The stored error is the per-row
+            maximum of ``independent_error_sd`` and the floor, or the floor
+            alone when no error vector is supplied. There is no default
+            floor; the choice is recorded in provenance
+            ``independent_error_floor``. A purely numerical value such as
+            1e-6 ppm does not regularize the low-rank remainder when the
+            inferred mismatch amplitude is small (#1053). Prefer a floor that
+            represents genuine independent error, at least about 0.1 ppm for
+            hourly CO2 (the smallest mismatch amplitude in the #1053 KL tables)
+            and the equivalent in O2 units, then check the KL diagnostic.
+        aggregation_error_rank: Positive low-rank-plus-diagonal (LRPD) rank,
+            defaulting to 512 as on the CO2 route. Pass ``None`` to keep the
+            exact dense joint covariance. The rank applies to each
+            factorization in ``aggregation_error_factorization`` and is capped
+            at its row count; the actual width may be smaller when the
+            covariance has lower numerical rank. Selecting LRPD computes a full
+            dense eigendecomposition here; the rank reduces the stored payload
+            and sampled-likelihood cost, not this preparation cost.
+        aggregation_error_factorization: ``"joint"`` (default) keeps the
+            leading modes of the whole joint covariance, including CO2/O2
+            cross-covariance. Its modes depend on the relative scale of the two
+            channels' units. ``"own_species"`` factorizes the CO2 and O2 blocks
+            separately with up to ``aggregation_error_rank`` modes each and
+            drops the cross-covariance blocks, giving a block-diagonal factor.
+            Ignored when ``aggregation_error_rank`` is ``None``.
+        aggregation_error_kl_sigma: Optional per-channel mismatch amplitudes,
+            ``{"co2": [...], "o2": [...]}`` of equal length and paired by
+            position, at which to record the dense-vs-approximate Gaussian KL
+            per observation (see
+            :func:`~openghg_inversions.observation_error.aggregation_error_kl_per_observation`).
+            The independent error after any floor is included. This costs
+            O(n^3) dense algebra per amplitude on the joint axis.
+        aggregation_error_kl_tau_hours: Optional OU time scale for the KL
+            diagnostic. Omitted means independent ``sigma**2`` rows; supplied,
+            the mismatch is OU-correlated within each species and site, which
+            requires observation-aligned ``site`` and ``time`` coordinates.
 
     Returns:
         Labelled, backend-neutral joint inputs. Observation vectors, affine
         intercept, sensitivities, independent error, and available ratio
-        provenance retain borrowed lazy payloads; dense covariance validation is the explicit eager
-        aggregation-error boundary.
+        provenance retain borrowed lazy payloads; dense covariance validation
+        and any LRPD factorization are the explicit eager aggregation-error
+        boundary. Provenance records ``aggregation_error`` (mode, rank,
+        factorization and approximation diagnostics),
+        ``independent_error_floor`` and, when requested,
+        ``aggregation_error_kl``.
 
     Raises:
         ValueError: If units or provenance are invalid; observation, sensitivity,
             state, ratio, or covariance dimensions/indexes disagree; source
             labels contain inconsistent case variants; the
             ratio exactly-one, direction, sign, provenance, or numerical-value
-            contract fails; cross-tracer ocean loadings are nonzero; or the
+            contract fails; cross-tracer ocean loadings are nonzero; the
             assembled dense covariance is non-finite, asymmetric, or not
-            positive semidefinite.
+            positive semidefinite; or the rank, factorization, floor, KL
+            options or reserved provenance keys are invalid.
     """
     if not co2_units.strip() or not o2_units.strip():
         raise ValueError("CO2 and O2 channel units must be non-empty.")
     prepared_provenance = _copy_json_mapping(provenance or {}, "CO2/O2 provenance")
+    reserved = sorted(set(prepared_provenance) & set(_RECORDED_PROVENANCE_KEYS))
+    if reserved:
+        raise ValueError(f"Provenance keys {reserved!r} are recorded by preparation; do not supply them.")
+    if aggregation_error_rank is not None and (
+        isinstance(aggregation_error_rank, bool)
+        or not isinstance(aggregation_error_rank, int)
+        or aggregation_error_rank < 1
+    ):
+        raise ValueError("aggregation_error_rank must be a positive integer or None.")
+    if aggregation_error_factorization not in ("joint", "own_species"):
+        raise ValueError("aggregation_error_factorization must be 'joint' or 'own_species'.")
 
     boundary_sensitivity = dict(boundary_sensitivity or {})
     raw_operands = _raw_centered_channels(boundary_operands or {}, bc_centering_weights or {})
@@ -1033,6 +1306,29 @@ def prepare_co2_o2_inputs(
         output_dim="observation",
         covariance_dim="observation_cov",
     )
+    independent_error_sd, prepared_provenance["independent_error_floor"] = _apply_independent_error_floor(
+        observations, independent_error_sd, independent_error_floor
+    )
+    dense_aggregation_error = aggregation_error
+    if aggregation_error_rank is None:
+        prepared_provenance["aggregation_error"] = {"mode": "dense", "rank": None, "factorization": None}
+    else:
+        aggregation_error, prepared_provenance["aggregation_error"] = _low_rank_joint_aggregation_error(
+            dense_aggregation_error,
+            rank=aggregation_error_rank,
+            factorization=aggregation_error_factorization,
+        )
+    if aggregation_error_kl_sigma is not None:
+        prepared_provenance["aggregation_error_kl"] = _aggregation_error_kl_record(
+            observations,
+            dense_aggregation_error,
+            aggregation_error,
+            independent_error_sd,
+            aggregation_error_kl_sigma,
+            aggregation_error_kl_tau_hours,
+        )
+    elif aggregation_error_kl_tau_hours is not None:
+        raise ValueError("aggregation_error_kl_tau_hours requires aggregation_error_kl_sigma.")
     return Co2O2PreparedInputs(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
