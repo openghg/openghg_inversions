@@ -169,8 +169,7 @@ def co2_country_flux_outputs(
             The caller must supply the trace generated from that preparation;
             trace identity is not checked.
         countries: Country membership and cell areas on exactly the map's
-            indexed ``lat, lon`` grid. Membership may also carry the native
-            source axis. No regridding or partial overlap is used.
+            indexed ``lat, lon`` grid. No regridding or partial overlap is used.
             ``Countries.area_grid`` is in square metres.
 
     Returns:
@@ -201,9 +200,7 @@ def co2_country_flux_outputs(
     flux, matrix, area = xr.align(
         affine.flux, countries.matrix, countries.area_grid, join="exact", copy=False
     )
-    # Membership may vary by native source (whole-region country sums, border_countries).
-    membership_dims = set(matrix.dims) - ({source_dim} if source_dim is not None else set())
-    if membership_dims != {"country", "lat", "lon"} or set(area.dims) != {"lat", "lon"}:
+    if set(matrix.dims) != {"country", "lat", "lon"} or set(area.dims) != {"lat", "lon"}:
         raise ValueError("Country membership and area must use country/lat/lon and lat/lon dimensions.")
     weighted_flux = (
         flux.astype("float64")
