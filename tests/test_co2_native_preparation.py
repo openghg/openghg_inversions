@@ -131,6 +131,18 @@ def test_build_route_rejects_inconsistent_options(partition: Path, change: dict,
         Co2PreparationConfig.from_params(config)
 
 
+def test_disabled_boundary_allows_acquisition_without_boundaries(partition: Path) -> None:
+    config = {**request(partition), "model": {"boundary": {"enabled": False}}}
+    config["prepared_inputs"]["acquisition"]["use_bc"] = False
+    assert Co2PreparationConfig.from_params(config).boundary is None
+
+
+def test_native_prepare_rejects_a_supplied_affine_artifact(tmp_path: Path, partition: Path) -> None:
+    arguments = Co2PreparationConfig.from_params(request(partition)).preparation_arguments()
+    with pytest.raises(ValueError, match="affine artifact"):
+        handoffs.prepare(**arguments, affine_artifact=object(), output_dir=tmp_path / "p")
+
+
 def test_prepare_checks_a_native_build_before_saving(tmp_path: Path, merged: MergedData, partition: Path) -> None:
     config = request(partition)
     config["prepared_inputs"]["acquisition"]["use_bc"] = False

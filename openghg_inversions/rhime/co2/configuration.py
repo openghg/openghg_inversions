@@ -539,7 +539,7 @@ class Co2PreparationConfig:
             result["boundary_representation"] = check_representation(prepared.pop("boundary_representation"))
         model = options.get("model", {})
         if isinstance(model, Mapping) and "boundary" in model:
-            result["boundary"] = _boundary_choice(_table(model["boundary"], "model.boundary"))
+            result["boundary"] = _boundary_choice(_table(model["boundary"], "model.boundary"), "model.boundary")
         needs = boundary_preparation(result.get("boundary"), result.get("boundary_representation"))
         if native:
             if "affine_path" in result:
@@ -554,7 +554,7 @@ class Co2PreparationConfig:
             if weights is not None and needs.representation != "centered":
                 raise ValueError("prepared_inputs.bc_centering_weights_path requires centered boundaries.")
             use_bc = result["native"].acquisition.get("use_bc", True)
-            if not use_bc and ("boundary" in result or "boundary_representation" in result):
+            if not use_bc and (result.get("boundary") is not None or "boundary_representation" in result):
                 raise ValueError(
                     "prepared_inputs.acquisition.use_bc = false cannot serve a configured boundary or "
                     "boundary_representation; enable use_bc or remove them."
@@ -731,7 +731,7 @@ def _model(value: object, path: str = "model") -> dict[str, Any]:
     if "biosphere" in options:
         biosphere_path = f"{path}.biosphere"
         biosphere = _table(options.pop("biosphere"), biosphere_path)
-        result["biosphere_prior_path"] = _artifact_path(_take(biosphere, "path", biosphere_path), f"{biosphere_path}.path")
+        result["biosphere_prior_path"] = _path(_take(biosphere, "path", biosphere_path), f"{biosphere_path}.path")
         _reject_unknown(biosphere, biosphere_path)
     if "boundary" in options:
         result["boundary"] = _boundary_choice(_table(options.pop("boundary"), f"{path}.boundary"), f"{path}.boundary")
@@ -739,13 +739,6 @@ def _model(value: object, path: str = "model") -> dict[str, Any]:
         result.update(_offset_model(options.pop("offset"), f"{path}.offset"))
     _reject_unknown(options, path)
     return result
-
-
-def _artifact_path(value: object, path: str) -> Path:
-    """Resolve a configured artifact path to an absolute path."""
-    if not isinstance(value, Path):
-        value = _string(value, path)
-    return Path(value).expanduser().resolve()
 
 
 def _offset_model(value: object, path: str) -> dict[str, Any]:

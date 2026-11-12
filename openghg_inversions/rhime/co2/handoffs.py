@@ -161,8 +161,12 @@ def prepare(
     if bc_centering_weights is not None and canonical_inputs is None:
         raise ValueError("bc_centering_weights apply only to a new preparation from canonical_inputs.")
     if native is not None:
-        if prepared_path is not None or canonical_inputs is not None or affine_path is not None:
-            raise ValueError("Native preparation builds its own artifact; do not pass saved or canonical inputs.")
+        if (prepared_path is not None or canonical_inputs is not None or affine_path is not None
+                or affine_artifact is not None):
+            raise ValueError(
+                "Native preparation builds its own artifact and affine companion; "
+                "do not pass saved or canonical inputs or an affine artifact."
+            )
         if start_date is None or end_date is None or domain is None:
             raise ValueError("Native preparation requires start_date, end_date and domain.")
         from .co2_native_preparation import prepare_native_co2

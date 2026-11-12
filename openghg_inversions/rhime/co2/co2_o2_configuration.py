@@ -29,7 +29,7 @@ from .configuration import (
     Co2PreparationConfig,
     _sampling,
     _string,
-    _table, _artifact_path,
+    _table, _path,
     load_co2_family_config,
     resolve_co2_prior_seed,
 )
@@ -250,7 +250,7 @@ class Co2O2ModelConfig:
             raise ValueError("Shared baseline calibration belongs to the frozen preparation.")
         if "biosphere" in options:
             biosphere = _table(options["biosphere"], "biosphere")
-            model["biosphere_prior_path"] = _artifact_path(_take(biosphere, "path", "biosphere"), "biosphere.path")
+            model["biosphere_prior_path"] = _path(_take(biosphere, "path", "biosphere"), "biosphere.path")
             _reject_unknown(biosphere, "biosphere")
         for name in ("co2", "o2"):
             channel = _table(_take(channels, name, "channels"), f"channels.{name}")

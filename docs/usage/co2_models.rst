@@ -682,8 +682,6 @@ default additive-sigma likelihood; its scientific options belong in
 callable identity and its explicit options using the ordinary likelihood
 provenance attributes.
 
-.. _co2-scalar-sigma-recipe:
-
 .. _co2-configured-preparation:
 
 Build a CO2 preparation from configured acquisition
@@ -772,11 +770,14 @@ representations it can bind and which extra inputs it needs
    * - ``"additive"``
      - ``"centered"``, with ``bc_centering_weights_path`` for weighted anomalies
      - ``"centered"`` only
+   * - ``"anomaly_scaling"``
+     - ``"centered"``
+     - ``"centered"`` only
 
 Use ``"centered"`` with a multiplicative boundary where precision matters,
 for example for large absolute backgrounds. A saved preparation can serve
-several model configurations: prepare it as ``"centered"`` to keep both
-families available.
+several model configurations: prepare it as ``"centered"`` to keep every
+boundary family available.
 
 Every stage checks the preparation against the configured choice. Building a
 centered preparation from merged data without centered operands (the
@@ -791,6 +792,8 @@ Python callers can supply in-memory merged data instead of acquiring:
 merged_data=merged, output_dir=...)``. Supplied data must match the requested
 species, domain and window. Linked CO₂/O₂ configurations still import a saved
 artifact.
+
+.. _co2-scalar-sigma-recipe:
 
 Run the global scalar-sigma CO2 likelihood
 ------------------------------------------

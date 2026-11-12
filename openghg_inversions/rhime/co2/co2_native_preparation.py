@@ -19,10 +19,12 @@ import xarray as xr
 
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact
+from openghg_inversions.basis.covariance_products import PreserveBucketProlongation
 from openghg_inversions.coherent_reduction import reduce_native_gaussian
 from openghg_inversions.inversion_data import MergedData, PreparedInputs, select_boundary_representation
 from openghg_inversions.inversion_data.observation_errors import prepare_observation_errors
 from openghg_inversions.models.boundary import Preparation
+from openghg_inversions.models.boundary.contracts import validate_centering_weights
 from openghg_inversions.native_covariance import SeparableExponentialCovariance
 from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.rhime.preparation import (
@@ -132,7 +134,7 @@ def prepare_native_co2(
         longitude_correlation_length=prior.longitude_correlation_length,
     )
     reduction = reduce_native_gaussian(
-        covariance=covariance, basis_prolongation=basis_functions.operator.basis_matrix,
+        covariance=covariance, strategy=PreserveBucketProlongation(basis_functions.operator.basis_matrix),
         state_dim=basis_functions.operator.meta.state_dim, native_mean=native_mean,
         native_sensitivity=native_sensitivity, observation_dim="observation",
     )
@@ -172,11 +174,13 @@ def _native_sensitivity(site_data: dict[str, xr.Dataset], canonical: PreparedInp
 
 
 def _load_centering_weights(path: Path) -> xr.DataArray:
-    """Load the one ``bc_centering_weights`` array from a netCDF file."""
+    """Load and check the one ``bc_centering_weights`` array before acquisition starts."""
     with xr.open_dataset(path) as dataset:
         if "bc_centering_weights" not in dataset:
             raise ValueError(f"{path} must contain a bc_centering_weights variable.")
-        return dataset["bc_centering_weights"].load()
+        weights = dataset["bc_centering_weights"].load()
+    validate_centering_weights(weights.transpose("bc_curtain", "bc_period"))
+    return weights
 
 
 __all__ = ["prepare_native_co2"]
