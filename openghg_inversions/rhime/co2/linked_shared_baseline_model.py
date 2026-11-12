@@ -183,7 +183,14 @@ def build_shared_co2_o2_model(
         Concrete PyMC model with distinct atmospheric and physical states.
         Float64 is required before eager joint transport materialization; bound
         centering means and calibrated moments are used as bound.
+
+    Raises:
+        ValueError: If fixed-OU amplitudes are given without ``tau_hours``,
+            before any input is computed.
     """
+    # Cheap option conflicts fail before any lazy input is executed.
+    if tau_hours is None and (fixed_site_amplitudes is not None or site_amplitude_prior is not None):
+        raise ValueError("Fixed-OU amplitudes require tau_hours.")
     bound, prior, fixed, observations, independent_error_sd, aggregation_error, priors = _linked_inputs(
         baseline, observations, independent_error_sd, aggregation_error=aggregation_error,
         priors={"amplitude": site_amplitude_prior, "fixed": fixed_site_amplitudes, "tau": tau_hours},
@@ -234,8 +241,6 @@ def build_shared_co2_o2_model(
         )
         mean, observed = likelihood_representation(terms, observations, absolute)
         if priors["tau"] is None:
-            if priors["fixed"] is not None or priors["amplitude"] is not None:
-                raise ValueError("Fixed-OU amplitudes require tau_hours.")
             add_additive_sigma_likelihood(
                 observations=observed, observation_error=independent_error_sd, mean=mean,
                 aggregation_error=aggregation_error, output_dim=output_dim,

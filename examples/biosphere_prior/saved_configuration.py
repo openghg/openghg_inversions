@@ -29,6 +29,7 @@ from openghg_inversions.serialization import load_trace, save_trace
 
 
 def main() -> None:
+    """Parse the command line and run the saved-configuration example."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
     args = parser.parse_args()

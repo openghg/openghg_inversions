@@ -29,6 +29,7 @@ from .co2_cached_sigma_model import Co2CachedSigmaModel
 
 
 def _quantity(value: object, path: str) -> tuple[float, str]:
+    """Read a ``{value, units}`` table at ``path`` as a number and its units."""
     options = _table(value, path)
     number = _number(_take(options, "value", path), f"{path}.value", positive=True)
     units = _string(_take(options, "units", path), f"{path}.units")
@@ -38,6 +39,7 @@ def _quantity(value: object, path: str) -> tuple[float, str]:
 
 
 def _save(data: xr.Dataset, path: str | Path, group: str) -> None:
+    """Write one calibration dataset under ``group`` to a new artifact file."""
     path = Path(path)
     if path.exists():
         raise FileExistsError(f"Use a new artifact destination: {path}")

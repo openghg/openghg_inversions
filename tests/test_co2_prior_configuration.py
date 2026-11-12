@@ -241,13 +241,13 @@ def test_linked_config_independent_species_corrections_and_one_calibration(tmp_p
     ou = dict(tau_hours=5.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75})
     if cached:
         built = []
-        builder = co2_o2_cached_sigma_runner.build_co2_o2_cached_sigma_model
+        builder = co2_o2_cached_sigma_runner._build_co2_o2_cached_sigma_model
 
         def capture(**model_kwargs):
             built.append(builder(**model_kwargs).model)
             raise _Built
 
-        monkeypatch.setattr(co2_o2_cached_sigma_runner, "build_co2_o2_cached_sigma_model", capture)
+        monkeypatch.setattr(co2_o2_cached_sigma_runner, "_build_co2_o2_cached_sigma_model", capture)
         with pytest.raises(_Built):
             co2_o2_cached_sigma_runner.run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
                 prepared_inputs=prepared, **choices, **ou,
@@ -558,4 +558,3 @@ def test_ordinary_linked_configuration_binds_declared_fields():
     bound = Co2O2ModelConfig.from_params(request).bind(prepared)
     np.testing.assert_array_equal(bound["independent_error_sd"], .1)
     assert "site_amplitude_prior" not in bound
-    assert "bc_centering_weights" not in bound

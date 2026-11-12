@@ -108,7 +108,10 @@ def read_manifest(
         )
     missing = [name for name in required_keys if name not in record]
     if missing:
-        raise ValueError(f"Manifest {path} is missing {missing!r}.")
+        raise ValueError(
+            f"Manifest {path} is missing {missing!r}. "
+            "Use the software version that wrote it or prepare and sample again."
+        )
     return path, record
 
 
