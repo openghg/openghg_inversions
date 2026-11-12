@@ -21,6 +21,7 @@ from dask.base import unpack_collections
 from openghg_inversions.biosphere_prior import BiospherePrior
 from openghg_inversions.models.biosphere import annotate_biosphere_prior
 from openghg_inversions._serialization_codecs import _json_value
+from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.array_ops import to_dense_tree
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import PreparedInputs
@@ -53,7 +54,7 @@ from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.sigma import SigmaAlignment
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
-from .co2_model import _normalise_offset_args, build_co2_model
+from .co2_model import _build_co2_model, _normalise_offset_args
 from .co2_preparation import Co2PreparedInputs
 
 _CO2_SCIENTIFIC_INPUT_NAMES = (
@@ -329,12 +330,33 @@ def _materialize_co2_inputs(
     prepared: PreparedInputs, names: Collection[str], priors: Mapping[str, PriorArgs],
     boundary: Bound | None,
 ) -> tuple[xr.Dataset, dict[str, PriorArgs], Bound | None]:
-    """Compute selected arrays, the bound boundary and prior parameters together."""
-    selected = prepared.inv_inputs[list(names)]
-    data, eager_priors, boundary = dask_compute(*to_dense_tree((selected, dict(priors), boundary)))
-    variables = dict(prepared.inv_inputs.variables)
+    """Compute selected arrays, the bound boundary and prior parameters together.
+
+    Args:
+        prepared: Borrowed RHIME inputs holding the selected arrays.
+        names: Prepared variables consumed by the recipe's non-boundary components.
+        priors: Prior parameter mappings, possibly with labelled array values.
+        boundary: Lazily bound boundary, or ``None`` when disabled.
+
+    Returns:
+        A shallow Dataset copy with the selected arrays and their coordinates
+        eager, the eager prior parameters, and the eager bound boundary.
+        Unselected arrays remain borrowed and may remain lazy.
+
+    Raises:
+        ValueError: If a selected variable is absent from the prepared data.
+    """
+    timing_start = timer_start()
+    inv_inputs = prepared.inv_inputs
+    names = list(dict.fromkeys(names))
+    missing = [name for name in names if name not in inv_inputs]
+    if missing:
+        raise ValueError(f"Selected PyMC component inputs are missing from prepared data: {missing!r}.")
+    data, eager_priors, boundary = dask_compute(*to_dense_tree((inv_inputs[names], dict(priors), boundary)))
+    variables = dict(inv_inputs.variables)
     variables.update(data.variables)
-    return prepared.inv_inputs._replace(variables=variables), eager_priors, boundary
+    log_timing("rhime.model_inputs_materialize", timer_seconds(timing_start), variables=names)
+    return inv_inputs._replace(variables=variables), eager_priors, boundary
 
 
 def materialize_co2_inputs(
@@ -408,7 +430,7 @@ def materialize_co2_inputs(
             "pass its options in likelihood_kwargs."
         )
     prepared = prepared_inputs
-    # Fail before materialization, which is expensive; build_co2_model owns the rule.
+    # Fail before materialization, which is expensive; the model builder owns the rule.
     if (boundary is not None and "H_bc_anomaly" in prepared.inv_inputs
             and likelihood_builder not in (None, add_fixed_ou_gaussian_likelihood)):
         raise ValueError("Centered runner replay supports the built-in fixed-OU likelihood, not custom callbacks.")
@@ -527,7 +549,7 @@ def build_co2_from_materialized(
         prior_covariance,
         covariance_dim=str(prior_covariance.dims[-1]),
     )
-    model = build_co2_model(
+    model = _build_co2_model(
         model_inputs["H"],
         retained_prior=retained_prior,
         biosphere_prior=biosphere_prior,

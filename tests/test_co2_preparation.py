@@ -483,7 +483,7 @@ def test_reloaded_truncated_low_rank_artifact_drives_cached_runner_selection(
 
     monkeypatch.setattr(
         co2_cached_sigma_runner,
-        "build_co2_cached_sigma_model",
+        "_build_co2_cached_sigma_model",
         build_model,
     )
 
@@ -513,7 +513,7 @@ def test_standard_runner_uses_real_co2_prepared_inputs(monkeypatch: pytest.Monke
         received.update(kwargs)
         raise ModelBoundaryReached
 
-    monkeypatch.setattr(co2_runner, "build_co2_model", build_model)
+    monkeypatch.setattr(co2_runner, "_build_co2_model", build_model)
 
     with pytest.raises(ModelBoundaryReached):
         inputs, priors, boundary = co2_runner.materialize_co2_inputs(
@@ -569,7 +569,7 @@ def test_standard_runner_materializes_aggregation_payload_once(
     def build_model(_sensitivity: xr.DataArray, **_kwargs: Any) -> None:
         raise ModelBoundaryReached
 
-    monkeypatch.setattr(co2_runner, "build_co2_model", build_model)
+    monkeypatch.setattr(co2_runner, "_build_co2_model", build_model)
 
     with pytest.raises(ModelBoundaryReached):
         inputs, priors, boundary = co2_runner.materialize_co2_inputs(

@@ -131,10 +131,10 @@ def _replay(cached: bool):
         return (
             co2_o2_cached_sigma_runner,
             co2_o2_cached_sigma_runner.run_rhime_co2_o2_cached_sigma_from_prepared_inputs,
-            "build_co2_o2_cached_sigma_model",
+            "_build_co2_o2_cached_sigma_model",
             {"tau_hours": 24.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.0}},
         )
-    return co2_o2_runner, run_rhime_co2_o2_from_prepared_inputs, "build_co2_o2_model", {}
+    return co2_o2_runner, run_rhime_co2_o2_from_prepared_inputs, "_build_co2_o2_model", {}
 
 
 @pytest.mark.parametrize("cached", [False, True])
@@ -342,7 +342,7 @@ def test_replay_materializes_payloads_and_auxiliary_units_in_one_graph(monkeypat
     independent_error_sd = array.copy(deep=False, data=values)
     if error_source in {"saved", "both"}:
         prepared.independent_error_sd = independent_error_sd.copy(deep=False)
-    monkeypatch.setattr(co2_o2_runner, "build_co2_o2_model", lambda **_: pm.Model())
+    monkeypatch.setattr(co2_o2_runner, "_build_co2_o2_model", lambda **_: pm.Model())
     monkeypatch.setattr(co2_o2_runner, "sample_rhime_model", lambda built, sampler, *, recompute_deterministics=False: xr.DataTree())
     compute_graphs: list[object] = []
 

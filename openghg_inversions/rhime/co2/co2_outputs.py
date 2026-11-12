@@ -298,7 +298,7 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
             name = roles.get(role)
             if name in dataset:
                 value = dataset[name]
-            elif component_name in {"boundary", "offset"} and role not in roles:
+            elif component_name == "offset" and role not in roles:
                 value = xr.zeros_like(dataset[roles["model_mean"]])
             elif component_name in {"modelled", "pollution", "flux_scale"} or role in roles:
                 raise ValueError(f"CO2 scientific outputs require role {role!r} in {group}.")
