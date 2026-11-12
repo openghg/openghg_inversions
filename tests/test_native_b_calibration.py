@@ -9,6 +9,7 @@ from openghg_inversions.native_b_calibration import (
     calibrated_source_covariance,
     calibrated_source_covariances,
     evaluate_native_b_amplitudes,
+    require_calibrated_slice,
 )
 
 SOURCES = ["co2_FF", "co2_GPP", "co2_TER", "co2_ocean"]
@@ -129,8 +130,12 @@ def test_several_regions_use_least_squares_in_log_sd():
             ratios.append(0.2 * abs(total) / unit_sd)
         expected = float(np.exp(np.mean(np.log(ratios))))
         assert float(result.amplitudes.sel(source=source)) == pytest.approx(expected, rel=1e-12)
-    residual = result.diagnostics["log_sd_residual"].mean("functional")
-    np.testing.assert_allclose(residual, 0.0, atol=1e-12)
+    residual = result.diagnostics["log_sd_residual"]
+    np.testing.assert_allclose(residual.mean("functional"), 0.0, atol=1e-12)
+    rms = np.sqrt((residual**2).mean("functional"))
+    np.testing.assert_allclose(result.diagnostics["fit_rms_log_residual"], rms, rtol=1e-12)
+    expected = np.where(rms <= np.log1p(0.05), "met", "unmet")
+    np.testing.assert_array_equal(result.diagnostics["fit_status"], expected)
 
 
 @pytest.mark.parametrize(
@@ -230,6 +235,26 @@ def test_per_month_calibration_is_independent_and_frozen_policy_is_expressible()
         evaluate_native_b_amplitudes(
             flux, case["weights"], frozen.drop_vars("time"), target_relative_sd=target, **kwargs
         )
+    july = flux.isel(time=1)
+    with pytest.raises(ValueError, match="allow_broadcast"):
+        evaluate_native_b_amplitudes(july, case["weights"], frozen, target_relative_sd=target, **kwargs)
+    with pytest.raises(ValueError, match="without a 'time' label"):
+        evaluate_native_b_amplitudes(
+            july.drop_vars("time"), case["weights"], frozen, target_relative_sd=target, **kwargs
+        )
+    scalar_january = evaluate_native_b_amplitudes(
+        flux.isel(time=0), case["weights"], frozen, target_relative_sd=target, **kwargs
+    )
+    np.testing.assert_allclose(scalar_january["achieved_relative_sd"].sel(functional="EUROPE_INNER"), 0.17)
+    # Per-month amplitudes evaluated on a scalar-labelled month select it.
+    own_july = evaluate_native_b_amplitudes(
+        july, case["weights"], both.amplitudes, target_relative_sd=target, **kwargs
+    )
+    np.testing.assert_allclose(own_july["achieved_relative_sd"].sel(functional="EUROPE_INNER"), 0.1)
+    with pytest.raises(ValueError, match="flux has no 'time' label"):
+        evaluate_native_b_amplitudes(
+            july.drop_vars("time"), case["weights"], both.amplitudes, target_relative_sd=target, **kwargs
+        )
     same_month = evaluate_native_b_amplitudes(
         flux.isel(time=[0]), case["weights"], frozen, target_relative_sd=target, **kwargs
     )
@@ -251,9 +276,24 @@ def test_per_month_calibration_is_independent_and_frozen_policy_is_expressible()
         **kwargs,
     )
     assert list(covariances) == list(time.values)
-    for month, covariance in enumerate(covariances.values()):
+    for month, (label, calibrated) in enumerate(covariances.items()):
+        assert calibrated.calibrated_slice == {"time": label}
+        covariance = require_calibrated_slice(calibrated, {"time": flux["time"].values[month]})
         sigmas = [covariance.source_covariances[source].sigma for source in SOURCES]
         np.testing.assert_allclose(sigmas, both.amplitudes.isel(time=month))
+    january_covariance = covariances[time.values[0]]
+    with pytest.raises(ValueError, match="calibrated for time="):
+        require_calibrated_slice(january_covariance, {"time": time.values[1]})
+    assert (
+        require_calibrated_slice(january_covariance, {"time": time.values[1]}, allow_broadcast=True)
+        is january_covariance.covariance
+    )
+    # The single-slice builder records the month left by isel.
+    single = calibrated_source_covariance(
+        both.amplitudes.isel(time=0), latitude=flux["lat"], longitude=flux["lon"], **kwargs
+    )
+    with pytest.raises(ValueError, match="calibrated for time="):
+        require_calibrated_slice(single, {"time": time.values[1]})
 
 
 def test_length_one_slice_dimension_is_supported():
@@ -382,9 +422,14 @@ def test_calibrated_source_covariance_reproduces_achieved_sd():
         correlation_length=1.5,
         class_labels=case["classes"],
     )
-    assert covariance.source_labels == tuple(SOURCES)
+    assert covariance.calibrated_slice == {}
+    with pytest.raises(ValueError, match="no recorded 'time' calibration slice"):
+        require_calibrated_slice(covariance, {"time": 1})
+    with pytest.raises(ValueError, match="must name the slice"):
+        require_calibrated_slice(covariance, {})
+    assert covariance.covariance.source_labels == tuple(SOURCES)
     q = case["flux"] * case["weights"]
-    variance = (q * covariance.apply(q)).sum(("lat", "lon"))
+    variance = (q * covariance.covariance.apply(q)).sum(("lat", "lon"))
     np.testing.assert_allclose(np.sqrt(variance), result.diagnostics["achieved_sd"], rtol=1e-12)
 
 
@@ -472,7 +517,14 @@ def test_unmet_and_infeasible_targets_are_reported():
     assert status.sel(functional=["AAA", "BBB"]).values.tolist() == ["unmet", "unmet"]
     ratio = result.diagnostics["achieved_to_target_ratio"].squeeze()
     assert float(ratio.sel(functional="AAA") * ratio.sel(functional="BBB")) == pytest.approx(1.0)
-    with pytest.raises(ValueError, match="2 calibration targets were not met"):
+    assert result.diagnostics["fit_status"].item() == "unmet"
+    rms = result.diagnostics["fit_rms_log_residual"].item()
+    assert rms == pytest.approx(abs(float(np.log(ratio.sel(functional="AAA")))), rel=1e-12)
+    loose = calibrate_native_b_amplitudes(
+        flux, case["weights"], target_relative_sd=inconsistent, target_rtol=np.expm1(rms) * 1.01, **kwargs
+    )
+    assert loose.diagnostics["fit_status"].item() == "met"
+    with pytest.raises(ValueError, match="1 source calibration fits were not met"):
         calibrate_native_b_amplitudes(
             flux, case["weights"], target_relative_sd=inconsistent, strict=True, **kwargs
         )
@@ -494,6 +546,7 @@ def test_unmet_and_infeasible_targets_are_reported():
     status = result.diagnostics["status"].squeeze()
     assert status.sel(functional="ALL").item() == "at_bound"
     assert status.sel(functional="LAND").item() == "unmet"
+    assert result.diagnostics["fit_status"].item() == "at_bound"
     assert status.sel(functional="OUTER").item() == "met"
     with pytest.raises(ValueError, match="not met"):
         calibrate_native_b_amplitudes(

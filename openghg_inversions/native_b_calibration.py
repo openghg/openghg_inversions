@@ -41,13 +41,16 @@ Because ``SD`` is linear in a shared amplitude, calibration is simple:
   that the targets push towards zero stops at a floor and is reported.
 
 Every target is classified as ``met`` or ``unmet`` against ``target_rtol``,
-or ``at_bound`` when it depends on a class at the floor.
+or ``at_bound`` when it depends on a class driven towards zero, and each
+source fit is judged by the RMS of its log residuals (``fit_status``).
 
 Every combination of the flux's remaining dimensions (for example ``time``) is
 calibrated independently, so per-month calibration is the default.  A frozen
 policy, such as calibrating one month and scaling it by a factor for every
 month, is expressed by passing those amplitudes to
-:func:`evaluate_native_b_amplitudes` with ``allow_broadcast=True``.
+:func:`evaluate_native_b_amplitudes` with ``allow_broadcast=True``.  Covariances
+built from calibrated amplitudes record their slice, and
+:func:`require_calibrated_slice` refuses a mismatched slice in the same way.
 
 Native amplitudes calibrated here define ``B`` before any coherent reduction.
 A retained-prior recalibration applied afterwards to the same sources would
@@ -62,6 +65,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 import scipy.optimize
 
@@ -69,11 +73,13 @@ from openghg_inversions.native_covariance import SeparableExponentialCovariance
 from openghg_inversions.source_covariance import IndependentSourceCovariance
 
 __all__ = [
+    "CalibratedSourceCovariance",
     "NativeBAmplitudeCalibration",
     "calibrate_native_b_amplitudes",
     "calibrated_source_covariance",
     "calibrated_source_covariances",
     "evaluate_native_b_amplitudes",
+    "require_calibrated_slice",
 ]
 
 AmplitudeStatistic = Literal["geometric-mean", "median"]
@@ -88,8 +94,31 @@ TOTAL_CANCELLATION = "cancellation"
 TOTAL_ZERO = "zero"
 
 # Per-class amplitudes may not fall below this fraction of the common
-# single-amplitude solution; reaching it is reported as ``at_bound``.
+# single-amplitude solution that starts the fit.
 CLASS_AMPLITUDE_FLOOR = 1.0e-6
+# A per-class amplitude below this fraction of the common solution has been
+# driven towards zero by the targets and is reported as ``at_bound``.  It is
+# well above the floor because the bounded solver stops short of the bound.
+CLASS_AT_BOUND_FRACTION = 1.0e-3
+
+
+@dataclass(frozen=True)
+class CalibratedSourceCovariance:
+    """Native source covariance together with the slice it was calibrated for.
+
+    Attributes:
+        covariance: Independent per-source native covariance.
+        calibrated_slice: Slice labels, such as ``{"time": month}``, of the
+            amplitudes used to build ``covariance``.  Empty when the
+            amplitudes carried no slice label.
+
+    Consumers must call :func:`require_calibrated_slice` with the slice they
+    are about to model, so that one month's covariance is not silently used for
+    another.
+    """
+
+    covariance: IndependentSourceCovariance
+    calibrated_slice: Mapping[str, object]
 
 
 @dataclass(frozen=True)
@@ -190,9 +219,12 @@ def calibrate_native_b_amplitudes(
             source.
         cancellation_floor: Fraction of the absolute weighted total below
             which a signed total is treated as cancelling.
-        target_rtol: Relative tolerance on achieved over target SD for a
-            ``met`` status.
-        strict: Raise if any target is ``unmet`` or ``at_bound``.
+        target_rtol: Relative tolerance on achieved over target SD.  It
+            applies to each region's ``status`` and to the RMS log residual
+            of each source fit (``fit_status``).  With one amplitude and
+            several regions the regions are usually individually ``unmet``;
+            judge the fit by ``fit_status``.
+        strict: Raise if any source fit is ``unmet`` or ``at_bound``.
         source_dim: Source dimension name.
         functional_dim: Functional dimension name.
         latitude_dim: Latitude dimension name (degrees).
@@ -205,8 +237,8 @@ def calibrate_native_b_amplitudes(
     Raises:
         ValueError: If inputs are misaligned or non-finite, the targets are
             ambiguous or invalid, a source has no usable target, per-class
-            amplitudes are not identified, or ``strict`` and a target is not
-            met.
+            amplitudes are not identified, or ``strict`` and a source fit is
+            not met.
     """
     if (target_relative_sd is None) == (target_sd is None):
         raise ValueError("Supply exactly one of target_relative_sd and target_sd")
@@ -273,6 +305,7 @@ def calibrate_native_b_amplitudes(
         targets=targets,
         class_at_bound=at_bound,
         target_rtol=target_rtol,
+        functional_dim=functional_dim,
         class_dim=class_dim,
     )
     if strict:
@@ -321,9 +354,11 @@ def evaluate_native_b_amplitudes(
         evaluate_native_b_amplitudes(flux, weights, frozen, allow_broadcast=True, ...)
 
     Amplitudes calibrated for one slice must not silently stand in for
-    another: applying amplitudes that lack a slice dimension of ``flux`` (or
-    carry a different scalar label for it) to several or different slices
-    requires ``allow_broadcast=True``.  Targets are optional here and only
+    another.  Slice labels are compared whether they are dimensions or scalar
+    coordinates of ``flux`` and ``amplitudes``.  Applying amplitudes to a
+    different slice, to several slices, or to a flux without the slice label
+    they record requires ``allow_broadcast=True``.  Unlabelled amplitudes may
+    be evaluated on one slice only.  Targets are optional here and only
     fill the requested, ratio and status columns.
 
     Args:
@@ -383,7 +418,16 @@ def evaluate_native_b_amplitudes(
     if class_dim in amplitudes.dims and class_labels is None:
         raise ValueError("per-class amplitudes require class_labels")
     slice_dims = [dim for dim in in_use.dims if dim not in (source_dim, class_dim)]
-    amplitudes = _checked_slice_provenance(amplitudes, in_use, slice_dims, allow_broadcast=allow_broadcast)
+    flux_labels = {str(name): coord.values[()] for name, coord in flux.coords.items() if coord.ndim == 0}
+    amplitudes = _checked_slice_provenance(
+        amplitudes,
+        in_use,
+        slice_dims,
+        flux_labels,
+        source_dim=source_dim,
+        class_dim=class_dim,
+        allow_broadcast=allow_broadcast,
+    )
     # A per-source amplitude broadcast over classes gives the same SD, so one
     # per-class layout serves both cases.
     amplitudes = _labelled_on(amplitudes, in_use, name="amplitudes")
@@ -396,6 +440,7 @@ def evaluate_native_b_amplitudes(
         targets=targets,
         class_at_bound=None,
         target_rtol=target_rtol,
+        functional_dim=functional_dim,
         class_dim=class_dim,
     )
 
@@ -410,13 +455,17 @@ def calibrated_source_covariance(
     longitude_correlation_length: float | None = None,
     class_labels: xr.DataArray | Mapping[str, xr.DataArray] | None = None,
     source_dim: str = "source",
-) -> IndependentSourceCovariance:
+) -> CalibratedSourceCovariance:
     """Build the independent per-source native covariance for one slice.
 
     This is the hand-off from calibration to native preparation: each source
     gets a :class:`SeparableExponentialCovariance` with its calibrated
     ``sigma`` and the same kernel and class blocking used to calibrate it.
-    Use :func:`calibrated_source_covariances` for per-month amplitudes.
+    The scalar slice labels of ``amplitudes`` (for example the ``time`` left
+    by ``calibration.amplitudes.isel(time=0)``) are recorded, and consumers
+    such as native preparation must check them with
+    :func:`require_calibrated_slice`.  Use
+    :func:`calibrated_source_covariances` for per-month amplitudes.
 
     Args:
         amplitudes: One positive amplitude per source; select a slice first.
@@ -433,7 +482,8 @@ def calibrated_source_covariance(
             native source dimension of the returned covariance.
 
     Returns:
-        Block-diagonal native covariance over sources in amplitude order.
+        Block-diagonal native covariance over sources in amplitude order,
+        with the slice labels it was calibrated for.
 
     Raises:
         ValueError: If ``amplitudes`` has any dimension besides the source.
@@ -461,7 +511,15 @@ def calibrated_source_covariance(
             longitude_correlation_length=longitude_correlation_length,
             class_labels=labels,
         )
-    return IndependentSourceCovariance(blocks, source_dim=source_dim)
+    calibrated_slice = {
+        str(name): coord.values[()]
+        for name, coord in amplitudes.coords.items()
+        if coord.ndim == 0 and name != source_dim
+    }
+    return CalibratedSourceCovariance(
+        covariance=IndependentSourceCovariance(blocks, source_dim=source_dim),
+        calibrated_slice=calibrated_slice,
+    )
 
 
 def calibrated_source_covariances(
@@ -475,7 +533,7 @@ def calibrated_source_covariances(
     longitude_correlation_length: float | None = None,
     class_labels: xr.DataArray | Mapping[str, xr.DataArray] | None = None,
     source_dim: str = "source",
-) -> dict[Hashable, IndependentSourceCovariance]:
+) -> dict[Hashable, CalibratedSourceCovariance]:
     """Build one independent per-source native covariance per slice.
 
     Args:
@@ -492,7 +550,8 @@ def calibrated_source_covariances(
         source_dim: Source dimension name.
 
     Returns:
-        Mapping from each ``slice_dim`` label to its covariance, in order.
+        Mapping from each ``slice_dim`` label to its covariance, in order,
+        each recording its slice label.
 
     Raises:
         ValueError: If ``amplitudes`` has other dimensions.
@@ -501,7 +560,7 @@ def calibrated_source_covariances(
         raise ValueError(f"amplitudes must have exactly the {source_dim!r} and {slice_dim!r} dimensions")
     return {
         label: calibrated_source_covariance(
-            amplitudes.sel({slice_dim: label}, drop=True),
+            amplitudes.sel({slice_dim: label}),
             latitude=latitude,
             longitude=longitude,
             correlation_length=correlation_length,
@@ -512,6 +571,61 @@ def calibrated_source_covariances(
         )
         for label in amplitudes[slice_dim].values
     }
+
+
+def require_calibrated_slice(
+    calibrated: CalibratedSourceCovariance,
+    slice_labels: Mapping[str, object],
+    *,
+    allow_broadcast: bool = False,
+) -> IndependentSourceCovariance:
+    """Return the covariance only if it was calibrated for ``slice_labels``.
+
+    Native preparation (#1047) must call this with the slice it is about to
+    model, for example ``{"time": month}``.
+
+    Args:
+        calibrated: Covariance and its recorded calibration slice.
+        slice_labels: Labels of the slice being modelled; at least one.
+        allow_broadcast: Accept a covariance calibrated for another or an
+            unrecorded slice, for an explicit frozen-slice policy.
+
+    Returns:
+        The checked covariance.
+
+    Raises:
+        ValueError: If no slice labels are given, or a label is unrecorded or
+            differs and ``allow_broadcast`` is false.
+    """
+    if not slice_labels:
+        raise ValueError("slice_labels must name the slice being modelled")
+    for name, label in slice_labels.items():
+        recorded = calibrated.calibrated_slice.get(name)
+        if allow_broadcast:
+            continue
+        if name not in calibrated.calibrated_slice:
+            raise ValueError(
+                f"covariance has no recorded {name!r} calibration slice; build it from amplitudes "
+                "that keep their slice label, or pass allow_broadcast=True for a frozen policy"
+            )
+        if not _same_label(recorded, label):
+            raise ValueError(
+                f"covariance was calibrated for {name}={recorded} but is used for {name}={label}; "
+                "pass allow_broadcast=True for a frozen policy"
+            )
+    return calibrated.covariance
+
+
+def _same_label(first: object, second: object) -> bool:
+    """Return whether two scalar coordinate labels are equal.
+
+    Labels are compared as one-element pandas indexes, so a NumPy
+    ``datetime64`` and a pandas ``Timestamp`` of the same instant match.
+    """
+    try:
+        return bool(pd.Index([first]).equals(pd.Index([second])))
+    except (TypeError, ValueError):
+        return False
 
 
 def _check_tolerances(cancellation_floor: float, target_rtol: float) -> None:
@@ -728,38 +842,70 @@ def _checked_slice_provenance(
     amplitudes: xr.DataArray,
     layout: xr.DataArray,
     slice_dims: Sequence[Hashable],
+    flux_labels: Mapping[str, object],
     *,
+    source_dim: str,
+    class_dim: str,
     allow_broadcast: bool,
 ) -> xr.DataArray:
     """Refuse to apply one slice's amplitudes to other slices unless allowed.
 
     Args:
-        amplitudes: Supplied amplitudes, possibly with scalar slice labels
-            recording the slice they were calibrated for.
+        amplitudes: Supplied amplitudes, possibly varying over slice
+            dimensions or with scalar slice labels recording their slice.
         layout: Array carrying the flux slice dimensions.
         slice_dims: Slice dimensions of the flux.
+        flux_labels: Scalar coordinates of the flux.
+        source_dim: Source dimension name.
+        class_dim: Class dimension name.
         allow_broadcast: Permit broadcasting across slices.
 
     Returns:
-        ``amplitudes`` without scalar slice coordinates.
+        ``amplitudes`` selected at the flux's scalar slice labels and without
+        scalar coordinates.
     """
-    for dim in slice_dims:
-        labels = layout.indexes[dim]
-        if dim in amplitudes.dims:
-            missing = labels.difference(amplitudes.indexes[dim])
-            if len(missing):
-                raise ValueError(f"amplitudes have no {dim!r} slice for {list(map(str, missing))}")
-            continue
-        origin = amplitudes.coords[dim].values[()] if dim in amplitudes.coords else None
-        same_slice = len(labels) == 1 and (origin is None or bool(labels[0] == origin))
-        if not same_slice and not allow_broadcast:
-            source = "an unrecorded slice" if origin is None else f"{dim}={origin}"
+    amplitude_slices = [dim for dim in amplitudes.dims if dim not in (source_dim, class_dim)]
+    recorded = {str(name): coord.values[()] for name, coord in amplitudes.coords.items() if coord.ndim == 0}
+
+    def refuse(origin: str, used: str) -> None:
+        if not allow_broadcast:
             raise ValueError(
-                f"amplitudes from {source} would be applied to {dim} {list(map(str, labels))}; "
+                f"amplitudes from {origin} would be applied to {used}; "
                 "pass allow_broadcast=True to evaluate a frozen-slice policy"
             )
-    scalar = [dim for dim in slice_dims if dim in amplitudes.coords and dim not in amplitudes.dims]
-    return amplitudes.drop_vars(scalar)
+
+    for dim in amplitude_slices:
+        if dim in slice_dims:
+            missing = layout.indexes[dim].difference(amplitudes.indexes[dim])
+            if len(missing):
+                raise ValueError(f"amplitudes have no {dim!r} slice for {list(map(str, missing))}")
+        elif str(dim) in flux_labels:
+            label = flux_labels[str(dim)]
+            if not any(_same_label(label, value) for value in amplitudes[dim].values):
+                raise ValueError(f"amplitudes have no {dim!r} slice for {label}")
+            amplitudes = amplitudes.sel({dim: label})
+        else:
+            raise ValueError(
+                f"amplitudes vary over {dim!r} but the flux has no {dim!r} label; select a slice"
+            )
+
+    for name, origin in recorded.items():
+        if name in amplitude_slices:
+            continue
+        if name in slice_dims:
+            labels = layout.indexes[name]
+            if len(labels) != 1 or not _same_label(labels[0], origin):
+                refuse(f"{name}={origin}", f"{name} {list(map(str, labels))}")
+        elif name in flux_labels:
+            if not _same_label(flux_labels[name], origin):
+                refuse(f"{name}={origin}", f"{name}={flux_labels[name]}")
+        else:
+            refuse(f"{name}={origin}", f"a flux without a {name!r} label")
+
+    for dim in slice_dims:
+        if dim not in amplitude_slices and str(dim) not in recorded and layout.sizes[dim] > 1:
+            refuse("an unrecorded slice", f"{dim} {list(map(str, layout.indexes[dim]))}")
+    return amplitudes.reset_coords(drop=True)
 
 
 def _per_class_amplitudes(
@@ -773,9 +919,9 @@ def _per_class_amplitudes(
         where: Slice and source description for error messages.
 
     Returns:
-        Amplitudes of the present classes and a mask of those within a factor
-        of ten of the floor,
-        ``CLASS_AMPLITUDE_FLOOR`` times the common single-amplitude solution.
+        Amplitudes of the present classes, bounded below by
+        ``CLASS_AMPLITUDE_FLOOR`` times the common single-amplitude solution,
+        and a mask of those below ``CLASS_AT_BOUND_FRACTION`` times it.
     """
     scaled = variance / target[:, None] ** 2
     if np.linalg.matrix_rank(scaled) < scaled.shape[1]:
@@ -801,8 +947,7 @@ def _per_class_amplitudes(
     )
     if fit.status <= 0 or not np.all(np.isfinite(fit.x)):
         raise ValueError(f"Per-class amplitude fit failed for {where}: {fit.message}")
-    # A class within a factor of ten of the floor has collapsed.
-    return np.exp(fit.x), fit.x <= lower + np.log(10.0)
+    return np.exp(fit.x), fit.x <= common + np.log(CLASS_AT_BOUND_FRACTION)
 
 
 def _diagnostics(
@@ -812,9 +957,14 @@ def _diagnostics(
     targets: xr.DataArray,
     class_at_bound: xr.DataArray | None,
     target_rtol: float,
+    functional_dim: str,
     class_dim: str,
 ) -> xr.Dataset:
-    """Return achieved-versus-target SDs and statuses for every functional."""
+    """Return achieved-versus-target SDs and statuses.
+
+    ``status`` judges each region; ``fit_status`` judges each source and
+    slice by the RMS log residual over its targets.
+    """
     totals = components["native_signed_total"]
     unit_variance = components["unit_class_variance"]
     scale = components["target_scale"]
@@ -833,6 +983,17 @@ def _diagnostics(
         touches_bound = xr.zeros_like(used)
     else:
         touches_bound = ((unit_variance > 0.0) & class_at_bound).any(class_dim)
+    n_used = used.sum(functional_dim)
+    rms = ((log_ratio.fillna(0.0) ** 2).sum(functional_dim) / n_used.where(n_used > 0)) ** 0.5
+    fit_status = xr.where(
+        n_used == 0,
+        STATUS_DIAGNOSTIC,
+        xr.where(
+            (touches_bound & used).any(functional_dim),
+            STATUS_AT_BOUND,
+            xr.where(rms <= np.log1p(target_rtol), STATUS_MET, STATUS_UNMET),
+        ),
+    )
     status = xr.where(
         unit_sd <= 0.0,
         STATUS_ZERO,
@@ -859,13 +1020,15 @@ def _diagnostics(
             "log_sd_residual": log_ratio,
             "used_for_calibration": used,
             "status": status.astype(str),
+            "fit_rms_log_residual": rms,
+            "fit_status": fit_status.astype(str),
         }
     )
 
 
 def _raise_if_not_met(diagnostics: xr.Dataset) -> None:
-    """Raise when any target is unmet or depends on a class at the floor."""
-    failed = diagnostics["status"].isin([STATUS_UNMET, STATUS_AT_BOUND])
+    """Raise when any source fit is unmet or depends on a class at the floor."""
+    failed = diagnostics["fit_status"].isin([STATUS_UNMET, STATUS_AT_BOUND])
     if bool(failed.any()):
-        table = diagnostics[["status", "achieved_to_target_ratio"]].where(failed).to_dataframe().dropna()
-        raise ValueError(f"{len(table)} calibration targets were not met:\n{table.head(10)}")
+        table = diagnostics[["fit_status", "fit_rms_log_residual"]].where(failed).to_dataframe().dropna()
+        raise ValueError(f"{len(table)} source calibration fits were not met:\n{table.head(10)}")

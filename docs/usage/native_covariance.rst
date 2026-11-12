@@ -362,18 +362,24 @@ the verification-games prototype. Both are exact for one target. Per-class
 amplitudes use a bounded least-squares fit and require the targets to identify
 every class. Each target is reported ``met`` or ``unmet`` against
 ``target_rtol``, or ``at_bound`` when it depends on a class that the targets
-drove to the amplitude floor; ``strict=True`` raises instead.
+drove towards zero. With one amplitude and several regions most regions are
+individually ``unmet``, so each source fit is also judged by the RMS of its log
+residuals (``fit_status``); ``strict=True`` raises when a fit is ``unmet`` or
+``at_bound``.
 
 Every combination of the flux's other dimensions, such as ``time``, is
 calibrated independently, so per-month calibration is the default, and
 ``calibrated_source_covariances`` builds one
 :class:`~openghg_inversions.source_covariance.IndependentSourceCovariance` per
-month (``calibrated_source_covariance`` builds one for a single slice). A
-frozen policy, such as the verification-games production setting of a
-January-only calibration scaled by 1.7 for every month, is expressed by passing
-those amplitudes to ``evaluate_native_b_amplitudes`` with
-``allow_broadcast=True``; without it, applying one slice's amplitudes to other
-slices is refused. The amplitudes depend on :math:`L`: with a fixed target, a
+month (``calibrated_source_covariance`` builds one for a single slice). Each
+covariance records the slice it was calibrated for, and native preparation must
+obtain it through ``require_calibrated_slice(calibrated, {"time": month})``,
+which refuses another month. A frozen policy, such as the verification-games
+production setting of a January-only calibration scaled by 1.7 for every month,
+is expressed by passing ``allow_broadcast=True`` to that check or to
+``evaluate_native_b_amplitudes``; without it, applying one slice's amplitudes
+to another slice, to several slices, or to a flux without the slice label is
+refused. The amplitudes depend on :math:`L`: with a fixed target, a
 longer correlation raises the unit SD of a same-signed total and lowers the
 amplitude.
 
