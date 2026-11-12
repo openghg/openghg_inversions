@@ -226,9 +226,8 @@ def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     if mean.attrs.get("units") != "1" or covariance.attrs.get("units") != "1":
         raise ValueError("CO2 retained prior mean and covariance must be dimensionless.")
 
-    if "bc_centering_weights" in inputs:
-        if "H_bc_mass" not in inputs:
-            raise ValueError("Additive boundary weights require native centered boundary operands.")
+    if "bc_centering_weights" in inputs and "H_bc_mass" not in inputs:
+        raise ValueError("Additive boundary weights require native centered boundary operands.")
 
     squared_units = f"({concentration_units})**2"
     if AGGREGATION_ERROR_COVARIANCE in inputs:
@@ -705,14 +704,13 @@ def prepare_co2_inputs(
     )
 
     if bc_centering_weights is not None:
-        if "H_bc_mass" not in inputs:
-            raise ValueError("Additive boundary weights require native centered boundary operands.")
+        from openghg_inversions.models.boundary.contracts import RawCenteredSensitivity, validate_centering_weights
+
         weights = bc_centering_weights.transpose("bc_curtain", "bc_period")
-        from openghg_inversions.models.boundary import RawCenteredSensitivity
-
-        # Mapping preserves the already prepared raw transport structure.
+        validate_centering_weights(weights)
+        # Mapping preserves the already prepared raw transport structure; the
+        # artifact's own validation requires the matching centered operands.
         mapped = RawCenteredSensitivity.with_centering_weights(cast(RawCenteredSensitivity, mapped), weights)
-
 
     approximation = None
     if aggregation_error_rank is None:

@@ -342,75 +342,81 @@ def _sampling(value: object) -> RhimeSampler:
     return sampler
 
 
-def _multiplicative_boundary(options: dict[str, object], periods: dict[str, Any]) -> MultiplicativeChoice:
+def _multiplicative_boundary(options: dict[str, object], periods: dict[str, Any], path: str) -> MultiplicativeChoice:
     """Resolve the options of a multiplicative boundary, the default type."""
-    prior = _prior(options.pop("prior"), "model.boundary.prior") if "prior" in options else dict(DEFAULT_BC_PRIOR)
-    _reject_unknown(options, "model.boundary")
+    prior = _prior(options.pop("prior"), f"{path}.prior") if "prior" in options else dict(DEFAULT_BC_PRIOR)
+    _reject_unknown(options, path)
     return MultiplicativeChoice(prior, **periods)
 
 
-def _additive_boundary(options: dict[str, object], periods: dict[str, Any]) -> AdditiveChoice:
+def _additive_boundary(options: dict[str, object], periods: dict[str, Any], path: str) -> AdditiveChoice:
     """Resolve the options of centred additive boundary corrections."""
-    mean_shift_prior = _prior(_take(options, "mean_shift_prior", "model.boundary"), "model.boundary.mean_shift_prior")
-    anomaly_scale = _number(_take(options, "anomaly_scale", "model.boundary"), "model.boundary.anomaly_scale")
-    _reject_unknown(options, "model.boundary")
+    mean_shift_prior = _prior(_take(options, "mean_shift_prior", path), f"{path}.mean_shift_prior")
+    anomaly_scale = _number(_take(options, "anomaly_scale", path), f"{path}.anomaly_scale")
+    _reject_unknown(options, path)
     return AdditiveChoice(mean_shift_prior, anomaly_scale, **periods)
 
 
 # Each boundary ``type`` names one choice family and owns the parser for its options.
-_BOUNDARY_TYPES: dict[str, Callable[[dict[str, object], dict[str, Any]], Choice]] = {
+_BOUNDARY_TYPES: dict[str, Callable[[dict[str, object], dict[str, Any], str], Choice]] = {
     MultiplicativeChoice.kind: _multiplicative_boundary,
     AdditiveChoice.kind: _additive_boundary,
 }
 
 
-def _boundary_choice(boundary: dict[str, object]) -> Choice | None:
-    """Resolve one ``[model.boundary]`` table; ``None`` when explicitly disabled.
+def _boundary_choice(boundary: dict[str, object], path: str) -> Choice | None:
+    """Resolve one boundary table at ``path``; ``None`` when explicitly disabled.
 
     ``type`` selects the family and defaults to ``"multiplicative"``, scaling
     absolute or centered sensitivity. Options belonging to another family are
     rejected rather than used to infer it.
     """
-    enabled = _bool(boundary.pop("enabled", True), "model.boundary.enabled")
+    enabled = _bool(boundary.pop("enabled", True), f"{path}.enabled")
     if not enabled:
         if boundary:
-            raise ValueError("model.boundary options require model.boundary.enabled=true.")
+            raise ValueError(f"{path} options require {path}.enabled=true.")
         return None
-    kind = _string(boundary.pop("type", MultiplicativeChoice.kind), "model.boundary.type")
+    kind = _string(boundary.pop("type", MultiplicativeChoice.kind), f"{path}.type")
     if kind not in _BOUNDARY_TYPES:
-        raise ValueError(f"model.boundary.type must be one of {sorted(_BOUNDARY_TYPES)!r}, not {kind!r}.")
+        raise ValueError(f"{path}.type must be one of {sorted(_BOUNDARY_TYPES)!r}, not {kind!r}.")
     periods: dict[str, Any] = {
-        name: _string(boundary.pop(name), f"model.boundary.{name}")
+        name: _string(boundary.pop(name), f"{path}.{name}")
         for name in ("frequency", "anchor_time") if name in boundary
     }
-    return _BOUNDARY_TYPES[kind](boundary, periods)
+    return _BOUNDARY_TYPES[kind](boundary, periods, path)
 
 
-def _model(value: object) -> dict[str, Any]:
-    options = _table(value, "model")
+def _model(value: object, path: str = "model") -> dict[str, Any]:
+    """Resolve boundary and offset choices from one model table at ``path``.
+
+    The linked recipe passes ``channels.<name>`` so messages name the table the
+    user actually wrote.
+    """
+    options = _table(value, path)
     result: dict[str, Any] = {}
     if "boundary" in options:
-        result["boundary"] = _boundary_choice(_table(options.pop("boundary"), "model.boundary"))
+        result["boundary"] = _boundary_choice(_table(options.pop("boundary"), f"{path}.boundary"), f"{path}.boundary")
     if "offset" in options:
-        offset = _table(options.pop("offset"), "model.offset")
-        result["offset_prior"] = _prior(_take(offset, "prior", "model.offset"), "model.offset.prior")
+        offset_path = f"{path}.offset"
+        offset = _table(options.pop("offset"), offset_path)
+        result["offset_prior"] = _prior(_take(offset, "prior", offset_path), f"{offset_path}.prior")
         offset_args: dict[str, Any] = {}
         if "frequency" in offset:
             frequency = offset.pop("frequency")
             if frequency is not None:
-                frequency = _string(frequency, "model.offset.frequency")
+                frequency = _string(frequency, f"{offset_path}.frequency")
             offset_args["offset_freq"] = frequency
         for config_name, runner_name in (("per_site", "per_site"), ("drop_first", "drop_first")):
             if config_name in offset:
-                offset_args[runner_name] = _bool(offset.pop(config_name), f"model.offset.{config_name}")
-        _reject_unknown(offset, "model.offset")
+                offset_args[runner_name] = _bool(offset.pop(config_name), f"{offset_path}.{config_name}")
+        _reject_unknown(offset, offset_path)
         if offset_args.get("per_site") is False:
             if offset_args.get("offset_freq") is not None:
-                raise ValueError("A global model.offset does not accept frequency.")
+                raise ValueError(f"A global {offset_path} does not accept frequency.")
             if offset_args.get("drop_first") is True:
-                raise ValueError("A global model.offset does not support drop_first=true.")
+                raise ValueError(f"A global {offset_path} does not support drop_first=true.")
         result["offset_args"] = _frozen(offset_args)
-    _reject_unknown(options, "model")
+    _reject_unknown(options, path)
     return result
 
 

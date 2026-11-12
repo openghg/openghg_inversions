@@ -199,11 +199,16 @@ before binding, and a *bound* record, both small frozen dataclasses in one
 module under ``models/boundary/``. The configuration adapter resolves user
 options such as ``bc_freq`` and ``bc_prior`` into a choice
 (``MultiplicativeChoice`` or ``AdditiveChoice``); it never touches arrays.
-Runners take that one choice (a channel mapping for linked recipes) and call
-``choice.bind(observations, sensitivity)`` once per channel and fit, where the
-sensitivity is the prepared absolute ``H_bc`` or a ``RawCenteredSensitivity``
-Dataset. The bound record pairs the choice with borrowed labelled sensitivity
-on the fit's rows and boundary periods. Reusable raw sensitivity keeps its
+Runners take that one choice (a channel mapping for linked recipes) and bind
+it once per channel and fit through ``bind_prepared``, which dispatches on the
+representation preparation recorded: ``choice.bind(observations,
+sensitivity)`` for a ``RawCenteredSensitivity`` Dataset, or
+``choice.bind_absolute(observations, H_bc)`` for absolute ``H_bc``, which only
+the multiplicative family implements. Either returns the bound record, which
+pairs the choice with borrowed labelled sensitivity on the fit's rows and
+boundary periods; its ``data`` carries the sensitivity contract
+(``BoundCenteredSensitivity`` for centered families). The runner passes the
+materialized bound record, not the choice, to the numerical builder. Reusable raw sensitivity keeps its
 spatial meaning independently of fit periods. The same options, choice and
 bound sequence suits other components whose options define a prior over
 data-dependent states.
@@ -254,40 +259,7 @@ own units, labels and layout; ``bind`` owns calendar and row alignment and the
 single float64 check for centered sensitivity; ``add`` checks only values that
 become available once lazy payloads are materialized.
 
-AST inspection of the concrete builder signatures gives:
-
-.. list-table:: Builder parameters, including keyword-only arguments
-   :header-rows: 1
-   :widths: 55 15 15 15
-
-   * - Builder
-     - Before
-     - Current
-     - Boundary inputs
-   * - ``build_co2_model``
-     - 23
-     - 16
-     - 9 → 1
-   * - ``build_co2_cached_sigma_model``
-     - 24
-     - 17
-     - 9 → 1
-   * - ``build_co2_o2_model``
-     - 23
-     - 16
-     - 9 → 1
-   * - ``build_co2_o2_cached_sigma_model``
-     - 23
-     - 16
-     - 9 → 1
-
-To reproduce the current count, parse each builder module with ``ast.parse``,
-select its top-level ``FunctionDef`` and count ``posonlyargs + args +
-kwonlyargs``. The only boundary parameter is ``boundary``. Each builder also accepts the
-independent optional ``biosphere_prior`` calibration for its flux state; it adds
-one parameter relative to the boundary-only counts.
-
-A dry-run extension with a new supported boundary prior reaches these owners:
+A new supported boundary prior reaches these owners:
 
 * A new module under ``models/boundary/``: define the choice (with ``bind``) and
   the bound record (with ``add`` and ``outputs``), inheriting
@@ -298,35 +270,21 @@ A dry-run extension with a new supported boundary prior reaches these owners:
 * Scientific component tests and the affected configuration tests: establish
   the equation, fixed-state behavior, units, full density and gradients.
 
-The exercised extension probes are
-``tests/test_co2_boundary_affine_integration.py`` and
-``tests/test_boundary_output.py``. The frontend handoff is exercised in
-``tests/test_co2_bound_frontends.py`` with raw binding forbidden, absent raw
-operators, shared delayed payloads and independent concentration equations for
-ordinary/cached single/linked fits. The embedding probes exercise a one-dimensional native response
-and a matrix with unsorted coefficient labels into interleaved joint rows,
-reject reversed observation rows before reading lazy cache payloads, and accept
-independent coefficient blocks with different labels on identically named axes.
 The cached conversion aligns only observation rows; it does not align separate
-coefficient axes. Independent curtain corrections replay through the same
-scientific correction role. Unsampled additive anomalies are registered as
-zero model data, so replay reads every declared role from the saved draws or
-constants.
+coefficient axes. Unsampled additive anomalies are registered as zero model
+data, so replay reads every declared role from the saved draws or constants.
 
 For a new family, scientific tests belong with its component in
 ``tests/models/test_boundary_components.py`` and its configuration in
 ``tests/test_rhime_co2_configuration.py`` or
-``tests/test_co2_o2_configuration.py``. These generic embedding and replay
-probes protect the consumer seam; downstream boundary-family work supplies the
-new prior's equation tests.
-
-A runnable dry-run temporarily added ``StudentT(nu, mu, sigma)`` to the
-configuration prior table in memory. Existing component prior construction
-handled it directly. Ordinary and cached graphs had finite full log densities,
-and reconstructed boundary contributions closed for three prior draws and two
-posterior draws. The only temporarily extended module was
-``rhime/co2/configuration.py``; no likelihood, cache or output module changed.
-This probe does not add Student-t to the released configuration choices.
+``tests/test_co2_o2_configuration.py``. The generic embedding and replay
+probes in ``tests/test_co2_boundary_affine_integration.py``,
+``tests/test_boundary_output.py`` and ``tests/test_co2_bound_frontends.py``
+protect the consumer seam; downstream boundary-family work supplies the new
+prior's equation tests. The
+:doc:`boundary-library adoption record <../plans/boundary_library_adoption_20261111>`
+preserves the builder-signature counts and extension probes from that
+migration.
 
 The review check is that this module list does not grow to include likelihood,
 cache, sampler or output modules. Those consumers operate on the shared affine

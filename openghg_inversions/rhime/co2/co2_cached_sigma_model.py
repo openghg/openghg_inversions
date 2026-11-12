@@ -385,6 +385,52 @@ def build_co2_cached_sigma_model(
         ))
     )
     site_amplitude_prior, offset_prior = priors["amplitude"], priors["offset"]
+    return _build_co2_cached_sigma_model(
+        flux_sensitivity,
+        retained_prior=retained_prior,
+        fixed_prior_contribution=fixed_prior_contribution,
+        observations=observations,
+        observation_error=observation_error,
+        aggregation_error=aggregation_error,
+        tau_hours=tau_hours,
+        site_amplitude_prior=site_amplitude_prior,
+        initial_site_amplitudes=initial_site_amplitudes,
+        state_activity=state_activity,
+        boundary=boundary,
+        offset_prior=offset_prior,
+        offset_freq=offset_freq,
+        offset_drop_first=offset_drop_first,
+        offset_per_site=offset_per_site,
+        output_dim=output_dim,
+    )
+
+
+def _build_co2_cached_sigma_model(
+    flux_sensitivity: xr.DataArray,
+    *,
+    retained_prior: CorrelatedLognormalPrior,
+    fixed_prior_contribution: xr.DataArray,
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    aggregation_error: AggregationError,
+    tau_hours: float | Mapping[str, float],
+    site_amplitude_prior: PriorArgs,
+    initial_site_amplitudes: float | Mapping[str, float] | None = None,
+    state_activity: StateActivity | None = None,
+    boundary: Bound | None = None,
+    offset_prior: PriorArgs | None = None,
+    offset_freq: str | None = None,
+    offset_drop_first: bool = False,
+    offset_per_site: bool = True,
+    output_dim: str = "nmeasure",
+) -> Co2CachedSigmaModel:
+    """Construct the cached fixed-OU CO2 graph from eager inputs.
+
+    Materialization belongs to the caller: :func:`build_co2_cached_sigma_model` computes its
+    arguments together, and the runner calls this after its own joint
+    materialization so already-eager arrays are not handled twice. Arguments,
+    returns and errors are those of :func:`build_co2_cached_sigma_model`.
+    """
     if offset_prior is None and (offset_freq is not None or offset_drop_first or not offset_per_site):
         raise ValueError("Non-default offset options require offset_prior.")
     validate_observation_error_arrays(

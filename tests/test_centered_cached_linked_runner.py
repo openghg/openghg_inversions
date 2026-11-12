@@ -74,10 +74,10 @@ def test_linked_cached_runner_restores_absolute_predictions_and_replay(tmp_path,
             prepared_inputs=prepared, tau_hours=3.0,
             site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.1},
             boundary={
-                channel: MultiplicativeChoice(
+                channel: None if channel == "co2" and route == "disabled" else MultiplicativeChoice(
                     {"pdf": "normal", "mu": 1.0, "sigma": 0.01}, frequency="3h", anchor_time=anchor,
                 )
-                for channel in ("co2", "o2") if channel != "co2" or route != "disabled"
+                for channel in ("co2", "o2")
             },
             sampler=RhimeSampler(draws=3, tune=2, chains=1, nuts_sampler="pymc"),
         )
@@ -154,8 +154,8 @@ def test_linked_cached_precision_guard_runs_after_selection_before_materializati
                 prepared_inputs=prepared, tau_hours=3.0,
                 site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.1},
                 boundary={
-                    channel: MultiplicativeChoice(dict(DEFAULT_BC_PRIOR))
-                    for channel in ("co2", "o2") if channel != "co2" or enabled
+                    channel: MultiplicativeChoice(dict(DEFAULT_BC_PRIOR)) if channel != "co2" or enabled else None
+                    for channel in ("co2", "o2")
                 },
             )
         assert pytensor.config.floatX == "float32"
