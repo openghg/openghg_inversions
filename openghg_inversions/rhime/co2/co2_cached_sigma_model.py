@@ -402,6 +402,7 @@ def build_co2_cached_sigma_model(
         offset_drop_first=offset_drop_first,
         offset_per_site=offset_per_site,
         output_dim=output_dim,
+        biosphere_prior=biosphere_prior,
     )
 
 
@@ -423,6 +424,7 @@ def _build_co2_cached_sigma_model(
     offset_drop_first: bool = False,
     offset_per_site: bool = True,
     output_dim: str = "nmeasure",
+    biosphere_prior: BiospherePrior | None = None,
 ) -> Co2CachedSigmaModel:
     """Construct the cached fixed-OU CO2 graph from eager inputs.
 

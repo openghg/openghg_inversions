@@ -156,6 +156,7 @@ def build_co2_o2_cached_sigma_model(
         offset_prior=offset_prior,
         offset_args=offset_args,
         output_dim=output_dim,
+        biosphere_prior=biosphere_prior,
     )
 
 
@@ -176,6 +177,7 @@ def _build_co2_o2_cached_sigma_model(
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
+    biosphere_prior: BiospherePrior | None = None,
 ) -> Co2CachedSigmaModel:
     """Construct the linked cached fixed-OU graph from eager inputs.
 

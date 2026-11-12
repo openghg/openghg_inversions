@@ -271,6 +271,7 @@ def build_co2_model(
         boundary=boundary,
         offset_prior=offset_prior,
         offset_args=offset_args,
+        biosphere_prior=biosphere_prior,
     )
 
 
@@ -291,6 +292,7 @@ def _build_co2_model(
     boundary: Bound | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
+    biosphere_prior: BiospherePrior | None = None,
 ) -> pm.Model:
     """Validate choices and construct the CO2 graph from eager inputs.
 
