@@ -111,7 +111,7 @@ def test_centered_affine_keeps_fixed_activity_and_physical_coefficients(double_p
             assert result.blocks[0].design.attrs["units"] == "ppm"
 
 
-def test_absolute_affine_keeps_inactive_effects():
+def test_absolute_affine_keeps_inactive_effects(double_precision):
     data, observations = _native_boundary()
     design = data.H_bc_anomaly.rename("H_bc")
     bound = MultiplicativeChoice(
@@ -214,7 +214,7 @@ def test_one_state_has_only_mean_even_with_positive_scale(double_precision, scal
         np.testing.assert_allclose((result.likelihood_contribution - _affine_expression(result)).eval(), 0., atol=1e-12)
 
 
-def test_weighted_additive_binding_requires_centering_weights():
+def test_weighted_additive_binding_requires_centering_weights(double_precision):
     data, observations = _native_boundary()
     with pytest.raises(ValueError, match="require bc_centering_weights"):
         AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.).bind(
@@ -236,7 +236,7 @@ def test_bind_prepared_rejects_absolute_sensitivity_for_centered_families(choice
         bind_prepared(choice, observations, absolute=data.H_bc_anomaly)
 
 
-def test_bind_prepared_requires_exactly_one_representation():
+def test_bind_prepared_requires_exactly_one_representation(double_precision):
     data, observations = _native_boundary()
     choice = MultiplicativeChoice({"pdf": "normal", "mu": 1., "sigma": .1})
     with pytest.raises(ValueError, match="requires prepared H_bc or centered"):
@@ -494,7 +494,7 @@ def test_boundary_metadata_uses_choice_facts_without_evaluating_lazy_inputs(doub
 
 @pytest.mark.parametrize("owner", [None, "bc", "co2"])
 @pytest.mark.parametrize("family", ["additive", "anomaly_scaling"])
-def test_labelled_period_mean_prior_shares_the_owned_period_axis(family, owner):
+def test_labelled_period_mean_prior_shares_the_owned_period_axis(double_precision, family, owner):
     data, observations = _native_boundary()
     starts = pd.to_datetime(["2020-01-01", "2020-02-01"])
     # Reversed labels: the prior must follow the period labels, not their order.
