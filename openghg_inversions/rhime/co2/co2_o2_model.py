@@ -375,6 +375,50 @@ def build_co2_o2_model(
         )))
     )
     site_amplitude_prior, offset_prior = priors["amplitude"], priors["offset"]
+    return _build_co2_o2_model(
+        observations=observations,
+        fixed_prior_contribution=fixed_prior_contribution,
+        co2_sensitivity=co2_sensitivity,
+        o2_sensitivity=o2_sensitivity,
+        aggregation_error=aggregation_error,
+        retained_prior=retained_prior,
+        independent_error_sd=independent_error_sd,
+        state_activity=state_activity,
+        boundary=boundary,
+        offset_prior=offset_prior,
+        offset_args=offset_args,
+        output_dim=output_dim,
+        tau_hours=tau_hours,
+        fixed_site_amplitudes=fixed_site_amplitudes,
+        site_amplitude_prior=site_amplitude_prior,
+    )
+
+
+def _build_co2_o2_model(
+    *,
+    observations: xr.DataArray,
+    fixed_prior_contribution: xr.DataArray,
+    co2_sensitivity: xr.DataArray,
+    o2_sensitivity: xr.DataArray,
+    aggregation_error: AggregationError,
+    retained_prior: CorrelatedLognormalPrior,
+    independent_error_sd: xr.DataArray,
+    state_activity: StateActivity | None = None,
+    boundary: Mapping[str, Bound] | None = None,
+    offset_prior: Mapping[str, PriorArgs] | None = None,
+    offset_args: Mapping[str, Mapping[str, Any]] | None = None,
+    output_dim: str = "observation",
+    tau_hours: float | Mapping[str, float] | None = None,
+    fixed_site_amplitudes: float | Mapping[str, float] | None = None,
+    site_amplitude_prior: Mapping[str, Any] | None = None,
+) -> pm.Model:
+    """Construct the linked CO2/O2 graph from eager inputs.
+
+    Materialization belongs to the caller: :func:`build_co2_o2_model` computes its
+    arguments together, and the runner calls this after its own joint
+    materialization so already-eager arrays are not handled twice. Arguments,
+    returns and errors are those of :func:`build_co2_o2_model`.
+    """
     joint_sensitivity = _gather_co2_o2_sensitivity(
         co2_sensitivity,
         o2_sensitivity,

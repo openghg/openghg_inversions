@@ -16,7 +16,7 @@ import pymc as pm
 import pytensor
 import xarray as xr
 
-from openghg_inversions.basis import BasisFunctions
+from openghg_inversions.basis import BasisFunctions, PreserveBucketProlongation
 from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.coherent_reduction import reduce_native_gaussian
 from openghg_inversions.inversion_data import SiteOptions, prepare_rhime_inputs_from_xarray, prepare_surface_site
@@ -129,7 +129,7 @@ def prepare_pilot(site, fluxes):
     native_mean = total_flux.copy(data=[[.9, 1.1]]).assign_attrs(units="1")
     reduction = reduce_native_gaussian(
         covariance=covariance,
-        basis_prolongation=basis.operator.basis_matrix,
+        strategy=PreserveBucketProlongation(basis.operator.basis_matrix),
         state_dim="region", native_mean=native_mean, native_sensitivity=native_h, observation_dim="observation",
     )
     prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=None)
