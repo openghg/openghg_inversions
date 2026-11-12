@@ -153,7 +153,7 @@ def test_materialization_runner_binds_boundary_choice_once(monkeypatch, mode, ca
             def capture_boundary(*args, **kwargs):
                 raise BoundaryReached(kwargs["boundary"])
 
-            monkeypatch.setattr(co2_cached_sigma_runner, "build_co2_cached_sigma_model", capture_boundary)
+            monkeypatch.setattr(co2_cached_sigma_runner, "_build_co2_cached_sigma_model", capture_boundary)
             with pytest.raises(BoundaryReached) as reached:
                 co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
                     prepared_inputs=prepared, tau_hours=3.0,
@@ -195,7 +195,7 @@ def test_linked_runner_binds_only_the_selected_boundary_once(monkeypatch):
         forwarded.append(kwargs["boundary"])
         raise RuntimeError("boundaries reached")
 
-    monkeypatch.setattr(co2_o2_runner, "build_co2_o2_model", capture_builder)
+    monkeypatch.setattr(co2_o2_runner, "_build_co2_o2_model", capture_builder)
     choice = MultiplicativeChoice(dict(DEFAULT_BC_PRIOR))
     with pytest.raises(RuntimeError, match="boundaries reached"):
         co2_o2_runner.build_rhime_co2_o2(
