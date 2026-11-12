@@ -348,26 +348,42 @@ weights are :math:`q_{sr} = F_s w_r`, and
 where :math:`K_L` is the unit separable exponential kernel with correlation
 length :math:`L`, blocked by class when labels are given. The unit variances
 are evaluated through the covariance action, so dense :math:`B` is never
-formed. One amplitude per source is the least-squares fit in log SD, which is
-the closed form :math:`\log a_s = \operatorname{mean}_r \log(t_{sr} /
-\operatorname{SD}^{\mathrm{unit}}_{sr})` and is exact for one target. Per-class
-amplitudes use a small least-squares fit and require the targets to identify
-every class.
+formed. Relative targets refer to the cancellation-stabilized scale
+:math:`\max(|\sum q|, f \sum |q|)` with floor fraction :math:`f`
+(``cancellation_floor``, 0.1 by default), so a mixed-sign total that nearly
+cancels is flagged ``cancellation`` rather than given a near-zero SD target.
+
+One amplitude per source uses either the least-squares fit in log SD, the
+closed form :math:`\log a_s = \operatorname{mean}_r \log(t_{sr} /
+\operatorname{SD}^{\mathrm{unit}}_{sr})` (``statistic="geometric-mean"``, the
+default), or ``statistic="median"``, which makes the median achieved-to-target
+ratio one and matches the median rules of ``calibrate_basis_prior_stdev`` and
+the verification-games prototype. Both are exact for one target. Per-class
+amplitudes use a bounded least-squares fit and require the targets to identify
+every class. Each target is reported ``met`` or ``unmet`` against
+``target_rtol``, or ``at_bound`` when it depends on a class that the targets
+drove to the amplitude floor; ``strict=True`` raises instead.
 
 Every combination of the flux's other dimensions, such as ``time``, is
-calibrated independently, so per-month calibration is the default. A frozen
-policy, such as the verification-games production setting of a January-only
-calibration scaled by 1.7 for every month, is expressed by passing those
-amplitudes to ``evaluate_native_b_amplitudes``, which reports achieved against
-target SDs for any amplitudes. ``calibrated_source_covariance`` builds the
-matching :class:`~openghg_inversions.source_covariance.IndependentSourceCovariance`
-for one slice. The amplitudes depend on :math:`L`: with a fixed target, a
+calibrated independently, so per-month calibration is the default, and
+``calibrated_source_covariances`` builds one
+:class:`~openghg_inversions.source_covariance.IndependentSourceCovariance` per
+month (``calibrated_source_covariance`` builds one for a single slice). A
+frozen policy, such as the verification-games production setting of a
+January-only calibration scaled by 1.7 for every month, is expressed by passing
+those amplitudes to ``evaluate_native_b_amplitudes`` with
+``allow_broadcast=True``; without it, applying one slice's amplitudes to other
+slices is refused. The amplitudes depend on :math:`L`: with a fixed target, a
 longer correlation raises the unit SD of a same-signed total and lowers the
 amplitude.
 
 This is the native counterpart of
 ``basis.prior_uncertainty.calibrate_basis_prior_stdev``, which calibrates
-independent retained basis-state widths instead.
+independent retained basis-state widths instead. Native amplitudes fix
+:math:`B` before coherent reduction, so the reduced prior they induce is
+already calibrated; do not also apply a retained-prior recalibration to the
+same sources, or their uncertainty is calibrated twice. Sources are
+independent, so a GPP/TER native cross-correlation is not modelled.
 
 Correspondence with ``verification-games``
 -------------------------------------------

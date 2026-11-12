@@ -10,7 +10,8 @@ where ``K`` is the unit-amplitude separable exponential kernel of
 with correlation length ``L``, ``M_c`` is the indicator of native class ``c``
 and ``a_{s,c}`` is the native grid-cell standard deviation.  Without class
 labels there is one class covering the grid.  Sources are independent, as in
-:class:`~openghg_inversions.source_covariance.IndependentSourceCovariance`.
+:class:`~openghg_inversions.source_covariance.IndependentSourceCovariance`, so
+a cross-source correlation (for example between GPP and TER) is not modelled.
 
 A declared functional ``r`` (for example a country or regional mask multiplied
 by cell area) and a source flux ``f_s`` define the native total-flux weights
@@ -20,21 +21,37 @@ by cell area) and a source flux ``f_s`` define the native total-flux weights
 
 with ``v_{s,r,c} = (M_c q)^T K (M_c q)``.  The unit variances ``v`` are
 evaluated through the matrix-free covariance action, so the dense native
-covariance is never formed.  Because ``SD`` is linear in a shared amplitude,
-calibration is simple:
+covariance is never formed.
 
-* one amplitude per source: ``log a`` is the mean of
-  ``log(target_sd) - log(unit_sd)`` over the source's targeted functionals,
-  which is the least-squares solution in log SD and is exact for one target;
-* one amplitude per source and class: a small nonlinear least-squares fit in
-  log SD over the source's targets, which requires the targeted functionals to
-  identify every class.
+Relative targets refer to the cancellation-stabilized scale
+``max(abs(sum q), cancellation_floor * sum abs(q))``, so a mixed-sign total
+that nearly cancels does not demand a near-zero SD.
+
+Because ``SD`` is linear in a shared amplitude, calibration is simple:
+
+* one amplitude per source: with ``statistic="geometric-mean"`` (default),
+  ``log a`` is the mean of ``log(target_sd / unit_sd)``, the least-squares
+  fit in log SD; with ``statistic="median"``, ``a = 1 / median(unit_sd /
+  target_sd)``, which makes the median achieved-to-target ratio one and, for a
+  shared relative target, equals the ``target / median(unit relative SD)`` rule
+  of :func:`~openghg_inversions.basis.prior_uncertainty.calibrate_basis_prior_stdev`
+  and the verification-games prototype.  Both are exact for one target;
+* one amplitude per source and class: a bounded least-squares fit in log SD,
+  which requires the targeted functionals to identify every class.  A class
+  that the targets push towards zero stops at a floor and is reported.
+
+Every target is classified as ``met`` or ``unmet`` against ``target_rtol``,
+or ``at_bound`` when it depends on a class at the floor.
 
 Every combination of the flux's remaining dimensions (for example ``time``) is
 calibrated independently, so per-month calibration is the default.  A frozen
 policy, such as calibrating one month and scaling it by a factor for every
 month, is expressed by passing those amplitudes to
-:func:`evaluate_native_b_amplitudes`.
+:func:`evaluate_native_b_amplitudes` with ``allow_broadcast=True``.
+
+Native amplitudes calibrated here define ``B`` before any coherent reduction.
+A retained-prior recalibration applied afterwards to the same sources would
+calibrate their uncertainty twice; use one or the other for a source.
 """
 
 from __future__ import annotations
@@ -42,6 +59,7 @@ from __future__ import annotations
 import itertools
 from collections.abc import Hashable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 import xarray as xr
@@ -54,13 +72,24 @@ __all__ = [
     "NativeBAmplitudeCalibration",
     "calibrate_native_b_amplitudes",
     "calibrated_source_covariance",
+    "calibrated_source_covariances",
     "evaluate_native_b_amplitudes",
 ]
 
-STATUS_TARGET = "target"
+AmplitudeStatistic = Literal["geometric-mean", "median"]
+
+STATUS_MET = "met"
+STATUS_UNMET = "unmet"
+STATUS_AT_BOUND = "at_bound"
 STATUS_DIAGNOSTIC = "diagnostic"
-STATUS_NEAR_ZERO_TOTAL = "near-zero-total"
-STATUS_ZERO_VARIANCE = "zero-variance"
+STATUS_ZERO = "zero"
+TOTAL_OK = "ok"
+TOTAL_CANCELLATION = "cancellation"
+TOTAL_ZERO = "zero"
+
+# Per-class amplitudes may not fall below this fraction of the common
+# single-amplitude solution; reaching it is reported as ``at_bound``.
+CLASS_AMPLITUDE_FLOOR = 1.0e-6
 
 
 @dataclass(frozen=True)
@@ -71,10 +100,18 @@ class NativeBAmplitudeCalibration:
         amplitudes: Native grid-cell standard deviations with dimensions
             ``(source, *slice_dims)``, plus the class dimension when amplitudes
             were calibrated per class.  A class absent from a source's labels
-            has a missing amplitude.
+            has a missing amplitude; a class at the floor has the floor value.
         diagnostics: Dataset over ``(source, functional, *slice_dims)`` with
-            signed totals, unit-amplitude SDs, requested and achieved SDs, and
-            a per-functional ``status``.  ``to_dataframe()`` gives a table.
+            signed and absolute totals, the target scale and ``total_status``,
+            unit-amplitude SDs, requested and achieved SDs, their ratio and log
+            residual, and the per-functional ``status``.  ``to_dataframe()``
+            gives a table.
+        calibration_slices: Labels of every slice dimension that was
+            calibrated, in order.  ``amplitudes`` carries the same labels.
+        class_at_bound: Boolean ``(source, *slice_dims, class)`` mask of
+            per-class amplitudes at the floor, or ``None`` for one amplitude
+            per source.
+        statistic: Statistic combining several targets of one source.
         correlation_length: Shared correlation length in degrees.
         latitude_correlation_length: Resolved latitude correlation length.
         longitude_correlation_length: Resolved longitude correlation length.
@@ -83,6 +120,9 @@ class NativeBAmplitudeCalibration:
 
     amplitudes: xr.DataArray
     diagnostics: xr.Dataset
+    calibration_slices: Mapping[str, tuple[object, ...]]
+    class_at_bound: xr.DataArray | None
+    statistic: str
     correlation_length: float
     latitude_correlation_length: float
     longitude_correlation_length: float
@@ -100,26 +140,30 @@ def calibrate_native_b_amplitudes(
     longitude_correlation_length: float | None = None,
     class_labels: xr.DataArray | None = None,
     per_class: bool = False,
+    statistic: AmplitudeStatistic = "geometric-mean",
+    cancellation_floor: float = 0.1,
+    target_rtol: float = 0.05,
+    strict: bool = False,
     source_dim: str = "source",
     functional_dim: str = "functional",
     latitude_dim: str = "lat",
     longitude_dim: str = "lon",
     class_dim: str = "class",
-    near_zero_total: float = 1.0e-30,
 ) -> NativeBAmplitudeCalibration:
     """Calibrate native ``B`` amplitudes so functional SDs match targets.
 
     Each source, and each combination of the flux's remaining dimensions, is
     calibrated independently.  Functionals with a missing target are reported
     as diagnostics only.  Relative targets are converted to absolute SD
-    targets with ``abs(native signed total)``; functionals whose total is
-    below ``near_zero_total`` cannot carry a relative target.
+    targets with the cancellation-stabilized scale described in the module
+    docstring.  Functionals with no weighted flux or zero unit variance cannot
+    carry a target.
 
-    With one amplitude per source the solution is the least-squares fit in
-    log SD, ``log a = mean(log(target_sd / unit_sd))``, which matches every
-    target exactly when a source has one target.  With ``per_class=True`` the
-    targets of each source must identify all of its classes, otherwise a
-    ``ValueError`` names the slice and source.
+    The default geometric mean is the least-squares fit in log SD, so a source
+    whose targets disagree is over-dispersed symmetrically in log space.  The
+    median statistic gives parity with the median rules used elsewhere and is
+    less sensitive to one outlying region.  Neither can meet inconsistent
+    targets: such targets are reported ``unmet``.
 
     Args:
         flux: Native flux with the source and native grid dimensions.  Any
@@ -130,9 +174,9 @@ def calibrate_native_b_amplitudes(
             optional source dimension gives per-source weights.
         correlation_length: Correlation length ``L`` in degrees of the
             separable exponential kernel.
-        target_relative_sd: Requested SD relative to ``abs(total)``, a scalar
-            or array broadcastable over source, functional and slice
-            dimensions.  Missing values are diagnostic-only functionals.
+        target_relative_sd: Requested SD relative to the target scale, a
+            scalar or labelled array broadcastable over source, functional and
+            slice dimensions.  Missing values are diagnostic-only functionals.
         target_sd: Requested absolute SD in the units of ``flux *
             functional_weights`` summed over the grid.  Supply exactly one of
             ``target_relative_sd`` and ``target_sd``.
@@ -140,27 +184,39 @@ def calibrate_native_b_amplitudes(
         longitude_correlation_length: Optional longitude-specific length.
         class_labels: Optional native class labels, with an optional source
             dimension.  Cells in different classes are uncorrelated.
-        per_class: Calibrate one amplitude per source and class.
+        per_class: Calibrate one amplitude per source and class.  Only the
+            geometric-mean statistic applies.
+        statistic: ``"geometric-mean"`` or ``"median"`` for one amplitude per
+            source.
+        cancellation_floor: Fraction of the absolute weighted total below
+            which a signed total is treated as cancelling.
+        target_rtol: Relative tolerance on achieved over target SD for a
+            ``met`` status.
+        strict: Raise if any target is ``unmet`` or ``at_bound``.
         source_dim: Source dimension name.
         functional_dim: Functional dimension name.
         latitude_dim: Latitude dimension name (degrees).
         longitude_dim: Longitude dimension name (degrees).
         class_dim: Name of the class dimension of per-class amplitudes.
-        near_zero_total: Absolute total below which a functional has no
-            relative SD.
 
     Returns:
-        Amplitudes and achieved-versus-target diagnostics.
+        Amplitudes, slice provenance and achieved-versus-target diagnostics.
 
     Raises:
         ValueError: If inputs are misaligned or non-finite, the targets are
-            ambiguous or invalid, a source has no usable target, or per-class
-            amplitudes are not identified.
+            ambiguous or invalid, a source has no usable target, per-class
+            amplitudes are not identified, or ``strict`` and a target is not
+            met.
     """
     if (target_relative_sd is None) == (target_sd is None):
         raise ValueError("Supply exactly one of target_relative_sd and target_sd")
     if per_class and class_labels is None:
         raise ValueError("per_class=True requires class_labels")
+    if statistic not in ("geometric-mean", "median"):
+        raise ValueError("statistic must be 'geometric-mean' or 'median'")
+    if per_class and statistic != "geometric-mean":
+        raise ValueError("per_class=True supports only statistic='geometric-mean'")
+    _check_tolerances(cancellation_floor, target_rtol)
     kernel, components = _unit_components(
         flux,
         functional_weights,
@@ -172,16 +228,12 @@ def calibrate_native_b_amplitudes(
         functional_dim=functional_dim,
         native_dims=(latitude_dim, longitude_dim),
         class_dim=class_dim,
+        cancellation_floor=cancellation_floor,
     )
-    targets = _absolute_targets(
-        components,
-        target_relative_sd=target_relative_sd,
-        target_sd=target_sd,
-        near_zero_total=near_zero_total,
-    )
+    targets = _absolute_targets(components, target_relative_sd=target_relative_sd, target_sd=target_sd)
     totals = components["native_signed_total"]
     unit_variance = components["unit_class_variance"]
-    slice_dims = [dim for dim in totals.dims if dim not in (source_dim, functional_dim)]
+    slice_dims = [str(dim) for dim in totals.dims if dim not in (source_dim, functional_dim)]
     class_values = unit_variance[class_dim].values
     amplitude_dims = [source_dim, *slice_dims] + ([class_dim] if per_class else [])
     amplitudes = xr.DataArray(
@@ -190,6 +242,7 @@ def calibrate_native_b_amplitudes(
         coords={dim: unit_variance[dim] for dim in amplitude_dims},
         name="native_grid_cell_stdev",
     )
+    at_bound = xr.zeros_like(components["class_present"]) if per_class else None
 
     for index in _slice_indices(totals, [source_dim, *slice_dims]):
         variance = unit_variance.isel(index).transpose(functional_dim, class_dim).values
@@ -199,28 +252,37 @@ def calibrate_native_b_amplitudes(
         where = ", ".join(f"{dim}={totals[dim].values[i]}" for dim, i in index.items())
         if not usable.any():
             raise ValueError(f"No usable target functional for {where}")
-        if per_class:
-            amplitudes[index] = _per_class_amplitudes(
-                variance[usable][:, present],
-                target[usable],
-                n_classes=class_values.size,
-                present=present,
-                where=where,
-            )
+        if per_class and at_bound is not None:
+            values, bound = _per_class_amplitudes(variance[usable][:, present], target[usable], where=where)
+            class_amplitudes = np.full(class_values.size, np.nan)
+            class_amplitudes[present] = values
+            class_bound = np.zeros(class_values.size, dtype=bool)
+            class_bound[present] = bound
+            amplitudes[index] = class_amplitudes
+            at_bound[index] = class_bound
         else:
-            unit_sd = np.sqrt(variance[usable].sum(axis=1))
-            amplitudes[index] = float(np.exp(np.mean(np.log(target[usable] / unit_sd))))
+            ratio = np.sqrt(variance[usable].sum(axis=1)) / target[usable]
+            if statistic == "median":
+                amplitudes[index] = float(1.0 / np.median(ratio))
+            else:
+                amplitudes[index] = float(np.exp(-np.mean(np.log(ratio))))
 
     diagnostics = _diagnostics(
         components,
         amplitudes,
         targets=targets,
-        near_zero_total=near_zero_total,
+        class_at_bound=at_bound,
+        target_rtol=target_rtol,
         class_dim=class_dim,
     )
+    if strict:
+        _raise_if_not_met(diagnostics)
     return NativeBAmplitudeCalibration(
         amplitudes=amplitudes,
         diagnostics=diagnostics,
+        calibration_slices={dim: tuple(totals[dim].values) for dim in slice_dims},
+        class_at_bound=None if at_bound is None else at_bound.astype(bool),
+        statistic=statistic,
         correlation_length=kernel.correlation_length,
         latitude_correlation_length=kernel.latitude_correlation_length,
         longitude_correlation_length=kernel.longitude_correlation_length,
@@ -236,15 +298,17 @@ def evaluate_native_b_amplitudes(
     correlation_length: float,
     target_relative_sd: xr.DataArray | float | None = None,
     target_sd: xr.DataArray | float | None = None,
+    allow_broadcast: bool = False,
     latitude_correlation_length: float | None = None,
     longitude_correlation_length: float | None = None,
     class_labels: xr.DataArray | None = None,
+    cancellation_floor: float = 0.1,
+    target_rtol: float = 0.05,
     source_dim: str = "source",
     functional_dim: str = "functional",
     latitude_dim: str = "lat",
     longitude_dim: str = "lon",
     class_dim: str = "class",
-    near_zero_total: float = 1.0e-30,
 ) -> xr.Dataset:
     """Report the functional SDs implied by supplied native amplitudes.
 
@@ -253,11 +317,14 @@ def evaluate_native_b_amplitudes(
     it by 1.7 for every month is::
 
         january = calibrate_native_b_amplitudes(flux.sel(time=["2021-01"]), ...)
-        frozen = january.amplitudes.isel(time=0, drop=True) * 1.7
-        evaluate_native_b_amplitudes(flux, weights, frozen, ...)
+        frozen = january.amplitudes.isel(time=0) * 1.7
+        evaluate_native_b_amplitudes(flux, weights, frozen, allow_broadcast=True, ...)
 
-    Amplitudes broadcast over any slice dimension they lack.  Targets are
-    optional here and only fill the requested and residual columns.
+    Amplitudes calibrated for one slice must not silently stand in for
+    another: applying amplitudes that lack a slice dimension of ``flux`` (or
+    carry a different scalar label for it) to several or different slices
+    requires ``allow_broadcast=True``.  Targets are optional here and only
+    fill the requested, ratio and status columns.
 
     Args:
         flux: Native flux, as in :func:`calibrate_native_b_amplitudes`.
@@ -268,27 +335,31 @@ def evaluate_native_b_amplitudes(
         correlation_length: Correlation length ``L`` in degrees.
         target_relative_sd: Optional relative SD references.
         target_sd: Optional absolute SD references.
+        allow_broadcast: Permit amplitudes from one slice to be applied to
+            other slices.
         latitude_correlation_length: Optional latitude-specific length.
         longitude_correlation_length: Optional longitude-specific length.
         class_labels: Optional native class labels.
+        cancellation_floor: As in :func:`calibrate_native_b_amplitudes`.
+        target_rtol: As in :func:`calibrate_native_b_amplitudes`.
         source_dim: Source dimension name.
         functional_dim: Functional dimension name.
         latitude_dim: Latitude dimension name.
         longitude_dim: Longitude dimension name.
         class_dim: Class dimension name of per-class amplitudes.
-        near_zero_total: Absolute total below which a functional has no
-            relative SD.
 
     Returns:
         Diagnostics dataset with the layout described in
         :class:`NativeBAmplitudeCalibration`.
 
     Raises:
-        ValueError: If inputs are misaligned or amplitudes are missing,
-            non-positive, or non-finite for a source or class in use.
+        ValueError: If inputs are misaligned, amplitudes would be broadcast
+            across slices without ``allow_broadcast``, or amplitudes are
+            missing, non-positive, or non-finite for a source or class in use.
     """
     if target_relative_sd is not None and target_sd is not None:
         raise ValueError("Supply at most one of target_relative_sd and target_sd")
+    _check_tolerances(cancellation_floor, target_rtol)
     _, components = _unit_components(
         flux,
         functional_weights,
@@ -300,33 +371,31 @@ def evaluate_native_b_amplitudes(
         functional_dim=functional_dim,
         native_dims=(latitude_dim, longitude_dim),
         class_dim=class_dim,
+        cancellation_floor=cancellation_floor,
     )
     if target_relative_sd is None and target_sd is None:
         targets = xr.full_like(components["native_signed_total"], np.nan)
     else:
-        targets = _absolute_targets(
-            components,
-            target_relative_sd=target_relative_sd,
-            target_sd=target_sd,
-            near_zero_total=near_zero_total,
-        )
+        targets = _absolute_targets(components, target_relative_sd=target_relative_sd, target_sd=target_sd)
     in_use = components["class_present"]
     if source_dim not in amplitudes.dims:
         raise ValueError(f"amplitudes must have the {source_dim!r} dimension")
     if class_dim in amplitudes.dims and class_labels is None:
         raise ValueError("per-class amplitudes require class_labels")
+    slice_dims = [dim for dim in in_use.dims if dim not in (source_dim, class_dim)]
+    amplitudes = _checked_slice_provenance(amplitudes, in_use, slice_dims, allow_broadcast=allow_broadcast)
     # A per-source amplitude broadcast over classes gives the same SD, so one
     # per-class layout serves both cases.
     amplitudes = _labelled_on(amplitudes, in_use, name="amplitudes")
-    checked = amplitudes.where(in_use, 1.0)
-    values = np.asarray(checked.values, dtype=float)
+    values = np.asarray(amplitudes.where(in_use, 1.0).values, dtype=float)
     if not np.all(np.isfinite(values)) or np.any(values <= 0.0):
-        raise ValueError("amplitudes must be positive and finite for every source and class in use")
+        raise ValueError("amplitudes must be positive and finite for every source, slice and class in use")
     return _diagnostics(
         components,
         amplitudes,
         targets=targets,
-        near_zero_total=near_zero_total,
+        class_at_bound=None,
+        target_rtol=target_rtol,
         class_dim=class_dim,
     )
 
@@ -347,6 +416,7 @@ def calibrated_source_covariance(
     This is the hand-off from calibration to native preparation: each source
     gets a :class:`SeparableExponentialCovariance` with its calibrated
     ``sigma`` and the same kernel and class blocking used to calibrate it.
+    Use :func:`calibrated_source_covariances` for per-month amplitudes.
 
     Args:
         amplitudes: One positive amplitude per source; select a slice first.
@@ -370,8 +440,8 @@ def calibrated_source_covariance(
     """
     if amplitudes.dims != (source_dim,):
         raise ValueError(
-            f"amplitudes must have only the {source_dim!r} dimension; "
-            "select one slice, and note per-class amplitudes are not supported"
+            f"amplitudes must have only the {source_dim!r} dimension; use "
+            "calibrated_source_covariances for slices, and note per-class amplitudes are not supported"
         )
     blocks = {}
     for source in amplitudes[source_dim].values:
@@ -394,6 +464,64 @@ def calibrated_source_covariance(
     return IndependentSourceCovariance(blocks, source_dim=source_dim)
 
 
+def calibrated_source_covariances(
+    amplitudes: xr.DataArray,
+    *,
+    slice_dim: str,
+    latitude: xr.DataArray,
+    longitude: xr.DataArray,
+    correlation_length: float,
+    latitude_correlation_length: float | None = None,
+    longitude_correlation_length: float | None = None,
+    class_labels: xr.DataArray | Mapping[str, xr.DataArray] | None = None,
+    source_dim: str = "source",
+) -> dict[Hashable, IndependentSourceCovariance]:
+    """Build one independent per-source native covariance per slice.
+
+    Args:
+        amplitudes: Amplitudes over exactly the source and ``slice_dim``
+            dimensions, for example ``calibration.amplitudes`` from a
+            per-month calibration.
+        slice_dim: Slice dimension, for example ``"time"``.
+        latitude: Native latitude coordinate in degrees.
+        longitude: Native longitude coordinate in degrees.
+        correlation_length: Correlation length ``L`` in degrees.
+        latitude_correlation_length: Optional latitude-specific length.
+        longitude_correlation_length: Optional longitude-specific length.
+        class_labels: As in :func:`calibrated_source_covariance`.
+        source_dim: Source dimension name.
+
+    Returns:
+        Mapping from each ``slice_dim`` label to its covariance, in order.
+
+    Raises:
+        ValueError: If ``amplitudes`` has other dimensions.
+    """
+    if set(amplitudes.dims) != {source_dim, slice_dim}:
+        raise ValueError(f"amplitudes must have exactly the {source_dim!r} and {slice_dim!r} dimensions")
+    return {
+        label: calibrated_source_covariance(
+            amplitudes.sel({slice_dim: label}, drop=True),
+            latitude=latitude,
+            longitude=longitude,
+            correlation_length=correlation_length,
+            latitude_correlation_length=latitude_correlation_length,
+            longitude_correlation_length=longitude_correlation_length,
+            class_labels=class_labels,
+            source_dim=source_dim,
+        )
+        for label in amplitudes[slice_dim].values
+    }
+
+
+def _check_tolerances(cancellation_floor: float, target_rtol: float) -> None:
+    """Validate the cancellation floor and target tolerance."""
+    if not np.isfinite(cancellation_floor) or not 0.0 <= cancellation_floor <= 1.0:
+        raise ValueError("cancellation_floor must lie between zero and one")
+    if not np.isfinite(target_rtol) or target_rtol <= 0.0:
+        raise ValueError("target_rtol must be positive and finite")
+
+
 def _unit_components(
     flux: xr.DataArray,
     functional_weights: xr.DataArray,
@@ -406,6 +534,7 @@ def _unit_components(
     functional_dim: str,
     native_dims: tuple[str, str],
     class_dim: str,
+    cancellation_floor: float,
 ) -> tuple[SeparableExponentialCovariance, xr.Dataset]:
     """Return totals and unit-amplitude class variances of every functional.
 
@@ -421,10 +550,13 @@ def _unit_components(
         functional_dim: Functional dimension name.
         native_dims: Latitude and longitude dimension names.
         class_dim: Class dimension name.
+        cancellation_floor: Fraction of the absolute total below which the
+            signed total is treated as cancelling.
 
     Returns:
-        The unblocked unit kernel and a dataset with ``native_signed_total``
-        over ``(source, functional, *slice)``, ``unit_class_variance`` with an
+        The unblocked unit kernel and a dataset with ``native_signed_total``,
+        ``native_absolute_total``, ``target_scale`` and ``total_status`` over
+        ``(source, functional, *slice)``, ``unit_class_variance`` with an
         added class dimension, and the Boolean ``class_present`` over
         ``(source, *slice, class)``.
 
@@ -481,31 +613,40 @@ def _unit_components(
         class_values = np.unique(np.asarray(labels.values).reshape(-1))
 
     totals = []
+    absolute = []
     variances = []
     for index in _slice_indices(flux, slice_dims):
         weights = flux.isel(index) * functional_weights.isel(
             {dim: i for dim, i in index.items() if dim in functional_weights.dims}
         )
         totals.append(weights.sum(native_dims))
+        absolute.append(abs(weights).sum(native_dims))
         per_class = []
         for value in class_values:
             masked = weights.where(labels == value, 0.0)
             per_class.append((masked * kernel.apply(masked)).sum(native_dims))
         variances.append(xr.concat(per_class, dim=class_dim))
     class_coord = {class_dim: class_values}
-    total = _restack(totals, flux, slice_dims).transpose(source_dim, functional_dim, *slice_dims)
-    variance = (
-        _restack(variances, flux, slice_dims)
-        .assign_coords(class_coord)
-        .transpose(source_dim, functional_dim, *slice_dims, class_dim)
-    )
+    order = (source_dim, functional_dim, *slice_dims)
+    total = _restack(totals, flux, slice_dims).transpose(*order)
+    absolute_total = _restack(absolute, flux, slice_dims).transpose(*order)
+    variance = _restack(variances, flux, slice_dims).assign_coords(class_coord).transpose(*order, class_dim)
     if bool((variance < -1.0e-12 * np.abs(variance).max()).any()):
         raise ValueError("native B produced a materially negative functional variance")
     present = xr.concat([(labels == value).any(native_dims) for value in class_values], dim=class_dim)
     present = present.assign_coords(class_coord).broadcast_like(total.isel({functional_dim: 0}, drop=True))
+    floor = cancellation_floor * absolute_total
+    total_status = xr.where(
+        absolute_total <= 0.0,
+        TOTAL_ZERO,
+        xr.where(abs(total) <= floor, TOTAL_CANCELLATION, TOTAL_OK),
+    )
     components = xr.Dataset(
         {
             "native_signed_total": total,
+            "native_absolute_total": absolute_total,
+            "target_scale": xr.where(abs(total) > floor, abs(total), floor),
+            "total_status": total_status.astype(str),
             "unit_class_variance": variance.clip(min=0.0),
             "class_present": present.transpose(source_dim, *slice_dims, class_dim),
         }
@@ -522,14 +663,18 @@ def _slice_indices(array: xr.DataArray, dims: Sequence[Hashable]) -> list[dict[H
 
 
 def _restack(pieces: list[xr.DataArray], flux: xr.DataArray, slice_dims: Sequence[Hashable]) -> xr.DataArray:
-    """Reassemble per-slice results, in slice order, along the slice dimensions."""
+    """Reassemble per-slice results, in slice order, along the slice dimensions.
+
+    The scalar slice coordinates left by positional selection are dropped
+    first, so that slice dimensions of any size, including one, are rebuilt
+    from ``flux``'s own coordinates.
+    """
     if not slice_dims:
         return pieces[0]
-    stacked = xr.concat(pieces, dim="_slice")
-    shape = {dim: flux.sizes[dim] for dim in slice_dims}
-    index = np.arange(stacked.sizes["_slice"]).reshape(tuple(shape.values()))
+    stacked = xr.concat([piece.reset_coords(drop=True) for piece in pieces], dim="_slice")
+    index = np.arange(stacked.sizes["_slice"]).reshape(tuple(flux.sizes[dim] for dim in slice_dims))
     result = stacked.isel(_slice=xr.DataArray(index, dims=list(slice_dims)))
-    return result.drop_vars("_slice", errors="ignore").assign_coords({dim: flux[dim] for dim in slice_dims})
+    return result.assign_coords({dim: flux[dim].values for dim in slice_dims})
 
 
 def _absolute_targets(
@@ -537,12 +682,11 @@ def _absolute_targets(
     *,
     target_relative_sd: xr.DataArray | float | None,
     target_sd: xr.DataArray | float | None,
-    near_zero_total: float,
 ) -> xr.DataArray:
     """Broadcast targets to the functional layout as absolute SDs.
 
-    Relative targets become ``relative * abs(total)``; they are dropped (set
-    missing) where the total is below ``near_zero_total``.
+    Relative targets become ``relative * target_scale``; they are missing
+    where the functional has no weighted flux.
     """
     totals = components["native_signed_total"]
     supplied = target_relative_sd if target_sd is None else target_sd
@@ -554,8 +698,8 @@ def _absolute_targets(
         raise ValueError("targets must be positive where supplied")
     if target_sd is not None:
         return requested
-    magnitude = abs(totals)
-    return (requested * magnitude).where(magnitude > near_zero_total)
+    scale = components["target_scale"]
+    return (requested * scale).where(scale > 0.0)
 
 
 def _labelled_on(
@@ -577,28 +721,61 @@ def _labelled_on(
     selected = array.astype(float).reindex(
         {dim: layout[dim].values for dim in array.dims}, fill_value=missing
     )
-    return selected.broadcast_like(layout)
+    return selected.reset_coords(drop=True).broadcast_like(layout)
+
+
+def _checked_slice_provenance(
+    amplitudes: xr.DataArray,
+    layout: xr.DataArray,
+    slice_dims: Sequence[Hashable],
+    *,
+    allow_broadcast: bool,
+) -> xr.DataArray:
+    """Refuse to apply one slice's amplitudes to other slices unless allowed.
+
+    Args:
+        amplitudes: Supplied amplitudes, possibly with scalar slice labels
+            recording the slice they were calibrated for.
+        layout: Array carrying the flux slice dimensions.
+        slice_dims: Slice dimensions of the flux.
+        allow_broadcast: Permit broadcasting across slices.
+
+    Returns:
+        ``amplitudes`` without scalar slice coordinates.
+    """
+    for dim in slice_dims:
+        labels = layout.indexes[dim]
+        if dim in amplitudes.dims:
+            missing = labels.difference(amplitudes.indexes[dim])
+            if len(missing):
+                raise ValueError(f"amplitudes have no {dim!r} slice for {list(map(str, missing))}")
+            continue
+        origin = amplitudes.coords[dim].values[()] if dim in amplitudes.coords else None
+        same_slice = len(labels) == 1 and (origin is None or bool(labels[0] == origin))
+        if not same_slice and not allow_broadcast:
+            source = "an unrecorded slice" if origin is None else f"{dim}={origin}"
+            raise ValueError(
+                f"amplitudes from {source} would be applied to {dim} {list(map(str, labels))}; "
+                "pass allow_broadcast=True to evaluate a frozen-slice policy"
+            )
+    scalar = [dim for dim in slice_dims if dim in amplitudes.coords and dim not in amplitudes.dims]
+    return amplitudes.drop_vars(scalar)
 
 
 def _per_class_amplitudes(
-    variance: np.ndarray,
-    target: np.ndarray,
-    *,
-    n_classes: int,
-    present: np.ndarray,
-    where: str,
-) -> np.ndarray:
-    """Fit per-class amplitudes by least squares in log SD.
+    variance: np.ndarray, target: np.ndarray, *, where: str
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fit per-class amplitudes by bounded least squares in log SD.
 
     Args:
-        variance: Unit variances, targets by present classes.
+        variance: Unit variances, targets by classes present for the source.
         target: Absolute SD targets.
-        n_classes: Total number of classes in the output.
-        present: Boolean mask of classes present for this source.
         where: Slice and source description for error messages.
 
     Returns:
-        Amplitudes over all classes, missing where a class is absent.
+        Amplitudes of the present classes and a mask of those within a factor
+        of ten of the floor,
+        ``CLASS_AMPLITUDE_FLOOR`` times the common single-amplitude solution.
     """
     scaled = variance / target[:, None] ** 2
     if np.linalg.matrix_rank(scaled) < scaled.shape[1]:
@@ -610,16 +787,22 @@ def _per_class_amplitudes(
     def residual(log_amplitude: np.ndarray) -> np.ndarray:
         return 0.5 * np.log(scaled @ np.exp(2.0 * log_amplitude))
 
-    start = np.full(scaled.shape[1], -0.5 * np.log(np.mean(scaled.sum(axis=1))))
+    common = -0.5 * np.log(np.mean(scaled.sum(axis=1)))
+    lower = common + np.log(CLASS_AMPLITUDE_FLOOR)
+    start = np.full(scaled.shape[1], common)
     # scipy-stubs resolves least_squares to its private module of that name.
     fit = scipy.optimize.least_squares(  # type: ignore[operator]
-        residual, start, xtol=1.0e-14, ftol=1.0e-14, gtol=1.0e-14
+        residual,
+        start,
+        bounds=(np.full_like(start, lower), np.full_like(start, np.inf)),
+        xtol=1.0e-14,
+        ftol=1.0e-14,
+        gtol=1.0e-14,
     )
-    if not fit.success or not np.all(np.isfinite(fit.x)):
+    if fit.status <= 0 or not np.all(np.isfinite(fit.x)):
         raise ValueError(f"Per-class amplitude fit failed for {where}: {fit.message}")
-    result = np.full(n_classes, np.nan)
-    result[present] = np.exp(fit.x)
-    return result
+    # A class within a factor of ten of the floor has collapsed.
+    return np.exp(fit.x), fit.x <= lower + np.log(10.0)
 
 
 def _diagnostics(
@@ -627,41 +810,62 @@ def _diagnostics(
     amplitudes: xr.DataArray,
     *,
     targets: xr.DataArray,
-    near_zero_total: float,
+    class_at_bound: xr.DataArray | None,
+    target_rtol: float,
     class_dim: str,
 ) -> xr.Dataset:
-    """Return achieved-versus-target SDs for every source and functional."""
+    """Return achieved-versus-target SDs and statuses for every functional."""
     totals = components["native_signed_total"]
     unit_variance = components["unit_class_variance"]
-    magnitude = abs(totals)
-    nonzero = magnitude > near_zero_total
+    scale = components["target_scale"]
+    positive_scale = scale.where(scale > 0.0)
     unit_sd = unit_variance.sum(class_dim) ** 0.5
     if class_dim in amplitudes.dims:
         achieved = (amplitudes.fillna(0.0) ** 2 * unit_variance).sum(class_dim) ** 0.5
     else:
         achieved = amplitudes * unit_sd
+    achieved = achieved.transpose(*totals.dims)
+    used = targets.notnull() & (unit_sd > 0.0)
+    ratio = (achieved / targets).where(used)
+    log_ratio = xr.apply_ufunc(np.log, ratio)
+    within = abs(log_ratio) <= np.log1p(target_rtol)
+    if class_at_bound is None:
+        touches_bound = xr.zeros_like(used)
+    else:
+        touches_bound = ((unit_variance > 0.0) & class_at_bound).any(class_dim)
     status = xr.where(
-        ~nonzero,
-        STATUS_NEAR_ZERO_TOTAL,
+        unit_sd <= 0.0,
+        STATUS_ZERO,
         xr.where(
-            unit_sd <= 0.0,
-            STATUS_ZERO_VARIANCE,
-            xr.where(targets.notnull(), STATUS_TARGET, STATUS_DIAGNOSTIC),
+            ~used,
+            STATUS_DIAGNOSTIC,
+            xr.where(touches_bound, STATUS_AT_BOUND, xr.where(within, STATUS_MET, STATUS_UNMET)),
         ),
     )
-    used = targets.notnull() & (unit_sd > 0.0)
-    achieved = achieved.transpose(*totals.dims)
     return xr.Dataset(
         {
             "native_signed_total": totals,
+            "native_absolute_total": components["native_absolute_total"],
+            "target_scale": scale,
+            "total_status": components["total_status"],
             "unit_sd": unit_sd,
-            "unit_relative_sd": (unit_sd / magnitude).where(nonzero),
-            "target_relative_sd": (targets / magnitude).where(nonzero),
+            "unit_relative_sd": unit_sd / positive_scale,
+            "target_relative_sd": targets / positive_scale,
             "target_sd": targets,
             "achieved_sd": achieved,
-            "achieved_relative_sd": (achieved / magnitude).where(nonzero),
-            "log_sd_residual": xr.apply_ufunc(np.log, achieved / targets).where(used),
+            "achieved_relative_sd": achieved / positive_scale,
+            "achieved_cv": achieved / abs(totals).where(totals != 0.0),
+            "achieved_to_target_ratio": ratio,
+            "log_sd_residual": log_ratio,
             "used_for_calibration": used,
             "status": status.astype(str),
         }
     )
+
+
+def _raise_if_not_met(diagnostics: xr.Dataset) -> None:
+    """Raise when any target is unmet or depends on a class at the floor."""
+    failed = diagnostics["status"].isin([STATUS_UNMET, STATUS_AT_BOUND])
+    if bool(failed.any()):
+        table = diagnostics[["status", "achieved_to_target_ratio"]].where(failed).to_dataframe().dropna()
+        raise ValueError(f"{len(table)} calibration targets were not met:\n{table.head(10)}")

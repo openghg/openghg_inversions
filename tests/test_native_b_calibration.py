@@ -7,6 +7,7 @@ import xarray as xr
 from openghg_inversions.native_b_calibration import (
     calibrate_native_b_amplitudes,
     calibrated_source_covariance,
+    calibrated_source_covariances,
     evaluate_native_b_amplitudes,
 )
 
@@ -93,6 +94,8 @@ def test_single_target_matches_dense_oracle_exactly():
             achieved = float(result.diagnostics["achieved_sd"].sel(source=source, functional=functional))
             assert achieved == pytest.approx(amplitude * unit_sd, rel=1e-12)
     assert set(result.diagnostics["status"].sel(functional=["AAA", "BBB"]).values.ravel()) == {"diagnostic"}
+    assert set(diagnostics["status"].values) == {"met"}
+    assert set(diagnostics["total_status"].values) == {"ok"}
     assert result.diagnostics["used_for_calibration"].sum() == 4
 
 
@@ -213,14 +216,69 @@ def test_per_month_calibration_is_independent_and_frozen_policy_is_expressible()
         np.testing.assert_allclose(both.amplitudes.isel(time=month), alone.amplitudes, rtol=1e-12)
     assert not np.allclose(both.amplitudes.isel(time=0), both.amplitudes.isel(time=1))
 
-    frozen = both.amplitudes.isel(time=0, drop=True) * 1.7
+    assert both.calibration_slices == {"time": tuple(time.values)}
+
+    # The frozen January x 1.7 policy needs an explicit opt-in.
+    frozen = both.amplitudes.isel(time=0) * 1.7
+    with pytest.raises(ValueError, match="allow_broadcast"):
+        evaluate_native_b_amplitudes(flux, case["weights"], frozen, target_relative_sd=target, **kwargs)
+    with pytest.raises(ValueError, match="allow_broadcast"):
+        evaluate_native_b_amplitudes(
+            flux.isel(time=[1]), case["weights"], frozen, target_relative_sd=target, **kwargs
+        )
+    with pytest.raises(ValueError, match="unrecorded slice"):
+        evaluate_native_b_amplitudes(
+            flux, case["weights"], frozen.drop_vars("time"), target_relative_sd=target, **kwargs
+        )
+    same_month = evaluate_native_b_amplitudes(
+        flux.isel(time=[0]), case["weights"], frozen, target_relative_sd=target, **kwargs
+    )
+    np.testing.assert_allclose(same_month["achieved_relative_sd"].sel(functional="EUROPE_INNER"), 0.17)
     diagnostics = evaluate_native_b_amplitudes(
-        flux, case["weights"], frozen, target_relative_sd=target, **kwargs
+        flux, case["weights"], frozen, target_relative_sd=target, allow_broadcast=True, **kwargs
     )
     achieved = diagnostics["achieved_relative_sd"].sel(functional="EUROPE_INNER")
     np.testing.assert_allclose(achieved.isel(time=0), 0.17, rtol=1e-12)
-    assert diagnostics["status"].sel(functional="EUROPE_INNER").isin(["target"]).all()
+    assert set(diagnostics["status"].sel(functional="EUROPE_INNER").values.ravel()) == {"unmet"}
     assert not np.allclose(achieved.isel(time=1), 0.17)
+
+    # Per-month amplitudes are directly usable: one covariance per month.
+    covariances = calibrated_source_covariances(
+        both.amplitudes,
+        slice_dim="time",
+        latitude=flux["lat"],
+        longitude=flux["lon"],
+        **kwargs,
+    )
+    assert list(covariances) == list(time.values)
+    for month, covariance in enumerate(covariances.values()):
+        sigmas = [covariance.source_covariances[source].sigma for source in SOURCES]
+        np.testing.assert_allclose(sigmas, both.amplitudes.isel(time=month))
+
+
+def test_length_one_slice_dimension_is_supported():
+    """A single selected month keeps its slice dimension and label."""
+    case = _toy_case()
+    time = xr.DataArray(np.array(["2021-01-01"], dtype="datetime64[ns]"), dims="time")
+    flux = case["flux"].expand_dims(time=time)
+    result = calibrate_native_b_amplitudes(
+        flux.sel(time=["2021-01-01"]),
+        case["weights"],
+        correlation_length=1.5,
+        target_relative_sd=0.1,
+        class_labels=case["classes"],
+    )
+    alone = calibrate_native_b_amplitudes(
+        case["flux"],
+        case["weights"],
+        correlation_length=1.5,
+        target_relative_sd=0.1,
+        class_labels=case["classes"],
+    )
+    assert result.amplitudes.sizes == {"source": 4, "time": 1}
+    np.testing.assert_array_equal(result.amplitudes["time"], time)
+    np.testing.assert_allclose(result.amplitudes.isel(time=0), alone.amplitudes, rtol=1e-12)
+    assert result.diagnostics["achieved_sd"].sizes["time"] == 1
 
 
 def test_two_slice_dimensions_keep_their_labels():
@@ -277,6 +335,10 @@ def test_per_class_amplitudes_match_class_targets():
         per_class=True,
     )
     assert result.amplitudes.dims == ("source", "class")
+    assert not result.class_at_bound.any()
+    assert set(result.diagnostics["status"].sel(functional=["LAND", "SEA", "OUTER"]).values.ravel()) == {
+        "met"
+    }
     np.testing.assert_allclose(
         result.diagnostics["achieved_relative_sd"].sel(functional=["LAND", "SEA", "OUTER"]).squeeze(),
         [0.10, 0.40, 0.50],
@@ -326,8 +388,8 @@ def test_calibrated_source_covariance_reproduces_achieved_sd():
     np.testing.assert_allclose(np.sqrt(variance), result.diagnostics["achieved_sd"], rtol=1e-12)
 
 
-def test_invalid_inputs_are_rejected_and_near_zero_totals_reported():
-    """Ambiguous or misspelt targets fail; cancelling totals are flagged."""
+def test_invalid_inputs_are_rejected():
+    """Ambiguous, misspelt or unsupported requests fail clearly."""
     case = _toy_case()
     kwargs = {"correlation_length": 1.5}
     with pytest.raises(ValueError, match="exactly one"):
@@ -343,20 +405,135 @@ def test_invalid_inputs_are_rejected_and_near_zero_totals_reported():
         calibrate_native_b_amplitudes(
             case["flux"], case["weights"], target_relative_sd=0.1, per_class=True, **kwargs
         )
-
-    lon = case["flux"]["lon"]
-    signed = case["flux"].copy()
-    signed.loc[{"source": "co2_ocean"}] = (lon - lon.mean()).broadcast_like(signed.sel(source="co2_ocean"))
-    weights = xr.ones_like(case["weights"].isel(functional=[0]))
-    target = xr.DataArray([0.1, 0.1, 0.1, 0.5], dims="source", coords={"source": SOURCES})
+    with pytest.raises(ValueError, match="only statistic='geometric-mean'"):
+        calibrate_native_b_amplitudes(
+            case["flux"],
+            case["weights"],
+            target_relative_sd=0.1,
+            per_class=True,
+            statistic="median",
+            class_labels=case["classes"],
+            **kwargs,
+        )
+    zero = case["weights"].isel(functional=[0]) * 0.0
     with pytest.raises(ValueError, match="No usable target"):
-        calibrate_native_b_amplitudes(signed, weights, target_relative_sd=target, **kwargs)
-    diagnostics = evaluate_native_b_amplitudes(
-        signed,
+        calibrate_native_b_amplitudes(case["flux"], zero, target_relative_sd=0.1, **kwargs)
+
+
+def test_cancelling_total_uses_stabilized_scale():
+    """A mixed-sign total is not given a near-zero SD target."""
+    case = _toy_case()
+    lon = case["flux"]["lon"]
+    flux = case["flux"].sel(source=["co2_ocean"]).copy()
+    # Net 0.125 against an absolute total of about 12 over the 20 inner cells.
+    flux[:] = (lon - lon.mean()).broadcast_like(flux) + 0.125 / 20.0
+    weights = (case["weights"].sel(functional=["EUROPE_INNER"]) > 0).astype(float)
+    result = calibrate_native_b_amplitudes(
+        flux,
         weights,
-        xr.ones_like(target),
-        target_relative_sd=target,
-        **kwargs,
+        correlation_length=1.5,
+        target_relative_sd=0.5,
+        class_labels=case["classes"],
     )
-    assert diagnostics["status"].sel(source="co2_ocean").item() == "near-zero-total"
-    assert bool(diagnostics["unit_relative_sd"].sel(source="co2_ocean").isnull())
+    row = result.diagnostics.sel(source="co2_ocean", functional="EUROPE_INNER")
+    q = (flux.squeeze("source") * weights.squeeze("functional")).values
+    absolute = float(np.abs(q).sum())
+    assert float(row["native_signed_total"]) == pytest.approx(0.125)
+    assert float(row["native_absolute_total"]) == pytest.approx(absolute) == pytest.approx(12.025)
+    assert row["total_status"].item() == "cancellation"
+    assert float(row["target_scale"]) == pytest.approx(0.1 * absolute)
+    unit_sd, _ = _dense_unit_sd({**case, "flux": flux, "weights": weights}, 1.5, "co2_ocean", "EUROPE_INNER")
+    assert float(result.amplitudes.squeeze()) == pytest.approx(0.5 * 0.1 * absolute / unit_sd, rel=1e-12)
+    assert float(row["achieved_sd"]) == pytest.approx(0.05 * absolute, rel=1e-12)
+    assert float(row["achieved_cv"]) == pytest.approx(0.05 * absolute / 0.125, rel=1e-12)
+    assert row["status"].item() == "met"
+
+    plain = calibrate_native_b_amplitudes(
+        flux,
+        weights,
+        correlation_length=1.5,
+        target_relative_sd=0.5,
+        class_labels=case["classes"],
+        cancellation_floor=0.0,
+    )
+    assert plain.diagnostics["total_status"].item() == "ok"
+    ratio = 0.125 / (0.1 * absolute)
+    assert float(plain.amplitudes.squeeze()) == pytest.approx(float(result.amplitudes.squeeze()) * ratio)
+
+
+def test_unmet_and_infeasible_targets_are_reported():
+    """Inconsistent targets are ``unmet``; a collapsed class is ``at_bound``."""
+    case = _toy_case()
+    flux = case["flux"].sel(source=["co2_FF"])
+    inconsistent = xr.DataArray([0.05, 0.30], dims="functional", coords={"functional": ["AAA", "BBB"]})
+    kwargs = {"correlation_length": 1.5, "class_labels": case["classes"]}
+    result = calibrate_native_b_amplitudes(flux, case["weights"], target_relative_sd=inconsistent, **kwargs)
+    status = result.diagnostics["status"].squeeze()
+    assert status.sel(functional=["AAA", "BBB"]).values.tolist() == ["unmet", "unmet"]
+    ratio = result.diagnostics["achieved_to_target_ratio"].squeeze()
+    assert float(ratio.sel(functional="AAA") * ratio.sel(functional="BBB")) == pytest.approx(1.0)
+    with pytest.raises(ValueError, match="2 calibration targets were not met"):
+        calibrate_native_b_amplitudes(
+            flux, case["weights"], target_relative_sd=inconsistent, strict=True, **kwargs
+        )
+
+    inner = case["weights"].sel(functional="EUROPE_INNER", drop=True)
+    land = inner.where(case["classes"] == "land", 0.0)
+    outer = (case["classes"] == "outer") * np.cos(np.deg2rad(inner["lat"]))
+    weights = xr.concat([land, inner, outer], dim=xr.DataArray(["LAND", "ALL", "OUTER"], dims="functional"))
+    # LAND at 10% but land plus sea at 2% would need a negative sea variance.
+    target = xr.DataArray(
+        [0.10, 0.02, 0.5], dims="functional", coords={"functional": ["LAND", "ALL", "OUTER"]}
+    )
+    result = calibrate_native_b_amplitudes(flux, weights, target_relative_sd=target, per_class=True, **kwargs)
+    bound = result.class_at_bound.squeeze()
+    assert bound.sel({"class": "sea"}) and not bound.sel({"class": ["land", "outer"]}).any()
+    sea = float(result.amplitudes.squeeze().sel({"class": "sea"}))
+    land_amplitude = float(result.amplitudes.squeeze().sel({"class": "land"}))
+    assert sea < 1.0e-4 * land_amplitude
+    status = result.diagnostics["status"].squeeze()
+    assert status.sel(functional="ALL").item() == "at_bound"
+    assert status.sel(functional="LAND").item() == "unmet"
+    assert status.sel(functional="OUTER").item() == "met"
+    with pytest.raises(ValueError, match="not met"):
+        calibrate_native_b_amplitudes(
+            flux, weights, target_relative_sd=target, per_class=True, strict=True, **kwargs
+        )
+
+
+@pytest.mark.parametrize(
+    ("length", "expected"),
+    [
+        # Frozen from verification-games 13ae5f0
+        # native_b_calibration.calibrate_native_b_amplitudes on this toy case,
+        # per-source-country mode, countries AAA and BBB, target 0.5, one land
+        # source per call, ocean over the inner domain.
+        (1.5, {"co2_FF": 0.6418873512613098, "co2_GPP": 0.634377730134052, "co2_TER": 0.6384230267137582}),
+        (3.0, {"co2_FF": 0.5707911901089585, "co2_GPP": 0.5674285662049466, "co2_TER": 0.5690698109848451}),
+    ],
+)
+def test_median_statistic_matches_verification_games_over_two_countries(length, expected):
+    """The median rule reproduces VG's ``target / median(unit relative SD)``."""
+    case = _toy_case()
+    target = xr.DataArray([0.5, 0.5], dims="functional", coords={"functional": ["AAA", "BBB"]})
+    result = calibrate_native_b_amplitudes(
+        case["flux"].sel(source=list(expected)),
+        case["weights"],
+        correlation_length=length,
+        target_relative_sd=target,
+        class_labels=case["classes"],
+        statistic="median",
+    )
+    np.testing.assert_allclose(
+        result.amplitudes.sel(source=list(expected)), list(expected.values()), rtol=1e-12
+    )
+    # With two regions the median is the midpoint of the unit relative SDs.
+    for source, frozen in expected.items():
+        relative = [
+            _dense_unit_sd(case, length, source, country)[0]
+            / abs(_dense_unit_sd(case, length, source, country)[1])
+            for country in ("AAA", "BBB")
+        ]
+        assert 0.5 / np.mean(relative) == pytest.approx(frozen, rel=1e-12)
+    ratio = result.diagnostics["achieved_to_target_ratio"].sel(functional=["AAA", "BBB"])
+    np.testing.assert_allclose(ratio.median("functional"), 1.0, rtol=1e-12)
