@@ -10,6 +10,7 @@ import numpy as np
 import xarray as xr
 from openghg.util import cf_ureg, molar_mass  # pyright: ignore[reportPrivateImportUsage]
 
+from openghg_inversions._labelled_matrices import coordinates_on_dims
 from openghg_inversions.array_ops import same_index, sparse_xr_dot, to_dense
 from openghg_inversions.basis.affine_flux_map import _in_dimensionless_units
 
@@ -232,7 +233,8 @@ def co2_country_functionals(
     extra = set(weighted.dims) - {"country", *native_dims}
     if extra:
         raise ValueError(
-            f"Country functionals require a flux on native dimensions only; got extra {sorted(map(str, extra))!r}."
+            "Country functionals require a flux on native dimensions only; "
+            f"got extra {sorted(map(str, extra))!r}."
         )
     levels = ["country"]
     if len(native_dims) == 3:
@@ -277,11 +279,13 @@ def co2_country_flux_outputs(
             :func:`co2_country_functionals` for the same ``bound`` and
             ``countries``. When given, country totals are complete native
             functionals rather than retained-state-conditional ones. The
-            products must be full-restriction products whose ``D`` equals
-            this map's ``A F U*``. The fit's inactive states (from the
-            trace's ``<flux_scale>_is_active`` constant data) must be exactly
-            the declared marginalised states; those are then moved into the
-            unresolved part.
+            products must be full-restriction products whose ``Q m`` and
+            ``D`` equal this map's ``A F m`` and ``A F U*`` within a
+            tolerance set by the input precision. The fit's inactive states
+            must be exactly the declared marginalised states; those are then
+            moved into the unresolved part. Inactive states come from the
+            trace's ``<flux_scale>_is_active`` constant data or, when it is
+            absent, from posterior draws that are all identical.
 
     Returns:
         xarray.Dataset:
@@ -368,36 +372,45 @@ def _complete_country_outputs(
         raise ValueError("Unresolved functional products were prepared for different countries or sources.")
     # Q m identifies the functional and native mean; D = Q U* also identifies
     # the retained partition and covariance, which Q m does not depend on.
+    # Both are compared relative to the contraction magnitude |Q| |x|, with a
+    # tolerance set by the least precise input, so float32 storage of U*,
+    # the flux or the mean is accepted while another partition is not.
     native_mean = _in_dimensionless_units(affine.native_mean, name="native_mean")
-    expected_mean = to_dense(sparse_xr_dot(functionals, native_mean, dim=list(affine.native_dims)))
-    if not np.allclose(products.functional_mean.values, expected_mean.values, rtol=1e-9, atol=0.0):
-        raise ValueError(
-            "Unresolved functional products were prepared for a different country functional or native mean."
-        )
     centred = {
         group: affine._centred_state(state, bound.reference_state)[0] for group, state in samples.items()
     }
     _, prolongation = affine._centred_state(samples["posterior"], bound.reference_state)
-    expected_response = to_dense(sparse_xr_dot(functionals, prolongation, dim=list(affine.native_dims)))
-    expected_response = expected_response.transpose(COUNTRY_FUNCTIONAL_DIM, affine.state_dim)
+    tolerance = _identity_tolerance(
+        affine.flux, native_mean, prolongation, products.functional_mean, products.retained_response
+    )
+    native_dims = affine.native_dims
+    same_mean = _same_contraction(products.functional_mean, functionals, native_mean, native_dims, tolerance)
+    if not same_mean:
+        raise ValueError(
+            "Unresolved functional products were prepared for a different country functional or native mean "
+            f"(beyond a relative tolerance of {tolerance:.1e} for the input precision)."
+        )
     response = products.retained_response
-    if response.dims != expected_response.dims or not same_index(
-        response.indexes[affine.state_dim], expected_response.indexes[affine.state_dim]
+    if response.dims != (COUNTRY_FUNCTIONAL_DIM, affine.state_dim) or not same_index(
+        response.indexes[affine.state_dim], prolongation.indexes[affine.state_dim]
     ):
         raise ValueError("Unresolved functional products use different retained-state labels from the map.")
-    scale = float(np.max(np.abs(expected_response.values), initial=0.0))
-    if not np.allclose(response.values, expected_response.values, rtol=1e-8, atol=1e-10 * scale):
+    if not _same_contraction(response, functionals, prolongation, affine.native_dims, tolerance):
         raise ValueError(
-            "Unresolved functional products were prepared for a different retained partition or covariance."
+            "Unresolved functional products were prepared for a different retained partition or covariance "
+            f"(beyond a relative tolerance of {tolerance:.1e} for the input precision)."
         )
 
-    marginalised = _marginalised_states(trace, response, unresolved)
+    marginalised = _marginalised_states(trace, samples["posterior"], response, unresolved)
     if marginalised.any():
+        reference_scale = max(1.0, float(np.max(np.abs(bound.reference_state.values))))
+        state_tolerance = _identity_tolerance(bound.reference_state, *samples.values()) * reference_scale
         for group, value in centred.items():
             held = value.sel({affine.state_dim: marginalised.values})
-            if not np.allclose(held.values, 0.0, atol=1e-12):
+            if np.max(np.abs(held.values), initial=0.0) > state_tolerance:
                 raise ValueError(
-                    f"Marginalised states must be held at their retained prior mean in {group} draws."
+                    f"Marginalised states must be held at their retained prior mean in {group} draws "
+                    f"(beyond {state_tolerance:.1e} for the input precision)."
                 )
         products = marginalise_functional_states(products, marginalised)
 
@@ -425,8 +438,38 @@ def _complete_country_outputs(
     return _with_metadata(xr.merge(outputs), attrs, units="g yr-1")
 
 
+def _identity_tolerance(*arrays: xr.DataArray) -> float:
+    """Return a relative identity tolerance for the least precise floating input.
+
+    It is 100 machine epsilons of that dtype, plus a 1e-10 floor for float64
+    accumulation in differently ordered sums.
+    """
+    eps = max(
+        (float(np.finfo(array.dtype).eps) for array in arrays if np.issubdtype(array.dtype, np.floating)),
+        default=float(np.finfo(np.float64).eps),
+    )
+    return 100.0 * eps + 1e-10
+
+
+def _same_contraction(
+    actual: xr.DataArray,
+    functionals: xr.DataArray,
+    operand: xr.DataArray,
+    native_dims: tuple[str, ...],
+    tolerance: float,
+) -> bool:
+    """Compare ``actual`` with ``Q operand`` relative to the magnitude ``|Q| |operand|``."""
+    dims = list(native_dims)
+    expected = to_dense(sparse_xr_dot(functionals, operand.astype("float64"), dim=dims))
+    magnitude = to_dense(sparse_xr_dot(abs(functionals), abs(operand.astype("float64")), dim=dims))
+    expected = expected.transpose(*actual.dims)
+    scale = float(np.max(magnitude.values, initial=0.0))
+    return bool(np.max(np.abs(actual.values - expected.values), initial=0.0) <= tolerance * scale)
+
+
 def _marginalised_states(
     trace: xr.DataTree,
+    posterior_state: xr.DataArray,
     response: xr.DataArray,
     unresolved: UnresolvedFunctionalConditioning,
 ) -> xr.DataArray:
@@ -434,28 +477,38 @@ def _marginalised_states(
 
     A fixed state contributes nothing to the retained draws. Its functional
     contribution is complete only if the fit moved its variance into ``A``,
-    which the conditioning must declare.
+    which the conditioning must declare. Inactive states come from the
+    trace's ``<flux_scale>_is_active`` constant data, which models record
+    only when some state is fixed. Without it, states whose posterior draws
+    are all identical are treated as fixed.
     """
     state_dim = str(response.dims[1])
     index = response.indexes[state_dim]
-    inactive = xr.DataArray(np.zeros(len(index), dtype=bool), dims=state_dim, coords={state_dim: index})
     roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
     name = f"{roles['flux_scale']}_is_active"
     if "constant_data" in trace.children and name in trace_group(trace, "constant_data"):
         active = trace_group(trace, "constant_data")[name]
         if active.dims != (state_dim,) or not same_index(active.indexes[state_dim], index):
             raise ValueError(f"{name!r} must use the retained-state labels of the functional products.")
-        inactive = inactive.copy(data=~np.asarray(active.values, dtype=bool))
-    declared = inactive.copy(data=np.zeros(len(index), dtype=bool))
+        inactive = ~np.asarray(active.values, dtype=bool)
+    else:
+        draws = np.asarray(posterior_state.transpose("chain", "draw", state_dim).values)
+        draws = draws.reshape(-1, draws.shape[-1])
+        if draws.shape[0] < 2:
+            raise ValueError(
+                f"Fixed states cannot be detected from one posterior draw; record {name!r} in constant_data."
+            )
+        inactive = np.all(draws == draws[:1], axis=0)
+    declared: np.ndarray = np.zeros(len(index), dtype=bool)
     if unresolved.marginalised is not None:
         if unresolved.marginalised.dims != (state_dim,) or not same_index(
             unresolved.marginalised.indexes[state_dim], index
         ):
             raise ValueError("The declared marginalised states must use the retained-state labels.")
-        declared = declared.copy(data=np.asarray(unresolved.marginalised.values, dtype=bool))
-    if not np.array_equal(declared.values, inactive.values):
+        declared = np.asarray(unresolved.marginalised.values, dtype=bool)
+    if not np.array_equal(declared, inactive):
         raise ValueError(
             "The fit's inactive states must be exactly the states marginalised into A; "
             "complete country uncertainty is undefined for states fixed without marginalisation."
         )
-    return declared
+    return xr.DataArray(declared, dims=state_dim, coords=coordinates_on_dims(response, {state_dim}))

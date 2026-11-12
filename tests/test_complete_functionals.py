@@ -609,12 +609,13 @@ def _co2_setup(partition: str, countries: Countries | None = None, functional_pa
 
 
 def _co2_trace(
-    problem, reduction, count: int, *, fixed: xr.DataArray | None = None
+    problem, reduction, count: int, *, fixed: xr.DataArray | None = None, record_activity: bool = True
 ) -> tuple[xr.DataTree, xr.DataArray]:
     """Return a CO2 trace with exact reduced posterior draws and their residuals (no boundary).
 
     ``reduction`` is the reduction the fit used. With ``fixed``, the trace
-    records those states as inactive and holds them at their prior mean.
+    holds those states at their prior mean and, with ``record_activity``,
+    records them as inactive in constant data.
     """
     state_labels = reduction.retained_mean.state
     active = (
@@ -637,7 +638,7 @@ def _co2_trace(
             units="1"
         )
         groups[group] = xr.Dataset({"flux_scaling": draws})
-    if fixed is not None:
+    if fixed is not None and record_activity:
         groups["constant_data"] = xr.Dataset(
             {"flux_scaling_is_active": xr.DataArray(active, dims="state", coords={"state": state_labels})}
         )
@@ -756,8 +757,12 @@ def test_co2_country_outputs_reject_products_for_another_functional_or_partition
         co2_country_flux_outputs(trace, bound, countries, unresolved=conditioning(marginalised))
 
 
-def test_co2_inactive_states_require_and_use_declared_marginalisation() -> None:
-    """A fit that marginalised states into A gives the native posterior only when they are declared."""
+@pytest.mark.parametrize("record_activity", [True, False])
+def test_co2_inactive_states_require_and_use_declared_marginalisation(record_activity: bool) -> None:
+    """A fit that marginalised states into A gives the native posterior only when they are declared.
+
+    Without a recorded activity mask, fixed states are found from constant posterior draws.
+    """
     problem, full, bound, countries, functionals, products = _co2_setup("rows")
     marginalised = full.retained_mean.state.isin(MARGINALISED)
     # The fit used the kept-row reduction: its A absorbed the marginalised states.
@@ -770,7 +775,8 @@ def test_co2_inactive_states_require_and_use_declared_marginalisation() -> None:
         unresolved_observation_covariance=kept.unresolved_observation_covariance,
     )
     count = 20_000
-    trace, residual = _co2_trace(problem, fit, count, fixed=marginalised)
+    trace, residual = _co2_trace(problem, fit, count, fixed=marginalised, record_activity=record_activity)
+    assert ("constant_data" in trace.children) is record_activity
     solve = _exact_solve(problem, kept)
 
     with pytest.raises(ValueError, match="inactive states must be exactly the states marginalised"):
@@ -878,7 +884,7 @@ def test_single_source_country_functionals_have_one_row_per_country() -> None:
             coords={"observation": ["obs"], "state": ["a", "b"]},
         ),
     )
-    state = _samples(np.ones((1, 3, 2)), "state", ["a", "b"]).assign_attrs(units="1")
+    state = _samples(1.0 + 0.1 * np.arange(6.0).reshape(1, 3, 2), "state", ["a", "b"]).assign_attrs(units="1")
     trace = xr.DataTree.from_dict(
         {
             "posterior": xr.Dataset({"flux_scaling": state}),
@@ -904,3 +910,65 @@ def test_single_source_country_functionals_have_one_row_per_country() -> None:
         retained.country_total_posterior_mean,
         rtol=1e-6,
     )
+
+
+def _float32_bound(bound: BoundCo2AffineFluxMap) -> BoundCo2AffineFluxMap:
+    """Return the same map with float32 native mean, flux, prolongation and reference state."""
+    affine = bound.affine_map
+    mapping = AffineFluxMap(
+        affine.native_mean.astype("float32"),
+        affine.flux.astype("float32"),
+        affine.prolongation.astype("float32"),
+        state_dim=affine.state_dim,
+    )
+    return BoundCo2AffineFluxMap(
+        replace(bound.artifact, affine_map=mapping), bound.reference_state.astype("float32")
+    )
+
+
+def test_co2_identity_checks_accept_float32_inputs_but_not_another_partition() -> None:
+    """Float32 storage of the map and draws passes the identity checks; a different partition does not."""
+    problem, reduction, bound, countries, _, products = _co2_setup("rows")
+    trace, residual = _co2_trace(problem, reduction, 2_000)
+    float32_trace = trace.copy()
+    for group in ("prior", "posterior"):
+        float32_trace[group]["flux_scaling"] = trace[group]["flux_scaling"].astype("float32")
+    float32_bound = _float32_bound(bound)
+    solve = _exact_solve(problem, reduction)
+
+    result = co2_country_flux_outputs(
+        float32_trace,
+        float32_bound,
+        countries,
+        unresolved=UnresolvedFunctionalConditioning(products, residual, solve),
+    )
+    expected = co2_country_flux_outputs(
+        trace, bound, countries, unresolved=UnresolvedFunctionalConditioning(products, residual, solve)
+    )
+
+    assert result.attrs["uncertainty_scope"] == "complete_native"
+    sd = expected.country_total_posterior_stdev
+    assert (
+        abs(result.country_total_posterior_mean - expected.country_total_posterior_mean) < 1e-3 * sd
+    ).all()
+    *_, other_partition = _co2_setup("rows", functional_partition="columns")
+    with pytest.raises(ValueError, match="different retained partition or covariance .*input precision"):
+        co2_country_flux_outputs(
+            float32_trace,
+            float32_bound,
+            countries,
+            unresolved=UnresolvedFunctionalConditioning(other_partition, residual, solve),
+        )
+
+
+def test_fixed_states_cannot_be_detected_from_one_draw_without_a_mask() -> None:
+    """A single posterior draw without an activity mask cannot show which states are fixed."""
+    problem, reduction, bound, countries, _, products = _co2_setup("rows")
+    trace, residual = _co2_trace(problem, reduction, 1)
+    with pytest.raises(ValueError, match="cannot be detected from one posterior draw"):
+        co2_country_flux_outputs(
+            trace,
+            bound,
+            countries,
+            unresolved=UnresolvedFunctionalConditioning(products, residual, _exact_solve(problem, reduction)),
+        )
