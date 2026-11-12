@@ -15,8 +15,6 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from dask import compute as dask_compute
-from dask.array import Array as DaskArray
 import numpy as np
 from numpy.typing import NDArray
 import pandas as pd
@@ -26,7 +24,7 @@ import pytensor.tensor as pt
 from pytensor.tensor.variable import TensorVariable
 import xarray as xr
 
-from openghg_inversions.array_ops import to_dense, validate_covariance_coordinates
+from openghg_inversions.array_ops import materialize_together, validate_covariance_coordinates
 from openghg_inversions.models.components import add_model_data
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import AggregationError
@@ -61,17 +59,6 @@ def _align_observation_array(
             f"Scalar-sigma input {name!r} must use the exact ordered observation coordinate."
         ) from error
     return aligned
-
-
-def _materialize_together(*arrays: xr.DataArray) -> tuple[xr.DataArray, ...]:
-    """Materialize related dense payloads in one shared Dask operation."""
-    dense_arrays = tuple(to_dense(array) for array in arrays)
-    if all(not isinstance(array.data, DaskArray) for array in dense_arrays):
-        return dense_arrays
-    computed = dask_compute(*(array.data for array in dense_arrays))
-    return tuple(
-        array.copy(deep=False, data=data) for array, data in zip(dense_arrays, computed, strict=True)
-    )
 
 
 def _finite_values(name: str, array: xr.DataArray) -> NDArray[np.float64]:
@@ -208,7 +195,9 @@ def scalar_sigma_base_covariance(
     elif aggregation_error.mode != "none":
         raise ValueError(f"Unsupported aggregation-error mode {aggregation_error.mode!r}.")
 
-    materialized = _materialize_together(error, *(array for _, array in payloads))
+    materialized = materialize_together(
+        error, *(array for _, array in payloads), purpose="scalar-sigma observation and aggregation errors"
+    )
     error_values = _finite_values("observation_error", materialized[0])
     if (error_values < 0.0).any():
         raise ValueError("Scalar-sigma observation_error must be non-negative.")
