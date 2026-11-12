@@ -184,6 +184,34 @@ non-sample blocks and return computed summaries, retaining complete required
 samples within each block.
 Neither function mutates the trace or reconstruction inputs.
 
+Country totals as sums of whole regions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When every basis region with flux in a country lies inside it, for every
+source, the country total is the sum of those regions' totals. A
+region-constrained basis built with the same class layer for every source,
+for example :func:`~openghg_inversions.basis.algorithms.country_border_classes`
+intersected with the land/sea classes, preserves the listed borders.
+:func:`~openghg_inversions.postprocessing.border_countries.check_border_preserving_countries`
+certifies this from the labels, a membership matrix and a support weight
+(``|flux| * area``), so an ocean source with no flux on land is exempt.
+:func:`~openghg_inversions.postprocessing.border_countries.co2_region_sum_country_outputs`
+writes the qualifying countries only (``country_outputs="constrained_only"``)
+or every country (``"all"``), with a per-country ``country_total_method`` of
+``exact_region_sum`` or ``retained_state_functional``. Countries left out are
+listed in ``non_border_preserving_countries`` with their failing sources and
+regions in ``border_check_failures``::
+
+   from openghg_inversions.postprocessing.border_countries import (
+       co2_region_sum_country_outputs,
+   )
+
+   exact = co2_region_sum_country_outputs(trace, bound, countries, labels)
+
+``labels`` maps each native source to its region labels; bucket maps supply
+them. Passing ``membership=region_class_membership(region_classes)`` reports
+the classes the basis was built with instead of countries.
+
 Both products retain prepared-artifact identity, reconstruction provenance and
 ``uncertainty_scope="retained_state_conditional"``. Their intervals exclude
 unresolved native-state uncertainty and its observation-conditioned mean

@@ -480,6 +480,72 @@ def intersect_region_class_layers(
     )
 
 
+def country_border_classes(
+    membership: xr.DataArray,
+    countries: Iterable[str],
+    *,
+    other: str = "OTHER",
+    name: str = "country_border_classes",
+) -> xr.DataArray:
+    """Return a class layer that separates the listed countries from each other and the rest.
+
+    Each cell takes the listed country with the largest membership fraction,
+    or ``other`` when the pooled fraction of all unlisted countries is larger
+    or the cell has no country fraction (for example open sea). Fractions are
+    compared with each other, not with the cell area, so a coastal cell stays
+    with its country. Ties go to the listed country that comes first.
+
+    Intersect the result with the usual classes, for example with
+    ``intersect_region_class_layers({"landsea": landsea, "border": layer})``,
+    and use the same layer for every source's region-constrained basis, so
+    that no source's regions cross these borders. This is the generation side
+    of :func:`~openghg_inversions.postprocessing.border_countries.check_border_preserving_countries`.
+
+    Args:
+        membership: Country fractions on ``(country, lat, lon)``, such as
+            ``Countries.matrix``. Rows must not overlap, so leave out
+            aggregate regions such as ``BENELUX``.
+        countries: Countries whose borders basis regions must not cross. Each
+            must be a ``country`` label of ``membership``.
+        other: Class for every other cell. Must not be a listed country.
+        name: Name for the returned ``DataArray``.
+
+    Returns:
+        String-valued class field on ``(lat, lon)``.
+
+    Raises:
+        ValueError: If ``countries`` is empty, names an unknown country, or
+            includes ``other``, or ``membership`` is not on
+            ``(country, lat, lon)``.
+    """
+    countries = [str(country) for country in countries]
+    if not countries:
+        raise ValueError("countries must list at least one country.")
+    if other in countries:
+        raise ValueError(f"other class {other!r} must differ from the listed countries.")
+    if set(membership.dims) != {"country", "lat", "lon"}:
+        raise ValueError("membership must have dimensions country, lat and lon.")
+    known = [str(country) for country in membership["country"].values]
+    unknown = [country for country in countries if country not in known]
+    if unknown:
+        raise ValueError(f"Countries {unknown!r} are not in membership.")
+
+    def _values(selection: xr.DataArray) -> np.ndarray:
+        data = selection.transpose("lat", "lon").data
+        data = data.todense() if hasattr(data, "todense") else np.asarray(data)
+        return np.asarray(data, dtype=float)
+
+    listed = np.stack([_values(membership.isel(country=known.index(c))) for c in countries])
+    rest = [index for index, country in enumerate(known) if country not in countries]
+    pooled = sum((_values(membership.isel(country=index)) for index in rest), np.zeros(listed.shape[1:]))
+    side = np.argmax(listed, axis=0)
+    best = np.take_along_axis(listed, side[None], axis=0)[0]
+    labels = np.array(countries, dtype=object)[side]
+    labels[(best <= 0) | (pooled > best)] = other
+    grid = membership.isel(country=0, drop=True).transpose("lat", "lon")
+    return xr.DataArray(labels.astype(str), dims=grid.dims, coords=grid.coords, name=name)
+
+
 def region_class_mask(
     region_classes: xr.DataArray,
     class_value: Hashable,
