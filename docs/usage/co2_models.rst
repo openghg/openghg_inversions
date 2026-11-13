@@ -749,6 +749,68 @@ the constant native mean (default 1) and the separable exponential covariance
 (``sigma`` and correlation lengths in degrees). The requested window and
 domain are required.
 
+Per-source native priors
+""""""""""""""""""""""""
+
+A ``sources`` table in ``native_prior`` replaces the single shared field with
+one dimensionless scaling field per flux source, each with its own mean,
+amplitude and kernel, reduced jointly so that the retained state is
+(source, region) and the unresolved covariance keeps every cross-source term:
+
+.. code-block:: toml
+
+   [prepared_inputs.native_prior]
+   restriction = "absolute_flux_weighted_mean"   # or "bucket" (default)
+   class_labels_path = "native-classes.nc"       # optional class_labels on (source, lat, lon)
+   retained_regions_path = "retained.json"       # optional; absolute_flux_weighted_mean only
+   gpp_ter_correlation = 0.7
+   gpp_source = "co2_BASE_GPP"
+   ter_source = "co2_BASE_TER"
+
+   [prepared_inputs.native_prior.calibration]   # amplitudes for sources without sigma
+   targets_path = "country-sd-targets.nc"
+   statistic = "geometric-mean"
+
+   [prepared_inputs.native_prior.sources.co2_BASE_GPP]
+   latitude_correlation_length = 3.0
+   longitude_correlation_length = 6.0
+
+   [prepared_inputs.native_prior.sources.co2_BASE_FF]
+   sigma = 0.8
+   correlation_length = 3.0
+   geodesic_correlation_length_km = { 1 = 200.0 }
+
+The sources must be exactly the acquisition ``flux_sources``. A basis partition
+with a ``source`` dimension gives each source its own regions; a shared
+partition or generated basis is repeated per source (``basis.path`` is not
+supported). Each source accepts ``mean``, ``sigma``, ``correlation_length``,
+``latitude_correlation_length``, ``longitude_correlation_length`` (degrees) and
+``geodesic_correlation_length_km``: a number makes every class a dense
+great-circle kernel, a table ``{class = km}`` only those classes (a dense class
+of ``n`` cells holds ``8 n**2`` bytes, so name classes of up to about 10\ :sup:`4`
+cells). Classes come from ``class_labels_path`` and are uncorrelated.
+
+``gpp_ter_correlation`` is the correlation ``rho`` (``|rho| < 1``) of the GPP and
+TER *scaling* anomalies; positive ``rho`` makes their signed flux anomalies
+cancel in the net biosphere flux. It needs one shared kernel, so the two
+sources must have the same lengths and geodesic classes (and class partition).
+
+Sources without ``sigma`` are calibrated with
+:func:`~openghg_inversions.native_b_calibration.calibrate_native_b_amplitudes`
+using their own separable kernel and the window-mean prior flux; the targets
+file holds ``functional_weights`` on ``(functional, lat, lon)`` and
+``target_sd`` or ``target_relative_sd`` on ``(source, functional)``. The
+geometric mean over country totals reproduces the A1-style gross anchor.
+
+``restriction = "bucket"`` keeps the basis buckets as the conditional-mean lift
+and the bucket affine companion. ``"absolute_flux_weighted_mean"`` uses
+regional means weighted by ``|flux| * cell area`` and saves the exact
+covariance-natural lift ``U_* = B Pi.T C_alpha^-1`` as the affine companion; it
+alone accepts ``retained_regions_path`` (a JSON mapping from source to
+partition labels), and other regions are marginalized into the aggregation
+error. The prepared provenance records every source's mean, amplitude (and
+whether it was calibrated), kernel, ``rho`` and the calibration diagnostics.
+
 Boundary representation
 """""""""""""""""""""""
 

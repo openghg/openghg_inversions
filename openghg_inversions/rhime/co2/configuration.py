@@ -90,6 +90,14 @@ _BASIS_OPTION_NAMES = frozenset({
 _NATIVE_PRIOR_OPTION_NAMES = frozenset({
     "mean", "sigma", "correlation_length", "latitude_correlation_length", "longitude_correlation_length",
 })
+# A ``sources`` table selects separate native fields per flux source.
+_MULTISOURCE_NATIVE_PRIOR_OPTION_NAMES = frozenset({
+    "sources", "gpp_ter_correlation", "gpp_source", "ter_source", "restriction", "class_labels_path",
+    "retained_regions_path", "calibration",
+})
+_NATIVE_SOURCE_PRIOR_OPTION_NAMES = _NATIVE_PRIOR_OPTION_NAMES | {"geodesic_correlation_length_km"}
+_NATIVE_CALIBRATION_OPTION_NAMES = frozenset({"targets_path", "statistic"})
+NATIVE_RESTRICTIONS = ("bucket", "absolute_flux_weighted_mean")
 _SAMPLING_OPTION_NAMES = frozenset({
     "draws", "burn", "tune", "chains", "nuts_sampler", "progressbar", "sample_prior_predictive",
     "sample_posterior_predictive", "target_accept", "random_seed",
@@ -250,7 +258,8 @@ def _validate_co2_option_names(*requests: Mapping[str, object]) -> None:
         "prepared_inputs.acquisition": _ACQUISITION_OPTION_NAMES,
         "prepared_inputs.observations": frozenset({"filters", "averaging_error"}),
         "prepared_inputs.basis": _BASIS_OPTION_NAMES,
-        "prepared_inputs.native_prior": _NATIVE_PRIOR_OPTION_NAMES,
+        "prepared_inputs.native_prior": _NATIVE_PRIOR_OPTION_NAMES | _MULTISOURCE_NATIVE_PRIOR_OPTION_NAMES,
+        "prepared_inputs.native_prior.calibration": _NATIVE_CALIBRATION_OPTION_NAMES,
         "model": frozenset({"boundary", "offset", "biosphere"}),
         **{f"model.{path}": names for path, names in _MODEL_SECTION_OPTION_NAMES.items()},
         "likelihood": _LIKELIHOOD_OPTION_NAMES,
@@ -374,6 +383,279 @@ class Co2NativePrior:
 
 
 @dataclass(frozen=True)
+class Co2NativeSourcePrior:
+    """Native Gaussian prior of one flux source's dimensionless scaling field.
+
+    The field has the constant ``mean`` and covariance ``sigma**2 K``. ``K``
+    is the separable exponential kernel with lengths in degrees, blocked by
+    class when class labels are configured. Classes named in
+    ``geodesic_correlation_length_km`` use a dense great-circle exponential
+    kernel with that length in km instead; a single number makes every class
+    geodesic. Without ``sigma`` the amplitude is calibrated against the
+    configured functional SD targets.
+
+    Attributes:
+        sigma: Native grid-cell standard deviation, or ``None`` to calibrate.
+        mean: Constant native scaling mean.
+        correlation_length: Separable fallback length in degrees.
+        latitude_correlation_length: Optional separable latitude length.
+        longitude_correlation_length: Optional separable longitude length.
+        geodesic_correlation_length_km: Geodesic length for every class, or a
+            mapping from class label (as written in TOML) to length.
+    """
+
+    sigma: float | None = None
+    mean: float = 1.0
+    correlation_length: float = 1.5
+    latitude_correlation_length: float | None = None
+    longitude_correlation_length: float | None = None
+    geodesic_correlation_length_km: float | Mapping[str, float] | None = None
+
+    @classmethod
+    def from_params(cls, value: object, path: str) -> Co2NativeSourcePrior:
+        """Parse one ``[prepared_inputs.native_prior.sources.<source>]`` table."""
+        options = _table(value, path)
+        result: dict[str, Any] = {}
+        if "sigma" in options:
+            result["sigma"] = _number(options.pop("sigma"), f"{path}.sigma", positive=True)
+        if "mean" in options:
+            result["mean"] = _number(options.pop("mean"), f"{path}.mean")
+        for name in ("correlation_length", "latitude_correlation_length", "longitude_correlation_length"):
+            if name in options:
+                result[name] = _number(options.pop(name), f"{path}.{name}", positive=True)
+        if "geodesic_correlation_length_km" in options:
+            result["geodesic_correlation_length_km"] = _number_or_mapping(
+                options.pop("geodesic_correlation_length_km"), f"{path}.geodesic_correlation_length_km",
+                positive=True,
+            )
+        _reject_unknown(options, path)
+        return cls(**result)
+
+    def to_params(self) -> dict[str, Any]:
+        """Return the table :meth:`from_params` reads back, omitting unset options."""
+        result: dict[str, Any] = {}
+        for item in fields(self):
+            value = getattr(self, item.name)
+            if value is not None:
+                result[item.name] = dict(value) if isinstance(value, Mapping) else value
+        return result
+
+    @property
+    def kernel_key(self) -> tuple[object, ...]:
+        """Resolved unit-kernel choice; sources that share a kernel have equal keys."""
+        geodesic = self.geodesic_correlation_length_km
+        return (
+            self.latitude_correlation_length or self.correlation_length,
+            self.longitude_correlation_length or self.correlation_length,
+            tuple(sorted(geodesic.items())) if isinstance(geodesic, Mapping) else geodesic,
+        )
+
+
+@dataclass(frozen=True)
+class Co2NativeBCalibration:
+    """Calibrate unset source amplitudes against functional SD targets.
+
+    The targets file holds ``functional_weights`` on ``(functional, lat, lon)``
+    (for example a country mask times cell area) and either ``target_sd`` in
+    the units of ``flux * functional_weights`` or dimensionless
+    ``target_relative_sd``, on ``(source, functional)`` or ``(functional,)``.
+    Each calibrated source gets one amplitude
+    (:func:`~openghg_inversions.native_b_calibration.calibrate_native_b_amplitudes`)
+    using its own separable kernel, class labels and the window-mean prior flux.
+
+    Attributes:
+        targets_path: NetCDF file with the functionals and their targets.
+        statistic: ``"geometric-mean"`` (the A1-style anchor) or ``"median"``.
+    """
+
+    targets_path: Path
+    statistic: str = "geometric-mean"
+
+    @classmethod
+    def from_params(cls, value: object) -> Co2NativeBCalibration:
+        """Parse ``[prepared_inputs.native_prior.calibration]``."""
+        path = "prepared_inputs.native_prior.calibration"
+        options = _table(value, path)
+        result: dict[str, Any] = {
+            "targets_path": _path(_take(options, "targets_path", path), f"{path}.targets_path"),
+        }
+        if "statistic" in options:
+            statistic = _string(options.pop("statistic"), f"{path}.statistic")
+            if statistic not in ("geometric-mean", "median"):
+                raise ValueError(f"{path}.statistic must be 'geometric-mean' or 'median'.")
+            result["statistic"] = statistic
+        _reject_unknown(options, path)
+        return cls(**result)
+
+    def to_params(self) -> dict[str, Any]:
+        """Return the table :meth:`from_params` reads back."""
+        return {"targets_path": str(self.targets_path), "statistic": self.statistic}
+
+
+@dataclass(frozen=True)
+class Co2MultiSourceNativePrior:
+    """Separate native Gaussian fields per flux source, reduced jointly.
+
+    Each source has its own scaling field and covariance
+    (:class:`Co2NativeSourcePrior`). Sources are independent except GPP and
+    TER, whose scaling anomalies have correlation ``gpp_ter_correlation``
+    under one shared kernel
+    (:class:`~openghg_inversions.correlated_source_covariance.CorrelatedSourceCovariance`).
+    The retained state is (source, region): every source keeps its own
+    regions of the basis partition.
+
+    ``restriction`` selects the retained coordinates: ``"bucket"`` keeps the
+    basis buckets as the conditional-mean lift (the single-field choice), and
+    ``"absolute_flux_weighted_mean"`` uses regional means weighted by
+    ``|window-mean flux| * cell area``, with the covariance-natural lift as
+    affine companion. Only the latter may restrict the retained regions with
+    ``retained_regions_path``; other regions are marginalized into the
+    aggregation error.
+
+    Attributes:
+        sources: Per-source priors keyed by acquisition flux source.
+        gpp_ter_correlation: Correlation ``rho`` of the GPP and TER native
+            scaling anomalies, with ``|rho| < 1``.
+        gpp_source: GPP flux source label, required when ``rho != 0``.
+        ter_source: TER flux source label, required when ``rho != 0``.
+        restriction: Retained-coordinate policy, one of
+            :data:`NATIVE_RESTRICTIONS`.
+        class_labels_path: Optional NetCDF with integer ``class_labels`` on
+            ``(lat, lon)`` or ``(source, lat, lon)``; classes are uncorrelated.
+        retained_regions_path: Optional JSON mapping each source to the basis
+            region labels it retains.
+        calibration: Optional amplitude calibration for sources without
+            ``sigma``.
+    """
+
+    sources: Mapping[str, Co2NativeSourcePrior]
+    gpp_ter_correlation: float = 0.0
+    gpp_source: str | None = None
+    ter_source: str | None = None
+    restriction: str = "bucket"
+    class_labels_path: Path | None = None
+    retained_regions_path: Path | None = None
+    calibration: Co2NativeBCalibration | None = None
+
+    @classmethod
+    def from_params(cls, value: object) -> Co2MultiSourceNativePrior:
+        """Parse ``[prepared_inputs.native_prior]`` with a ``sources`` table."""
+        path = "prepared_inputs.native_prior"
+        options = _table(value, path)
+        shared = sorted(_NATIVE_PRIOR_OPTION_NAMES & set(options))
+        if shared:
+            raise ValueError(
+                f"{path}.{shared[0]} belongs to the single-field prior; with {path}.sources give it per "
+                f"source under {path}.sources.<source>."
+            )
+        sources = _table(_take(options, "sources", path), f"{path}.sources")
+        if not sources:
+            raise ValueError(f"{path}.sources must name at least one flux source.")
+        result: dict[str, Any] = {
+            "sources": MappingProxyType({
+                _string(name, f"{path}.sources key"): Co2NativeSourcePrior.from_params(
+                    item, f"{path}.sources.{name}",
+                )
+                for name, item in sources.items()
+            }),
+        }
+        if "gpp_ter_correlation" in options:
+            rho = _number(options.pop("gpp_ter_correlation"), f"{path}.gpp_ter_correlation")
+            if abs(rho) >= 1.0:
+                raise ValueError(f"{path}.gpp_ter_correlation must satisfy |rho| < 1.")
+            result["gpp_ter_correlation"] = rho
+        for name in ("gpp_source", "ter_source"):
+            if name in options:
+                result[name] = _string(options.pop(name), f"{path}.{name}")
+        if "restriction" in options:
+            restriction = _string(options.pop("restriction"), f"{path}.restriction")
+            if restriction not in NATIVE_RESTRICTIONS:
+                raise ValueError(f"{path}.restriction must be one of {NATIVE_RESTRICTIONS!r}.")
+            result["restriction"] = restriction
+        for name in ("class_labels_path", "retained_regions_path"):
+            if name in options:
+                result[name] = _path(options.pop(name), f"{path}.{name}")
+        if "calibration" in options:
+            result["calibration"] = Co2NativeBCalibration.from_params(options.pop("calibration"))
+        _reject_unknown(options, path)
+        prior = cls(**result)
+        prior._check(path)
+        return prior
+
+    def _check(self, path: str) -> None:
+        """Check cross-option rules that need the whole table."""
+        for name in ("gpp_source", "ter_source"):
+            label = getattr(self, name)
+            if label is not None and label not in self.sources:
+                raise ValueError(f"{path}.{name} {label!r} is not one of {path}.sources {tuple(self.sources)!r}.")
+        if self.gpp_ter_correlation != 0.0:
+            if self.gpp_source is None or self.ter_source is None:
+                raise ValueError(f"{path}.gpp_ter_correlation requires {path}.gpp_source and {path}.ter_source.")
+            if self.gpp_source == self.ter_source:
+                raise ValueError(f"{path}.gpp_source and {path}.ter_source must differ.")
+            if self.sources[self.gpp_source].kernel_key != self.sources[self.ter_source].kernel_key:
+                raise ValueError(
+                    f"{path}.gpp_ter_correlation requires one shared kernel: give "
+                    f"{path}.sources.{self.gpp_source} and {path}.sources.{self.ter_source} the same "
+                    "correlation lengths and geodesic classes."
+                )
+        uncalibrated = [name for name, source in self.sources.items() if source.sigma is None]
+        if self.calibration is None and uncalibrated:
+            raise ValueError(
+                f"{path}.sources.{uncalibrated[0]}.sigma is required without {path}.calibration."
+            )
+        if self.calibration is not None and not uncalibrated:
+            raise ValueError(f"{path}.calibration has no source to calibrate; every source sets sigma.")
+        for name in uncalibrated:
+            if self.sources[name].geodesic_correlation_length_km is not None:
+                raise ValueError(
+                    f"{path}.sources.{name}: calibration supports separable kernels only; set sigma for a "
+                    "source with geodesic classes."
+                )
+        if self.class_labels_path is None:
+            for name, source in self.sources.items():
+                if isinstance(source.geodesic_correlation_length_km, Mapping):
+                    raise ValueError(
+                        f"{path}.sources.{name}.geodesic_correlation_length_km names classes, which requires "
+                        f"{path}.class_labels_path."
+                    )
+        if self.retained_regions_path is not None and self.restriction != "absolute_flux_weighted_mean":
+            raise ValueError(
+                f"{path}.retained_regions_path requires restriction = 'absolute_flux_weighted_mean'."
+            )
+
+    def to_params(self) -> dict[str, Any]:
+        """Return the table :meth:`from_params` reads back, omitting defaults left unset."""
+        result: dict[str, Any] = {"sources": {name: source.to_params() for name, source in self.sources.items()}}
+        if self.gpp_ter_correlation != 0.0:
+            result["gpp_ter_correlation"] = self.gpp_ter_correlation
+        for name in ("gpp_source", "ter_source"):
+            if getattr(self, name) is not None:
+                result[name] = getattr(self, name)
+        result["restriction"] = self.restriction
+        for name in ("class_labels_path", "retained_regions_path"):
+            if getattr(self, name) is not None:
+                result[name] = str(getattr(self, name))
+        if self.calibration is not None:
+            result["calibration"] = self.calibration.to_params()
+        return result
+
+
+def _native_prior(value: object) -> Co2NativePrior | Co2MultiSourceNativePrior:
+    """Select the single shared field or separate per-source fields."""
+    options = _table(value, "prepared_inputs.native_prior")
+    if "sources" in options:
+        return Co2MultiSourceNativePrior.from_params(options)
+    multisource = sorted(_MULTISOURCE_NATIVE_PRIOR_OPTION_NAMES & set(options))
+    if multisource:
+        raise ValueError(
+            f"prepared_inputs.native_prior.{multisource[0]} requires per-source priors in "
+            "prepared_inputs.native_prior.sources."
+        )
+    return Co2NativePrior.from_params(options)
+
+
+@dataclass(frozen=True)
 class Co2NativePreparationConfig:
     """Acquisition and native preparation choices for a new CO2 preparation.
 
@@ -388,7 +670,8 @@ class Co2NativePreparationConfig:
         averaging_error: Include variability when deriving observation errors.
         basis: Flux and boundary basis choices.
         native_prior: Native prior used for the coherent reduction and the
-            affine companion.
+            affine companion: one field shared by every flux source, or
+            separate per-source fields reduced jointly.
         aggregation_error_rank: LRPD rank for the unresolved covariance, or
             ``None`` to store it exactly.
         bc_centering_weights_path: Optional netCDF file holding one
@@ -397,7 +680,7 @@ class Co2NativePreparationConfig:
 
     acquisition: Mapping[str, Any]
     basis: Co2BasisSelection
-    native_prior: Co2NativePrior
+    native_prior: Co2NativePrior | Co2MultiSourceNativePrior
     filters: Any = None
     averaging_error: bool = True
     aggregation_error_rank: int | None = 512
@@ -412,8 +695,20 @@ class Co2NativePreparationConfig:
             "basis": Co2BasisSelection.from_params(
                 prepared.pop("basis", {}), domain=domain, use_bc=acquisition.get("use_bc", True),
             ),
-            "native_prior": Co2NativePrior.from_params(_take(prepared, "native_prior", "prepared_inputs")),
+            "native_prior": _native_prior(_take(prepared, "native_prior", "prepared_inputs")),
         }
+        prior = result["native_prior"]
+        if isinstance(prior, Co2MultiSourceNativePrior):
+            if set(prior.sources) != set(acquisition["flux_sources"]):
+                raise ValueError(
+                    "prepared_inputs.native_prior.sources must name exactly the acquisition flux_sources "
+                    f"{sorted(acquisition['flux_sources'])!r}; got {sorted(prior.sources)!r}."
+                )
+            if result["basis"].basis_path is not None:
+                raise ValueError(
+                    "prepared_inputs.basis.path cannot serve per-source native priors; use partition_path "
+                    "(optionally with a source dimension) or a basis algorithm."
+                )
         observations = _table(prepared.pop("observations", {}), "prepared_inputs.observations")
         if "filters" in observations:
             filters = observations.pop("filters")
