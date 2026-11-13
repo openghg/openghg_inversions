@@ -22,13 +22,6 @@ from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.sigma import SigmaAlignment
 
 
-@pytest.fixture
-def double_precision():
-    """Build graphs at float64 for oracles whose tolerances assume double precision."""
-    with pytensor.config.change_flags(floatX="float64"):
-        yield
-
-
 def _add_pollution_event_likelihood(
     data: xr.Dataset,
     /,
@@ -210,11 +203,12 @@ def test_aggregation_error_is_preserved_as_labelled_constant_data(
 
 
 @pytest.mark.xfail(
-    strict=True,
+    strict=False,
     raises=TypingError,
     reason=(
         "PyTensor's Numba MvNormalRV dots a float32 Cholesky factor with float64 normal draws "
-        "when warn_float64 disables its float64 parameter upcast (#770)."
+        "when warn_float64 disables its float64 parameter upcast (#770). Newer PyTensor "
+        "releases do not reproduce it, so an unexpected pass is allowed."
     ),
 )
 def test_float32_numba_multivariate_normal_draw_with_float64_warnings() -> None:
