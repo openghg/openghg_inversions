@@ -155,13 +155,23 @@ def _prepare_gaussian_biosphere(
 ) -> PreparedGaussianBiosphere:
     """Compute the Gaussian diagnostic's regression and conditional factors."""
     mean = calibration.data.baseline_mean
-    xr.align(mean, activity.active, join="exact", copy=False)
+    # The graph assigns these factors to state columns by position, so the
+    # calibration must use the activity's state dimension and label order.
+    # An exact align alone would not catch a differently named state axis.
+    state_dim = calibration.baseline.state_dim
+    if state_dim != activity.state_dim:
+        raise ValueError(
+            "Biosphere calibration and state activity must use the same state dimension; "
+            f"found {state_dim!r} and {activity.state_dim!r}."
+        )
+    if not mean.get_index(state_dim).equals(activity.active.get_index(state_dim)):
+        raise ValueError("Biosphere calibration labels must exactly match state-activity labels in the same order.")
     b = calibration.data.covariance.to_numpy()
     selector = calibration.data.biosphere.to_numpy()
     bio, other = np.flatnonzero(selector), np.flatnonzero(~selector)
     if other.size:
         protected = CorrelatedLognormalPrior(
-            mean.isel({calibration.baseline.state_dim: other}),
+            mean.isel({state_dim: other}),
             b[np.ix_(other, other)],
             covariance_dim=calibration.baseline.covariance_dim,
         )

@@ -234,6 +234,36 @@ def test_linked_runner_prior_prediction_serializes_calibration_and_reconstructs(
     )
 
 
+@pytest.mark.parametrize("state_dim", ["state", "flux_state"])
+def test_gaussian_calibration_rejects_reordered_or_renamed_state_axis(state_dim):
+    # The Gaussian factors are applied by position, so a reordered axis would
+    # silently move coefficients between columns.
+    baseline, inputs = case()
+    calibration = calibrate_biosphere_prior(baseline, **inputs, residual_sd_multiplier=0.5, family="gaussian")
+    observation = xr.DataArray(
+        [1.2, 0.4, 0.8],
+        dims="nmeasure",
+        coords={"nmeasure": np.arange(3), "site": ("nmeasure", ["A", "A", "B"])},
+        attrs={"units": "ppm"},
+    )
+    labels = baseline.mean.state.values[::-1]
+    h = xr.DataArray(
+        np.arange(15.0).reshape(3, 5) + 1,
+        dims=("nmeasure", state_dim),
+        coords={"nmeasure": observation.nmeasure, state_dim: labels},
+    )
+    match = "same state dimension" if state_dim != "state" else "same order"
+    with pytest.raises(ValueError, match=match):
+        build_co2_model(
+            h,
+            retained_prior=calibration,
+            observations=observation,
+            observation_error=xr.full_like(observation, 0.2),
+            fixed_prior_contribution=xr.zeros_like(observation).rename("fixed_prior_contribution"),
+            aggregation_error=resolve_aggregation_error(observation.to_dataset(name="mf"), "none"),
+        )
+
+
 def partial_activity(calibration, active_group):
     from openghg_inversions.models.state_activity import StateActivity
 
