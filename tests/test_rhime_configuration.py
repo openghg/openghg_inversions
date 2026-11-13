@@ -656,7 +656,9 @@ def test_canonical_paths_are_forwarded_without_conversion(tmp_path, monkeypatch)
             _request(basis_path=path, bc_basis={"paths": paths}, country_file=path), multisector=False,
         )
     assert config.data.basis_path is path
-    assert config.data.bc_basis.paths is paths
+    # Pydantic validates the tuple container while retaining resolved Path objects.
+    assert config.data.bc_basis.paths == paths
+    assert config.data.bc_basis.paths[0] is paths[0]
     assert config.output.country_file is path
 
 

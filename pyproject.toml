@@ -28,6 +28,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "numpy>=2.0",
+    "pydantic>=2.12,<3",
     # Explicit lower bound: prevents uv backtracking to numba 0.53 / llvmlite 0.36
     # due to NumPy 2.x + sparse metadata lag
     "numba>=0.59",

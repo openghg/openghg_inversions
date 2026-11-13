@@ -115,7 +115,7 @@ def test_basis_netcdf_roundtrip_preserves_geometry_and_provenance(tmp_path):
 
 @pytest.mark.parametrize("split", [None, True, "3000", 3000 + 1j, np.inf, np.nan])
 def test_bad_split_is_rejected_at_configuration_boundary(split):
-    with pytest.raises(ValueError, match=r"bc_basis\.split_height"):
+    with pytest.raises(ValueError, match=r"split_height"):
         RhimeConfig.from_params(_params(use_bc=True, bc_basis={"algorithm": "twelve-region", "split_height": split}), multisector=False)
 
 

@@ -110,6 +110,7 @@ owned by ``inference``.
    :nosignatures:
 
    openghg_inversions.rhime.RhimeModelSpec
+   openghg_inversions.rhime.params.BcBasisOptions
    openghg_inversions.rhime.RhimeOutputSpec
    openghg_inversions.inference.RhimeSampler
    openghg_inversions.rhime.NestedOutput

@@ -275,6 +275,11 @@ the same way::
 
    options["bc_basis"] = {"algorithm": "twelve-region", "split_height": 3000.0}
 
+The experimental :class:`~openghg_inversions.rhime.params.BcBasisOptions`
+dataclass validates field types at construction and supports portable JSON and
+generated schemas. Algorithm applicability remains with the active phase.
+See :doc:`/experimental/pydantic_bc_options` for the scope and examples.
+
 INI files keep the flat spelling ``bc_basis_<field>``, for example
 ``bc_basis_algorithm = "NESW"``; the INI reader nests these names. Flat names in
 Python requests, JSON parameter files and older manifests are still accepted
