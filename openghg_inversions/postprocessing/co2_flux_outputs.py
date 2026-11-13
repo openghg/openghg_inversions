@@ -6,22 +6,32 @@ import json
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+import numpy as np
 import xarray as xr
 from openghg.util import cf_ureg, molar_mass  # pyright: ignore[reportPrivateImportUsage]
 
-from openghg_inversions.array_ops import sparse_xr_dot, to_dense
+from openghg_inversions._labelled_matrices import coordinates_on_dims
+from openghg_inversions.array_ops import same_index, sparse_xr_dot, to_dense
 from openghg_inversions.basis.affine_flux_map import _in_dimensionless_units
 
 from ._basis_products import bounded_affine_flux_map
 from .countries import Countries, _bounded_projection
 from .inversion_output import trace_group
 from .stats import calculate_stats
+from openghg_inversions.coherent_reduction import marginalise_functional_states
+
+from .unresolved_functionals import UnresolvedFunctionalConditioning, complete_functional_draws
 
 if TYPE_CHECKING:
     from openghg_inversions.rhime.co2.co2_affine_output import BoundCo2AffineFluxMap
 
 
-__all__ = ["co2_native_flux_outputs", "co2_country_flux_outputs"]
+__all__ = ["co2_native_flux_outputs", "co2_country_flux_outputs", "co2_country_functionals"]
+
+COUNTRY_FUNCTIONAL_DIM = "country_functional"
+FUNCTIONAL_SOURCE = "functional_source"
+COMPLETE_NATIVE = "complete_native"
+ANNUALIZATION = "365-day year; grams of CO2, not grams of carbon"
 
 
 def _output_inputs(
@@ -154,10 +164,102 @@ def co2_native_flux_outputs(trace: xr.DataTree, bound: BoundCo2AffineFluxMap) ->
     return _with_metadata(xr.merge(outputs), attrs, units="mol m-2 s-1")
 
 
+def _weighted_country_flux(
+    bound: BoundCo2AffineFluxMap,
+    countries: Countries,
+    *,
+    source_dim: str | None = None,
+) -> xr.DataArray:
+    """Return signed country weights ``A F`` in grams of CO2 per year per unit scaling.
+
+    Country membership may also vary by source when ``source_dim`` names the
+    map's native source dimension.
+    """
+    flux, matrix, area = xr.align(
+        bound.affine_map.flux, countries.matrix, countries.area_grid, join="exact", copy=False
+    )
+    membership_dims = [{"country", "lat", "lon"}]
+    if source_dim is not None:
+        membership_dims.append({"country", source_dim, "lat", "lon"})
+    if set(matrix.dims) not in membership_dims or set(area.dims) != {"lat", "lon"}:
+        raise ValueError(
+            "Country membership and area must use country/lat/lon (optionally with the source "
+            "dimension) and lat/lon dimensions."
+        )
+    return (
+        flux.astype("float64")
+        * matrix
+        * area
+        * _flux_unit_scale(bound)
+        * (365 * 24 * 3600)
+        * molar_mass("co2")
+    )
+
+
+def co2_country_functionals(
+    bound: BoundCo2AffineFluxMap,
+    countries: Countries,
+    *,
+    source_dim: str | None = None,
+) -> xr.DataArray:
+    """Return CO2 country totals as labelled native linear functionals ``Q``.
+
+    Pass the result to :func:`openghg_inversions.coherent_reduction.reduce_native_gaussian`
+    as ``functionals`` with ``functional_dim="country_functional"`` to prepare
+    the products that :func:`co2_country_flux_outputs` needs for complete
+    country uncertainty.
+
+    Args:
+        bound (openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap):
+            Reconstruction whose signed reference flux defines the totals.
+        countries: Country membership and cell areas on the map's grid.
+        source_dim: The map's native source dimension, when country
+            membership varies by source.
+
+    Returns:
+        ``Q`` on ``("country_functional", *native_dims)`` in ``g yr-1`` per
+        unit scaling. A multisource map has one row per country and source,
+        labelled by the ``country`` and ``functional_source`` levels, so the
+        joint covariance of source terms is kept; a single-source map has
+        one row per country. The payload stays sparse when the country
+        matrix is sparse.
+
+    Raises:
+        ValueError: If the country grid does not exactly match the map, or
+            the flux has dimensions other than the native ones, such as time.
+    """
+    weighted = _weighted_country_flux(bound, countries, source_dim=source_dim)
+    native_dims = bound.affine_map.native_dims
+    extra = set(weighted.dims) - {"country", *native_dims}
+    if extra:
+        raise ValueError(
+            "Country functionals require a flux on native dimensions only; "
+            f"got extra {sorted(map(str, extra))!r}."
+        )
+    levels = ["country"]
+    if len(native_dims) == 3:
+        source_dim = native_dims[0]
+        sources = weighted[source_dim]
+        selector = xr.DataArray(
+            np.eye(sources.size),
+            dims=(FUNCTIONAL_SOURCE, source_dim),
+            coords={FUNCTIONAL_SOURCE: sources.values, source_dim: sources.values},
+        )
+        weighted = weighted * selector
+        levels.append(FUNCTIONAL_SOURCE)
+    functionals = weighted.stack({COUNTRY_FUNCTIONAL_DIM: levels})
+    functionals = functionals.transpose(COUNTRY_FUNCTIONAL_DIM, *native_dims)
+    return functionals.rename("country_functionals").assign_attrs(
+        units="g yr-1", annualization=ANNUALIZATION, mathematical_name="Q"
+    )
+
+
 def co2_country_flux_outputs(
     trace: xr.DataTree,
     bound: BoundCo2AffineFluxMap,
     countries: Countries,
+    *,
+    unresolved: UnresolvedFunctionalConditioning | None = None,
 ) -> xr.Dataset:
     """Summarize affine CO2 country flux without constructing native flux draws.
 
@@ -170,7 +272,20 @@ def co2_country_flux_outputs(
             trace identity is not checked.
         countries: Country membership and cell areas on exactly the map's
             indexed ``lat, lon`` grid. No regridding or partial overlap is used.
-            ``Countries.area_grid`` is in square metres.
+            ``Countries.area_grid`` is in square metres. A multisource map's
+            membership may also carry its source dimension.
+        unresolved: Optional products and per-draw conditioning inputs for
+            the unresolved native state of the functionals returned by
+            :func:`co2_country_functionals` for the same ``bound`` and
+            ``countries``. When given, country totals are complete native
+            functionals rather than retained-state-conditional ones. The
+            products must be full-restriction products whose ``Q m`` and
+            ``D`` equal this map's ``A F m`` and ``A F U*`` within a
+            tolerance set by the input precision. The fit's inactive states
+            must be exactly the declared marginalised states; those are then
+            moved into the unresolved part. Inactive states come from the
+            trace's ``<flux_scale>_is_active`` constant data or, when it is
+            absent, from posterior draws that are all identical.
 
     Returns:
         xarray.Dataset:
@@ -184,32 +299,33 @@ def co2_country_flux_outputs(
             ordinary country projections, chunking their output dimensions within
             the summary point budget; sample chunks for quantiles are consolidated.
             Existing producers must already have bounded task payloads. Inputs are
-            borrowed.
+            borrowed. ``uncertainty_scope`` is ``"retained_state_conditional"``
+            without ``unresolved`` and ``"complete_native"`` with it.
 
     Raises:
-        ValueError: If input requirements or exact country-grid alignment fail.
+        ValueError: If input requirements or exact country-grid alignment
+            fail, or if ``unresolved`` was prepared for a different country
+            functional, native mean, partition or covariance, or does not
+            account for the fit's inactive states.
 
     Notes:
         Country reference values ``A F m`` and responses ``A F U*`` are formed
-        before applying any sample axes. The result carries the conditional
-        uncertainty scope and reconstruction identity; unresolved native
-        covariance is not included. Source totals are summed per draw.
+        before applying any sample axes. Without ``unresolved``, the
+        unresolved native state is not included: country totals and their
+        spread describe ``Q m + D (alpha - Pi m)`` only. With it, each draw
+        also gets the conditional mean of ``Q x_perp`` and one draw from its
+        conditional covariance (prior draws: its prior covariance), using
+        the products' ``D``; this is an eager per-draw boundary. Source
+        totals are summed per draw.
     """
     samples, source_dim, attrs = _output_inputs(trace, bound)
+    attrs["annualization"] = ANNUALIZATION
+    if unresolved is not None:
+        return _complete_country_outputs(
+            trace, samples, bound, countries, unresolved, source_dim=source_dim, attrs=attrs
+        )
     affine = bound.affine_map
-    flux, matrix, area = xr.align(
-        affine.flux, countries.matrix, countries.area_grid, join="exact", copy=False
-    )
-    if set(matrix.dims) != {"country", "lat", "lon"} or set(area.dims) != {"lat", "lon"}:
-        raise ValueError("Country membership and area must use country/lat/lon and lat/lon dimensions.")
-    weighted_flux = (
-        flux.astype("float64")
-        * matrix
-        * area
-        * _flux_unit_scale(bound)
-        * (365 * 24 * 3600)
-        * molar_mass("co2")
-    )
+    weighted_flux = _weighted_country_flux(bound, countries, source_dim=source_dim)
     # These package-internal affine helpers preserve exact state validation,
     # dimensionless conversion and lazy bucket/explicit prolongation. Reusing
     # them avoids introducing a second reconstruction or quantity-map API.
@@ -227,5 +343,172 @@ def co2_country_flux_outputs(
             reference = _bounded_projection(reference, [])
         draws = reference + xr.dot(response, centred.astype("float64"), dim=affine.state_dim)
         outputs.append(_summarize(draws, prefix="country", group=group, source_dim=source_dim))
-    attrs["annualization"] = "365-day year; grams of CO2, not grams of carbon"
     return _with_metadata(xr.merge(outputs), attrs, units="g yr-1")
+
+
+def _complete_country_outputs(
+    trace: xr.DataTree,
+    samples: dict[str, xr.DataArray],
+    bound: BoundCo2AffineFluxMap,
+    countries: Countries,
+    unresolved: UnresolvedFunctionalConditioning,
+    *,
+    source_dim: str | None,
+    attrs: dict[str, str],
+) -> xr.Dataset:
+    """Summarize complete native country functionals, conditioning each posterior draw."""
+    affine = bound.affine_map
+    products = unresolved.products
+    if products.functional_dim != COUNTRY_FUNCTIONAL_DIM:
+        raise ValueError(f"Country functional products must use the {COUNTRY_FUNCTIONAL_DIM!r} dimension.")
+    if products.marginalised is not None:
+        raise ValueError(
+            "Pass full-restriction functional products and declare marginalised states on the conditioning."
+        )
+    functionals = co2_country_functionals(bound, countries, source_dim=source_dim)
+    if not same_index(
+        products.functional_mean.indexes[COUNTRY_FUNCTIONAL_DIM], functionals.indexes[COUNTRY_FUNCTIONAL_DIM]
+    ):
+        raise ValueError("Unresolved functional products were prepared for different countries or sources.")
+    # Q m identifies the functional and native mean; D = Q U* also identifies
+    # the retained partition and covariance, which Q m does not depend on.
+    # Both are compared relative to the contraction magnitude |Q| |x|, with a
+    # tolerance set by the least precise input, so float32 storage of U*,
+    # the flux or the mean is accepted while another partition is not.
+    native_mean = _in_dimensionless_units(affine.native_mean, name="native_mean")
+    centred = {
+        group: affine._centred_state(state, bound.reference_state)[0] for group, state in samples.items()
+    }
+    _, prolongation = affine._centred_state(samples["posterior"], bound.reference_state)
+    tolerance = _identity_tolerance(
+        affine.flux, native_mean, prolongation, products.functional_mean, products.retained_response
+    )
+    native_dims = affine.native_dims
+    same_mean = _same_contraction(products.functional_mean, functionals, native_mean, native_dims, tolerance)
+    if not same_mean:
+        raise ValueError(
+            "Unresolved functional products were prepared for a different country functional or native mean "
+            f"(beyond a relative tolerance of {tolerance:.1e} for the input precision)."
+        )
+    response = products.retained_response
+    if response.dims != (COUNTRY_FUNCTIONAL_DIM, affine.state_dim) or not same_index(
+        response.indexes[affine.state_dim], prolongation.indexes[affine.state_dim]
+    ):
+        raise ValueError("Unresolved functional products use different retained-state labels from the map.")
+    if not _same_contraction(response, functionals, prolongation, affine.native_dims, tolerance):
+        raise ValueError(
+            "Unresolved functional products were prepared for a different retained partition or covariance "
+            f"(beyond a relative tolerance of {tolerance:.1e} for the input precision)."
+        )
+
+    marginalised = _marginalised_states(trace, samples["posterior"], response, unresolved)
+    if marginalised.any():
+        reference_scale = max(1.0, float(np.max(np.abs(bound.reference_state.values))))
+        state_tolerance = _identity_tolerance(bound.reference_state, *samples.values()) * reference_scale
+        for group, value in centred.items():
+            held = value.sel({affine.state_dim: marginalised.values})
+            if np.max(np.abs(held.values), initial=0.0) > state_tolerance:
+                raise ValueError(
+                    f"Marginalised states must be held at their retained prior mean in {group} draws "
+                    f"(beyond {state_tolerance:.1e} for the input precision)."
+                )
+        products = marginalise_functional_states(products, marginalised)
+
+    rng = np.random.default_rng(unresolved.seed)
+    outputs = []
+    for group, value in centred.items():
+        posterior = group == "posterior"
+        draws = complete_functional_draws(
+            value,
+            products,
+            residual=unresolved.residual if posterior else None,
+            solve=unresolved.solve if posterior else None,
+            rng=rng,
+        )
+        if posterior:
+            eigenvalue = draws.attrs["conditional_covariance_min_eigenvalue"]
+            attrs["conditional_covariance_min_eigenvalue"] = f"{eigenvalue:.3e}"
+        draws = draws.unstack(COUNTRY_FUNCTIONAL_DIM)
+        if source_dim is not None:
+            draws = draws.rename({FUNCTIONAL_SOURCE: source_dim})
+        outputs.append(_summarize(draws, prefix="country", group=group, source_dim=source_dim))
+    attrs["uncertainty_scope"] = COMPLETE_NATIVE
+    attrs["unresolved_conditioning"] = unresolved.solve.description
+    attrs["marginalised_state_count"] = str(int(marginalised.sum()))
+    return _with_metadata(xr.merge(outputs), attrs, units="g yr-1")
+
+
+def _identity_tolerance(*arrays: xr.DataArray) -> float:
+    """Return a relative identity tolerance for the least precise floating input.
+
+    It is 100 machine epsilons of that dtype, plus a 1e-10 floor for float64
+    accumulation in differently ordered sums.
+    """
+    eps = max(
+        (float(np.finfo(array.dtype).eps) for array in arrays if np.issubdtype(array.dtype, np.floating)),
+        default=float(np.finfo(np.float64).eps),
+    )
+    return 100.0 * eps + 1e-10
+
+
+def _same_contraction(
+    actual: xr.DataArray,
+    functionals: xr.DataArray,
+    operand: xr.DataArray,
+    native_dims: tuple[str, ...],
+    tolerance: float,
+) -> bool:
+    """Compare ``actual`` with ``Q operand`` relative to the magnitude ``|Q| |operand|``."""
+    dims = list(native_dims)
+    expected = to_dense(sparse_xr_dot(functionals, operand.astype("float64"), dim=dims))
+    magnitude = to_dense(sparse_xr_dot(abs(functionals), abs(operand.astype("float64")), dim=dims))
+    expected = expected.transpose(*actual.dims)
+    scale = float(np.max(magnitude.values, initial=0.0))
+    return bool(np.max(np.abs(actual.values - expected.values), initial=0.0) <= tolerance * scale)
+
+
+def _marginalised_states(
+    trace: xr.DataTree,
+    posterior_state: xr.DataArray,
+    response: xr.DataArray,
+    unresolved: UnresolvedFunctionalConditioning,
+) -> xr.DataArray:
+    """Return the declared marginalised states after checking them against the fit's inactive states.
+
+    A fixed state contributes nothing to the retained draws. Its functional
+    contribution is complete only if the fit moved its variance into ``A``,
+    which the conditioning must declare. Inactive states come from the
+    trace's ``<flux_scale>_is_active`` constant data, which models record
+    only when some state is fixed. Without it, states whose posterior draws
+    are all identical are treated as fixed.
+    """
+    state_dim = str(response.dims[1])
+    index = response.indexes[state_dim]
+    roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
+    name = f"{roles['flux_scale']}_is_active"
+    if "constant_data" in trace.children and name in trace_group(trace, "constant_data"):
+        active = trace_group(trace, "constant_data")[name]
+        if active.dims != (state_dim,) or not same_index(active.indexes[state_dim], index):
+            raise ValueError(f"{name!r} must use the retained-state labels of the functional products.")
+        inactive = ~np.asarray(active.values, dtype=bool)
+    else:
+        draws = np.asarray(posterior_state.transpose("chain", "draw", state_dim).values)
+        draws = draws.reshape(-1, draws.shape[-1])
+        if draws.shape[0] < 2:
+            raise ValueError(
+                f"Fixed states cannot be detected from one posterior draw; record {name!r} in constant_data."
+            )
+        inactive = np.all(draws == draws[:1], axis=0)
+    declared: np.ndarray = np.zeros(len(index), dtype=bool)
+    if unresolved.marginalised is not None:
+        if unresolved.marginalised.dims != (state_dim,) or not same_index(
+            unresolved.marginalised.indexes[state_dim], index
+        ):
+            raise ValueError("The declared marginalised states must use the retained-state labels.")
+        declared = np.asarray(unresolved.marginalised.values, dtype=bool)
+    if not np.array_equal(declared, inactive):
+        raise ValueError(
+            "The fit's inactive states must be exactly the states marginalised into A; "
+            "complete country uncertainty is undefined for states fixed without marginalisation."
+        )
+    return xr.DataArray(declared, dims=state_dim, coords=coordinates_on_dims(response, {state_dim}))

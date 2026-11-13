@@ -274,6 +274,9 @@ mathematical contracts and eager-computation boundaries.
    openghg_inversions.basis.project_native_covariance
    openghg_inversions.coherent_reduction.CoherentGaussianReduction
    openghg_inversions.coherent_reduction.reduce_native_gaussian
+   openghg_inversions.coherent_reduction.NativeFunctionalProducts
+   openghg_inversions.coherent_reduction.project_native_functionals
+   openghg_inversions.coherent_reduction.marginalise_functional_states
    openghg_inversions.observation_error.AggregationError
    openghg_inversions.observation_error.prepare_low_rank_aggregation_error
    openghg_inversions.observation_error.resolve_aggregation_error
@@ -352,6 +355,12 @@ and samples; it does not write products. See
    openghg_inversions.postprocessing.output_views.make_inversion_output
    openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs
    openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs
+   openghg_inversions.postprocessing.co2_flux_outputs.co2_country_functionals
+   openghg_inversions.postprocessing.unresolved_functionals.UnresolvedFunctionalConditioning
+   openghg_inversions.postprocessing.unresolved_functionals.ObservationCovarianceSolve
+   openghg_inversions.postprocessing.unresolved_functionals.complete_functional_draws
+   openghg_inversions.postprocessing.unresolved_functionals.dense_solve
+   openghg_inversions.postprocessing.unresolved_functionals.fixed_ou_solve
    openghg_inversions.rhime.co2.co2_outputs.make_co2_output
    openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request
    openghg_inversions.rhime.co2.co2_outputs.calculate_co2_products

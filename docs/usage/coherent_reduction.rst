@@ -150,6 +150,95 @@ Inspect the recorded retained-spectrum and reconstruction metrics directly::
 These diagnostics describe the covariance approximation; they do not certify
 that the chosen rank is adequate for a particular likelihood.
 
+Complete native functionals
+---------------------------
+
+The same reduction splits the native state as
+:math:`x = m + U_*(\alpha - \Pi m) + x_\perp`, where
+:math:`U_* = B \Pi^T C_\alpha^{-1}` and :math:`x_\perp` is independent of
+:math:`\alpha` with covariance :math:`B_\perp = B - U_* C_\alpha U_*^T`. A
+native linear functional :math:`Q`, such as a country total, therefore splits
+as :math:`Q x = Q m + D(\alpha - \Pi m) + Q x_\perp` with :math:`D = Q U_*`.
+Retained-state draws give only the first two terms. :math:`Q x_\perp` carries
+both variance and a data-driven mean update, because it is correlated with the
+unresolved observation error :math:`H x_\perp`; both are largest when retained
+regions cross the functional's borders.
+
+Pass the functionals to the reduction to prepare the products that condition
+:math:`Q x_\perp`::
+
+   reduction = reduce_native_gaussian(
+       ...,
+       functionals=country_functionals,  # (functional_dim, *native_dims)
+       functional_dim="country_functional",
+   )
+   products = reduction.functional_products
+
+``products`` holds :math:`Q m`, :math:`D`, :math:`Q B_\perp H^T` and
+:math:`Q B_\perp Q^T`. They are computed from bounded blocks of
+:math:`B Q^T`; :math:`B` is never densified. Use one functional row per
+reported term, for example one country total per source, so that the joint
+covariance of terms is available and sums are formed per draw.
+
+For a posterior draw of :math:`\alpha`, any other parameters :math:`\beta`
+and the noise parameters, with residual
+:math:`r = y - y_0 - H_\alpha(\alpha - \Pi m) - G\beta`,
+
+.. math::
+
+   Q x_\perp \mid \alpha, \beta, y \sim
+   N\left(Q B_\perp H^T (A + R)^{-1} r,\;
+   Q B_\perp Q^T - Q B_\perp H^T (A + R)^{-1} H B_\perp Q^T\right).
+
+Under the prior, :math:`Q x_\perp \sim N(0, Q B_\perp Q^T)` independently of
+:math:`\alpha`. For a Gaussian retained state and the exact :math:`A`, the
+complete functional mean and covariance equal the native-grid Gaussian
+posterior for any retained partition. With a LogNormal retained state the
+conditioning on each draw remains exact under the reduced model, but the
+reduced model is the moment-matched approximation described in
+`Assumptions and limitations`_, so the result is not the native-grid
+posterior of a LogNormal native field.
+:func:`openghg_inversions.postprocessing.unresolved_functionals.complete_functional_draws`
+adds the conditional mean and one conditional draw to each retained draw. It
+takes :math:`(A + R)^{-1}` as a labelled solve whose observation order is
+checked against the residuals:
+:func:`~openghg_inversions.postprocessing.unresolved_functionals.dense_solve`
+for one fixed dense covariance, or
+:func:`~openghg_inversions.postprocessing.unresolved_functionals.fixed_ou_solve`
+for the fit's low-rank-plus-diagonal :math:`A` with each draw's fixed-OU
+amplitudes, selected by chain and draw label. Residuals must carry the units
+of :math:`H`.
+
+For CO2 country totals, build :math:`Q` with
+:func:`~openghg_inversions.postprocessing.co2_flux_outputs.co2_country_functionals`
+and pass an
+:class:`~openghg_inversions.postprocessing.unresolved_functionals.UnresolvedFunctionalConditioning`
+to :func:`~openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs`.
+Its outputs then carry ``uncertainty_scope="complete_native"`` and the
+conditioning description; without it they remain
+``"retained_state_conditional"`` and omit the unresolved native state. The
+products' :math:`D` must equal the map's own :math:`A F U_*`, which rejects
+products prepared for another partition or covariance.
+
+Use the same :math:`A` in the solve as in the products. The products use the
+exact :math:`B_\perp`, so pairing them with a truncated low-rank :math:`A`
+mixes two covariance models: the conditional mean update can be inflated and
+the conditional covariance can lose positive semidefiniteness. Negative
+eigenvalues are clipped before drawing and the most negative relative
+eigenvalue is recorded as ``conditional_covariance_min_eigenvalue``. A
+:class:`~openghg_inversions.models.fixed_ou.FixedOuLowRank` prepared with a
+full-width factor of the exact :math:`A` gives the exact update with sampled
+OU amplitudes.
+
+When retained states are marginalised into :math:`A`,
+:func:`openghg_inversions.coherent_reduction.marginalise_functional_states`
+moves their functional contribution into :math:`Q x_\perp`, matching a
+reduction with the kept rows of :math:`\Pi`. For CO2 country outputs, pass
+full-restriction products and declare the marginalised states on the
+conditioning; they must be exactly the fit's inactive states, which are
+otherwise held fixed without their variance and make complete uncertainty
+undefined.
+
 Assumptions and limitations
 ---------------------------
 
@@ -195,8 +284,9 @@ such as ``SuppliedRestriction`` with ``require_positivity_preserving=True``. The
 bucket-compatible restriction derived by ``PreserveBucketProlongation`` is not
 guaranteed to preserve positivity.
 
-The function does not construct a likelihood, approximate :math:`A`, serialize
-the result, or reconstruct arbitrary native quantities. Do not add another
+The function does not construct a likelihood, approximate :math:`A`, or
+serialize the result. It reconstructs native quantities only as the
+linear functionals requested through ``functionals``. Do not add another
 error term representing the same unresolved flux. Adding covariance components
 also assumes that their errors are independent unless their cross-covariances
 are included explicitly.
