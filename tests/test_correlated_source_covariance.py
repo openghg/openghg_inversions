@@ -62,9 +62,13 @@ def _components(
     *,
     ter_length: tuple[float, float] | None = None,
     ter_labels: xr.DataArray | None = None,
+    order: tuple[str, ...] = SOURCES,
+    blocked: bool = True,
 ) -> dict[str, SeparableExponentialCovariance]:
-    """Return class-blocked per-source actions on the shared grid."""
-    labels = xr.DataArray(CLASSES, dims=("lat", "lon"), coords={"lat": LATITUDE, "lon": LONGITUDE})
+    """Return per-source actions on the shared grid, class-blocked by default."""
+    labels = (
+        xr.DataArray(CLASSES, dims=("lat", "lon"), coords={"lat": LATITUDE, "lon": LONGITUDE}) if blocked else None
+    )
     lengths = dict(LENGTHS)
     if ter_length is not None:
         lengths["TER"] = ter_length
@@ -77,30 +81,33 @@ def _components(
             longitude_correlation_length=lengths[source][1],
             class_labels=ter_labels if source == "TER" and ter_labels is not None else labels,
         )
-        for source in SOURCES
+        for source in order
     }
 
 
-def _unit_kernel(source: str) -> np.ndarray:
-    """Return the dense class-blocked unit kernel of one source."""
+def _unit_kernel(source: str, blocked: bool = True) -> np.ndarray:
+    """Return the dense (class-blocked) unit kernel of one source."""
     lat_length, lon_length = LENGTHS[source]
     k_lat = np.exp(-np.abs(LATITUDE[:, None] - LATITUDE[None, :]) / lat_length)
     k_lon = np.exp(-np.abs(LONGITUDE[:, None] - LONGITUDE[None, :]) / lon_length)
     flat = CLASSES.reshape(-1)
-    return np.kron(k_lat, k_lon) * (flat[:, None] == flat[None, :])
+    mask = flat[:, None] == flat[None, :] if blocked else True
+    return np.kron(k_lat, k_lon) * mask
 
 
-def _dense_b(rho: float) -> np.ndarray:
-    """Build B = S (R kron K) S for GPP/TER plus an independent FF block."""
-    kernel = _unit_kernel("GPP")
-    sg, st = SIGMAS["GPP"], SIGMAS["TER"]
-    bio = np.block(
-        [[sg**2 * kernel, rho * sg * st * kernel], [rho * sg * st * kernel, st**2 * kernel]]
-    )
-    cells = kernel.shape[0]
-    dense = np.zeros((3 * cells, 3 * cells))
-    dense[: 2 * cells, : 2 * cells] = bio
-    dense[2 * cells :, 2 * cells :] = SIGMAS["FF"] ** 2 * _unit_kernel("FF")
+def _dense_b(rho: float, order: tuple[str, ...] = SOURCES, blocked: bool = True) -> np.ndarray:
+    """Build B = S (R kron K) S for GPP/TER plus an independent FF block, in ``order``."""
+    cells = LATITUDE.size * LONGITUDE.size
+    dense = np.zeros((len(order) * cells, len(order) * cells))
+    for row, first in enumerate(order):
+        for column, second in enumerate(order):
+            if first == second:
+                block = SIGMAS[first] ** 2 * _unit_kernel(first, blocked)
+            elif {first, second} == {"GPP", "TER"}:
+                block = rho * SIGMAS[first] * SIGMAS[second] * _unit_kernel("GPP", blocked)
+            else:
+                continue
+            dense[row * cells : (row + 1) * cells, column * cells : (column + 1) * cells] = block
     return dense
 
 
@@ -310,9 +317,11 @@ def test_positive_rho_cancels_signed_net_biosphere_variance() -> None:
     )
     functional = np.concatenate([functional, np.zeros(LATITUDE.size * LONGITUDE.size)])
 
+    labelled = _labelled(functional.reshape(len(SOURCES), LATITUDE.size, LONGITUDE.size), NATIVE_DIMS)
+
     def net_variance(rho: float) -> float:
-        """Return Var(w_G x_G + w_T x_T) under the dense B."""
-        return float(functional @ _dense_b(rho) @ functional)
+        """Return Var(w_G x_G + w_T x_T) = w' B w through the covariance action."""
+        return float((labelled * _covariance(rho).apply(labelled)).sum())
 
     assert net_variance(RHO) < net_variance(0.0) < net_variance(-0.6)
 
@@ -391,10 +400,160 @@ def test_correlated_sources_must_expose_a_comparable_kernel() -> None:
         CorrelatedSourceCovariance(opaque, {("GPP", "TER"): 0.5})
 
 
-def test_unit_correlation_is_psd_but_has_no_solve() -> None:
+@pytest.mark.parametrize("rho", [1.0, -1.0])
+def test_unit_correlation_is_psd_but_has_no_solve(rho: float) -> None:
     """|rho| = 1 is a valid singular covariance: apply works, solve is refused."""
-    covariance = _covariance(1.0)
+    covariance = _covariance(rho)
     rhs = _sensitivity().rename(observation="rhs")
-    np.testing.assert_allclose(_flat(covariance.apply(rhs), "rhs").T, _dense_b(1.0) @ _flat(rhs, "rhs").T, atol=1e-13)
-    with pytest.raises(np.linalg.LinAlgError, match="singular"):
+    np.testing.assert_allclose(_flat(covariance.apply(rhs), "rhs").T, _dense_b(rho) @ _flat(rhs, "rhs").T, atol=1e-13)
+    with pytest.raises(np.linalg.LinAlgError, match=r"R is not positive definite .*\|rho\| = 1"):
         covariance.solve(rhs)
+
+
+def _ordered_rhs(order: tuple[str, ...]) -> xr.DataArray:
+    """Return an identity right-hand side over the native state in ``order``, rhs axis in the middle."""
+    size = len(order) * LATITUDE.size * LONGITUDE.size
+    eye = np.eye(size).reshape(size, len(order), LATITUDE.size, LONGITUDE.size)
+    coords = {"rhs": np.arange(size), SOURCE_DIM: list(order), "lat": LATITUDE, "lon": LONGITUDE}
+    return xr.DataArray(eye, dims=("rhs", *NATIVE_DIMS), coords=coords).transpose("lat", "rhs", SOURCE_DIM, "lon")
+
+
+def _as_matrix(result: xr.DataArray) -> np.ndarray:
+    """Return the dense matrix whose columns are the actions on identity columns."""
+    values = result.transpose("rhs", *NATIVE_DIMS).values
+    return values.reshape(values.shape[0], -1).T
+
+
+@pytest.mark.parametrize(
+    ("order", "blocked"),
+    [(("TER", "FF", "GPP"), True), (("GPP", "TER", "FF"), False)],
+)
+def test_source_order_and_unblocked_kernel_match_dense_reference(order: tuple[str, ...], blocked: bool) -> None:
+    """TER before GPP and the unblocked (Cholesky) solve path match S (R kron K) S."""
+    covariance = gpp_ter_source_covariance(
+        _components(order=order, blocked=blocked),
+        gpp_source="GPP",
+        ter_source="TER",
+        gpp_ter_correlation=RHO,
+        source_dim=SOURCE_DIM,
+    )
+    dense = _dense_b(RHO, order, blocked)
+    rhs = _ordered_rhs(order)
+    np.testing.assert_allclose(_as_matrix(covariance.apply(rhs)), dense, atol=1e-13)
+    np.testing.assert_allclose(_as_matrix(covariance.solve(rhs)) @ dense, np.eye(dense.shape[0]), atol=1e-8)
+
+
+def test_bucket_prolongation_reduction_matches_dense_reference_with_rho() -> None:
+    """With rho != 0 the solve-based bucket strategy gives the dense joint C_alpha and A."""
+    reduction = _reduce(_covariance(RHO), PreserveBucketProlongation(_bucket_prolongation()))
+    b = _dense_b(RHO)
+    u = _flat(_bucket_prolongation().transpose("state", *NATIVE_DIMS), "state").T
+    h = _flat(_sensitivity(), "observation")
+    c_alpha = np.linalg.inv(u.T @ np.linalg.solve(b, u))
+    h_alpha = h @ u
+    a = h @ b @ h.T - h_alpha @ c_alpha @ h_alpha.T
+
+    np.testing.assert_allclose(reduction.retained_covariance, c_alpha, rtol=1e-7, atol=1e-9)
+    np.testing.assert_allclose(reduction.unresolved_observation_covariance, a, rtol=1e-7, atol=1e-8)
+    gpp, ter = _state_blocks(reduction.retained_covariance.indexes["state"], "GPP", "TER")
+    assert np.abs(np.asarray(reduction.retained_covariance.values)[np.ix_(gpp, ter)]).max() > 1e-2
+
+
+def _three_source_components() -> dict[str, SeparableExponentialCovariance]:
+    """Return three sources sharing the GPP kernel with different sigmas."""
+    shared = _components()["GPP"]
+    return {
+        name: SeparableExponentialCovariance(
+            _coordinate(LATITUDE, "lat"),
+            _coordinate(LONGITUDE, "lon"),
+            sigma=sigma,
+            latitude_correlation_length=LENGTHS["GPP"][0],
+            longitude_correlation_length=LENGTHS["GPP"][1],
+            class_labels=shared.class_labels,
+        )
+        for name, sigma in (("A", 0.5), ("B", 1.1), ("C", 0.8))
+    }
+
+
+def test_three_source_group_matches_dense_reference_and_names_a_singular_r() -> None:
+    """A three-source group applies S (R kron K) S; a singular R without |rho| = 1 is named."""
+    names = ("A", "B", "C")
+    correlation = np.array([[1.0, 0.5, 0.3], [0.5, 1.0, 0.4], [0.3, 0.4, 1.0]])
+    pairs = {(names[i], names[j]): correlation[i, j] for i in range(3) for j in range(i + 1, 3)}
+    covariance = CorrelatedSourceCovariance(_three_source_components(), pairs, source_dim=SOURCE_DIM)
+    sigma = np.repeat([0.5, 1.1, 0.8], LATITUDE.size * LONGITUDE.size)
+    dense = sigma[:, None] * np.kron(correlation, _unit_kernel("GPP")) * sigma[None, :]
+    rhs = _ordered_rhs(names)
+    np.testing.assert_allclose(_as_matrix(covariance.apply(rhs)), dense, atol=1e-13)
+    np.testing.assert_allclose(_as_matrix(covariance.solve(rhs)) @ dense, np.eye(dense.shape[0]), atol=1e-8)
+
+    singular = {("A", "B"): 0.5, ("A", "C"): 0.5, ("B", "C"): -0.5}  # det R = 0, no |rho| = 1
+    covariance = CorrelatedSourceCovariance(_three_source_components(), singular, source_dim=SOURCE_DIM)
+    with pytest.raises(np.linalg.LinAlgError, match="R is not positive definite .*near-.*zero eigenvalue"):
+        covariance.solve(rhs)
+
+
+class _ConfiguredAction:
+    """Generic action exposing sigma and to_dataset, but no canonical kernel comparison."""
+
+    def __init__(self, inner: SeparableExponentialCovariance) -> None:
+        """Wrap one separable action."""
+        self.inner = inner
+        self.native_dims = inner.native_dims
+        self.sigma = inner.sigma
+        self.latitude = inner.latitude
+        self.longitude = inner.longitude
+
+    def apply(self, rhs: xr.DataArray) -> xr.DataArray:
+        """Delegate apply."""
+        return self.inner.apply(rhs)
+
+    def solve(self, rhs: xr.DataArray) -> xr.DataArray:
+        """Delegate solve."""
+        return self.inner.solve(rhs)
+
+    def to_dataset(self) -> xr.Dataset:
+        """Delegate the configuration."""
+        return self.inner.to_dataset()
+
+
+def test_generic_actions_are_compared_by_configuration_without_sigma() -> None:
+    """The to_dataset fallback accepts equal kernels with different sigma and refuses others."""
+    components = {source: _ConfiguredAction(action) for source, action in _components().items()}
+    covariance = CorrelatedSourceCovariance(components, {("GPP", "TER"): RHO}, source_dim=SOURCE_DIM)
+    rhs = _sensitivity().rename(observation="rhs")
+    np.testing.assert_allclose(_flat(covariance.apply(rhs), "rhs").T, _dense_b(RHO) @ _flat(rhs, "rhs").T, atol=1e-13)
+    with pytest.raises(ValueError, match="share one unit kernel"):
+        CorrelatedSourceCovariance(components, {("GPP", "FF"): 0.3}, source_dim=SOURCE_DIM)
+
+
+def test_uncorrelated_sources_on_different_grids_are_refused() -> None:
+    """Every source must use the same grid values, correlated or not."""
+    components = _components()
+    shifted = LONGITUDE + 0.25
+    components["FF"] = SeparableExponentialCovariance(
+        _coordinate(LATITUDE, "lat"), _coordinate(shifted, "lon"), sigma=0.4, correlation_length=0.8
+    )
+    with pytest.raises(ValueError, match="grid differs"):
+        gpp_ter_source_covariance(components, gpp_source="GPP", ter_source="TER", source_dim=SOURCE_DIM)
+
+
+def test_serialization_round_trip_keeps_correlations_and_kernels(tmp_path) -> None:
+    """to_dataset/from_dataset restore R, pair correlations and every component kernel."""
+    covariance = _covariance(RHO)
+    path = tmp_path / "correlated.nc"
+    covariance.to_dataset().to_netcdf(path)
+    with xr.open_dataset(path) as saved:
+        restored = CorrelatedSourceCovariance.from_dataset(saved.load())
+
+    assert restored.source_labels == covariance.source_labels
+    assert dict(restored.correlations) == {("GPP", "TER"): RHO}
+    xr.testing.assert_identical(restored.correlation_matrix, covariance.correlation_matrix)
+    rhs = _sensitivity().rename(observation="rhs")
+    xr.testing.assert_identical(restored.apply(rhs), covariance.apply(rhs))
+    for source in SOURCES:
+        xr.testing.assert_identical(
+            restored.source_covariances[source].to_dataset(), covariance.source_covariances[source].to_dataset()
+        )
+    zero = gpp_ter_source_covariance(_components(), gpp_source="GPP", ter_source="TER", source_dim=SOURCE_DIM)
+    assert dict(CorrelatedSourceCovariance.from_dataset(zero.to_dataset()).correlations) == {("GPP", "TER"): 0.0}

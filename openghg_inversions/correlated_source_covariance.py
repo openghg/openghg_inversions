@@ -70,6 +70,8 @@ per-source ``A`` silently drops them.
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Literal, Protocol, runtime_checkable
@@ -78,6 +80,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from openghg_inversions import native_covariance
+from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions.native_covariance import (
     InvertibleNativeCovarianceAction,
     SeparableExponentialCovariance,
@@ -90,6 +94,9 @@ __all__ = [
 ]
 
 _PSD_TOLERANCE = 1e-12
+_PD_TOLERANCE = 1e-10
+_COMPONENT_PREFIX = re.compile(r"^source_\d+__")
+_SERIALIZED_NAMES = {"correlation_first", "correlation_second", "correlation_value", "correlation_pair"}
 
 
 @runtime_checkable
@@ -159,6 +166,9 @@ class CorrelatedSourceCovariance:
         "_source_labels",
     )
 
+    schema = "openghg_inversions.correlated_source_covariance"
+    schema_version = 1
+
     def __init__(
         self,
         source_covariances: Mapping[str, InvertibleNativeCovarianceAction],
@@ -183,6 +193,9 @@ class CorrelatedSourceCovariance:
                 )
         if source_dim in reference_dims:
             raise ValueError("source_dim must be distinct from the spatial native dimensions")
+        if source_dim in _SERIALIZED_NAMES:
+            raise ValueError(f"source_dim {source_dim!r} is reserved by the serialized schema")
+        _require_common_grid(covariances)
 
         labels = tuple(covariances)
         position = {label: index for index, label in enumerate(labels)}
@@ -229,14 +242,9 @@ class CorrelatedSourceCovariance:
                     f"Correlation matrix of sources {group!r} is not positive semidefinite "
                     f"(smallest eigenvalue {smallest:.3e})"
                 )
-            # A singular R (e.g. |rho| = 1) gives a valid PSD but singular B;
-            # apply works but solve is undefined.
-            try:
-                np.linalg.cholesky(group_matrix)
-            except np.linalg.LinAlgError:
-                group_precisions[group] = None
-            else:
-                group_precisions[group] = np.linalg.inv(group_matrix)
+            # A PSD but singular R (|rho| = 1, or a near-zero eigenvalue in a
+            # larger group) gives a valid singular B: apply works, solve is undefined.
+            group_precisions[group] = np.linalg.inv(group_matrix) if smallest > _PD_TOLERANCE else None
 
         self._source_covariances = MappingProxyType(covariances)
         self._source_dim = source_dim
@@ -285,6 +293,116 @@ class CorrelatedSourceCovariance:
             attrs={"definition": "Corr(x_s, x_t) of native scaling anomalies"},
         )
 
+    def to_dataset(self) -> xr.Dataset:
+        """Serialize source order, correlations and component configurations.
+
+        Each source's own covariance is stored through its ``to_dataset()``
+        with its variables, non-native dimensions and attributes prefixed by
+        ``source_<i>__``, so components of any OGI kernel family can be saved
+        for provenance and restored by :meth:`from_dataset`.
+
+        Returns:
+            Versioned dataset with the configured correlation pairs, the
+            derived correlation matrix ``R`` and the component configurations.
+
+        Raises:
+            TypeError: If a component lacks ``to_dataset()``.
+        """
+        labels = list(self._source_labels)
+        pairs = list(self._correlations.items())
+        parts = [
+            xr.Dataset(
+                {
+                    "source_correlation": self.correlation_matrix,
+                    "correlation_first": ("correlation_pair", [pair[0] for pair, _ in pairs]),
+                    "correlation_second": ("correlation_pair", [pair[1] for pair, _ in pairs]),
+                    "correlation_value": ("correlation_pair", [rho for _, rho in pairs]),
+                }
+            )
+        ]
+        attrs: dict[str, object] = {
+            "schema": self.schema,
+            "schema_version": self.schema_version,
+            "source_dim": self._source_dim,
+            "sign_convention": "Corr(x_s, x_t) of native scaling anomalies; GPP negative uptake",
+        }
+        for index, label in enumerate(labels):
+            covariance = self._source_covariances[label]
+            to_dataset = getattr(covariance, "to_dataset", None)
+            if not callable(to_dataset):
+                raise TypeError(f"Source {label!r} covariance cannot be serialized: it has no to_dataset()")
+            component = to_dataset()
+            prefix = f"source_{index}__"
+            native = set(covariance.native_dims)
+            names = {str(name) for name in (*component.variables, *component.dims)} - native
+            component = component.rename({name: prefix + name for name in names})
+            attrs[prefix + "type"] = type(covariance).__name__
+            attrs[prefix + "attrs"] = json.dumps(_json_value(component.attrs), sort_keys=True)
+            parts.append(component.drop_attrs(deep=False))
+        dataset = xr.merge(parts, compat="override", join="exact", combine_attrs="drop_conflicts")
+        return dataset.assign_attrs(attrs)
+
+    @classmethod
+    def from_dataset(cls, dataset: xr.Dataset) -> CorrelatedSourceCovariance:
+        """Restore an action from :meth:`to_dataset` output.
+
+        Component types are resolved only among the covariance classes of
+        :mod:`openghg_inversions.native_covariance` that define
+        ``from_dataset``.
+
+        Args:
+            dataset: Versioned correlated-source covariance dataset.
+
+        Returns:
+            The reconstructed action, revalidated (shared kernels, PSD ``R``).
+
+        Raises:
+            ValueError: If the schema, a component type or the stored
+                correlation matrix is invalid.
+        """
+        if dataset.attrs.get("schema") != cls.schema or dataset.attrs.get("schema_version") != cls.schema_version:
+            raise ValueError(f"Expected covariance schema {cls.schema!r} version {cls.schema_version}")
+        source_dim = str(dataset.attrs["source_dim"])
+        labels = [str(label) for label in dataset.coords[source_dim].values]
+        covariances: dict[str, InvertibleNativeCovarianceAction] = {}
+        reserved_dims = {source_dim, f"{source_dim}_cov", "correlation_pair"}
+        for index, label in enumerate(labels):
+            prefix = f"source_{index}__"
+            component_type = getattr(native_covariance, str(dataset.attrs.get(prefix + "type")), None)
+            if not isinstance(component_type, type) or not hasattr(component_type, "from_dataset"):
+                raise ValueError(f"Unsupported serialized covariance type for source {label!r}")
+            # Keep this component's prefixed variables and the shared spatial
+            # dimension coordinates; everything else belongs to other parts.
+            keep = {
+                str(name)
+                for name in dataset.variables
+                if str(name).startswith(prefix)
+                or (name in dataset.dims and name not in reserved_dims and not _COMPONENT_PREFIX.match(str(name)))
+            }
+            component = dataset.drop_vars([name for name in dataset.variables if str(name) not in keep])
+            component = component.rename(
+                {
+                    name: name[len(prefix) :]
+                    for name in {str(item) for item in (*component.variables, *component.dims)}
+                    if name.startswith(prefix)
+                }
+            )
+            component.attrs = json.loads(str(dataset.attrs[prefix + "attrs"]))
+            covariances[label] = component_type.from_dataset(component)
+        correlations = {
+            (str(first), str(second)): float(rho)
+            for first, second, rho in zip(
+                dataset["correlation_first"].values,
+                dataset["correlation_second"].values,
+                dataset["correlation_value"].values,
+                strict=True,
+            )
+        }
+        restored = cls(covariances, correlations, source_dim=source_dim)
+        if not np.array_equal(restored.correlation_matrix.values, dataset["source_correlation"].values):
+            raise ValueError("Serialized source_correlation contradicts the correlation pairs")
+        return restored
+
     @property
     def native_dims(self) -> tuple[str, ...]:
         """Return the source dimension followed by the common spatial dimensions."""
@@ -325,8 +443,9 @@ class CorrelatedSourceCovariance:
 
         Raises:
             ValueError: If source or spatial labels are missing or invalid.
-            numpy.linalg.LinAlgError: If a correlated group has a singular
-                correlation matrix (``|rho| = 1``) or a component solve fails.
+            numpy.linalg.LinAlgError: If a correlated group's correlation
+                matrix is not positive definite (e.g. ``|rho| = 1``) or a
+                component solve fails.
         """
         return self._operate(rhs, operation="solve")
 
@@ -335,9 +454,12 @@ class CorrelatedSourceCovariance:
         if operation == "solve":
             singular = [group for group in self._groups if self._group_precisions[group] is None]
             if singular:
+                group = singular[0]
+                unit = [pair for pair, rho in self._correlations.items() if abs(rho) == 1.0 and pair[0] in group]
+                cause = f"|rho| = 1 for {unit[0]!r}" if unit else "it has a (near-)zero eigenvalue"
                 raise np.linalg.LinAlgError(
-                    f"Correlation matrix of sources {singular[0]!r} is singular (|rho| = 1); "
-                    "the covariance is positive semidefinite but has no inverse"
+                    f"R is not positive definite for sources {group!r} ({cause}); the covariance is "
+                    "positive semidefinite but has no inverse"
                 )
         expected = xr.DataArray(
             list(self._source_labels),
@@ -450,6 +572,20 @@ def _sigma(label: str, covariance: InvertibleNativeCovarianceAction) -> float:
     return value
 
 
+def _require_common_grid(covariances: Mapping[str, InvertibleNativeCovarianceAction]) -> None:
+    """Refuse source actions whose spatial coordinate values differ."""
+    reference_label, reference = next(iter(covariances.items()))
+    for label, covariance in covariances.items():
+        for axis in ("latitude", "longitude"):
+            expected, actual = getattr(reference, axis, None), getattr(covariance, axis, None)
+            if expected is None or actual is None:
+                continue
+            if not np.array_equal(np.asarray(expected.values), np.asarray(actual.values)):
+                raise ValueError(
+                    f"Source {label!r} covariance grid differs from source {reference_label!r} on {axis}"
+                )
+
+
 def _require_shared_kernel(
     first: str,
     first_covariance: InvertibleNativeCovarianceAction,
@@ -480,8 +616,10 @@ def _same_unit_kernel(
     correlation lengths and the class partition (not label values, dtype,
     order, name or attributes). Other actions fall back to their
     ``to_dataset()`` configuration with ``sigma`` removed, which can refuse
-    equal kernels whose serialization differs cosmetically but never accepts
-    different ones.
+    equal kernels whose serialization differs cosmetically. This fallback
+    assumes ``sigma`` is the only amplitude in the configuration: an action
+    that stores another amplitude-like parameter (e.g. a per-class variance)
+    must provide ``same_unit_kernel`` instead.
     """
     if first_covariance is second_covariance:
         return True
