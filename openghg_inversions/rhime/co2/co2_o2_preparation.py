@@ -14,7 +14,7 @@ error payloads and unit coordinates for the loading or model boundary.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Hashable, Mapping
 from dataclasses import dataclass, field, replace
 import json
 from numbers import Integral
@@ -397,7 +397,7 @@ def _axis(array: xr.DataArray, name: str) -> str:
     return dim
 
 
-def _stored_array(dataset: xr.Dataset, variable: str) -> xr.DataArray:
+def _stored_array(dataset: xr.Dataset, variable: Hashable) -> xr.DataArray:
     """Restore a scientific array's name without altering its borrowed payload.
 
     Args:

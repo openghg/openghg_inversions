@@ -10,6 +10,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.boundary import Choice, MultiplicativeChoice
@@ -293,6 +294,7 @@ class Co2O2ModelConfig:
         if unit != self.co2_units or unit != self.o2_units:
             raise ValueError("Configured channels.co2/o2.units do not match prepared observation_units.")
         observations = prepared.observations
+        independent: xr.DataArray | None
         if self.independent_error_sd:
             species = observations.species.values
             errors = np.empty(observations.size, dtype=np.float64)
@@ -304,7 +306,7 @@ class Co2O2ModelConfig:
             independent = prepared.independent_error_sd
             if independent is None:
                 raise ValueError("Omitted channel independent_error_sd requires errors in the prepared artifact.")
-        result = {item.name: getattr(self, item.name) for item in fields(self)
+        result: dict[str, Any] = {item.name: getattr(self, item.name) for item in fields(self)
                   if item.name not in {"co2_units", "o2_units", "independent_error_sd", "boundary", "biosphere_prior_path", "recipe"}
                   and getattr(self, item.name) is not None}
         if self.biosphere_prior_path is not None:
