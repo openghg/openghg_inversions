@@ -592,6 +592,9 @@ alignment, materialization, build, sample, result, and output stages directly.
 Alignment is pure; acquisition may access data, model materialization crosses
 the eager backend boundary, sampling executes PyMC, and output stages may write
 requested products.</p>
+<p>Public names are imported lazily on first access, so importing this package
+does not load every model family. <code class="docutils literal notranslate"><span class="pre">__init__.pyi</span></code> declares the same names for
+type checkers and IDEs.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.run">
 <span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'standard'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.run" title="Link to this definition">#</a></dt>
