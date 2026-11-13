@@ -6,6 +6,7 @@ import pytest
 import xarray as xr
 from dask import delayed
 from dask import array as da
+from scipy.linalg import cho_factor as real_cho_factor
 
 from openghg_inversions.basis.covariance_products import (
     NativeCovarianceProducts,
@@ -86,6 +87,20 @@ def _dense_operators(
     return u, restriction, c_alpha
 
 
+def _prolongation(
+    covariance: SeparableExponentialCovariance,
+    basis_operator: BucketBasisOperator,
+    native_sensitivity: xr.DataArray,
+) -> xr.DataArray:
+    """Return the eager bucket prolongation on the sensitivity's native grid."""
+    return to_dense(
+        basis_operator._native_prolongation(
+            native_sensitivity,
+            native_dims=covariance.native_dims,
+        )
+    ).compute()
+
+
 def _project(
     covariance: SeparableExponentialCovariance,
     basis_operator: BucketBasisOperator,
@@ -93,15 +108,12 @@ def _project(
     **options,
 ) -> NativeCovarianceProducts:
     """Project the shared problem with its canonical observation dimension."""
-    basis_prolongation = to_dense(
-        basis_operator._native_prolongation(
-            native_sensitivity,
-            native_dims=covariance.native_dims,
-        )
-    ).compute()
+    options.setdefault(
+        "strategy",
+        PreserveBucketProlongation(_prolongation(covariance, basis_operator, native_sensitivity)),
+    )
     return project_native_covariance(
         covariance=covariance,
-        basis_prolongation=basis_prolongation,
         state_dim=basis_operator.meta.state_dim,
         native_sensitivity=native_sensitivity,
         observation_dim="observation",
@@ -114,9 +126,8 @@ def test_preserve_bucket_strategy_derives_compatible_restriction() -> None:
     covariance, basis_operator, _, dense_b = _problem()
     u, expected_pi, _ = _dense_operators(basis_operator, dense_b)
 
-    projection = PreserveBucketProlongation().projection(
+    projection = PreserveBucketProlongation(to_dense(basis_operator.basis_matrix).compute()).projection(
         covariance,
-        to_dense(basis_operator.basis_matrix).compute(),
         native_dims=covariance.native_dims,
         state_dim="state",
     )
@@ -323,7 +334,7 @@ def test_state_column_name_avoids_observation_namespace_collisions(collision: st
 
     products = project_native_covariance(
         covariance=covariance,
-        basis_prolongation=prolongation,
+        strategy=PreserveBucketProlongation(prolongation),
         state_dim="state",
         native_sensitivity=h,
         observation_dim=observation_dim,
@@ -419,7 +430,7 @@ def test_lazy_sensitivity_is_materialized_at_explicit_eager_boundary() -> None:
     expected = _project(covariance, basis_operator, h)
     actual = project_native_covariance(
         covariance=covariance,
-        basis_prolongation=basis_prolongation,
+        strategy=PreserveBucketProlongation(basis_prolongation),
         state_dim="state",
         native_sensitivity=lazy_h,
         observation_dim="observation",
@@ -431,15 +442,15 @@ def test_lazy_sensitivity_is_materialized_at_explicit_eager_boundary() -> None:
 def test_lazy_custom_restriction_is_materialized_in_explicit_rhs_blocks() -> None:
     """Custom Dask Pi follows the explicit retained-state RHS block path."""
     covariance, basis_operator, h, _ = _problem()
+    prolongation = _prolongation(covariance, basis_operator, h)
 
     class LazyRestrictionStrategy:
         """Return a valid numerical projection with a deliberately lazy restriction."""
 
-        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
+        def projection(self, covariance, *, native_dims, state_dim):
             """Chunk the restriction to exercise the explicit eager boundary."""
-            valid = PreserveBucketProlongation().projection(
+            valid = PreserveBucketProlongation(prolongation).projection(
                 covariance,
-                basis_prolongation,
                 native_dims=native_dims,
                 state_dim=state_dim,
             )
@@ -467,16 +478,16 @@ def test_lazy_custom_restriction_is_materialized_in_explicit_rhs_blocks() -> Non
 def test_single_chunk_lazy_restriction_is_materialized_once() -> None:
     """A full-state Dask Pi producer executes once despite state RHS blocking."""
     covariance, basis_operator, h, _ = _problem()
+    prolongation = _prolongation(covariance, basis_operator, h)
     executions = 0
 
     class SingleChunkRestrictionStrategy:
         """Wrap a valid restriction in one delayed full-state chunk."""
 
-        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
+        def projection(self, covariance, *, native_dims, state_dim):
             """Return a delayed Pi whose producer records each execution."""
-            valid = PreserveBucketProlongation().projection(
+            valid = PreserveBucketProlongation(prolongation).projection(
                 covariance,
-                basis_prolongation,
                 native_dims=native_dims,
                 state_dim=state_dim,
             )
@@ -582,7 +593,7 @@ def test_retained_state_multiindex_survives_the_eager_boundary() -> None:
 
     products = project_native_covariance(
         covariance=covariance,
-        basis_prolongation=prolongation,
+        strategy=PreserveBucketProlongation(prolongation),
         state_dim="state",
         native_sensitivity=h,
         observation_dim="observation",
@@ -618,15 +629,15 @@ def test_product_kernel_avoids_throwaway_covariance_application(
 def test_projection_strategy_protocol_accepts_structural_implementations() -> None:
     """A compatible strategy is accepted without inheriting from the public protocol."""
     covariance, basis_operator, h, _ = _problem()
+    prolongation = _prolongation(covariance, basis_operator, h)
 
     class DelegatingStrategy:
         """Delegate projection construction while exposing a distinct strategy name."""
 
-        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
+        def projection(self, covariance, *, native_dims, state_dim):
             """Return a coherent projection using the established bucket strategy."""
-            projection = PreserveBucketProlongation().projection(
+            projection = PreserveBucketProlongation(prolongation).projection(
                 covariance,
-                basis_prolongation,
                 native_dims=native_dims,
                 state_dim=state_dim,
             )
@@ -648,15 +659,15 @@ def test_custom_projection_requires_exact_native_coordinates(
 ) -> None:
     """Custom Pi native labels must match before product alignment or contraction."""
     covariance, basis_operator, h, _ = _problem()
+    prolongation = _prolongation(covariance, basis_operator, h)
 
     class RelabelledStrategy:
         """Relabel Pi to exercise strict native-coordinate checks."""
 
-        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
+        def projection(self, covariance, *, native_dims, state_dim):
             """Return numeric Pi with deliberately invalid latitude labels."""
-            valid = PreserveBucketProlongation().projection(
+            valid = PreserveBucketProlongation(prolongation).projection(
                 covariance,
-                basis_prolongation,
                 native_dims=native_dims,
                 state_dim=state_dim,
             )
@@ -677,14 +688,15 @@ def test_custom_projection_requires_exact_native_coordinates(
 def test_projection_strategy_must_return_full_rank_restriction() -> None:
     """A zero authoritative Pi is rejected because derived C_alpha is singular."""
     covariance, basis_operator, h, _ = _problem()
+    prolongation = _prolongation(covariance, basis_operator, h)
 
     class SingularStrategy:
         """Return a zero restriction with the expected dimensions."""
 
-        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
+        def projection(self, covariance, *, native_dims, state_dim):
             """Return a deliberately singular retained projection."""
             return RetainedProjection(
-                xr.zeros_like(basis_prolongation.transpose(state_dim, *native_dims)),
+                xr.zeros_like(prolongation.transpose(state_dim, *native_dims)),
                 "singular",
             )
 
@@ -695,15 +707,15 @@ def test_projection_strategy_must_return_full_rank_restriction() -> None:
 def test_nearly_redundant_projection_reports_unstable_retained_solve() -> None:
     """A cheap retained-space condition estimate diagnoses near-duplicate states."""
     covariance, basis_operator, h, _ = _problem()
+    prolongation = _prolongation(covariance, basis_operator, h)
 
     class NearlyRedundantStrategy:
         """Make two retained functionals numerically indistinguishable."""
 
-        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
+        def projection(self, covariance, *, native_dims, state_dim):
             """Return a full-rank but ill-conditioned restriction."""
-            valid = PreserveBucketProlongation().projection(
+            valid = PreserveBucketProlongation(prolongation).projection(
                 covariance,
-                basis_prolongation,
                 native_dims=native_dims,
                 state_dim=state_dim,
             )
@@ -722,15 +734,15 @@ def test_nearly_redundant_projection_reports_unstable_retained_solve() -> None:
 def test_projection_strategy_restriction_must_be_real() -> None:
     """A dynamic strategy cannot silently discard an imaginary component."""
     covariance, basis_operator, h, _ = _problem()
+    prolongation = _prolongation(covariance, basis_operator, h)
 
     class ComplexStrategy:
         """Return a complex restriction at the dynamic strategy seam."""
 
-        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
+        def projection(self, covariance, *, native_dims, state_dim):
             """Add an imaginary component to a valid restriction."""
-            valid = PreserveBucketProlongation().projection(
+            valid = PreserveBucketProlongation(prolongation).projection(
                 covariance,
-                basis_prolongation,
                 native_dims=native_dims,
                 state_dim=state_dim,
             )
@@ -740,8 +752,15 @@ def test_projection_strategy_restriction_must_be_real() -> None:
         _project(covariance, basis_operator, h, strategy=ComplexStrategy())
 
 
-def test_redundant_bucket_states_are_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Linearly dependent retained coordinates fail instead of being pseudoinverted."""
+@pytest.mark.parametrize("cholesky", ["platform", "accepts-singular"])
+def test_redundant_bucket_states_are_rejected(monkeypatch: pytest.MonkeyPatch, cholesky: str) -> None:
+    """Linearly dependent retained coordinates fail instead of being pseudoinverted.
+
+    Whether Cholesky accepts the exactly singular Gram matrix depends on the
+    LAPACK build: OpenBLAS usually rejects it, while Apple Accelerate often
+    factors it with a tiny positive last pivot. The second case mimics
+    Accelerate on every platform, so the condition check must reject it.
+    """
     covariance, basis_operator, _, _ = _problem()
     prolongation = to_dense(basis_operator.basis_matrix).compute()
     redundant = xr.concat(
@@ -751,19 +770,26 @@ def test_redundant_bucket_states_are_rejected(monkeypatch: pytest.MonkeyPatch) -
         ],
         dim=xr.IndexVariable("state", ["west", "west-copy"]),
     ).transpose("lat", "lon", "state")
+    accepted = []
 
-    def unexpected_cholesky(*args, **kwargs):
-        """Ensure rejection does not depend on the Cholesky implementation."""
-        pytest.fail("A redundant Gram matrix must be rejected before Cholesky")
+    if cholesky == "accepts-singular":
 
-    monkeypatch.setattr("openghg_inversions.basis.covariance_products.cho_factor", unexpected_cholesky)
+        def accepting_cholesky(matrix, *args, **kwargs):
+            """Factor a singular matrix with a tiny positive last pivot, as Accelerate can."""
+            shift = 4 * np.finfo(np.float64).eps * np.abs(np.diag(matrix)).max()
+            factor = real_cho_factor(matrix + shift * np.eye(matrix.shape[0]), *args, **kwargs)
+            accepted.append(True)
+            return factor
+
+        monkeypatch.setattr("openghg_inversions.basis.covariance_products.cho_factor", accepting_cholesky)
+
     with pytest.raises(ValueError, match="positive definite|redundant|rank"):
-        PreserveBucketProlongation().projection(
+        PreserveBucketProlongation(redundant).projection(
             covariance,
-            redundant,
             native_dims=covariance.native_dims,
             state_dim="state",
         )
+    assert accepted == ([True] if cholesky == "accepts-singular" else [])
 
 
 def test_products_require_exact_native_sensitivity_alignment() -> None:

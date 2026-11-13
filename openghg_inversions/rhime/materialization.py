@@ -9,7 +9,7 @@ from dask.array import Array as DaskArray
 import xarray as xr
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
-from openghg_inversions.array_ops import to_dense
+from openghg_inversions.array_ops import to_dense, to_dense_tree
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.models.priors import PriorArgs
 
@@ -85,9 +85,7 @@ def _materialize_pymc_inputs_and_priors(
             if isinstance(coordinate.data, DaskArray)
         }
     )
-    priors = {name: {key: to_dense(value) if isinstance(value, xr.DataArray) else value
-                     for key, value in params.items()}
-              for name, params in (prior_parameters or {}).items()}
+    priors = to_dense_tree(dict(prior_parameters or {}))
     *computed, computed_priors = dask_compute(
         *(to_dense(inv_inputs[name]).data for name in names),
         *(inv_inputs.coords[name].data for name in coordinate_names),

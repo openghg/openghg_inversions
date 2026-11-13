@@ -155,10 +155,13 @@ prepared activity policy. Persist traces with
 groups and observation/state MultiIndexes. Product replay uses saved scientific
 meaning without repeating construction or sampling.
 
-Set ``use_bc=True`` to select ``H_bc`` from the prepared artifact and add its
-boundary contribution. ``bc_prior`` overrides the default labelled boundary
-scaling prior, while ``bc_state_activity`` can mark boundary states as active
-or fixed. Supplying ``offset_prior`` adds an offset. By default the offset has
+Pass a boundary choice such as ``boundary=MultiplicativeChoice(prior)`` (from
+:mod:`openghg_inversions.models.boundary`) to add the boundary contribution;
+the runner binds it to the prepared ``H_bc`` or centered operands.
+``[model.boundary]`` without a ``type`` is multiplicative and uses the default
+scaling prior unless one is configured; see
+:ref:`co2-boundary-corrections`.
+Supplying ``offset_prior`` adds an offset. By default the offset has
 one coefficient per site; ``offset_args`` can instead select a global offset
 or site-by-period terms using ``per_site``, ``offset_freq``, and ``drop_first``.
 The model derives period indicators from the observation time coordinate.
@@ -167,6 +170,21 @@ Boundary and offset contributions remain separate from
 likelihood, and sampled outputs.
 The location and scale parameters in ``offset_prior`` use the observations'
 concentration units.
+
+Select a boundary correction
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The CO2 recipes support multiplicative scaling of the boundary sensitivity
+(``MultiplicativeChoice``) and centred additive concentration corrections
+(``AdditiveChoice``): a constant correction to the boundary product over the
+inversion window plus weighted region--period anomalies. Both are selected
+with ``[model.boundary]`` (``[channels.<name>.boundary]`` for linked
+recipes) or passed as ``boundary=`` in Python. Additive corrections require
+native centered operands and, for weighted anomalies, averaging weights stored
+at preparation. See :doc:`co2_boundary_corrections` for the configuration
+task, :doc:`centered_boundary_conditions` for the operators and prior, and
+:doc:`boundary_correction_structures` for the alternative correction
+structures.
 
 Configure prepared-input execution from TOML
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -376,12 +394,26 @@ HalfStudentT, Gamma, Exponential, Uniform with a non-negative lower bound, or
 LogNormal.
 
 Optional model components belong in their own tables. ``[model.boundary]``
-accepts boolean ``enabled`` (default true), ``prior``, ``frequency``, and
-``anchor_time``. A disabled boundary cannot specify a prior or period choices.
+accepts boolean ``enabled`` (default true), ``type``, ``frequency`` and
+``anchor_time``. ``type`` selects the boundary family and each family's own
+options; options of another family are rejected rather than used to infer it:
+
+``"multiplicative"`` (default)
+    Scales absolute or centered boundary sensitivity, with an optional
+    ``prior`` for the scaling states.
+``"additive"``
+    Centred additive corrections, requiring centered preparation, with both
+    ``mean_shift_prior`` and a finite, nonnegative ``anomaly_scale``.
+
+A disabled boundary cannot specify a type, prior, anomaly scale or period
+choices.
 For raw reusable inputs, omitting ``frequency`` selects one period;
 ``"monthly"`` selects calendar months, and a positive fixed duration such as
 ``"2D"`` selects fixed-duration periods. ``anchor_time`` is accepted only with
-a fixed duration, never with monthly or omitted frequency. Linked CO2/O2
+a fixed duration, never with monthly or omitted frequency; without it,
+fixed-duration periods start at the fit's earliest selected observation. (The
+RHIME parameter adapter instead defaults ``bc_freq_anchor`` to the configured
+start date.) Linked CO2/O2
 channels share one frequency and anchor choice. See the
 :ref:`raw versus expanded boundary rules <surface-centered-boundary-contract>`
 for preparation reuse and period overrides.
@@ -503,10 +535,10 @@ CO2 recipe, nested beneath each channel. For example::
 Supply boundary sensitivities to ``prepare_co2_o2_inputs`` as
 ``boundary_sensitivity={"co2": H_bc_co2, "o2": H_bc_o2}``. Each array uses its
 channel's native observation axis followed by one labelled boundary-state
-axis. The runner includes supplied boundaries by default; ``use_bc`` can
-select channels explicitly. Direct calls pass ``bc_prior``,
-``bc_state_activity``, ``offset_prior`` and ``offset_args`` as mappings keyed
-by ``"co2"`` and ``"o2"``. For example,
+axis. The configured runner includes every prepared boundary by default with
+the default scaling prior; ``[channels.<name>.boundary]`` overrides or disables
+a channel. Direct calls pass ``boundary`` (choices), ``offset_prior`` and
+``offset_args`` as mappings keyed by ``"co2"`` and ``"o2"``. For example,
 ``offset_prior={"o2": {"pdf": "normal", "mu": 0.0, "sigma": 1.0}}`` and
 ``offset_args={"o2": {"per_site": False}}`` reproduce the offset above.
 Missing sensitivities, unconsumed options, unknown channels, and mixed units
@@ -596,6 +628,7 @@ Pass ``aggregation_error_rank=None`` to keep the reduction's exact dense
 unresolved covariance::
 
    from openghg_inversions.inversion_data import PreparedInputs
+   from openghg_inversions.models.boundary import MultiplicativeChoice
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
    from openghg_inversions.rhime.co2.co2_runner import (
        annotate_co2_trace, materialize_co2_inputs, build_co2_from_materialized,
@@ -611,18 +644,12 @@ unresolved covariance::
    prepared.save("co2-coherent-dense.zarr")
 
    model = dict(
-       use_bc=True,
-       bc_prior={
-           "pdf": "truncatednormal",
-           "mu": 1.0,
-           "sigma": 0.05,
-           "lower": 0.0,
-       },
        offset_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.1},
        offset_args={"per_site": False},
    )
-   inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **model)
-   built = build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, **model)
+   choice = MultiplicativeChoice({"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.05, "lower": 0.0})
+   inputs, priors, boundary = materialize_co2_inputs(prepared_inputs=prepared, boundary=choice, **model)
+   built = build_co2_from_materialized(inputs, boundary=boundary, prepared_inputs=prepared, priors=priors, **model)
    idata = sample_rhime_model(built, RhimeSampler())
    annotate_co2_trace(idata, built, concentration_units=prepared.inv_inputs["mf"].attrs["units"])
 
@@ -693,8 +720,8 @@ Select the package likelihood through the scientific operations::
            "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75},
        },
    )
-   inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **model)
-   built = build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, **model)
+   inputs, priors, boundary = materialize_co2_inputs(prepared_inputs=prepared, **model)
+   built = build_co2_from_materialized(inputs, boundary=boundary, prepared_inputs=prepared, priors=priors, **model)
    trace = sample_rhime_model(built, RhimeSampler())
    annotate_co2_trace(
        trace, built, concentration_units=prepared.inv_inputs["mf"].attrs["units"],
@@ -1086,10 +1113,19 @@ hours; numeric time coordinates are interpreted directly as hours. If
 including entries for dropped sites.
 
 Boundary and offset selection uses ``[model.boundary]`` and
-``[model.offset]`` as for other CO2 likelihoods. The numerical builder also
-accepts ``use_bc``, ``bc_prior``, ``bc_state_activity``, ``offset_prior`` and
-``offset_args`` for direct scientific composition.
-Its location and scale parameters use the observations' concentration units.
+``[model.offset]`` as for other CO2 likelihoods. In Python, the runner
+:func:`~openghg_inversions.rhime.co2.co2_cached_sigma_runner.build_rhime_co2_cached_sigma`
+accepts a boundary choice as ``boundary``, ``offset_prior`` and the
+``offset_args`` convenience mapping. It binds the choice, materializes it
+with the selected inputs, and constructs the same graph as the numerical
+builder
+:func:`~openghg_inversions.rhime.co2.co2_cached_sigma_model.build_co2_cached_sigma_model`.
+Direct builder callers pass the bound boundary component as ``boundary`` (see
+:ref:`co2-boundary-binding`), ``offset_prior``, and separate ``offset_freq``,
+``offset_drop_first`` and ``offset_per_site`` values; the builder accepts
+neither a choice nor ``offset_args``, and materializes its arguments together.
+The offset prior's location and scale parameters use the observations'
+concentration units.
 These coefficients join the flux coefficients only inside the private cached
 likelihood calculation; their public scientific variables and contributions
 remain separate.
@@ -1255,6 +1291,16 @@ OU groups preserve their original row positions. Different channels at the
 same site have separate amplitudes and no cross-channel OU contribution.
 Both channels must already use the same concentration units. Heterogeneous
 covariance units are not supported by this option.
+
+Numerically centered boundary operands support the ordinary fixed-OU likelihood
+with either multiplicative scales or additive corrections. The linked model may
+combine centered multiplicative CO2 boundaries with centered additive O2
+corrections. Subtracting the same fixed reference contribution :math:`s` from
+the observations and model mean leaves the residual unchanged:
+:math:`y-\mu=(y-s)-(\mu-s)`. The covariance and the multiplicative boundary
+prior are unchanged. Public boundary and total concentration outputs remain
+absolute; trace annotation restores observed and predictive concentrations once.
+This composition is also supported by the cached fixed-OU route.
 
 Tau is fixed in hours. A scalar tau or fixed amplitude applies independently
 to every observed group. Mappings must cover labels such as ``co2:MHD`` and

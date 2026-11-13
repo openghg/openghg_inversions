@@ -21,6 +21,13 @@ API requirements. Plans preserve dated proposals, research, and delivery
 history; they do not define current production architecture or feature support.
 See `docs/plans/README.md` for dispositions and owning issues.
 
+## Compatibility policy
+
+Internal Python APIs, staged manifests and prepared/posterior artifacts have no
+compatibility guarantee; only CLI behaviour and CLI outputs are protected. Do
+not add readers, aliases or shims for earlier internal formats. Old artifacts
+must fail clearly with instructions to prepare again.
+
 ## Specification changes
 
 Only change specifications under `openspec/` after conferring with a developer
