@@ -67,7 +67,7 @@ def shared_model_payload(prepared: xr.Dataset, *, linked_identity: bool = False)
     }
     if linked_identity:
         names.update({"original_prior_mean", "original_prior_covariance", "sampled_outer", "original_outer_mean"})
-        names.update(name for name in prepared if name.startswith("calibration_"))
+        names.update(name for name in prepared if isinstance(name, str) and name.startswith("calibration_"))
     payload = prepared[[name for name in prepared if name in names]]
     unused_coordinates = [
         name for name, coord in payload.coords.items()

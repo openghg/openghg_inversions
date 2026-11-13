@@ -403,12 +403,13 @@ def test_explicit_additive_design_accepts_small_labelled_basis_and_equivalent_un
         bind(obs, h.assign_attrs(units=None), prior, xr.full_like(obs, .2), **kwargs)
 
 
-def test_model_boundary_leaves_unused_frozen_diagnostics_lazy():
+@pytest.mark.parametrize("linked_identity", [False, True])
+def test_model_boundary_leaves_unused_frozen_diagnostics_lazy(linked_identity):
     from dask import delayed
     from openghg_inversions.rhime.co2.shared_baseline_model import shared_model_payload
 
     obs, _, _, baseline = case()
-    prepared = baseline.data
+    prepared = baseline.data.assign()
 
     @delayed
     def unused():
@@ -417,7 +418,9 @@ def test_model_boundary_leaves_unused_frozen_diagnostics_lazy():
     prepared["complete_prior_concentration"] = xr.DataArray(
         da.from_delayed(unused(), shape=(4,), dtype=float), dims="nmeasure", coords={"nmeasure": obs.nmeasure},
     )
-    selected = shared_model_payload(prepared).compute()
+    prepared[42] = prepared.complete_prior_concentration
+    selected = shared_model_payload(prepared, linked_identity=linked_identity).compute()
+    assert 42 not in selected
     assert "complete_prior_concentration" not in selected
     assert isinstance(prepared.complete_prior_concentration.data, da.Array)
 
