@@ -100,6 +100,9 @@ def test_shared_inference_preserves_coherent_equations_and_products(
             "kind": "fixed_ou", "tau_hours": 24.0,
             "site_amplitude_prior": {"pdf": "gamma", "alpha": 2.0, "beta": 3.0},
         }
+        # This is the CO2 family's one real multi-chain sampling check.
+        params["sampling"]["chains"] = 2
+    chains = params["sampling"]["chains"]
     choices = {name: params[name] for name in ("model", "likelihood")}
     model = Co2ModelConfig.from_params(choices).model_arguments()
     sampling = _resolve_co2_sampling(params, model=model)
@@ -133,6 +136,8 @@ def test_shared_inference_preserves_coherent_equations_and_products(
     assert {"basic", "concentration_components", "native_flux", "country_flux",
             "paris_concentration", "paris_flux"} == set(result.outputs)
     assert actual["draws"] == 12
+    assert actual["chains"] == chains
+    assert trace.posterior.sizes["chain"] == chains
     if likelihood_kind == "fixed_ou":
         assert actual["algorithm"] == "cached_ou_sigma_then_state_nuts"
         assert actual["nuts_sampler"] == "pymc"
