@@ -175,8 +175,7 @@ def test_configured_co2_inference_uses_same_bc_calibration_and_nonzero_target(tm
     if cached:
         expected = build_co2_model(
             inv.H,
-            retained_prior=prior,
-            biosphere_prior=bio,
+            retained_prior=bio,
             fixed_prior_contribution=inv.fixed_prior_contribution,
             observations=inv.mf,
             observation_error=inv.mf_error,
@@ -256,7 +255,7 @@ def test_linked_config_independent_species_corrections_and_one_calibration(tmp_p
     else:
         configured = build_rhime_co2_o2(prepared_inputs=prepared, **choices).model
     expected = build_co2_o2_model(
-        **kwargs, biosphere_prior=bio, boundary=expected_boundary, **(ou if cached else {})
+        **{**kwargs, "retained_prior": bio}, boundary=expected_boundary, **(ou if cached else {})
     )
     _parity(configured, expected)
     assert len([rv for rv in configured.free_RVs if rv.name.startswith("flux_scaling")]) == 1
