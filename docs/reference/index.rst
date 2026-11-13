@@ -294,6 +294,8 @@ mathematical contracts and eager-computation boundaries.
    openghg_inversions.native_covariance.InvertibleNativeCovarianceAction
    openghg_inversions.native_covariance.SeparableExponentialCovariance
    openghg_inversions.source_covariance.IndependentSourceCovariance
+   openghg_inversions.correlated_source_covariance.CorrelatedSourceCovariance
+   openghg_inversions.correlated_source_covariance.gpp_ter_source_covariance
    openghg_inversions.basis.NativeCovarianceProducts
    openghg_inversions.basis.RetainedProjection
    openghg_inversions.basis.RetainedProjectionStrategy
