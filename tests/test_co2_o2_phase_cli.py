@@ -29,6 +29,7 @@ def _cli(*arguments):
     return result
 
 
+@pytest.mark.fresh_process
 def test_installed_unequal_axis_sequence_retains_joint_science(tmp_path, monkeypatch):
     """Smoke the installed linked prepare, then chain every stage handler in process.
 

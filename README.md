@@ -318,16 +318,20 @@ To fix issues that Ruff can safely update, run:
 ruff check --fix openghg_inversions
 ```
 
-For normal broad checks, explicitly select PyTensor's Python linker, as CI does:
+Pytest uses PyTensor's Python linker by default, as CI does, so a broad check
+needs no backend flag:
 
 ```bash
-PYTENSOR_FLAGS=linker=py DASK_NUM_WORKERS=2 pytest tests/ --ignore=tests/typing
+DASK_NUM_WORKERS=2 pytest tests/ --ignore=tests/typing
 ```
 
-Run this in the repository with your virtual environment activated. Backend
-examples here assume `PYTENSOR_FLAGS` is unset. If it already has entries,
-retain them and add or replace only `linker`; do not define that key twice.
-Local pytest, tox and production defaults are unchanged.
+Run this in the repository with your virtual environment activated. The test
+suite adds `linker=py` to `PYTENSOR_FLAGS` only when no `linker` entry is
+present, so an explicit choice such as `linker=numba` or `linker=auto` is kept.
+If `PYTENSOR_FLAGS` already has entries, retain them and add or replace only
+`linker`; do not define that key twice. Production defaults are unchanged.
+See `docs/development/testing.rst` for focused test groups and guidance on
+keeping the suite fast.
 
 ### Using `tox` to check code
 
@@ -346,7 +350,7 @@ or, within a virtual environment, install `tox` and `tox-uv`.
 The default checks the locked OpenGHG release, borrowed-reference typing, and Ruff:
 
 ```bash
-PYTENSOR_FLAGS=linker=py tox -p --parallel-no-spinner
+tox -p --parallel-no-spinner
 ```
 
 This is the required check before pushing a draft pull request. GitHub Actions
@@ -383,8 +387,8 @@ PYTENSOR_FLAGS=linker=numba DASK_NUM_WORKERS=2 uv run --group test pytest tests/
   -m 'compiled_backend and not slow and not create_frozen' --ignore=tests/typing --durations=10
 ```
 
-For a focused Python-linker check, start a new process with
-`PYTENSOR_FLAGS=linker=py DASK_NUM_WORKERS=2 uv run pytest <test-path>`.
+For a focused Python-linker check, run
+`DASK_NUM_WORKERS=2 uv run pytest <test-path>`.
 The marked suite checks our integration with PyTensor's Numba lowering, including
 intentional Python fallbacks for custom Ops and the cached amplitude sampler's
 private CVM graph. A whole-suite Numba run is an optional stress diagnostic:
@@ -400,7 +404,7 @@ On a Slurm cluster, submit tox from the repository root instead of creating its
 environments on a shared worktree filesystem:
 
 ```bash
-PYTENSOR_FLAGS=linker=py sbatch scripts/slurm_tox.sh -e py312-openghgCur,py313-openghgCur
+sbatch scripts/slurm_tox.sh -e py312-openghgCur,py313-openghgCur
 PYTENSOR_FLAGS=linker=numba sbatch scripts/slurm_tox.sh -e py313-openghgCur -- \
   tests/ -m 'compiled_backend and not slow and not create_frozen'
 sbatch scripts/slurm_tox.sh -e type
@@ -461,9 +465,8 @@ uv-managed Python installations, which include those headers. If PyTensor's
 compiler was explicitly disabled with `cxx=`, the compilation check is skipped.
 
 On a cluster compute node, a writable node-local PyTensor compilation cache
-also avoids shared-filesystem contention. For normal broad checks, first set
-`linker=py` in the shell's exported `PYTENSOR_FLAGS`, preserving other entries.
-Then add the cache path without discarding those comma-separated entries:
+also avoids shared-filesystem contention. Add the cache path without
+discarding existing comma-separated `PYTENSOR_FLAGS` entries:
 
 ```bash
 PYTENSOR_FLAGS="${PYTENSOR_FLAGS:+${PYTENSOR_FLAGS},}base_compiledir=${TMPDIR:-/tmp}/pytensor-${USER}" \
@@ -477,13 +480,13 @@ For final review or release-sensitive dependency changes, also test against
 OpenGHG devel:
 
 ```bash
-PYTENSOR_FLAGS=linker=py tox -p --parallel-no-spinner -e py312-openghgCur,py312-openghgDev,borrowed-types,lint
+tox -p --parallel-no-spinner -e py312-openghgCur,py312-openghgDev,borrowed-types,lint
 ```
 
 To specify individual jobs, you can use, e.g.:
 
 ```bash
-PYTENSOR_FLAGS=linker=py tox -e py312-openghgDev
+tox -e py312-openghgDev
 ```
 
 to run the tests against the devel branch.
@@ -493,7 +496,7 @@ Use `tox -l` to list all options.
 To pass arguments to pytest, Ruff, mypy, etc, you can use, e.g.
 
 ```bash
-PYTENSOR_FLAGS=linker=py tox -e py312-openghgCur -- "tests/test_hbmcmc_boundary.py"
+tox -e py312-openghgCur -- "tests/test_hbmcmc_boundary.py"
 ```
 
 which will pass the test path as a positional argument to the commands invoked by tox.
