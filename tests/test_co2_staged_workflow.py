@@ -1,4 +1,9 @@
-"""CO2 checkpoint/output adapters and bounded installed acceptance."""
+"""CO2 stage commands, checkpoint/output adapters and installed entry-point smoke tests.
+
+Stage and full-run commands use constructed draws in place of MCMC. Real CO2
+sampling, including two chains, belongs to
+``test_co2_handoff_parity.py::test_shared_inference_preserves_coherent_equations_and_products``.
+"""
 
 from __future__ import annotations
 
@@ -27,6 +32,7 @@ from openghg_inversions.rhime.co2.co2_affine_output import (
 from openghg_inversions.rhime.co2.co2_outputs import reconstruct_co2_concentrations
 from openghg_inversions.serialization import load_trace
 from test_co2_preparation import _canonical_inputs, _reduction
+from test_co2_staged_outputs import components_trace
 
 
 def _handoff(directory: Path) -> tuple[Path, Co2PreparedInputs]:
@@ -152,45 +158,43 @@ def _in_process_cli(*arguments: str | Path) -> None:
     print(f"In-process CLI {arguments[0]}: {perf_counter() - started:.2f}s")
 
 
+def _constructed_inference(monkeypatch: pytest.MonkeyPatch, module) -> list:
+    """Replace MCMC in one shared CO2 adapter with constructed draws of the resolved size.
+
+    The real sampler and its two-chain behaviour are covered once by
+    ``test_co2_handoff_parity.py::test_shared_inference_preserves_coherent_equations_and_products``.
+    """
+    samplers = []
+
+    def sample(prepared, model, sampler, **kwargs):
+        """Record the resolved sampler and return draws of its size."""
+        samplers.append(sampler)
+        trace = components_trace(
+            prepared, chains=sampler.chains, prior_draws=int(sampler.sample_prior_predictive),
+            posterior_draws=sampler.draws,
+        )
+        return trace, {**sampler.describe(), "algorithm": "nuts"}
+
+    monkeypatch.setattr(module, "sample_co2_inference", sample)
+    return samplers
+
+
 @pytest.mark.fresh_process
-def test_installed_co2_stages_preserve_scientific_and_file_contracts(
+def test_installed_co2_prepare_smoke_references_inputs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Keep installed cached inference, scientific handoff and two-chain diagnosis."""
+    """The installed console script prepares by reference and records provenance."""
     monkeypatch.delenv("RUN_ROOT", raising=False)
     monkeypatch.chdir(tmp_path)
-    source, prepared = _handoff(tmp_path)
+    source, _ = _handoff(tmp_path)
     config = _configuration(tmp_path, "fixed_ou")
-    common = ["--model", "co2", "--config", str(config)]
     preparation = tmp_path / "prepare" / "prepare-manifest.json"
-    sampling = tmp_path / "sample" / "sample-manifest.json"
-    _cli("prepare", *common, "--output-dir", tmp_path / "prepare")
+    _cli("prepare", "--model", "co2", "--config", config, "--output-dir", tmp_path / "prepare")
     prepare_manifest = json.loads(preparation.read_text())
     assert (preparation.parent / prepare_manifest["prepared_inputs"]).resolve() == source
     assert (preparation.parent / prepare_manifest["affine_reconstruction"]).resolve() == tmp_path / "affine.nc"
     assert not (tmp_path / "prepare" / "prepared-inputs.nc").exists()
     assert not (tmp_path / "prepare" / "affine-flux-map.nc").exists()
-    handoff = ["--preparation-manifest", str(preparation)]
-    _cli(
-        "prior-predictive", *common, *handoff, "--draws", "8", "--strict", "--output-dir", tmp_path / "prior"
-    )
-    prior = json.loads((tmp_path / "prior" / "prior-predictive-readiness.json").read_text())
-    assert prior["status"] == "pass"
-    assert prior["measured_values"]["draws"] == 8
-    assert (tmp_path / "prior" / "prior-predictive.nc").is_file()
-    _cli("sample", *common, *handoff, "--output-dir", tmp_path / "sample")
-    trace = load_trace(tmp_path / "sample" / "posterior.nc")
-    assert trace.posterior.sizes["chain"] == 2
-    assert trace.posterior.sizes["draw"] == 12
-    assert trace.prior.sizes["draw"] == 8
-    roles = json.loads(trace.attrs["rhime_variable_roles"])
-    np.testing.assert_allclose(trace.posterior[roles["flux_scale"]].sel(region=1), 0.9)
-    assert "active_flux_scale_posterior" in reconstruct_co2_concentrations(trace, prepared)
-    saved_prior = trace.prior_predictive[roles["concentration"]]
-    assert saved_prior.sizes["draw"] == 8
-    assert np.isfinite(saved_prior).all()
-    assert "posterior_predictive" in trace.children
-    sample_manifest = json.loads(sampling.read_text())
     provenance = prepare_manifest["provenance"]
     assert set(provenance) == {"version", "revision", "dirty"}
     assert provenance["version"]
@@ -198,11 +202,56 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
     assert revision is None or (
         len(revision) == 40 and all(character in "0123456789abcdef" for character in revision)
     )
-    assert sample_manifest["provenance"] == provenance
-    assert sample_manifest["preparation_generation"] == prepare_manifest["generation"]
     assert prepare_manifest["start_date"] == "2020-01-01"
     assert prepare_manifest["end_date"] == "2020-02-01"
     assert "artifact_identities" not in prepare_manifest
+
+
+def test_co2_stage_commands_chain_shared_handoffs_and_file_contracts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every CO2 stage handler chains manifests; constructed draws replace MCMC."""
+    from openghg_inversions.rhime.co2 import handoffs
+
+    monkeypatch.delenv("RUN_ROOT", raising=False)
+    monkeypatch.chdir(tmp_path)
+    _, prepared = _handoff(tmp_path)
+    config = _configuration(tmp_path, "fixed_ou")
+    common = ["--model", "co2", "--config", str(config)]
+    preparation = tmp_path / "prepare" / "prepare-manifest.json"
+    sampling = tmp_path / "sample" / "sample-manifest.json"
+    _in_process_cli("prepare", *common, "--output-dir", tmp_path / "prepare")
+    prepare_manifest = json.loads(preparation.read_text())
+    handoff = ["--preparation-manifest", str(preparation)]
+    # Prior prediction is graph evaluation without MCMC, so it stays real.
+    _in_process_cli(
+        "prior-predictive", *common, *handoff, "--draws", "8", "--strict", "--output-dir", tmp_path / "prior"
+    )
+    prior = json.loads((tmp_path / "prior" / "prior-predictive-readiness.json").read_text())
+    assert prior["status"] == "pass"
+    assert prior["measured_values"]["draws"] == 8
+    prior_trace = load_trace(tmp_path / "prior" / "prior-predictive.nc")
+    prior_roles = json.loads(prior_trace.attrs["rhime_variable_roles"])
+    # The prepared outer group stays fixed at its retained prior mean.
+    np.testing.assert_allclose(prior_trace.prior[prior_roles["flux_scale"]].sel(region=1), 0.9)
+    assert prior_roles["active_flux_scale"] in prior_trace.prior
+    assert np.isfinite(prior_trace.prior_predictive[prior_roles["concentration"]]).all()
+
+    samplers = _constructed_inference(monkeypatch, handoffs)
+    _in_process_cli("sample", *common, *handoff, "--output-dir", tmp_path / "sample")
+    (sampler,) = samplers
+    assert (sampler.draws, sampler.tune, sampler.chains) == (12, 12, 2)
+    assert sampler.sample_prior_predictive == 8 and sampler.sample_posterior_predictive
+    trace = load_trace(tmp_path / "sample" / "posterior.nc")
+    assert trace.posterior.sizes["chain"] == 2
+    assert trace.posterior.sizes["draw"] == 12
+    assert trace.prior.sizes["draw"] == 8
+    assert "modelled_posterior" in reconstruct_co2_concentrations(trace, prepared)
+    assert "posterior_predictive" in trace.children
+    sample_manifest = json.loads(sampling.read_text())
+    assert sample_manifest["provenance"] == prepare_manifest["provenance"]
+    assert sample_manifest["preparation_generation"] == prepare_manifest["generation"]
+    assert sample_manifest["actual_inference"]["chains"] == 2
     assert "artifact_identities" not in sample_manifest
     assert "input_identities" not in sample_manifest
     _in_process_cli(
@@ -233,15 +282,18 @@ def test_installed_co2_rejects_unsupported_output_before_writing(
     assert not destination.exists()
 
 
-@pytest.mark.fresh_process
-def test_installed_configured_co2_full_execution_writes_selected_products(tmp_path, monkeypatch):
-    """Keep one installed full-run acceptance; shared inference owns likelihood choices."""
+def test_configured_co2_full_execution_writes_selected_products(tmp_path, monkeypatch):
+    """The full-run command saves selected products and the trace, without manifests."""
+    from openghg_inversions.rhime.co2 import execution
+
     monkeypatch.chdir(tmp_path)
     _handoff(tmp_path)
     config = _configuration(tmp_path, "additive_sigma")
     config.write_text(config.read_text().replace('[outputs]\n', '[outputs]\nsave_trace = true\n'))
     destination = tmp_path / "full-products"
-    _cli("run", "--model", "co2", "--config", config, "--output-path", destination)
+    samplers = _constructed_inference(monkeypatch, execution)
+    _in_process_cli("run", "--model", "co2", "--config", config, "--output-path", destination)
+    assert [(sampler.draws, sampler.chains) for sampler in samplers] == [(12, 2)]
     for name in ("basic", "native_flux", "country_flux"):
         path = destination / f"co2-stage-test_{name}_co2_EUROPE_2020-01-01.nc"
         assert path.is_file()

@@ -1,4 +1,4 @@
-"""Installed linked stages use joint scientific inputs and phase-owned choices."""
+"""Linked stage commands use joint scientific inputs and phase-owned choices."""
 
 import json
 import os
@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 import numpy as np
+import pytensor
 import pytest
 import xarray as xr
 
@@ -14,6 +15,7 @@ from examples.co2_o2_handoffs import FACTS, synthetic_inputs
 from openghg_inversions.cli import main
 from openghg_inversions.rhime.co2 import Co2O2ModelConfig, co2_o2_handoffs as handoffs
 from openghg_inversions.serialization import load_trace
+from test_co2_o2_handoffs import constructed_joint_trace
 
 
 CHANNELS = {"co2": {"units": "ppm"}, "o2": {"units": "ppm"}}
@@ -29,10 +31,11 @@ def _cli(*arguments):
 
 @pytest.mark.fresh_process
 def test_installed_unequal_axis_sequence_retains_joint_science(tmp_path, monkeypatch):
-    # PyMC/Numba multivariate-normal predictive draws currently require float64.
-    flags = [flag for flag in os.environ.get("PYTENSOR_FLAGS", "").split(",")
-             if flag and flag.partition("=")[0].strip() != "floatX"]
-    monkeypatch.setenv("PYTENSOR_FLAGS", ",".join([*flags, "floatX=float64"]))
+    """Smoke the installed linked prepare, then chain every stage handler in process.
+
+    Constructed joint draws replace MCMC; real linked two-chain sampling belongs to
+    ``test_co2_o2_fixed_ou.py::test_linked_sampling_serializes_group_labels_and_joint_outputs``.
+    """
     prepared = synthetic_inputs()
     source = tmp_path / "linked.nc"
     prepared.save(source)
@@ -48,12 +51,24 @@ def test_installed_unequal_axis_sequence_retains_joint_science(tmp_path, monkeyp
     prepare = _cli("prepare", "--model", "co2_o2", "--params-file", params, "--output-dir", prepare_dir)
     prep_manifest = Path(prepare.stdout.strip().splitlines()[-1])
     assert prep_manifest == prepare_dir / "prepare-manifest.json"
-    _cli("prior-predictive", "--model", "co2_o2", "--params-file", params,
-         "--preparation-manifest", prep_manifest, "--draws", "3", "--strict", "--output-dir", tmp_path / "prior")
-    sample = _cli("sample", "--model", "co2_o2", "--params-file", params,
-                  "--preparation-manifest", prep_manifest, "--output-dir", sample_dir)
-    sample_manifest = Path(sample.stdout.strip().splitlines()[-1])
-    # Preparation and inference above cover installed process boundaries.
+    # PyMC multivariate-normal predictive draws currently require float64.
+    with pytensor.config.change_flags(floatX="float64"):
+        main(["prior-predictive", "--model", "co2_o2", "--params-file", str(params),
+              "--preparation-manifest", str(prep_manifest), "--draws", "3", "--strict",
+              "--output-dir", str(tmp_path / "prior")])
+    samplers = []
+
+    def constructed(built, sampler, **kwargs):
+        """Record the resolved sampler and return joint draws of its size."""
+        samplers.append(sampler)
+        return constructed_joint_trace(prepared, chains=sampler.chains, draws=sampler.draws)
+
+    monkeypatch.setattr(handoffs, "sample_rhime_model", constructed)
+    main(["sample", "--model", "co2_o2", "--params-file", str(params),
+          "--preparation-manifest", str(prep_manifest), "--output-dir", str(sample_dir)])
+    (sampler,) = samplers
+    assert (sampler.draws, sampler.tune, sampler.chains, sampler.nuts_sampler) == (6, 6, 2, "pymc")
+    sample_manifest = sample_dir / "sample-manifest.json"
     main(["diagnose", "--sample-manifest", str(sample_manifest),
           "--output-dir", str(tmp_path / "diagnose")])
     main(["postprocess", "--model", "co2_o2", "--sample-manifest", str(sample_manifest),

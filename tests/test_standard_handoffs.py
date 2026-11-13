@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from types import SimpleNamespace
 
 import numpy as np
@@ -179,31 +177,24 @@ def test_reused_destinations_and_manifest_last(tmp_path, monkeypatch):
     assert not preparation.exists()
 
 
-@pytest.mark.fresh_process
-def test_replay_in_fresh_process_uses_saved_model_and_inference(tmp_path):
+def test_replay_uses_saved_model_and_inference_without_graph(tmp_path, monkeypatch):
+    """Replay reads only saved records; acquisition, construction and inference are forbidden."""
     _, sampled = _saved(tmp_path)
-    script = '''
-import sys
-from pathlib import Path
-from openghg_inversions.rhime import _standard_stages as stages, standard
-from openghg_inversions.rhime.specs import RhimeOutputSpec
-from openghg_inversions.inference.sampling import RhimeSampler
-root = Path(sys.argv[1])
-def forbidden(*args, **kwargs):
-    raise AssertionError("replay performed acquisition, graph construction or inference")
-standard.build_standard_model = forbidden
-standard.materialize_standard_inputs = forbidden
-stages.MergedData.from_options = forbidden
-RhimeSampler.sample = forbidden
-stages.resolve_sampler = forbidden
-result = stages.postprocess(root / "samples/sample-manifest.json", output=RhimeOutputSpec(
-    output_format="inv_out", output_path=str(root / "outputs"), save_inversion_output=True))
-assert not hasattr(result, "sampler") and not hasattr(result, "model")
-assert result.run_metadata["end_date"] == "2019-02-01"
-assert "build_and_sample_seconds" not in result.output_metadata
-assert result.output_metadata["sampler"]["draws"] == 10
-'''
-    subprocess.run([sys.executable, "-c", script, str(tmp_path)], check=True, capture_output=True, text=True)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("replay performed acquisition, graph construction or inference")
+
+    monkeypatch.setattr(standard, "build_standard_model", forbidden)
+    monkeypatch.setattr(standard, "materialize_standard_inputs", forbidden)
+    monkeypatch.setattr(stages.MergedData, "from_options", forbidden)
+    monkeypatch.setattr(RhimeSampler, "sample", forbidden)
+    monkeypatch.setattr(stages, "resolve_sampler", forbidden)
+    result = stages.postprocess(tmp_path / "samples/sample-manifest.json", output=RhimeOutputSpec(
+        output_format="inv_out", output_path=str(tmp_path / "outputs"), save_inversion_output=True))
+    assert not hasattr(result, "sampler") and not hasattr(result, "model")
+    assert result.run_metadata["end_date"] == "2019-02-01"
+    assert "build_and_sample_seconds" not in result.output_metadata
+    assert result.output_metadata["sampler"]["draws"] == 10
     saved = next((tmp_path / "outputs").glob("*inversion_output.nc"))
     loaded = InversionOutput.load(saved)
     np.testing.assert_array_equal(loaded.trace["posterior"]["x"], [[[1.0], [2.0]], [[10.0], [20.0]]])
