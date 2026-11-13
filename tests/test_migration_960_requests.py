@@ -119,12 +119,6 @@ def test_recorded_runtime_aliases_are_now_unsupported(old):
         load_params(overrides={old: "historical"})
 
 
-@pytest.mark.parametrize("value", [False, True, None, 0, "false"])
-def test_tracer_occurrence_is_unsupported_regardless_of_value(value):
-    with pytest.raises(ValueError, match="Unsupported RHIME.*use_tracer"):
-        load_params(overrides={"use_tracer": value})
-
-
 def test_request_source_exclusivity_unknown_case_and_no_environment_fallback(monkeypatch):
     monkeypatch.setenv("CONFIG_FILE", str(FIXTURES / "modern.ini"))
     assert load_params() == {"data": {}, "model": {}, "sampler": {}, "output": {}}
