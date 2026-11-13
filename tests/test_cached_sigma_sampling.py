@@ -563,9 +563,22 @@ def test_two_spawn_chains_are_reproducible_and_emit_cached_diagnostics() -> None
     assert np.isfinite(first.posterior["sigma_site"]).all()
 
 
-@pytest.mark.parametrize("family", ["halfnormal", "gamma", "uniform"])
+@pytest.mark.parametrize(
+    "family",
+    [
+        "halfnormal",
+        # Each family's density and gradient are checked without sampling below;
+        # the extra posterior-moment runs only repeat the shared compound step.
+        pytest.param("gamma", marks=pytest.mark.slow),
+        pytest.param("uniform", marks=pytest.mark.slow),
+    ],
+)
 def test_compound_sampler_matches_independent_dense_posterior_moments(family) -> None:
-    """The composed amplitude/state transition targets the intended posterior."""
+    """The composed amplitude/state transition targets the intended posterior.
+
+    Each case draws 3,200 samples on two chains (about 8-17 s), so only one
+    prior family runs by default; ``-m slow`` checks the others.
+    """
     import arviz as az
     from scipy.integrate import trapezoid
     from scipy import stats
