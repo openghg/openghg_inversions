@@ -1,5 +1,6 @@
 from typing import Any, cast
 
+from numba.core.errors import TypingError
 import numpy as np
 import pymc as pm
 import pytensor
@@ -94,7 +95,7 @@ def _fixed_likelihood_model(data: xr.Dataset) -> pm.Model:
 
 
 @pytest.mark.compiled_backend
-def test_low_rank_logp_matches_dense_gaussian() -> None:
+def test_low_rank_logp_matches_dense_gaussian(double_precision) -> None:
     low_rank_data, covariance = _low_rank_data()
     dense_data = _base_data()
     dense_data["aggregation_error_covariance"] = (
@@ -169,6 +170,7 @@ def test_fixed_error_likelihood_uses_reported_and_aggregation_error_only() -> No
     ],
 )
 def test_aggregation_error_is_preserved_as_labelled_constant_data(
+    double_precision,
     mode: str,
     payload_names: set[str],
 ) -> None:
@@ -199,6 +201,23 @@ def test_aggregation_error_is_preserved_as_labelled_constant_data(
             "nmeasure_cov",
         )
 
+
+@pytest.mark.xfail(
+    strict=False,
+    raises=TypingError,
+    reason=(
+        "PyTensor's Numba MvNormalRV dots a float32 Cholesky factor with float64 normal draws "
+        "when warn_float64 disables its float64 parameter upcast (#770). Newer PyTensor "
+        "releases do not reproduce it, so an unexpected pass is allowed."
+    ),
+)
+def test_float32_numba_multivariate_normal_draw_with_float64_warnings() -> None:
+    """The package's float32 startup policy (floatX=float32, warn_float64=warn) breaks dense predictive draws."""
+    with pytensor.config.change_flags(floatX="float32", warn_float64="warn"):
+        draw = pt.random.multivariate_normal(
+            pt.zeros(3, dtype="float32"), pt.constant(np.eye(3, dtype="float32")),
+        )
+        assert pytensor.function([], draw, mode="NUMBA")().dtype == np.float32
 
 @pytest.mark.parametrize("mode", ["diagonal", "dense", "low_rank"])
 def test_min_error_is_a_floor_on_total_marginal_sd(mode: str) -> None:
@@ -476,6 +495,7 @@ def test_observation_derived_pollution_event_subtracts_complete_baseline() -> No
 @pytest.mark.parametrize("explicit_none", [False, True], ids=["omitted", "none"])
 @pytest.mark.parametrize("component", ["fixed", "additive", "pollution", "site", "ou"])
 def test_absent_aggregation_covariance_matches_independent_reference(
+    double_precision,
     component: str,
     explicit_none: bool,
 ) -> None:
