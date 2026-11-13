@@ -113,7 +113,7 @@ def test_boundary_fixed_and_active_state_reconstructs_exact_joint_sum(channels):
 
 
 @pytest.mark.parametrize("per_site,frequency", [(False, None), (True, None), (True, "1D")])
-def test_independent_offsets_and_boundary_reconstruct_from_draws(per_site, frequency, tmp_path):
+def test_independent_offsets_and_boundary_reconstruct_from_draws(double_precision, per_site, frequency, tmp_path):
     prepared = _prepared(("co2", "o2"))
     model = _model(
         prepared,
