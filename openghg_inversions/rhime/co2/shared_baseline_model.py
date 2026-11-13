@@ -25,7 +25,9 @@ from openghg_inversions.models.components import (
     prepare_active_correlated_lognormal_prior,
 )
 from openghg_inversions.models.coords import add_model_data, registered_model
-from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank, _site_values as fixed_ou_site_values
+from openghg_inversions.models.fixed_ou import (
+    add_fixed_ou_gaussian_likelihood, prepare_fixed_ou_low_rank, _site_values as fixed_ou_site_values,
+)
 from openghg_inversions.models.shared_baseline import SharedBaseline
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import prepare_linear_sensitivity, resolve_state_activity
@@ -172,7 +174,8 @@ def build_shared_co2_model(
         observations: Labelled absolute concentrations in the prepared units.
         observation_error: Labelled measurement concentration SDs.
         aggregation_error: Prepared fixed aggregation covariance.
-        likelihood_builder (collections.abc.Callable, optional): Ordinary likelihood callable.
+        likelihood_builder (collections.abc.Callable, optional): Built-in
+            fixed-OU likelihood; omit it for the default additive Gaussian.
         likelihood_kwargs: Resolved options for that likelihood.
         sigma_alignment: Optional observation/site-period mismatch alignment.
         sigma_prior: Optional positive mismatch SD prior.
@@ -182,8 +185,19 @@ def build_shared_co2_model(
         Concrete PyMC model with distinct atmospheric and physical states.
         Float64 is required before eager joint transport materialization; bound
         centering means and calibrated moments are used as bound.
+
+    Raises:
+        ValueError: If ``likelihood_builder`` is a custom callback, its options
+            are supplied without it, or it is combined with default
+            additive-sigma or fixed-mismatch options.
     """
     require_centered_precision()
+    # The recipe always centres the likelihood, as centered CO2 boundaries do.
+    if likelihood_builder is not None and likelihood_builder is not add_fixed_ou_gaussian_likelihood:
+        raise ValueError(
+            "The shared CO2 recipe supports the default additive-Gaussian or "
+            "built-in fixed-OU likelihood, not custom callbacks."
+        )
     if likelihood_builder is None:
         if likelihood_kwargs:
             raise ValueError("likelihood_kwargs require likelihood_builder.")

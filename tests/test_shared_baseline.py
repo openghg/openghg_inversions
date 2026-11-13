@@ -578,7 +578,7 @@ def test_shared_trace_roundtrip_canonical_roles_units_and_graph_free_replay(tmp_
 
 
 @pytest.mark.parametrize("reference", [400.0, 209300.0])
-def test_shared_likelihood_constructs_small_mean_without_reference_cancellation(reference):
+def test_shared_likelihood_constructs_small_mean_without_reference_cancellation(reference, monkeypatch):
     obs, h, prior, _ = case()
     obs = (obs - 400 + reference).assign_attrs(units="ppm")
     transport = operands(obs, reference)
@@ -589,13 +589,18 @@ def test_shared_likelihood_constructs_small_mean_without_reference_cancellation(
         aggregation_error=resolve_aggregation_error(obs.to_dataset(name="mf"), "none"),
     )
     import pymc as pm
+    from openghg_inversions.rhime.co2 import shared_baseline_model
 
-    def likelihood(*, mean, **inputs):
+    # Record the mean handed to the built-in likelihood; custom callbacks are rejected.
+    call_likelihood = shared_baseline_model._call_custom_likelihood
+
+    def recording(builder, *, mean, **inputs):
         pm.Deterministic("shared_likelihood_mean", mean, dims="nmeasure")
-        return add_fixed_ou_gaussian_likelihood(mean=mean, **inputs)
+        return call_likelihood(builder, mean=mean, **inputs)
 
+    monkeypatch.setattr(shared_baseline_model, "_call_custom_likelihood", recording)
     ordinary = build_shared_co2_model(
-        prepared, **kwargs, likelihood_builder=likelihood, likelihood_kwargs=noise,
+        prepared, **kwargs, likelihood_builder=add_fixed_ou_gaussian_likelihood, likelihood_kwargs=noise,
     )
     cached = build_shared_co2_cached_sigma_model(prepared, **kwargs, **noise)
     for model in (ordinary, cached.model):
@@ -716,3 +721,19 @@ def test_single_shared_nonunit_mass_restores_absolute_predictives(cached):
     restore_absolute_predictives(trace)
     annotate_shared_baseline_trace(trace, bound)
     xr.testing.assert_identical(trace, once)
+
+
+def test_shared_co2_model_rejects_custom_likelihood_callbacks():
+    """The always-centered shared recipe accepts only built-in likelihoods."""
+    obs, h, prior, _ = case()
+    prepared = bind(obs, h, prior, xr.full_like(obs, 0.2).assign_attrs(units="ppm"))
+
+    def custom(**inputs):
+        return add_fixed_ou_gaussian_likelihood(**inputs)
+
+    with pytest.raises(ValueError, match="not custom callbacks"):
+        build_shared_co2_model(
+            prepared, observations=obs, observation_error=xr.full_like(obs, 0.2),
+            aggregation_error=resolve_aggregation_error(obs.to_dataset(name="mf"), "none"),
+            likelihood_builder=custom, likelihood_kwargs=NOISE,
+        )
