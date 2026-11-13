@@ -173,6 +173,7 @@ def test_current_python_name_removal_and_explicit_likelihood_requirement(monkeyp
         standard.run_standard(**params)
 
 
+@pytest.mark.fresh_process
 def test_installed_run_rhime_rejects_nit_before_acquisition(tmp_path):
     executable = shutil.which("rhime", path=str(Path(sys.executable).parent))
     assert executable is not None, "Run from the installed project environment (uv sync --locked)."

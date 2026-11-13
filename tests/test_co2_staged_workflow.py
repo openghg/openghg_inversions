@@ -179,6 +179,7 @@ def _constructed_inference(monkeypatch: pytest.MonkeyPatch, module) -> list:
     return samplers
 
 
+@pytest.mark.fresh_process
 def test_installed_co2_prepare_smoke_references_inputs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -266,6 +267,7 @@ def test_co2_stage_commands_chain_shared_handoffs_and_file_contracts(
         assert (tmp_path / "postprocess" / f"co2-stage-test_{name}_co2_EUROPE_2020-01-01.nc").is_file()
 
 
+@pytest.mark.fresh_process
 def test_installed_co2_rejects_unsupported_output_before_writing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

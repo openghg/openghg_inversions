@@ -2577,6 +2577,7 @@ def test_concrete_rhime_builders_are_owned_by_recipe_modules() -> None:
         "openghg_inversions.rhime.multisector",
     ],
 )
+@pytest.mark.fresh_process
 def test_rhime_modules_import_independently_in_fresh_process(module_name: str) -> None:
     """Recipe imports do not rely on a preloaded models-to-RHIME facade."""
     completed = subprocess.run(
@@ -2599,6 +2600,7 @@ def test_rhime_lazy_exports_resolve_and_match_stub() -> None:
     assert stub_all == rhime_public.__all__
 
 
+@pytest.mark.fresh_process
 def test_rhime_package_import_defers_model_families() -> None:
     """Importing the package configures PyTensor without loading PyMC or OpenGHG analysis."""
     probe = (
