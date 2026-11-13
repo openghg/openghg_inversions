@@ -35,6 +35,7 @@ openghg\_inversions
    openghg_inversions.flux_sanitization
    openghg_inversions.inversion_inputs
    openghg_inversions.model_error
+   openghg_inversions.native_b_calibration
    openghg_inversions.native_covariance
    openghg_inversions.native_flux
    openghg_inversions.observation_error
