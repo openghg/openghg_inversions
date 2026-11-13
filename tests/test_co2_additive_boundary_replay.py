@@ -19,7 +19,7 @@ from test_co2_affine_output import _prepared
 
 @pytest.mark.parametrize("cached", [False, True])
 @pytest.mark.parametrize("anomaly_scale", [0.0, 0.08])
-def test_additive_public_build_save_reload_and_reconstruction(tmp_path, cached, anomaly_scale):
+def test_additive_public_build_save_reload_and_reconstruction(double_precision, tmp_path, cached, anomaly_scale):
     prepared, _ = _prepared()
     inputs = prepared.inv_inputs.copy(deep=False)
     response = xr.DataArray(
