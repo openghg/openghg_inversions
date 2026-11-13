@@ -300,8 +300,10 @@ def _load_samples(sample_manifest: str | Path) -> tuple[Co2Output, tuple[Path, .
             "provenance": record.get("provenance") if isinstance(record.get("provenance"), Mapping) else {},
         },
     )
-    consumed = (path, reference(path, record["preparation"]), preparation.payload,
-                reference(path, record["posterior"]))
+    consumed: tuple[Path, ...] = (
+        path, reference(path, record["preparation"]), preparation.payload,
+        reference(path, record["posterior"]),
+    )
     if preparation.affine_payload is not None:
         consumed += (preparation.affine_payload,)
     return result, consumed
