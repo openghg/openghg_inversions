@@ -860,7 +860,7 @@ def _low_rank_joint_aggregation_error(
     }
     scaled_norm = float(np.sqrt(block_norm2["co2"] + block_norm2["o2"] + 2.0 * block_norm2["cross"]))
     budget = rank * sum(bool(rows.any()) for rows in masks.values())
-    factor_values = np.zeros((nobs, 0))
+    factor_values: np.ndarray = np.zeros((nobs, 0))
     diagonal = np.zeros(nobs)
     block_diagnostics: dict[str, Any] = {}
     if factorization == "joint":
@@ -878,7 +878,7 @@ def _low_rank_joint_aggregation_error(
         factor_values = selected.factor.values * row_scale[:, None]
         diagonal = selected.diagonal_variance.values * np.square(row_scale)
         block_diagnostics["joint"] = dict(approximation.diagnostics)
-        scaled_error = approximation.diagnostics["relative_frobenius_reconstruction_error"] * scaled_norm
+        scaled_error = float(approximation.diagnostics["relative_frobenius_reconstruction_error"]) * scaled_norm
         dropped_cross = 0.0
     elif factorization == "own_species":
         factors = []
@@ -902,7 +902,7 @@ def _low_rank_joint_aggregation_error(
             block_diagnostics[channel] = dict(approximation.diagnostics)
             # Relative error is invariant to rescaling one block by a constant.
             scaled_error2 += (
-                approximation.diagnostics["relative_frobenius_reconstruction_error"] ** 2 * block_norm2[channel]
+                float(approximation.diagnostics["relative_frobenius_reconstruction_error"]) ** 2 * block_norm2[channel]
             )
         if factors:
             factor_values = np.concatenate(factors, axis=1)
