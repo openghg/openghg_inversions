@@ -138,9 +138,6 @@ Import both values from
 :ref:`centered boundary contract <surface-centered-boundary-contract>` for
 operands and supported model routes.
 
-The :doc:`merged-input schema reference <merged_input_schemas>` is generated
-from the metadata validators used before standard and multisector preparation.
-
 .. autosummary::
    :nosignatures:
 
@@ -155,8 +152,6 @@ from the metadata validators used before standard and multisector preparation.
    openghg_inversions.inversion_data.acquire_surface_data
    openghg_inversions.inversion_data.MergedData.from_options
    openghg_inversions.inversion_data.MergedData.validate_for_preparation
-   openghg_inversions.inversion_data.MergedData.site_schema
-   openghg_inversions.inversion_data.MergedData.validate_scientific_inputs
    openghg_inversions.inversion_data.MergedData.with_site_data
    openghg_inversions.rhime.preparation.resolve_basis_inputs
    openghg_inversions.rhime.preparation.resolve_bc_basis
@@ -272,7 +267,10 @@ mathematical contracts and eager-computation boundaries.
    openghg_inversions.source_covariance.IndependentSourceCovariance
    openghg_inversions.basis.NativeCovarianceProducts
    openghg_inversions.basis.RetainedProjection
+   openghg_inversions.basis.RetainedProjectionStrategy
    openghg_inversions.basis.PreserveBucketProlongation
+   openghg_inversions.basis.SuppliedRestriction
+   openghg_inversions.basis.absolute_weighted_regional_mean_restriction
    openghg_inversions.basis.project_native_covariance
    openghg_inversions.coherent_reduction.CoherentGaussianReduction
    openghg_inversions.coherent_reduction.reduce_native_gaussian
@@ -298,8 +296,34 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.parse_prior
    openghg_inversions.models.add_model_data
    openghg_inversions.models.add_linear_component
-   openghg_inversions.rhime.co2.centered_boundary.CenteredBoundaryResult
-   openghg_inversions.rhime.co2.centered_boundary.add_centered_boundary
+   openghg_inversions.models.ConcentrationTerm
+   openghg_inversions.models.likelihood_representation
+   openghg_inversions.models.AffineBlock
+   openghg_inversions.models.AffineConcentrationTerm
+   openghg_inversions.models.components.warn_constant_offset_confounding
+   openghg_inversions.models.boundary.MultiplicativeChoice
+   openghg_inversions.models.boundary.MultiplicativeBoundary
+   openghg_inversions.models.boundary.CenteredMultiplicativeBoundary
+   openghg_inversions.models.boundary.AdditiveChoice
+   openghg_inversions.models.boundary.AdditiveBoundary
+   openghg_inversions.models.boundary.AnomalyScalingChoice
+   openghg_inversions.models.boundary.AnomalyScalingBoundary
+   openghg_inversions.models.boundary.RawCenteredSensitivity
+   openghg_inversions.models.boundary.BoundCenteredSensitivity
+   openghg_inversions.models.boundary.BoundAdditiveSensitivity
+   openghg_inversions.models.boundary.validate_centering_weights
+   openghg_inversions.models.boundary.RawCenteredSensitivity.with_centering_weights
+   openghg_inversions.models.boundary.BoundCenteredSensitivity.bind
+   openghg_inversions.models.boundary.BoundCenteredSensitivity.reference_shift
+   openghg_inversions.models.boundary.BoundAdditiveSensitivity.bind_weights
+   openghg_inversions.models.boundary.normalize_centering_weights
+   openghg_inversions.xr_contracts.xr_contract
+   openghg_inversions.models.boundary.Choice
+   openghg_inversions.models.boundary.Bound
+   openghg_inversions.models.boundary.AbsoluteChoice
+   openghg_inversions.models.boundary.bind_prepared
+   openghg_inversions.models.boundary.Outputs
+   openghg_inversions.array_ops.to_dense_tree
    openghg_inversions.models.add_linked_linear_component
    openghg_inversions.models.add_correlated_lognormal_state
    openghg_inversions.models.add_offset_component
@@ -382,4 +406,3 @@ module-level view.
    :maxdepth: 4
 
    openghg_inversions
-   merged_input_schemas

@@ -5,16 +5,18 @@
 See [the proposal](proposal.md) for motivation. Existing development guidance
 assigns validation to input owners and treats numerical arrays as borrowed.
 The missing interface is a static name for established scientific guarantees.
-This change captures the agreed pattern; it does not implement it.
+This change captures the agreed pattern and implements its first
+centered-boundary pilot.
 
 ## Goals / Non-Goals
 
 Keep scientific contracts discoverable without changing xarray's runtime
 representation or recreating its alignment and selection API. The specification
 covers observable guarantees; developer guidance explains the typing technique.
-Concrete scientific schemas and executable type-checker probes remain
-application work. Do not introduce a type for every intermediate or validation
-phase, or invent new public ingress paths.
+Centered-boundary schemas and executable type-checker probes implement the
+first application. Other scientific handoffs remain application work. Do not
+introduce a type for every intermediate or validation phase, or invent new
+public ingress paths.
 
 ## Decisions
 
@@ -100,9 +102,11 @@ arbitrary earlier argument's value or its relationship to that context.
 
 Replace the motivating `CenteredOperands` record with a raw centered Dataset
 contract in the boundary application. Its binding already packs anomaly and
-mass into a Dataset for joint selection and expansion. Binding can be an
-ordinary function or class-level operation. An ordinary component record such
-as `AdditiveBoundary(choice, data: BoundAdditive)` holds the contracted value;
+mass into a Dataset for joint selection and expansion. The pilot owns binding
+on `BoundCenteredSensitivity.bind(raw, observations, ...)`, and weight alignment
+on `BoundAdditiveSensitivity.bind_weights(bound, weights)`. An ordinary component
+record such as `AdditiveBoundary(choice, data: BoundAdditiveSensitivity)` holds
+the contracted value;
 it does not repeat its validation or join the xarray contract registry.
 A record with independent cross-field invariants can still own its composition
 checks; this mechanism does not define every possible Python data contract.
@@ -162,9 +166,24 @@ in [#1036](https://github.com/openghg/openghg_inversions/issues/1036).
 
 Normalization, exact alignment and unit conversion remain explicit scientific
 operations. Reuse xarray and Pint where they already express the requirement.
-The promising [schema pilot](https://github.com/openghg/openghg_inversions/pull/905)
-is a candidate implementation source; `xarray_validate` is not required by the
-contract. Error-collection mode alone does not establish Dask laziness.
+The centered-boundary pilot uses `xarray_validate` 0.0.5, following the
+[schema pilot](https://github.com/openghg/openghg_inversions/pull/905).
+Each contract exposes an inspectable `schema(observation_dim=...)` class-level
+operation. Declarative schemas own variables, real dtypes, dimensions and
+attributes; callbacks own eager index and scientific metadata relationships.
+The general contract does not mandate a validation library. Error-collection
+mode alone does not establish Dask laziness; execution tests cover lazy payloads
+and auxiliary coordinates.
+
+The raw and bound boundary contracts promise structural guarantees only. Each
+centered family's `add` checks the jointly materialized anomaly, mass and
+reference once while calculating the fixed reference shift, and weighted
+additive `add` checks its weights once while normalizing them. Row selection
+can turn nonzero raw mass into zero bound mass, so that check belongs to the
+fitted rows. These operations reject lazy inputs rather than computing them;
+no extra eager stage or contract type is introduced. Replacing raw weights
+removes only axes the old weights owned, so Dataset alignment cannot silently
+truncate supplied weights.
 
 Binding and supported transformations establish their returned guarantees.
 Tests exercise their outputs against the validator. Consumers trust them;
@@ -190,10 +209,11 @@ Independently supplied data is checked at the existing boundary accepting it.
 
 ## Delivery
 
-Keep this change active as a specification proposal. No runtime or serialized
-format changes occur in this PR. Apply the declaration mechanism and checker
-probes with centered boundary preparation/binding and its consumers, tracked by
+Keep this change active pending specification promotion. The declaration
+mechanism, shared conformance tests, centered-boundary preparation/binding and
+consumers, and checker probes implement the first pilot, tracked by
 [#1033](https://github.com/openghg/openghg_inversions/issues/1033) and
-[#1034](https://github.com/openghg/openghg_inversions/issues/1034). Covariance is
-follow-up application work under the same umbrella. Promote the specification
-after application evidence is available.
+[#1034](https://github.com/openghg/openghg_inversions/issues/1034).
+`CenteredOperands` is replaced by ordinary Datasets with the raw/bound contract
+annotations and class-level operations; this changes internal Python APIs.
+Covariance remains follow-up application work under the same umbrella.

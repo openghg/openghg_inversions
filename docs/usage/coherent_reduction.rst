@@ -45,28 +45,33 @@ without constructing an inverse, then returns the centred conditional model
 All three retained quantities---the prior, effective forward operator, and
 unresolved covariance---come from the same product set.
 
-The current function accepts a basis prolongation :math:`U`. With the default
-strategy, it constructs the compatible restriction :math:`\Pi_U` using
-:math:`B`, so that the covariance-derived prolongation :math:`U_*` equals the
-supplied basis prolongation. A custom projection strategy can already choose
-:math:`\Pi`, although callers must still supply the basis argument. A future
-interface may accept either operator directly and construct its compatible
-counterpart. The restriction and prolongation are related through :math:`B`;
+The retained projection strategy supplies :math:`\Pi`, by one of two routes:
+
+* ``PreserveBucketProlongation(U)`` holds a basis prolongation :math:`U` and
+  constructs the compatible restriction :math:`\Pi_U` using :math:`B`, so that
+  the covariance-derived prolongation :math:`U_*` equals :math:`U`.
+* ``SuppliedRestriction(Pi)`` holds a physical restriction chosen
+  independently of :math:`B`; no basis prolongation is needed.
+
+Either way, the restriction and prolongation are related through :math:`B`;
 they are not generally transposes of one another.
 
 Preparing the exact result
 --------------------------
 
-Pass the native covariance, canonical basis prolongation, labelled native mean,
-and sensitivity through one operation:
+Pass the native covariance, a retained projection strategy, labelled native
+mean, and sensitivity through one operation. The bucket strategy holds a basis
+operator's canonical prolongation; ``SuppliedRestriction`` instead holds a
+physical restriction (see :doc:`native_covariance`):
 
 .. code-block:: python
 
+   from openghg_inversions.basis import PreserveBucketProlongation
    from openghg_inversions.coherent_reduction import reduce_native_gaussian
 
    reduction = reduce_native_gaussian(
        covariance=covariance,
-       basis_prolongation=basis_prolongation,
+       strategy=PreserveBucketProlongation(basis_prolongation),
        state_dim="state",
        native_mean=native_mean,
        native_sensitivity=native_sensitivity,
@@ -78,8 +83,8 @@ and sensitivity through one operation:
    effective_operator = reduction.effective_observation_operator
    unresolved_covariance = reduction.unresolved_observation_covariance
 
-Calling ``reduce_native_gaussian`` computes any Dask-backed mean, sensitivity,
-and basis-prolongation data. Related arrays are computed together, and the
+Calling ``reduce_native_gaussian`` computes any Dask-backed mean and
+sensitivity together. The strategy computes its own inputs, and the
 returned xarray arrays are eager with explicit retained-state and observation
 labels.
 
@@ -148,10 +153,13 @@ that the chosen rank is adequate for a particular likelihood.
 Assumptions and limitations
 ---------------------------
 
-The native coordinates of the mean, sensitivity, and basis prolongation must
-match exactly. The function checks this before computing because xarray dot
-products would otherwise use an inner join and could silently omit unmatched
-native cells.
+The native coordinates of the mean and sensitivity must match exactly. The
+function checks this before computing them, because xarray dot products would
+otherwise use an inner join and could silently omit unmatched native cells.
+The strategy's input, a basis prolongation for ``PreserveBucketProlongation``
+or a restriction for ``SuppliedRestriction``, must use the same native grid.
+The covariance action checks that grid when it applies or solves with that
+input, which may happen after the mean and sensitivity have been computed.
 
 The native mean and basis describe dimensionless scaling factors. Convert the
 sensitivity to the required observation units with OpenGHG's Pint registry
@@ -182,8 +190,10 @@ model-mismatch error is small.
 The conditional model is exact for a Gaussian native state and error
 independent of that state. Using the resulting moments with a LogNormal
 retained state is a moment-matched approximation. A positive sampled state
-requires a separately established nonnegative physical restriction; the
-default restriction is not guaranteed to preserve positivity.
+requires a separately established positivity-preserving physical restriction,
+such as ``SuppliedRestriction`` with ``require_positivity_preserving=True``. The
+bucket-compatible restriction derived by ``PreserveBucketProlongation`` is not
+guaranteed to preserve positivity.
 
 The function does not construct a likelihood, approximate :math:`A`, serialize
 the result, or reconstruct arbitrary native quantities. Do not add another

@@ -4,7 +4,11 @@ import pymc as pm
 import pytest
 import xarray as xr
 
-from openghg_inversions.models import add_coherent_affine_component
+import pytensor.tensor as pt
+
+from openghg_inversions.models import (
+    ConcentrationTerm, add_coherent_affine_component, likelihood_representation, registered_model,
+)
 from openghg_inversions.models.components import (
     LinearComponentResult,
     add_linked_linear_component,
@@ -191,6 +195,64 @@ def test_add_coherent_affine_component_registers_fixed_data_and_output() -> None
     assert output is model["modelled_concentration"]
     assert "fixed_prior_contribution" in model.named_vars
     np.testing.assert_allclose(output.eval(), [11.5, 18.0])
+
+
+def test_likelihood_representation_keeps_absolute_mean_without_shifts() -> None:
+    observations = xr.DataArray([400.0, 401.0], dims="nmeasure")
+    flux = pt.as_tensor_variable(np.array([1.0, 2.0]))
+    modelled = flux + 399.0
+    terms = [ConcentrationTerm.absolute(flux), ConcentrationTerm.absolute(pt.full_like(flux, 399.0))]
+    mean, translated = likelihood_representation(terms, observations, modelled)
+    assert mean is modelled
+    assert translated is observations
+
+
+def test_likelihood_representation_sums_centered_contributions_against_shifted_observations() -> None:
+    observations = xr.DataArray([209_301.0, 209_402.0], dims="nmeasure", attrs={"units": "ppm"})
+    flux = pt.as_tensor_variable(np.array([1.0, 2.0]))
+    centered = pt.as_tensor_variable(np.array([1e-9, -2e-9]))
+    shift = xr.DataArray([209_300.0, 209_400.0], dims="nmeasure")
+    terms = [ConcentrationTerm.absolute(flux), ConcentrationTerm(centered + shift.values, centered, shift)]
+    modelled = flux + centered + shift.values
+
+    with registered_model() as model:
+        mean, translated = likelihood_representation(terms, observations, modelled)
+
+    # The small centered signal survives because the shift is never subtracted from the mean.
+    np.testing.assert_array_equal(mean.eval(), [1.0 + 1e-9, 2.0 - 2e-9])
+    xr.testing.assert_identical(translated, (observations - shift).assign_attrs(units="ppm"))
+    np.testing.assert_array_equal(model["boundary_reference_shift"].eval(), shift.values)
+
+
+@pytest.mark.parametrize("shift_labels", [["a", "c"], ["b", "a"]])
+@pytest.mark.parametrize("additional_shift", [False, True])
+def test_likelihood_representation_rejects_mismatched_observation_labels(
+    shift_labels: list[str], additional_shift: bool,
+) -> None:
+    observations = xr.DataArray([401.0, 402.0], dims="nmeasure", coords={"nmeasure": ["a", "b"]})
+    centered = pt.as_tensor_variable(np.array([1.0, 2.0]))
+    shift = xr.DataArray([400.0, 400.0], dims="nmeasure", coords={"nmeasure": shift_labels})
+    terms = [ConcentrationTerm(centered + shift.data, centered, shift)]
+    if additional_shift:
+        aligned_shift = xr.full_like(observations, 10.0)
+        terms.insert(0, ConcentrationTerm(pt.as_tensor_variable(aligned_shift.data), pt.zeros_like(centered), aligned_shift))
+    modelled = sum(term.output for term in terms)
+
+    with pytest.raises(ValueError, match="join.*exact"):
+        likelihood_representation(terms, observations, modelled)
+
+
+@pytest.mark.parametrize("dims", [("other",), ("nmeasure", "other")])
+def test_likelihood_representation_rejects_shifts_on_other_axes(dims: tuple[str, ...]) -> None:
+    """Exact alignment ignores unshared dimensions, so differently named shift axes must fail."""
+    observations = xr.DataArray([401.0, 402.0], dims="nmeasure", coords={"nmeasure": ["a", "b"]})
+    centered = pt.as_tensor_variable(np.array([1.0, 2.0]))
+    shift = xr.DataArray(np.full((2,) * len(dims), 400.0), dims=dims)
+    terms = [ConcentrationTerm(centered + 400.0, centered, shift)]
+
+    with registered_model() as model, pytest.raises(ValueError, match="must have the observations' dimensions"):
+        likelihood_representation(terms, observations, terms[0].output)
+    assert "boundary_reference_shift" not in model.named_vars
 
 
 def test_resolve_model_variable_prefers_latent() -> None:

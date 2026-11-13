@@ -11,6 +11,11 @@ get_xr_dummies
 sparse_xr_dot
     Multiplies a Dataset or DataArray by a DataArray with sparse
     underlying array. The built-in xarray functionality doesn't work correctly.
+to_dense
+    Converts sparse payloads to dense NumPy, lazily for Dask chunks.
+materialize_together
+    Densifies and computes related payloads at one named eager boundary,
+    logging the boundary at DEBUG level.
 
 
 Coordinate Alignment Policy
@@ -41,16 +46,21 @@ an xarray issue, which now is written in terms of ``force_align``.
 
 from __future__ import annotations
 
+import dataclasses
+import logging
 import warnings
 from collections.abc import Hashable, Iterable, Iterator, Mapping, Sequence
 from typing import Any, Literal, TypeVar, overload
 
+from dask import compute as dask_compute
 import numpy as np
 import pandas as pd
 import xarray as xr
 from dask.array.core import Array as DaskArray
 from sparse import COO, SparseArray
 from xarray.core.common import DataWithCoords
+
+logger = logging.getLogger(__name__)
 
 # type for xr.Dataset *or* xr.DataArray
 DataSetOrArray = TypeVar("DataSetOrArray", bound=DataWithCoords)
@@ -308,6 +318,81 @@ def to_dense(da: xr.DataArray) -> xr.DataArray:
         return xr.apply_ufunc(_sparse_dask_to_dense, da, dask="allowed")
 
     return da
+
+
+def to_dense_tree(value: Any) -> Any:
+    """Apply :func:`to_dense` to every labelled array in a nested value.
+
+    Traverses Datasets, mappings, lists, tuples and dataclass instances, such
+    as bound scientific components or prior arguments with array-valued
+    parameters. Other leaves are returned unchanged. Dask graphs are preserved,
+    so the caller can pass the result to one ``dask.compute`` call that
+    materializes related arrays together. Inputs are not mutated.
+
+    Args:
+        value: A labelled array, dataset, mapping, list, tuple, dataclass
+            instance, or any other object.
+
+    Returns:
+        A structure of the same shape with each labelled array densified;
+        dataclass fields that are not ``init`` fields are not copied. Other
+        leaves are returned as given.
+    """
+    if isinstance(value, xr.DataArray):
+        return to_dense(value)
+    if isinstance(value, xr.Dataset):
+        return value.map(to_dense, keep_attrs=True)
+    if isinstance(value, Mapping):
+        return {key: to_dense_tree(item) for key, item in value.items()}
+    if isinstance(value, tuple) and hasattr(value, "_fields"):
+        return type(value)(*(to_dense_tree(item) for item in value))
+    if isinstance(value, list | tuple):
+        return type(value)(to_dense_tree(item) for item in value)
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return dataclasses.replace(value, **{
+            field.name: to_dense_tree(getattr(value, field.name))
+            for field in dataclasses.fields(value) if field.init
+        })
+    return value
+
+
+def materialize_together(*arrays: xr.DataArray, purpose: str) -> tuple[xr.DataArray, ...]:
+    """Densify and compute related payloads at one named eager boundary.
+
+    Related Dask payloads are computed in one call, so a graph they share runs
+    once. Only the data payloads are computed: coordinates, attributes and names
+    are kept, and lazy auxiliary coordinates stay lazy. This differs from
+    computing whole DataArrays, which would also compute those coordinates.
+    Sparse payloads, eager or in Dask chunks, become dense NumPy arrays, because
+    ``compute`` alone can return a sparse array.
+
+    Each call logs one DEBUG message on this module's logger naming the purpose
+    and the arrays, so eager boundaries can be traced by enabling DEBUG for
+    ``openghg_inversions.array_ops``.
+
+    Args:
+        *arrays: Borrowed labelled arrays that share this boundary. They are not
+            mutated.
+        purpose: Short description of the boundary, used in the log message.
+
+    Returns:
+        Arrays with eager dense NumPy payloads, in input order. Each is a
+        shallow copy sharing the input's coordinates.
+    """
+    dense_arrays = tuple(to_dense(array) for array in arrays)
+    is_lazy = tuple(isinstance(array.data, DaskArray) for array in dense_arrays)
+    if logger.isEnabledFor(logging.DEBUG):
+        described = ", ".join(
+            f"{array.name if array.name is not None else '<unnamed>'}{tuple(array.shape)}"
+            f" ({'lazy' if lazy else 'eager'})"
+            for array, lazy in zip(dense_arrays, is_lazy, strict=True)
+        )
+        logger.debug("Materializing %s: %s", purpose, described)
+    if not any(is_lazy):
+        return dense_arrays
+
+    computed = dask_compute(*(array.data for array in dense_arrays))
+    return tuple(array.copy(deep=False, data=data) for array, data in zip(dense_arrays, computed, strict=True))
 
 
 def jax_to_numpy(da: xr.DataArray) -> xr.DataArray:
