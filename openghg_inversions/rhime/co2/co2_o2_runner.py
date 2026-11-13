@@ -13,7 +13,11 @@ import xarray as xr
 from dask import compute as dask_compute
 
 from openghg_inversions.biosphere_prior import BiospherePrior
-from openghg_inversions.models.biosphere import annotate_biosphere_prior
+from openghg_inversions.models.biosphere import (
+    annotate_biosphere_prior,
+    resolve_retained_flux_prior,
+    retained_flux_prior_family,
+)
 from openghg_inversions.array_ops import select_gathered_data_array, to_dense_tree
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
@@ -306,7 +310,8 @@ def build_rhime_co2_o2(
 
     Raises:
         ValueError: If input labels, errors, channel baseline choices, state
-            activity or covariance are inconsistent with the linked model.
+            activity or covariance are inconsistent with the linked model, or
+            ``biosphere_prior`` does not calibrate the prepared retained prior.
     """
     prepared = prepared_inputs
     _validate_channel_offset_options(offset_prior, offset_args)
@@ -319,14 +324,14 @@ def build_rhime_co2_o2(
     observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = (
         materialized
     )
+    flux_prior = resolve_retained_flux_prior(prepared.retained_prior, biosphere_prior)
     model = _build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
         co2_sensitivity=co2_sensitivity,
         o2_sensitivity=o2_sensitivity,
         aggregation_error=prepared.aggregation_error,
-        retained_prior=prepared.retained_prior,
-        biosphere_prior=biosphere_prior,
+        retained_prior=flux_prior,
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
         tau_hours=tau_hours,
@@ -344,9 +349,11 @@ def build_rhime_co2_o2(
         variable_roles["offset_concentration"] = "offset_concentration"
     if bound or offset_prior:
         variable_roles["baseline_concentration"] = "baseline_concentration"
-    metadata = {**_co2_o2_metadata(prepared, observations=observations), **boundary_metadata}
-    if biosphere_prior is not None:
-        metadata["prior"] = biosphere_prior.data.attrs["family"]
+    metadata = {
+        **_co2_o2_metadata(prepared, observations=observations),
+        **boundary_metadata,
+        "prior": retained_flux_prior_family(flux_prior),
+    }
     if tau_hours is not None:
         variable_roles.update(
             {
@@ -393,8 +400,9 @@ def run_rhime_co2_o2_from_prepared_inputs(
     to the caller rather than the model API.
 
     Args:
-        biosphere_prior: Optional explicit calibration against the existing retained prior;
-            omission preserves existing behavior.
+        biosphere_prior: Optional explicit calibration of the prepared retained
+            prior, checked once before graph construction; omission preserves
+            existing behavior.
         prepared_inputs: Validated preparation handoff containing joint
             observations and affine intercept on ``("observation",)``, separate
             channel sensitivities on their native observation axes and the retained

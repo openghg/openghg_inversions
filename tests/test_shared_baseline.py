@@ -575,6 +575,40 @@ def test_shared_trace_roundtrip_canonical_roles_units_and_graph_free_replay(tmp_
     assert "baseline_delta" not in restored.prior
 
 
+def test_calibrated_trace_roundtrip_keeps_calibration_policy_and_report(tmp_path):
+    import pymc as pm
+    from openghg_inversions.biosphere_prior import BiospherePrior
+    from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
+    from openghg_inversions.rhime.co2.shared_baseline_model import annotate_shared_baseline_trace
+    from openghg_inversions.serialization import load_trace, save_trace
+
+    obs, _, _, baseline = case("multiplicative_shrunk")
+    model = build_shared_co2_model(baseline, **errors(obs))
+    with model:
+        trace = pm.sample_prior_predictive(draws=2, random_seed=117)
+    trace = restore_inferencedata_coords(trace, get_coord_registry(model))
+    save_trace(annotate_shared_baseline_trace(trace, baseline), tmp_path / "shared.nc")
+    saved = load_trace(tmp_path / "shared.nc").shared_baseline.to_dataset()
+
+    # Stripping the prefix from variables, dimensions and attributes gives back
+    # the calibration exactly as it was supplied.
+    prefix = "calibration_"
+    restored = saved[[name for name in saved.data_vars if str(name).startswith(prefix)]]
+    restored = restored.rename({
+        name: str(name).removeprefix(prefix)
+        for name in (*restored.variables, *restored.dims) if str(name).startswith(prefix)
+    })
+    restored.attrs = {key.removeprefix(prefix): value for key, value in saved.attrs.items() if key.startswith(prefix)}
+    original = baseline.data
+    supplied = {key.removeprefix(prefix): value for key, value in original.attrs.items() if key.startswith(prefix)}
+    for key in ("family", "residual_sd_multiplier", "calibration_report", "biosphere_prior_schema"):
+        assert key in restored.attrs
+        assert restored.attrs[key] == supplied[key]
+    calibration = BiospherePrior.from_dataset(restored)
+    assert calibration.data.attrs["calibration_report"] == supplied["calibration_report"]
+    np.testing.assert_allclose(calibration.data.covariance.values, original.calibration_covariance.values)
+
+
 @pytest.mark.parametrize("reference", [400.0, 209300.0])
 def test_shared_likelihood_constructs_small_mean_without_reference_cancellation(reference, monkeypatch):
     obs, h, prior, _ = case()
