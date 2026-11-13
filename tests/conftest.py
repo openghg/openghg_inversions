@@ -1,3 +1,4 @@
+import tests._pytensor_defaults  # noqa: F401  # Must run before anything imports PyTensor.
 from collections import namedtuple
 from pathlib import Path
 import shutil

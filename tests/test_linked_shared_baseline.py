@@ -279,7 +279,9 @@ def test_constant_outer_columns_preserve_one_joint_physical_draw_in_both_channel
         assert arithmetic_covariance[0, 2] > 0
 
 
+@pytest.mark.fresh_process
 def test_linked_prior_identity_validation_survives_optimized_python():
+    """Identity checks must not rely on ``assert``, so run them under ``python -O``."""
     import subprocess
     import sys
     from pathlib import Path
