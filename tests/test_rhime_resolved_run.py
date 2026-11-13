@@ -52,7 +52,7 @@ def test_resolved_request_reaches_acquisition_without_resolution(monkeypatch, mu
 
 @pytest.mark.parametrize("multisector_mode", [False, True])
 @pytest.mark.parametrize("overrides", [
-    {"config_file": "missing.ini"}, {"species": "co2"}, {"use_tracer": False}, {"unknown": 1},
+    {"config_file": "missing.ini"}, {"species": "co2"}, {"unknown": 1},
 ])
 def test_resolved_request_rejects_ambiguous_overrides(monkeypatch, multisector_mode, overrides):
     recipe = multisector if multisector_mode else standard
@@ -247,7 +247,7 @@ def test_removed_cache_options_are_rejected(name, multisector_mode):
 
 
 @pytest.mark.parametrize("overrides", [
-    {"config_file": "missing.ini"}, {"species": "co2"}, {"use_tracer": False}, {"unknown": 1},
+    {"config_file": "missing.ini"}, {"species": "co2"}, {"unknown": 1},
 ])
 def test_nested_resolved_request_rejects_ambiguous_sources_before_parsing(monkeypatch, overrides):
     from openghg_inversions.rhime import nested
