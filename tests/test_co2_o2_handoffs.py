@@ -66,6 +66,7 @@ def constructed_joint_trace(prepared=None, *, chains: int = 1, draws: int = 4) -
     return xr.DataTree.from_dict({
         "/": xr.Dataset(attrs={
             "rhime_recipe": "co2_o2",
+            "rhime_boundary_format_version": 2,
             "rhime_variable_roles": json.dumps(co2_o2_runner._CO2_O2_VARIABLE_ROLES),
             "rhime_model_metadata": json.dumps(co2_o2_runner._co2_o2_metadata(
                 prepared, observations=prepared.observations)),
