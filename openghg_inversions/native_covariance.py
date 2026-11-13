@@ -41,18 +41,32 @@ object. Construction owns eager coordinate and class-label copies; array
 properties return borrowed values whose in-place mutation is unsupported.
 Scalar configuration properties are read-only, so changed parameters require
 explicit reconstruction.
+
+``ClassMixedExponentialCovariance`` keeps the class blocking but chooses the
+kernel per class: classes named in its ``class_kernels`` use a dense,
+non-separable :class:`GeodesicExponentialKernel`,
+``exp(-d_gc / ell)`` in great-circle distance, and every other class uses the
+separable kernel above. Each dense class of ``n`` cells is stored as one
+``n x n`` float64 array (``8 n**2`` bytes) holding the kernel and its cached
+Cholesky factor, so this action does materialise the dense covariance of the
+classes it is asked to make non-separable, and only of those.
 """
 
 from __future__ import annotations
 
 import inspect
 import json
-from collections.abc import Callable
-from typing import Protocol, cast
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import ClassVar, Protocol, cast
 
 import numpy as np
-from scipy.linalg import cho_factor, cho_solve  # type: ignore[import-untyped]
-from scipy.sparse.linalg import LinearOperator, cg  # type: ignore[import-untyped]
+from scipy.linalg import cho_factor, cho_solve, solve_triangular  # type: ignore[import-untyped]
+# scipy-stubs 1.15.3 omits the runtime BLAS/LAPACK wrappers used by dense blocks.
+from scipy.linalg.blas import dsymm  # type: ignore[attr-defined]
+from scipy.linalg.lapack import dpocon, dpotrf  # type: ignore[attr-defined]
+from scipy.sparse.linalg import LinearOperator, cg, eigsh  # type: ignore[import-untyped]
 import xarray as xr
 
 from openghg_inversions.borrowed import BorrowedDataArray, borrow
@@ -68,6 +82,10 @@ _CG_RELATIVE_TOLERANCE = "rtol" if "rtol" in inspect.signature(cg).parameters el
 _NATIVE_SERIALIZED_VARIABLE_NAMES = {"class_label_encoded"}
 
 __all__ = [
+    "DEFAULT_EARTH_RADIUS_KM",
+    "ClassMixedExponentialCovariance",
+    "GeodesicBlockDiagnostics",
+    "GeodesicExponentialKernel",
     "InvertibleNativeCovarianceAction",
     "NativeCovarianceAction",
     "SeparableExponentialCovariance",
@@ -785,3 +803,764 @@ def _exponential_factor(coordinates: np.ndarray, length_scale: float) -> np.ndar
     """
     values = np.asarray(coordinates, dtype=np.float64)
     return np.exp(-np.abs(values[:, np.newaxis] - values[np.newaxis, :]) / length_scale)
+
+
+DEFAULT_EARTH_RADIUS_KM = 111.0 * 180.0 / np.pi
+"""Sphere radius in km for which one degree of great-circle arc is 111 km.
+
+Separable kernels in OGI configurations express lengths in degrees and convert
+from kilometres with 111 km per degree of latitude; this radius keeps the
+geodesic kernel's north-south correlation identical to theirs.
+"""
+
+# A dense geodesic block whose 1-norm reciprocal condition estimate falls below
+# this value is rejected as numerically singular even when Cholesky succeeds.
+_GEODESIC_MIN_RECIPROCAL_CONDITION = 1.0e3 * float(np.finfo(np.float64).eps)
+# Columns of a dense geodesic block built per vectorized step (bounds the
+# temporary arrays to a few ``n_cells x 512`` float64 arrays).
+_GEODESIC_COLUMN_BLOCK = 512
+# Blocks up to this size report their minimum eigenvalue from a dense
+# eigendecomposition rather than Lanczos iterations on the Cholesky solve.
+_GEODESIC_DENSE_EIGEN_LIMIT = 64
+_MIXED_SERIALIZED_NAMES = {
+    "class_label_encoded",
+    "geodesic_class",
+    "geodesic_class_encoded",
+    "geodesic_class_kernel",
+    "geodesic_correlation_length_km",
+    "geodesic_earth_radius_km",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class GeodesicExponentialKernel:
+    """Unit-variance exponential kernel in great-circle distance.
+
+    The correlation between cells ``i`` and ``j`` is
+    ``exp(-d_gc(i, j) / correlation_length_km)``, where ``d_gc`` is the
+    haversine great-circle distance between cell centres on a sphere of radius
+    ``earth_radius_km``. The kernel is positive definite on the sphere for
+    every positive length, isotropic in local kilometres, and its east-west
+    correlation length in degrees of longitude grows as ``1 / cos(latitude)``.
+
+    Attributes:
+        correlation_length_km: E-folding distance in km.
+        earth_radius_km: Sphere radius in km. The default makes one degree of
+            arc 111 km, consistent with OGI's degree lengths.
+    """
+
+    correlation_length_km: float
+    earth_radius_km: float = DEFAULT_EARTH_RADIUS_KM
+    kind: ClassVar[str] = "geodesic_exponential"
+
+    def __post_init__(self) -> None:
+        """Validate and normalise the kernel parameters to floats.
+
+        Raises:
+            ValueError: If a length or radius is not finite and positive.
+        """
+        length = _positive_finite(self.correlation_length_km, "correlation_length_km")
+        object.__setattr__(self, "correlation_length_km", length)
+        object.__setattr__(self, "earth_radius_km", _positive_finite(self.earth_radius_km, "earth_radius_km"))
+
+    def correlation(
+        self,
+        latitude_1: np.ndarray,
+        longitude_1: np.ndarray,
+        latitude_2: np.ndarray,
+        longitude_2: np.ndarray,
+    ) -> np.ndarray:
+        """Return broadcast kernel values between points given in degrees.
+
+        Args:
+            latitude_1: Latitudes of the first points in degrees.
+            longitude_1: Longitudes of the first points in degrees.
+            latitude_2: Latitudes of the second points in degrees.
+            longitude_2: Longitudes of the second points in degrees.
+
+        Returns:
+            Correlations broadcast over the four inputs.
+        """
+        phi_1 = np.deg2rad(np.asarray(latitude_1, dtype=np.float64))
+        phi_2 = np.deg2rad(np.asarray(latitude_2, dtype=np.float64))
+        delta_longitude = np.deg2rad(
+            np.asarray(longitude_1, dtype=np.float64) - np.asarray(longitude_2, dtype=np.float64)
+        )
+        haversine = (
+            np.sin(0.5 * (phi_1 - phi_2)) ** 2
+            + np.cos(phi_1) * np.cos(phi_2) * np.sin(0.5 * delta_longitude) ** 2
+        )
+        distance = 2.0 * self.earth_radius_km * np.arcsin(np.sqrt(np.clip(haversine, 0.0, 1.0)))
+        return np.exp(-distance / self.correlation_length_km)
+
+
+@dataclass(frozen=True, slots=True)
+class GeodesicBlockDiagnostics:
+    """Positive-definiteness report for one dense geodesic class block.
+
+    Attributes:
+        class_label: Native class label of the block.
+        size: Number of native cells in the class.
+        correlation_length_km: Kernel e-folding distance in km.
+        reciprocal_condition: LAPACK ``dpocon`` estimate of the reciprocal
+            1-norm condition number of the unit-variance block.
+        one_norm: 1-norm of the unit-variance block.
+        nbytes: Bytes held by the block's dense storage.
+    """
+
+    class_label: object
+    size: int
+    correlation_length_km: float
+    reciprocal_condition: float
+    one_norm: float
+    nbytes: int
+
+
+class _DenseGeodesicBlock:
+    """Factorized unit-variance geodesic kernel on one class's cells.
+
+    One Fortran-ordered ``n x n`` array holds both the kernel and its Cholesky
+    factor, so the block costs ``8 n**2`` bytes rather than twice that. The
+    upper triangle and diagonal hold ``K``; the strict lower triangle holds the
+    unit lower-triangular ``L_u`` of ``K = L_u D**2 L_u.T``, whose diagonal
+    ``D`` is kept separately. Apply uses ``dsymm`` on the upper triangle and
+    solve uses two unit-diagonal triangular solves on the lower triangle.
+    """
+
+    __slots__ = ("cell_index", "diagnostics", "kernel", "pivots", "storage")
+
+    def __init__(
+        self,
+        class_label: object,
+        kernel: GeodesicExponentialKernel,
+        cell_index: np.ndarray,
+        latitude: np.ndarray,
+        longitude: np.ndarray,
+    ) -> None:
+        """Build, factorize and check the dense unit-variance block.
+
+        Args:
+            class_label: Class label, used in diagnostics and errors.
+            kernel: Geodesic kernel configuration.
+            cell_index: Row-major native-cell indices of the class.
+            latitude: Cell-centre latitudes in degrees, one per index.
+            longitude: Cell-centre longitudes in degrees, one per index.
+
+        Raises:
+            numpy.linalg.LinAlgError: If the block is not numerically positive
+                definite.
+        """
+        size = int(cell_index.size)
+        storage = np.empty((size, size), dtype=np.float64, order="F")
+        one_norm = 0.0
+        for start in range(0, size, _GEODESIC_COLUMN_BLOCK):
+            stop = min(size, start + _GEODESIC_COLUMN_BLOCK)
+            columns = kernel.correlation(
+                latitude[:, np.newaxis],
+                longitude[:, np.newaxis],
+                latitude[np.newaxis, start:stop],
+                longitude[np.newaxis, start:stop],
+            )
+            storage[:, start:stop] = columns
+            one_norm = max(one_norm, float(np.abs(columns).sum(axis=0).max()))
+            del columns
+        kernel_diagonal = np.diag(storage).copy()
+
+        # Factorize in place: LAPACK overwrites only the lower triangle and
+        # the diagonal, leaving K in the strict upper triangle.
+        factor, info = dpotrf(storage, lower=1, clean=0, overwrite_a=1)
+        if not np.shares_memory(factor, storage):  # pragma: no cover - defensive
+            storage = factor
+        label = repr(class_label)
+        if info > 0:
+            raise np.linalg.LinAlgError(
+                f"Geodesic covariance block for class {label} "
+                f"(correlation_length_km={kernel.correlation_length_km:g}, {size} cells) is not positive "
+                f"definite: Cholesky failed at leading minor {info}"
+            )
+        if info < 0:  # pragma: no cover - LAPACK argument error
+            raise np.linalg.LinAlgError(f"LAPACK dpotrf failed with info={info}")
+        reciprocal_condition, condition_info = dpocon(storage, one_norm, uplo="L")
+        if condition_info != 0:  # pragma: no cover - LAPACK argument error
+            raise np.linalg.LinAlgError(f"LAPACK condition estimation failed with info={condition_info}")
+        reciprocal_condition = float(reciprocal_condition)
+        if not reciprocal_condition >= _GEODESIC_MIN_RECIPROCAL_CONDITION:
+            raise np.linalg.LinAlgError(
+                f"Geodesic covariance block for class {label} "
+                f"(correlation_length_km={kernel.correlation_length_km:g}, {size} cells) is numerically "
+                f"singular: reciprocal 1-norm condition estimate {reciprocal_condition:.3g} is below "
+                f"{_GEODESIC_MIN_RECIPROCAL_CONDITION:.3g}"
+            )
+        pivots = np.diag(storage).copy()
+        storage[np.diag_indices(size)] = kernel_diagonal
+        for column in range(size - 1):
+            storage[column + 1 :, column] /= pivots[column]
+
+        self.kernel = kernel
+        self.cell_index = cell_index
+        self.storage = storage
+        self.pivots = pivots
+        self.diagnostics = GeodesicBlockDiagnostics(
+            class_label=class_label,
+            size=size,
+            correlation_length_km=kernel.correlation_length_km,
+            reciprocal_condition=reciprocal_condition,
+            one_norm=one_norm,
+            nbytes=int(storage.nbytes + pivots.nbytes),
+        )
+
+    def apply(self, values: np.ndarray) -> np.ndarray:
+        """Return ``K values`` for an ``(n, rhs)`` array."""
+        return np.asarray(dsymm(1.0, self.storage, values, side=0, lower=0))
+
+    def solve(self, values: np.ndarray) -> np.ndarray:
+        """Return ``K^-1 values`` for an ``(n, rhs)`` array."""
+        forward = solve_triangular(
+            self.storage, values, lower=True, unit_diagonal=True, check_finite=False
+        )
+        forward /= (self.pivots**2)[:, np.newaxis]
+        return np.asarray(
+            solve_triangular(
+                self.storage, forward, lower=True, trans="T", unit_diagonal=True, check_finite=False
+            )
+        )
+
+    def minimum_eigenvalue(self) -> float:
+        """Return the smallest eigenvalue of the unit-variance block."""
+        size = self.storage.shape[0]
+        if size <= _GEODESIC_DENSE_EIGEN_LIMIT:
+            upper = np.triu(self.storage)
+            dense = upper + np.triu(self.storage, 1).T
+            return float(np.linalg.eigvalsh(dense)[0])
+
+        def precision(vector: np.ndarray) -> np.ndarray:
+            return self.solve(vector.reshape(size, 1)).reshape(size)
+
+        # scipy-stubs 1.15.3 omits the public shape/matvec factory overload.
+        operator = LinearOperator(  # type: ignore[call-overload]
+            (size, size), matvec=precision, dtype=np.float64
+        )
+        largest = eigsh(operator, k=1, which="LM", return_eigenvectors=False)  # K^-1 is PD
+        return float(1.0 / largest[0])
+
+
+class ClassMixedExponentialCovariance:
+    """Class-blocked exponential covariance with a per-class kernel choice.
+
+    Cells in different classes are uncorrelated, as in a class-blocked
+    :class:`SeparableExponentialCovariance`. Classes named in
+    ``class_kernels`` use a dense non-separable kernel (currently
+    :class:`GeodesicExponentialKernel`); every other class uses the separable
+    exponential kernel of :class:`SeparableExponentialCovariance` with the
+    given degree lengths. With ``K_c`` the unit-variance kernel of class ``c``
+    and ``M_c`` its indicator,
+
+    ``B = sigma**2 * sum_c M_c K_c M_c``.
+
+    Args:
+        latitude: One-dimensional latitude coordinate in degrees.
+        longitude: One-dimensional longitude coordinate in degrees.
+        class_labels: Native-grid labels assigning every cell to a class.
+        class_kernels: Mapping from class label to the dense kernel of that
+            class. It must name at least one class present in
+            ``class_labels``.
+        sigma: Strictly positive native-cell marginal standard deviation,
+            shared by every class.
+        correlation_length: Separable fallback correlation length in degrees.
+        latitude_correlation_length: Optional separable latitude length.
+        longitude_correlation_length: Optional separable longitude length.
+
+    Notes:
+        Each dense class of ``n`` cells holds one ``n x n`` float64 array
+        (``8 n**2`` bytes, 1.1 GB for 11,832 cells) containing both the kernel
+        and its Cholesky factor; it is built and factorized once at
+        construction and never copied. Apply costs ``2 n**2`` flops per RHS
+        for the dense classes plus the separable classes' factor products.
+        Solve uses the cached Cholesky factor for each dense class and the
+        matrix-free conjugate-gradient path of the class-blocked separable
+        covariance, restricted to the separable classes. Construction fails
+        with :class:`numpy.linalg.LinAlgError` if a dense block is not
+        numerically positive definite; :attr:`geodesic_diagnostics` reports
+        the condition estimates and :meth:`minimum_eigenvalues` the smallest
+        eigenvalues. :meth:`with_sigma` rescales without refactorizing.
+
+    Raises:
+        ValueError: If coordinates, units, covariance parameters, class labels
+            or class kernels are invalid.
+        TypeError: If a class kernel is not a supported kernel.
+        numpy.linalg.LinAlgError: If a dense class block is not numerically
+            positive definite.
+    """
+
+    __slots__ = (
+        "_blocks",
+        "_class_kernels",
+        "_separable",
+        "_separable_boxes",
+        "_separable_index",
+        "_sigma",
+    )
+
+    schema = "openghg_inversions.class_mixed_exponential_covariance"
+    schema_version = 1
+
+    def __init__(
+        self,
+        latitude: xr.DataArray,
+        longitude: xr.DataArray,
+        *,
+        class_labels: xr.DataArray,
+        class_kernels: Mapping[object, GeodesicExponentialKernel],
+        sigma: float = 1.0,
+        correlation_length: float = 1.5,
+        latitude_correlation_length: float | None = None,
+        longitude_correlation_length: float | None = None,
+    ) -> None:
+        """Validate inputs, then build and factorize every dense class block."""
+        if class_labels is None:
+            raise ValueError("ClassMixedExponentialCovariance requires class_labels")
+        separable = SeparableExponentialCovariance(
+            latitude,
+            longitude,
+            sigma=1.0,
+            correlation_length=correlation_length,
+            latitude_correlation_length=latitude_correlation_length,
+            longitude_correlation_length=longitude_correlation_length,
+            class_labels=class_labels,
+        )
+        self._initialize(separable, _positive_finite(sigma, "sigma"), class_kernels)
+
+    def _initialize(
+        self,
+        separable: SeparableExponentialCovariance,
+        sigma: float,
+        class_kernels: Mapping[object, GeodesicExponentialKernel],
+    ) -> None:
+        """Resolve class kernels against the separable class masks.
+
+        Args:
+            separable: Unit-sigma class-blocked separable covariance supplying
+                coordinates, separable factors and class masks.
+            sigma: Validated marginal standard deviation.
+            class_kernels: Requested dense kernel per class label.
+
+        Raises:
+            ValueError: If the class kernels are empty, name absent classes or
+                name one class twice, or a native dimension is reserved.
+            TypeError: If a kernel is not a :class:`GeodesicExponentialKernel`.
+        """
+        reserved = _MIXED_SERIALIZED_NAMES.intersection(separable.native_dims)
+        if reserved:
+            raise ValueError(f"native dimension {sorted(reserved)[0]!r} is reserved by the serialized schema")
+        kernels = dict(class_kernels)
+        if not kernels:
+            raise ValueError(
+                "class_kernels must name at least one class; use SeparableExponentialCovariance otherwise"
+            )
+        labels = separable._class_labels
+        assert labels is not None
+        label_values = np.asarray(labels.values)
+        masks = separable._class_masks
+        mask_labels = [label_values[mask].flat[0] for mask in masks]
+        resolved: dict[int, tuple[object, GeodesicExponentialKernel]] = {}
+        for key, kernel in kernels.items():
+            if not isinstance(kernel, GeodesicExponentialKernel):
+                raise TypeError(f"Kernel for class {key!r} must be a GeodesicExponentialKernel")
+            matches = [index for index, label in enumerate(mask_labels) if _scalar_label_equal(key, label)]
+            if not matches:
+                raise ValueError(f"class_kernels names class {key!r}, which is absent from class_labels")
+            if matches[0] in resolved:
+                raise ValueError(f"class_kernels names class {key!r} more than once")
+            resolved[matches[0]] = (key.item() if isinstance(key, np.generic) else key, kernel)
+
+        latitude_values = np.asarray(separable._latitude.values, dtype=np.float64)
+        longitude_values = np.asarray(separable._longitude.values, dtype=np.float64)
+        n_lon = longitude_values.size
+        blocks = []
+        for index in sorted(resolved):
+            label, kernel = resolved[index]
+            cell_index = np.flatnonzero(masks[index].reshape(-1))
+            blocks.append(
+                _DenseGeodesicBlock(
+                    label,
+                    kernel,
+                    cell_index,
+                    latitude_values[cell_index // n_lon],
+                    longitude_values[cell_index % n_lon],
+                )
+            )
+        separable_masks = [mask for index, mask in enumerate(masks) if index not in resolved]
+        self._separable = separable
+        self._sigma = sigma
+        self._class_kernels = MappingProxyType({label: kernel for label, kernel in resolved.values()})
+        self._blocks = tuple(blocks)
+        self._separable_boxes = _mixed_class_bounding_boxes(separable_masks)
+        self._separable_index = (
+            np.flatnonzero(np.logical_or.reduce(separable_masks).reshape(-1))
+            if separable_masks
+            else np.empty(0, dtype=np.intp)
+        )
+
+    @property
+    def latitude(self) -> BorrowedDataArray:
+        """Borrow the owned latitude coordinate; in-place mutation is unsupported."""
+        return self._separable.latitude
+
+    @property
+    def longitude(self) -> BorrowedDataArray:
+        """Borrow the owned longitude coordinate; in-place mutation is unsupported."""
+        return self._separable.longitude
+
+    @property
+    def sigma(self) -> float:
+        """Read-only native-cell marginal standard deviation."""
+        return self._sigma
+
+    @property
+    def correlation_length(self) -> float:
+        """Read-only separable fallback correlation length in degrees."""
+        return self._separable.correlation_length
+
+    @property
+    def latitude_correlation_length(self) -> float:
+        """Read-only separable latitude correlation length in degrees."""
+        return self._separable.latitude_correlation_length
+
+    @property
+    def longitude_correlation_length(self) -> float:
+        """Read-only separable longitude correlation length in degrees."""
+        return self._separable.longitude_correlation_length
+
+    @property
+    def latitude_correlation_length_explicit(self) -> bool:
+        """Whether the separable latitude length was configured independently."""
+        return self._separable.latitude_correlation_length_explicit
+
+    @property
+    def longitude_correlation_length_explicit(self) -> bool:
+        """Whether the separable longitude length was configured independently."""
+        return self._separable.longitude_correlation_length_explicit
+
+    @property
+    def class_labels(self) -> BorrowedDataArray:
+        """Borrow the owned class labels; in-place mutation is unsupported."""
+        labels = self._separable.class_labels
+        assert labels is not None
+        return labels
+
+    @property
+    def class_kernels(self) -> Mapping[object, GeodesicExponentialKernel]:
+        """Read-only mapping from dense class label to its kernel."""
+        return self._class_kernels
+
+    @property
+    def geodesic_diagnostics(self) -> tuple[GeodesicBlockDiagnostics, ...]:
+        """Positive-definiteness and memory report of every dense class block."""
+        return tuple(block.diagnostics for block in self._blocks)
+
+    @property
+    def native_dims(self) -> tuple[str, str]:
+        """Latitude and longitude dimension names in vectorisation order."""
+        return self._separable.native_dims
+
+    def minimum_eigenvalues(self) -> dict[object, float]:
+        """Return the smallest eigenvalue of each unit-variance dense block.
+
+        Small blocks use a dense eigendecomposition; larger blocks use Lanczos
+        iterations on the cached Cholesky solve, without another dense copy.
+
+        Returns:
+            Mapping from dense class label to its smallest eigenvalue. Multiply
+            by ``sigma**2`` for the covariance block.
+        """
+        return {block.diagnostics.class_label: block.minimum_eigenvalue() for block in self._blocks}
+
+    def with_sigma(self, sigma: float) -> ClassMixedExponentialCovariance:
+        """Return the same kernel with another amplitude, sharing dense factors.
+
+        Args:
+            sigma: Strictly positive native-cell marginal standard deviation.
+
+        Returns:
+            A covariance whose kernel, class labels and dense blocks are shared
+            (read-only) with this one.
+        """
+        result = object.__new__(type(self))
+        result._separable = self._separable
+        result._sigma = _positive_finite(sigma, "sigma")
+        result._class_kernels = self._class_kernels
+        result._blocks = self._blocks
+        result._separable_boxes = self._separable_boxes
+        result._separable_index = self._separable_index
+        return result
+
+    def apply(self, rhs: xr.DataArray) -> xr.DataArray:
+        """Apply ``B`` while preserving the labelled layout of ``rhs``.
+
+        Args:
+            rhs: Array containing both native dimensions and any number of
+                additional right-hand-side dimensions.
+
+        Returns:
+            ``B rhs`` with dimensions and coordinates identical to ``rhs``.
+
+        Raises:
+            TypeError: If ``rhs`` is not an xarray data array.
+            ValueError: If native dimensions or coordinates are missing or
+                misaligned, or if values are non-numeric.
+        """
+        matrix, original_dims, rhs_dims = self._separable._aligned_matrix(rhs)
+        applied = self._apply_matrix(matrix)
+        return self._separable._restore(applied, rhs, original_dims, rhs_dims)
+
+    def solve(self, rhs: xr.DataArray) -> xr.DataArray:
+        """Solve ``B result = rhs`` class by class.
+
+        Dense classes use their cached Cholesky factors; separable classes use
+        matrix-free conjugate gradients restricted to their cells.
+
+        Args:
+            rhs: Array containing both native dimensions and any number of
+                additional right-hand-side dimensions.
+
+        Returns:
+            ``B^-1 rhs`` with dimensions and coordinates identical to ``rhs``.
+
+        Raises:
+            TypeError: If ``rhs`` is not an xarray data array.
+            ValueError: If native dimensions or coordinates are missing or
+                misaligned, or if values are non-numeric.
+            numpy.linalg.LinAlgError: If the separable-class iterative solve
+                does not converge.
+        """
+        matrix, original_dims, rhs_dims = self._separable._aligned_matrix(rhs)
+        solved = self._solve_matrix(matrix)
+        return self._separable._restore(solved, rhs, original_dims, rhs_dims)
+
+    def to_dataset(self) -> xr.Dataset:
+        """Serialize coordinates, separable configuration and class kernels.
+
+        Returns:
+            The class-blocked :class:`SeparableExponentialCovariance` dataset
+            of the separable configuration under this class's schema, with
+            ``sigma`` and the dense class kernels over a ``geodesic_class``
+            dimension (tagged-JSON class labels, kernel kind, length and
+            radius in km). Two covariances with the same dataset apart from
+            the ``sigma`` attribute share an identical unit kernel.
+        """
+        dataset = self._separable.to_dataset()
+        labels = list(self._class_kernels)
+        kernels = [self._class_kernels[label] for label in labels]
+        dataset.attrs.update(schema=self.schema, schema_version=self.schema_version, sigma=self.sigma)
+        encoded = [_encode_tagged_json_value(label) for label in labels]
+        dataset["geodesic_class_encoded"] = xr.DataArray(
+            np.asarray(encoded, dtype=str), dims="geodesic_class"
+        )
+        dataset["geodesic_class_kernel"] = xr.DataArray(
+            np.asarray([kernel.kind for kernel in kernels], dtype=str), dims="geodesic_class"
+        )
+        dataset["geodesic_correlation_length_km"] = xr.DataArray(
+            [kernel.correlation_length_km for kernel in kernels], dims="geodesic_class"
+        )
+        dataset["geodesic_earth_radius_km"] = xr.DataArray(
+            [kernel.earth_radius_km for kernel in kernels], dims="geodesic_class"
+        )
+        return dataset
+
+    @classmethod
+    def from_dataset(cls, dataset: xr.Dataset) -> ClassMixedExponentialCovariance:
+        """Restore a covariance from :meth:`to_dataset` output.
+
+        Args:
+            dataset: Versioned class-mixed covariance dataset.
+
+        Returns:
+            Reconstructed covariance with its dense blocks refactorized.
+
+        Raises:
+            ValueError: If the schema, version, coordinates, class labels or
+                class kernels are missing or invalid.
+            numpy.linalg.LinAlgError: If a dense block is not numerically
+                positive definite.
+        """
+        if dataset.attrs.get("schema") != cls.schema:
+            raise ValueError(f"Expected covariance schema {cls.schema!r}")
+        if dataset.attrs.get("schema_version") != cls.schema_version:
+            raise ValueError(f"Unsupported covariance schema version {dataset.attrs.get('schema_version')!r}")
+        kernel_names = (
+            "geodesic_class_encoded",
+            "geodesic_class_kernel",
+            "geodesic_correlation_length_km",
+            "geodesic_earth_radius_km",
+        )
+        missing = [name for name in kernel_names if name not in dataset.data_vars]
+        if missing:
+            raise ValueError(f"Serialized class-mixed covariance is missing variables {missing}")
+        class_kernels = _decode_class_kernels(
+            dataset["geodesic_class_encoded"].values,
+            dataset["geodesic_class_kernel"].values,
+            dataset["geodesic_correlation_length_km"].values,
+            dataset["geodesic_earth_radius_km"].values,
+        )
+        separable_dataset = dataset.drop_vars(list(kernel_names)).assign_attrs(
+            schema=SeparableExponentialCovariance.schema,
+            schema_version=SeparableExponentialCovariance.schema_version,
+            sigma=1.0,
+        )
+        separable = SeparableExponentialCovariance.from_dataset(separable_dataset)
+        if separable.class_labels is None:
+            raise ValueError("Serialized class-mixed covariance requires class labels")
+        result = object.__new__(cls)
+        result._initialize(
+            separable, _positive_finite(float(dataset.attrs["sigma"]), "serialized sigma"), class_kernels
+        )
+        return result
+
+    def _apply_matrix(self, matrix: np.ndarray) -> np.ndarray:
+        """Apply ``B`` to native-first right-hand sides.
+
+        Args:
+            matrix: Eager array shaped ``(latitude, longitude, rhs)``.
+
+        Returns:
+            Covariance-applied values with the same shape as ``matrix``.
+        """
+        n_lat, n_lon, n_rhs = matrix.shape
+        result = self._apply_separable_classes(matrix)
+        flat_rhs = matrix.reshape(n_lat * n_lon, n_rhs)
+        flat_result = result.reshape(n_lat * n_lon, n_rhs)
+        for block in self._blocks:
+            flat_result[block.cell_index] = block.apply(flat_rhs[block.cell_index])
+        result *= self._sigma**2
+        return result
+
+    def _apply_separable_classes(self, matrix: np.ndarray) -> np.ndarray:
+        """Apply the unit separable kernel of every separable class.
+
+        Each class is applied on its bounding box. Cells outside the class are
+        zeroed before and after, so restricting the factors to the box is
+        exact. Dense-class cells are left at zero.
+
+        Args:
+            matrix: Eager array shaped ``(latitude, longitude, rhs)``.
+
+        Returns:
+            New array of the same shape.
+        """
+        latitude_factor = self._separable._latitude_factor
+        longitude_factor = self._separable._longitude_factor
+        result = np.zeros(matrix.shape, dtype=np.result_type(matrix.dtype, np.float64))
+        for lat_slice, lon_slice, local_mask in self._separable_boxes:
+            masked = matrix[lat_slice, lon_slice] * local_mask[..., np.newaxis]
+            n_lat, n_lon, n_rhs = masked.shape
+            lat_applied = latitude_factor[lat_slice, lat_slice] @ masked.reshape(n_lat, n_lon * n_rhs)
+            lat_applied = lat_applied.reshape(n_lat, n_lon, n_rhs)
+            applied = np.einsum(
+                "ikr,lk->ilr", lat_applied, longitude_factor[lon_slice, lon_slice], optimize=True
+            )
+            result[lat_slice, lon_slice] += applied * local_mask[..., np.newaxis]
+        return result
+
+    def _solve_matrix(self, matrix: np.ndarray) -> np.ndarray:
+        """Solve ``B result = matrix`` for native-first right-hand sides.
+
+        Args:
+            matrix: Eager array shaped ``(latitude, longitude, rhs)``.
+
+        Returns:
+            Solved values with the same shape as ``matrix``.
+
+        Raises:
+            numpy.linalg.LinAlgError: If conjugate gradients do not converge.
+        """
+        n_lat, n_lon, n_rhs = matrix.shape
+        native_size = n_lat * n_lon
+        flat_rhs = matrix.reshape(native_size, n_rhs)
+        solved = np.zeros((native_size, n_rhs), dtype=np.result_type(matrix.dtype, np.float64))
+        for block in self._blocks:
+            solved[block.cell_index] = block.solve(flat_rhs[block.cell_index])
+
+        index = self._separable_index
+        if index.size:
+            work = np.zeros(native_size)
+
+            def matvec(vector: np.ndarray) -> np.ndarray:
+                """Apply the separable classes to vectors on separable cells."""
+                work[index] = np.ravel(vector)
+                applied = self._apply_separable_classes(work.reshape(n_lat, n_lon, 1))
+                return applied.reshape(native_size)[index]
+
+            # scipy-stubs 1.15.3 omits the public shape/matvec factory overload.
+            operator = LinearOperator(  # type: ignore[call-overload]
+                (index.size, index.size),
+                matvec,
+            )
+            cg_function = cast(Callable[..., tuple[np.ndarray, int]], cg)
+            for rhs_index in range(n_rhs):
+                solution, info = cg_function(
+                    operator,
+                    flat_rhs[index, rhs_index],
+                    atol=0.0,
+                    maxiter=max(100, 10 * index.size),
+                    **{_CG_RELATIVE_TOLERANCE: 1e-12},
+                )
+                if info != 0:
+                    reason = "did not converge" if info > 0 else "failed with an illegal input or breakdown"
+                    raise np.linalg.LinAlgError(f"Separable-class covariance solve {reason} (CG info={info})")
+                solved[index, rhs_index] = solution
+        solved /= self._sigma**2
+        return solved.reshape(n_lat, n_lon, n_rhs)
+
+
+def _decode_class_kernels(
+    encoded_labels: np.ndarray,
+    kinds: np.ndarray,
+    lengths: np.ndarray,
+    radii: np.ndarray,
+) -> dict[object, GeodesicExponentialKernel]:
+    """Decode serialized dense class kernels.
+
+    Args:
+        encoded_labels: Tagged-JSON class labels.
+        kinds: Kernel kind of each class.
+        lengths: Correlation lengths in km.
+        radii: Sphere radii in km.
+
+    Returns:
+        Mapping from decoded class label to kernel.
+
+    Raises:
+        ValueError: If a label, kind or parameter is invalid.
+    """
+    kernels: dict[object, GeodesicExponentialKernel] = {}
+    for encoded, kind, length, radius in zip(encoded_labels, kinds, lengths, radii, strict=True):
+        if str(kind) != GeodesicExponentialKernel.kind:
+            raise ValueError(f"Unsupported serialized class kernel {str(kind)!r}")
+        kernels[_decode_tagged_json_value(str(encoded))] = GeodesicExponentialKernel(
+            correlation_length_km=float(length), earth_radius_km=float(radius)
+        )
+    return kernels
+
+
+def _mixed_class_bounding_boxes(
+    class_masks: list[np.ndarray],
+) -> tuple[tuple[slice, slice, np.ndarray], ...]:
+    """Return each class mask's latitude/longitude bounding box and local mask.
+
+    Args:
+        class_masks: Boolean native-grid masks, one per class.
+
+    Returns:
+        One ``(latitude_slice, longitude_slice, local_mask)`` triple per
+        non-empty class.
+    """
+    boxes = []
+    for mask in class_masks:
+        rows = np.flatnonzero(mask.any(axis=1))
+        columns = np.flatnonzero(mask.any(axis=0))
+        if rows.size == 0:  # pragma: no cover - masks come from present labels
+            continue
+        lat_slice = slice(int(rows[0]), int(rows[-1]) + 1)
+        lon_slice = slice(int(columns[0]), int(columns[-1]) + 1)
+        boxes.append((lat_slice, lon_slice, mask[lat_slice, lon_slice]))
+    return tuple(boxes)

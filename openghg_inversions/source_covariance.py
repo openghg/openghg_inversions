@@ -3,8 +3,10 @@
 The multisource covariance represented here is block diagonal by source. Each
 configured source owns a
 :class:`~openghg_inversions.native_covariance.SeparableExponentialCovariance`
-on the same labelled spatial grid, while amplitudes, correlation lengths, and
-optional class masks may differ by source. Applying or solving the composite
+or a
+:class:`~openghg_inversions.native_covariance.ClassMixedExponentialCovariance`
+on the same labelled spatial grid, while amplitudes, correlation lengths,
+optional class masks, and dense per-class kernels may differ by source. Applying or solving the composite
 action dispatches to each source block independently, preserves all labelled
 right-hand-side dimensions, and never constructs a dense cross-source matrix.
 
@@ -19,7 +21,10 @@ prolongation array.
 :class:`IndependentSourceCovariance` can serialize its complete reproducible
 configuration, including typed class labels, to an xarray dataset. Restoration
 validates the schema, source labels, required variables, and spatial coordinate
-metadata before reconstructing the component actions.
+metadata before reconstructing the component actions. A configuration with
+only separable blocks is written as schema version 1, exactly as before
+class-mixed blocks existed; any class-mixed block adds its dense class kernels
+over a ``geodesic_class`` dimension and writes schema version 2.
 
 Source dispatch intentionally uses eager per-source ``sel``, component
 operator, and ``concat`` calls. A source-only ``apply_ufunc`` or source
@@ -43,7 +48,12 @@ from typing import Literal, SupportsFloat
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.native_covariance import SeparableExponentialCovariance
+from openghg_inversions.native_covariance import (
+    ClassMixedExponentialCovariance,
+    GeodesicExponentialKernel,
+    SeparableExponentialCovariance,
+    _decode_class_kernels,
+)
 from openghg_inversions._serialization_codecs import (
     _TAGGED_JSON_VALUE_ENCODING,
     _decode_serialized_bool,
@@ -52,7 +62,22 @@ from openghg_inversions._serialization_codecs import (
     _json_value,
 )
 
-__all__ = ["IndependentSourceCovariance"]
+__all__ = ["IndependentSourceCovariance", "SourceSpatialCovariance"]
+
+SourceSpatialCovariance = SeparableExponentialCovariance | ClassMixedExponentialCovariance
+"""Spatial covariance actions accepted as independent source blocks."""
+
+_SEPARABLE_KERNEL = "separable_exponential"
+_CLASS_MIXED_KERNEL = "class_mixed_exponential"
+_CLASS_MIXED_SCHEMA_VERSION = 2
+_CLASS_MIXED_VARIABLE_NAMES = (
+    "spatial_kernel",
+    "geodesic_class_encoded",
+    "geodesic_class_kernel",
+    "geodesic_correlation_length_km",
+    "geodesic_earth_radius_km",
+)
+_CLASS_MIXED_RESERVED_NAMES = {*_CLASS_MIXED_VARIABLE_NAMES, "geodesic_class"}
 
 _SERIALIZED_VARIABLE_NAMES = {
     "sigma",
@@ -73,19 +98,23 @@ class IndependentSourceCovariance:
 
     Args:
         source_covariances: Non-empty insertion-ordered mapping from source
-            labels to separable spatial covariance actions on the same grid.
+            labels to separable or class-mixed spatial covariance actions on
+            the same grid.
         source_dim: Explicit native source dimension. It should not collide
             with a level name on the retained state MultiIndex.
 
     Raises:
         TypeError: If a source block is not a
-            :class:`SeparableExponentialCovariance` or the source mapping cannot
-            be copied.
+            :class:`SeparableExponentialCovariance` or
+            :class:`ClassMixedExponentialCovariance`, or the source mapping
+            cannot be copied.
         ValueError: If the mapping is empty, source labels or ``source_dim``
             are invalid, or block spatial dimensions or grids differ.
 
     Notes:
         The source mapping and source-dimension properties are read-only.
+        Serialization writes ``schema_version`` 1 when every block is
+        separable and version 2 when any block is class-mixed.
         Changed configuration requires explicit reconstruction.
     """
 
@@ -96,7 +125,7 @@ class IndependentSourceCovariance:
 
     def __init__(
         self,
-        source_covariances: Mapping[str, SeparableExponentialCovariance],
+        source_covariances: Mapping[str, SourceSpatialCovariance],
         source_dim: str = "native_source",
     ) -> None:
         """Validate source blocks and retain their canonical insertion order.
@@ -109,7 +138,8 @@ class IndependentSourceCovariance:
         Raises:
             TypeError: If ``source_covariances`` cannot be copied into a
                 mapping or any block is not a
-                :class:`SeparableExponentialCovariance`.
+                :class:`SeparableExponentialCovariance` or
+                :class:`ClassMixedExponentialCovariance`.
             ValueError: If no blocks are supplied, source labels or
                 ``source_dim`` are invalid, or blocks do not share identical
                 labelled spatial grids.
@@ -124,8 +154,14 @@ class IndependentSourceCovariance:
         if any(not isinstance(label, str) or not label for label in covariances):
             raise ValueError("source covariance labels must be non-empty strings")
         for label, covariance in covariances.items():
-            if not isinstance(covariance, SeparableExponentialCovariance):
-                raise TypeError(f"Source {label!r} must use SeparableExponentialCovariance")
+            if not isinstance(covariance, SeparableExponentialCovariance | ClassMixedExponentialCovariance):
+                raise TypeError(
+                    f"Source {label!r} must use SeparableExponentialCovariance or "
+                    "ClassMixedExponentialCovariance"
+                )
+        class_mixed = any(isinstance(item, ClassMixedExponentialCovariance) for item in covariances.values())
+        if class_mixed and source_dim in _CLASS_MIXED_RESERVED_NAMES:
+            raise ValueError(f"source_dim {source_dim!r} is reserved by the serialized schema")
 
         reference = next(iter(covariances.values()))
         if source_dim in reference.native_dims:
@@ -150,7 +186,7 @@ class IndependentSourceCovariance:
         self._source_labels = tuple(covariances)
 
     @property
-    def source_covariances(self) -> Mapping[str, SeparableExponentialCovariance]:
+    def source_covariances(self) -> Mapping[str, SourceSpatialCovariance]:
         """Return the read-only source-to-covariance mapping."""
         return self._source_covariances
 
@@ -294,7 +330,7 @@ class IndependentSourceCovariance:
             else:
                 label_names.append("")
                 label_attrs.append("{}")
-        return xr.Dataset(
+        dataset = xr.Dataset(
             {
                 "sigma": sigma,
                 "correlation_length": correlation_length,
@@ -332,6 +368,51 @@ class IndependentSourceCovariance:
                 "class_label_encoding": _TAGGED_JSON_VALUE_ENCODING,
             },
         )
+        if any(
+            isinstance(self.source_covariances[label], ClassMixedExponentialCovariance)
+            for label in self.source_labels
+        ):
+            self._add_class_kernels(dataset, source)
+        return dataset
+
+    def _add_class_kernels(self, dataset: xr.Dataset, source: xr.IndexVariable) -> None:
+        """Add per-source dense class kernels and mark schema version 2.
+
+        Args:
+            dataset: Version-1 dataset to extend in place.
+            source: Source index variable.
+        """
+        mixed = {
+            label: covariance
+            for label, covariance in self.source_covariances.items()
+            if isinstance(covariance, ClassMixedExponentialCovariance)
+        }
+        width = max(len(covariance.class_kernels) for covariance in mixed.values())
+        shape = (len(self.source_labels), width)
+        encoded = np.full(shape, "", dtype=object)
+        kinds = np.full(shape, "", dtype=object)
+        lengths = np.full(shape, np.nan)
+        radii = np.full(shape, np.nan)
+        for row, label in enumerate(self.source_labels):
+            if label not in mixed:
+                continue
+            for column, (class_label, kernel) in enumerate(mixed[label].class_kernels.items()):
+                encoded[row, column] = _encode_tagged_json_value(class_label)
+                kinds[row, column] = kernel.kind
+                lengths[row, column] = kernel.correlation_length_km
+                radii[row, column] = kernel.earth_radius_km
+        dims = (self.source_dim, "geodesic_class")
+        coords = {self.source_dim: source}
+        dataset["spatial_kernel"] = xr.DataArray(
+            [_CLASS_MIXED_KERNEL if label in mixed else _SEPARABLE_KERNEL for label in self.source_labels],
+            dims=self.source_dim,
+            coords=coords,
+        )
+        dataset["geodesic_class_encoded"] = xr.DataArray(encoded.astype(str), dims=dims, coords=coords)
+        dataset["geodesic_class_kernel"] = xr.DataArray(kinds.astype(str), dims=dims, coords=coords)
+        dataset["geodesic_correlation_length_km"] = xr.DataArray(lengths, dims=dims, coords=coords)
+        dataset["geodesic_earth_radius_km"] = xr.DataArray(radii, dims=dims, coords=coords)
+        dataset.attrs["schema_version"] = _CLASS_MIXED_SCHEMA_VERSION
 
     @classmethod
     def from_dataset(cls, dataset: xr.Dataset) -> IndependentSourceCovariance:
@@ -351,8 +432,10 @@ class IndependentSourceCovariance:
         """
         if dataset.attrs.get("schema") != cls.schema:
             raise ValueError(f"Expected source covariance schema {cls.schema!r}")
-        if dataset.attrs.get("schema_version") != cls.schema_version:
+        schema_version = dataset.attrs.get("schema_version")
+        if schema_version not in (cls.schema_version, _CLASS_MIXED_SCHEMA_VERSION):
             raise ValueError("Unsupported independent-source covariance schema version")
+        class_mixed = schema_version == _CLASS_MIXED_SCHEMA_VERSION
         if dataset.attrs.get("class_label_encoding") != _TAGGED_JSON_VALUE_ENCODING:
             raise ValueError("Unsupported independent-source class-label encoding")
         source_dim = str(dataset.attrs.get("source_dim", ""))
@@ -370,6 +453,8 @@ class IndependentSourceCovariance:
             "class_label_name",
             "class_label_attrs",
         }
+        if class_mixed:
+            required.update(_CLASS_MIXED_VARIABLE_NAMES)
         missing = required.difference(dataset.data_vars)
         spatial_coordinates_valid = (
             bool(latitude_dim)
@@ -385,7 +470,7 @@ class IndependentSourceCovariance:
         raw_source_labels = dataset.coords[source_dim].values.tolist()
         if any(not isinstance(label, str) or not label for label in raw_source_labels):
             raise ValueError("Serialized source covariance labels must be non-empty strings")
-        covariances: dict[str, SeparableExponentialCovariance] = {}
+        covariances: dict[str, SourceSpatialCovariance] = {}
         for label in raw_source_labels:
             labels = None
             blocked = _decode_serialized_bool(
@@ -432,14 +517,31 @@ class IndependentSourceCovariance:
                 raise ValueError(
                     f"Implicit longitude correlation length for source {label!r} contradicts the fallback"
                 )
-            covariances[label] = SeparableExponentialCovariance(
+            class_kernels = (
+                _serialized_class_kernels(dataset, source_dim, label) if class_mixed else None
+            )
+            if class_kernels is None:
+                covariances[label] = SeparableExponentialCovariance(
+                    latitude=dataset.coords[latitude_dim],
+                    longitude=dataset.coords[longitude_dim],
+                    sigma=float(dataset["sigma"].sel({source_dim: label}).item()),
+                    correlation_length=correlation_length,
+                    latitude_correlation_length=latitude_length if latitude_explicit else None,
+                    longitude_correlation_length=longitude_length if longitude_explicit else None,
+                    class_labels=labels,
+                )
+                continue
+            if labels is None:
+                raise ValueError(f"Serialized class-mixed source {label!r} requires class labels")
+            covariances[label] = ClassMixedExponentialCovariance(
                 latitude=dataset.coords[latitude_dim],
                 longitude=dataset.coords[longitude_dim],
+                class_labels=labels,
+                class_kernels=class_kernels,
                 sigma=float(dataset["sigma"].sel({source_dim: label}).item()),
                 correlation_length=correlation_length,
                 latitude_correlation_length=latitude_length if latitude_explicit else None,
                 longitude_correlation_length=longitude_length if longitude_explicit else None,
-                class_labels=labels,
             )
         return cls(covariances, source_dim=source_dim)
 
@@ -491,6 +593,46 @@ class IndependentSourceCovariance:
         )
         restored_data = combined.transpose(*original_dims, transpose_coords=False).data
         return rhs.copy(data=restored_data, deep=False)
+
+
+def _serialized_class_kernels(
+    dataset: xr.Dataset,
+    source_dim: str,
+    label: str,
+) -> dict[object, GeodesicExponentialKernel] | None:
+    """Decode one source's dense class kernels from a version-2 dataset.
+
+    Args:
+        dataset: Version-2 independent-source covariance dataset.
+        source_dim: Source dimension name.
+        label: Source label.
+
+    Returns:
+        The class kernels of a class-mixed source, or ``None`` for a
+        separable source.
+
+    Raises:
+        ValueError: If the kernel kind is unknown or contradicts the class
+            kernel entries.
+    """
+    selection = {source_dim: label}
+    kind = str(dataset["spatial_kernel"].sel(selection).item())
+    encoded = np.asarray(dataset["geodesic_class_encoded"].sel(selection).values, dtype=str)
+    present = encoded != ""
+    if kind == _SEPARABLE_KERNEL:
+        if present.any():
+            raise ValueError(f"Serialized separable source {label!r} has class kernels")
+        return None
+    if kind != _CLASS_MIXED_KERNEL:
+        raise ValueError(f"Unsupported serialized spatial kernel {kind!r} for source {label!r}")
+    if not present.any():
+        raise ValueError(f"Serialized class-mixed source {label!r} has no class kernels")
+    return _decode_class_kernels(
+        encoded[present],
+        np.asarray(dataset["geodesic_class_kernel"].sel(selection).values)[present],
+        np.asarray(dataset["geodesic_correlation_length_km"].sel(selection).values)[present],
+        np.asarray(dataset["geodesic_earth_radius_km"].sel(selection).values)[present],
+    )
 
 
 def _positive_finite(value: SupportsFloat, name: str) -> float:
