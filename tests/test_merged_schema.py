@@ -40,9 +40,9 @@ def _merged(*, sectoral=False, timed_flux=False):
     )
 
 
-def _validate(merged, *, require_footprints=False, use_bc=False, grid_dims=("lat", "lon")):
+def _validate(merged, *, use_bc=False, grid_dims=("lat", "lon")):
     merged.validate_scientific_inputs(
-        split_by_sectors=merged.split_by_sectors, require_footprints=require_footprints,
+        split_by_sectors=merged.split_by_sectors,
         use_bc=use_bc, flux_sources=tuple(merged.flux_data), grid_dims=grid_dims,
     )
 
@@ -139,13 +139,17 @@ def test_invalid_index_labels_fail_without_scanning_payloads(time):
         _validate(merged)
 
 
-def test_footprints_are_required_only_for_generation():
-    merged = _merged()
+@pytest.mark.parametrize("sectoral", [False, True])
+def test_response_only_sites_validate_without_raw_footprints(sectoral):
+    """Generated bases weight responses, so merged sites need no ``fp``."""
+    merged = _merged(sectoral=sectoral)
+    assert "fp" not in merged.site_data["TAC"]
     _validate(merged)
-    with pytest.raises(ValueError, match="fp"):
-        _validate(merged, require_footprints=True)
-    merged.site_data["TAC"]["fp"] = merged.site_data["TAC"].fp_x_flux
-    _validate(merged, require_footprints=True)
+    with pytest.raises(TypeError, match="require_footprints"):
+        merged.validate_scientific_inputs(
+            split_by_sectors=sectoral, require_footprints=True, use_bc=False,
+            flux_sources=tuple(merged.flux_data),
+        )
 
 
 def test_directional_bc_inputs_are_conditional_and_precede_H_bc():
@@ -234,7 +238,7 @@ def test_lazy_scalar_unit_attribute_is_rejected_without_coercion():
             _validate(merged)
 
 
-@pytest.mark.parametrize("flag", ["split_by_sectors", "use_bc", "require_footprints"])
+@pytest.mark.parametrize("flag", ["split_by_sectors", "use_bc"])
 def test_lazy_schema_flags_are_rejected_without_truth_testing(flag):
     @delayed
     def forbidden():

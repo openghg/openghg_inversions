@@ -717,6 +717,62 @@ of spelling changes; use matching 0.7 software for historical scientific quirks.
 The original observations and modern comparisons are preserved separately in
 :doc:`../development/migration_960`.
 
+.. _generated-basis-weights:
+
+Generated-basis weights
+-----------------------
+
+Generated partitions are now fitted to response-magnitude weights computed from
+the observation-indexed responses that preparation already holds, instead of
+the mean raw footprint times the mean flux of the first requested source. Let
+:math:`R_s(o)` be the gridded response of sector :math:`s` at observation
+:math:`o` retained after filtering:
+
+* when sectors share one scaling state (standard and nested RHIME), weights are
+  :math:`\mathrm{mean}_o\,|\sum_s R_s(o)|`, using the selected-source total
+  ``fp_x_flux``. Opposing sector responses cancel before the absolute value;
+* when sectors keep separate scaling states on one partition (multisector RHIME),
+  weights are :math:`\sum_s \mathrm{mean}_o\,|R_s(o)|`, using
+  ``fp_x_flux_sectoral``. Cancellation between sectors does not remove
+  resolution.
+
+The absolute value is taken per observation, so temporal sign changes cannot
+cancel. Observations are pooled across sites by count. By default the rule
+follows from the model's state layout. Fixed-outer and nested generation use the
+same rule for their inner regions.
+
+Callers may choose the rule explicitly with ``weight_rule="abs_of_sum"`` or
+``weight_rule="sum_of_abs"`` on ``prepare_basis``, ``basis_weights_from_data``
+and ``fixed_outer_regions_basis_from_data``; ``None`` keeps the layout default.
+``"abs_of_sum"`` can suit a partition shared by separately scaled sectors whose
+scalings are positively correlated, such as GPP and TER, where their perturbations
+partly cancel in the net flux and resolution should follow the net signal.
+``"sum_of_abs"`` needs source-resolved responses, so it requires
+``multisector=True``. The option is not yet exposed in RHIME configuration.
+
+**Generated partitions, and therefore fitted results, may change.** For a
+time-varying or signed flux the new weights deliberately differ from the old
+product of separately averaged footprint and flux, and all selected sources now
+contribute. Reusing a saved operator through ``basis_path`` is unaffected.
+
+Generation no longer reads raw footprints, so merged inputs need only
+``fp_x_flux`` (or ``fp_x_flux_sectoral``). Workflows can drop ``fp`` and a
+history-resolved ``fp_time_resolved`` once the response is formed, unless
+another selected consumer needs them: the ``local_influence`` filter still
+requires ``fp`` or a precomputed ``local_ratio`` variable and reports a clear
+error otherwise. API changes:
+
+* ``prepare_basis`` no longer accepts ``weighting_flux``; pass
+  ``multisector=True`` when sectors have separate states, and optionally
+  ``weight_rule``.
+* ``basis_weights_from_data(site_data, *, multisector=False, weight_rule=None,
+  mask=None)`` no longer accepts a flux or ``abs_flux``.
+* ``fixed_outer_regions_basis_from_data`` takes native ``flux`` only for its grid,
+  plus ``multisector`` and ``weight_rule``; ``abs_flux`` is removed.
+* ``paired_abs_response_weights`` is removed; use ``basis_weights_from_data``.
+* ``MergedData.validate_scientific_inputs`` and ``merged_site_schema`` no longer
+  accept ``require_footprints``.
+
 Retained basis and prepared-input capabilities
 -----------------------------------------------
 
@@ -724,7 +780,7 @@ Modern acquisition uses ``MergedData.from_options`` or direct dataset
 construction. Modern runners resolve native prior flux once with
 ``native_flux.resolve_runtime_flux(merged.flux_data, split_by_sectors=...)``.
 Modern ``prepare_basis`` accepts explicit ``site_data``, resolved ``runtime_flux``
-and singular ``weighting_flux`` arrays, an exact ``basis_path`` input,
+arrays, an exact ``basis_path`` input,
 and resolved scientific map arrays. The ``output_path`` argument has been
 removed: call ``basis.save(selected_path)`` on the returned object to export
 it. Configured runners own ``basis_output_path`` and preserve export metadata.
@@ -739,7 +795,7 @@ matching older software.
 Independent flat-partition basis adapters resolve native flux once at their
 compatibility boundary. ``basis_functions_from_flat_basis`` now accepts
 ``flux=`` rather than source datasets and a combination flag. Weight builders
-accept one ``weighting_flux`` array rather than a source dictionary and selector.
+no longer accept a weighting flux; see :ref:`generated-basis-weights`.
 
 For new preparation, ``BasisFunctions.reuse_operator(path, flux=runtime_flux)``
 reuses the saved partition and binds the current prior without reading the saved

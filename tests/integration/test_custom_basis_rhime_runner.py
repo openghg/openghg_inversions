@@ -64,7 +64,7 @@ def test_project_basis_artifact_bypasses_calculation(
     monkeypatch.setattr(custom_basis_runner, "_guarded_basis", fail_calculation)
 
     loaded = custom_basis_runner.build_project_basis(
-        site_data={}, runtime_flux=2.0 * stored.flux, weighting_flux=stored.flux,
+        site_data={}, runtime_flux=2.0 * stored.flux,
         domain="EUROPE",
         project_basis_path=artifact_path,
     )
@@ -118,16 +118,9 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
         "nbasis": 8,
     }
 
-    def basis_weights(
-        site_data: Any,
-        weighting_flux: Any,
-        *,
-        abs_flux: bool,
-    ) -> xr.DataArray:
+    def basis_weights(site_data: Any) -> xr.DataArray:
         """Return deterministic weights at the public custom-basis boundary."""
         assert site_data is merged.site_data
-        assert weighting_flux is expected_basis.flux
-        assert abs_flux is True
         return weights
 
     def build_labels(
@@ -179,7 +172,7 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
             "openghg_inversions:project_basis_connectivity": 1,
             "openghg_inversions:project_basis_max_child_pca_eccentricity": 7.5,
             "openghg_inversions:project_basis_class_policy": "land_ocean",
-            "openghg_inversions:project_basis_weights": ("basis_weights_from_data_abs_flux_normalized"),
+            "openghg_inversions:project_basis_weights": ("basis_weights_from_data_abs_response_normalized"),
         }
         assert kwargs["flux"] is expected_basis.flux
         assert kwargs["basis_flat"].name == "basis"
@@ -194,7 +187,7 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
     monkeypatch.setattr(custom_basis_runner, "basis_functions_from_flat_basis", retain_basis)
 
     actual = custom_basis_runner.build_project_basis(
-        site_data=merged.site_data, runtime_flux=expected_basis.flux, weighting_flux=expected_basis.flux,
+        site_data=merged.site_data, runtime_flux=expected_basis.flux,
         domain=data_args["domain"],
         nbasis=data_args["nbasis"],
         region_classes=country_classes,

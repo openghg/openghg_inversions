@@ -138,7 +138,6 @@ def test_supplied_data_reaches_filtering_without_acquisition(monkeypatch, multis
             "split_by_sectors": multisector_mode,
             "use_bc": config.data.use_bc,
             "flux_sources": config.data.flux_sources,
-            "require_footprints": True,
         }
         stages.append("validate")
     def filter_supplied(site_data, site_options, **kwargs):
@@ -207,7 +206,6 @@ def test_acquired_data_binding_preserves_selectors_and_rejects_conflicts(
             "split_by_sectors": multisector_mode,
             "use_bc": config.data.use_bc,
             "flux_sources": config.data.flux_sources,
-            "require_footprints": True,
         }
         validations.append(actual)
 

@@ -39,9 +39,9 @@ def main() -> None:
         site_data={"TAC": site}, flux_data={"inventory": flux.to_dataset()},
         site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
     )
-    schema = merged.site_schema(require_footprints=False, use_bc=False)
+    schema = merged.site_schema(use_bc=False)
     print("Declared site fields:", tuple(schema.data_vars))
-    choices = dict(split_by_sectors=False, require_footprints=False, use_bc=False, flux_sources=("inventory",))
+    choices = dict(split_by_sectors=False, use_bc=False, flux_sources=("inventory",))
 
     def unexpected_execution(*args):
         raise AssertionError("Metadata validation executed an array graph.")

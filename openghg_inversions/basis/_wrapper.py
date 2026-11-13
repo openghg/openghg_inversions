@@ -15,6 +15,8 @@ from .basis_functions import (
     basis_functions_from_flat_basis,
 )
 from ._functions import (
+    BasisWeightRule,
+    _resolve_weight_rule,
     basis_from_weights,
     _validate_basis_algorithm,
     basis_weights_from_data,
@@ -26,10 +28,11 @@ def prepare_basis(
     *,
     site_data: Mapping[str, xr.Dataset],
     runtime_flux: xr.DataArray,
-    weighting_flux: xr.DataArray,
     domain: str,
     start_date: str,
     nbasis: int,
+    multisector: bool = False,
+    weight_rule: BasisWeightRule | None = None,
     basis_algorithm: str | None = None,
     fix_outer_regions: bool = False,
     basis_path: str | Path | None = None,
@@ -56,24 +59,35 @@ def prepare_basis(
     callers resolve paths and packaged resources before acquisition. Loading
     reuses the saved operator with current runtime flux. Reconstruction uses
     ``BasisFunctions.load`` to restore the complete saved object instead.
-    Generation fits an eager numerical kernel. Callers may explicitly export
-    the returned object with ``BasisFunctions.save``. Borrowed inputs are not modified.
+    Generation fits an eager numerical kernel to response-magnitude weights
+    from :func:`~openghg_inversions.basis.basis_weights_from_data`; raw
+    footprints and native flux values are not used for weighting. Callers may
+    explicitly export the returned object with ``BasisFunctions.save``.
+    Borrowed inputs are not modified.
 
     Args:
-        site_data: Site datasets with footprints used to construct weights.
-            Unused when an artifact or partition is selected.
+        site_data: Filtered site datasets whose retained ``fp_x_flux``
+            responses (``fp_x_flux_sectoral`` when ``multisector``) weight
+            generation. Unused when an artifact or partition is selected.
         runtime_flux: Resolved native prior containing all retained sources on
             their inventory time axis, independent of observation-aligned
             responses. Replaces any saved prior when an operator is reused.
             Resolve source combination with
             :func:`~openghg_inversions.native_flux.resolve_runtime_flux`.
-        weighting_flux: One source flux used for basis-design weights.
-            Standard RHIME callers select the first requested source. Unused
-            when an artifact or partition is selected.
+            Its grid is authoritative for fixed outer regions.
         domain: Domain label for generated-basis metadata.
         start_date: Date attached to a generated partition's singleton time axis.
         nbasis: Requested generated-region count; with fixed outer regions,
             this counts inner regions only.
+        multisector: Sectors keep separate scaling states on the generated
+            partition, as in multisector RHIME, so weights sum each sector's
+            response magnitude. Otherwise sectors share one state and weights
+            use the magnitude of their total response. Follow the model's
+            state layout.
+        weight_rule: Override the layout's sector reduction with
+            ``"abs_of_sum"`` (``mean_o(abs(sum_s R_s))``) or ``"sum_of_abs"``
+            (``sum_s mean_o(abs(R_s))``, multisector only). None keeps the
+            layout default. Unused when an artifact or partition is selected.
         basis_algorithm: Generation algorithm: ``"quadtree"``, ``"weighted"``
             or ``"region_constrained"``. Required only without a saved input.
         fix_outer_regions: Fit only the inner region of ``outer_regions``.
@@ -115,6 +129,7 @@ def prepare_basis(
         raise ValueError("Supply either basis_path or basis_partition.")
     if basis_path is None and basis_partition is None and basis_algorithm is not None:
         _validate_basis_algorithm(basis_algorithm)
+        _resolve_weight_rule(weight_rule, multisector=multisector)
     basis_data_array: xr.DataArray | None = None
     basis_start = time()
 
@@ -140,11 +155,13 @@ def prepare_basis(
         print("Using fixed outer regions for basis functions.")
         basis_data_array = fixed_outer_regions_basis_from_data(
             site_data,
-            weighting_flux,
+            runtime_flux,
             start_date,
             basis_algorithm,
             domain,
             nbasis,
+            multisector=multisector,
+            weight_rule=weight_rule,
             outer_regions=outer_regions,
             landsea_classes=landsea_classes,
             region_classes=region_classes,
@@ -186,7 +203,7 @@ def prepare_basis(
                     "contrast_s_diag": contrast_s_diag,
                 }
             )
-        weights = basis_weights_from_data(site_data, weighting_flux)
+        weights = basis_weights_from_data(site_data, multisector=multisector, weight_rule=weight_rule)
         basis_data_array = basis_from_weights(
             weights,
             start_date,
