@@ -111,6 +111,8 @@ def _interpolate_dataset(
         )
         if source_dim is not None:
             interpolated = interpolated.sum(source_dim)
+        if "flux_support" in basis_functions.flux.coords:
+            interpolated = interpolated.where(basis_functions.flux.coords["flux_support"], other=0.0)
         if _chunks is not None:
             # Scalar contractions can still produce sparse, densely occupied tiles.
             interpolated = to_dense(interpolated)
@@ -142,6 +144,8 @@ def _operator_region_flux_mean(basis_functions: BasisFunctions, flux: xr.DataArr
     """Return mean prior flux in each basis region using the retained operator."""
     basis = align_sparse_lat_lon(basis_functions.operator.basis_matrix, flux)
     grid_dims = list(basis_functions.operator.meta.grid_dims)
+    if "flux_support" in flux.coords:
+        basis = basis * flux.coords["flux_support"]
     # Sparse concatenation distinguishes negative and positive zero fills.
     weighted_basis = basis * flux + 0.0
     return (weighted_basis.sum(grid_dims) / basis.sum(grid_dims)).fillna(0.0)
@@ -215,7 +219,9 @@ def reconstruct_flux_stats(
         basis_functions: Retained basis operator and authoritative flux values.
         flux: Supplies an output ``flux_time`` dimension only when the retained
             flux has neither ``time`` nor ``flux_time``. Its values do not
-            override the retained flux.
+            override the retained flux. A Boolean ``flux_support`` coordinate on
+            the retained flux restricts region averaging and reconstruction to
+            included native cells, with zero output elsewhere.
         stats_ds: Statistics in basis-state space.
         report_flux_on_inversion_grid: Apply mean retained flux per basis region
             on the inversion grid when ``True``; otherwise apply retained flux

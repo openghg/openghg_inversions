@@ -16,6 +16,7 @@ Using OpenGHG Inversions
    centered_boundary_conditions
    boundary_correction_structures
    prepared_format_support
+   supplied_backgrounds
    running_and_validating
    shared_scientific_concepts
    legacy_and_migration
