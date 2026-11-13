@@ -6,7 +6,7 @@ import json
 from types import SimpleNamespace
 
 import dask.array as da
-from dask import delayed
+from dask import compute as dask_compute, delayed
 from dask.array import Array as DaskArray
 from dask.callbacks import Callback
 import numpy as np
@@ -19,13 +19,13 @@ import xarray as xr
 from openghg_inversions.postprocessing.contracts import OutputContract
 
 from openghg_inversions.models.priors import parse_prior
+from openghg_inversions.array_ops import to_dense_tree
 from openghg_inversions.models import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime import co2 as co2_public
 from openghg_inversions.rhime.co2 import co2_o2_cached_sigma_runner, co2_o2_runner
 from openghg_inversions.rhime.co2.co2_o2_runner import (
     _CO2_O2_VARIABLE_ROLES,
-    _materialize_co2_o2_pymc_inputs,
     annotate_co2_o2_trace,
     build_rhime_co2_o2,
     run_rhime_co2_o2_from_prepared_inputs,
@@ -134,10 +134,10 @@ def _replay(cached: bool):
         return (
             co2_o2_cached_sigma_runner,
             co2_o2_cached_sigma_runner.run_rhime_co2_o2_cached_sigma_from_prepared_inputs,
-            "build_co2_o2_cached_sigma_model",
+            "_build_co2_o2_cached_sigma_model",
             {"tau_hours": 24.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.0}},
         )
-    return co2_o2_runner, run_rhime_co2_o2_from_prepared_inputs, "build_co2_o2_model", {}
+    return co2_o2_runner, run_rhime_co2_o2_from_prepared_inputs, "_build_co2_o2_model", {}
 
 
 @pytest.mark.parametrize("cached", [False, True])
@@ -228,7 +228,7 @@ def test_materializes_related_arrays_in_one_shared_graph_without_mutation() -> N
     compute_graphs: list[object] = []
 
     with Callback(start=lambda graph: compute_graphs.append(graph)):
-        materialized = _materialize_co2_o2_pymc_inputs(*borrowed)
+        materialized = dask_compute(*to_dense_tree((borrowed, {}, {})))[0]
 
     assert len(compute_graphs) == 1
     assert executions == ["shared"]
@@ -345,7 +345,7 @@ def test_replay_materializes_payloads_and_auxiliary_units_in_one_graph(monkeypat
     independent_error_sd = array.copy(deep=False, data=values)
     if error_source in {"saved", "both"}:
         prepared.independent_error_sd = independent_error_sd.copy(deep=False)
-    monkeypatch.setattr(co2_o2_runner, "build_co2_o2_model", lambda **_: pm.Model())
+    monkeypatch.setattr(co2_o2_runner, "_build_co2_o2_model", lambda **_: pm.Model())
     monkeypatch.setattr(co2_o2_runner, "sample_rhime_model", lambda *_: xr.DataTree())
     compute_graphs: list[object] = []
 

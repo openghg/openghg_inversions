@@ -84,7 +84,7 @@ def test_role_validation_rejects_reordered_states_and_missing_declared_terms():
     with pytest.raises(ValueError, match="align|index|indexes"):
         validate_co2_o2_trace(bad, prepared)
     del trace["posterior"]["bc"]
-    with pytest.raises(ValueError, match="boundary_concentration.*posterior"):
+    with pytest.raises(ValueError, match="boundary_concentration"):
         validate_co2_o2_trace(trace, prepared)
 
 

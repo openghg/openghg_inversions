@@ -973,7 +973,7 @@ def _add_offset_component_result(
             site_matrix.shape[0], -1
         )
         term_index = pd.MultiIndex.from_product(
-            [site_labels[selected_sites], period_labels],
+            [pd.Index(site_labels[selected_sites]), pd.Index(period_labels)],
             names=(f"{namespace}offset_site", f"{namespace}offset_period"),
         )
         term_coords = xr.Coordinates.from_pandas_multiindex(

@@ -15,6 +15,7 @@ from openghg_inversions.models import StateActivity, registered_model
 from openghg_inversions.models.components import (
     AffineBlock, AffineConcentrationTerm, warn_constant_offset_confounding,
 )
+from openghg_inversions.rhime.co2 import co2_runner
 from openghg_inversions.models.boundary import (
     AdditiveBoundary, AdditiveChoice, AnomalyScalingChoice, BoundCenteredSensitivity, CenteredMultiplicativeBoundary,
     MultiplicativeBoundary, MultiplicativeChoice, bind_prepared,
@@ -172,15 +173,23 @@ def test_additive_preparation_borrows_lazy_shared_graph(double_precision):
     lazy = da.from_delayed(payload(), shape=(3, 2), dtype=float)
     data["H_bc_anomaly"] = data.H_bc_anomaly.copy(data=lazy)
     data["H_bc_mass"] = (data.H_bc_anomaly * 0 + .5).assign_attrs(units="1")
+    # A scalar reference derived from the same graph stays lazy until the shared compute.
+    data["bc_reference"] = (data.bc_reference + 0 * data.H_bc_mass.sum()).assign_attrs(data.bc_reference.attrs)
     weights = _whole_window(xr.DataArray([1., 2.], dims="bc_curtain", coords={"bc_curtain": ["north", "south"]},
                                          attrs={"units": "1"}), observations)
     bound = AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.).bind(observations, _centered(data, weights))
     assert calls == []
+    assert isinstance(bound.data.bc_reference.data, da.Array)
     with registered_model(), pytest.raises(ValueError, match="Materialize"):
         bound.add()
     assert calls == []
     eager = replace(bound, data=bound.data.compute(scheduler="synchronous"))
     assert calls == ["computed"]
+    assert isinstance(eager.data.H_bc_mass.data, np.ndarray)
+    assert isinstance(eager.data.bc_reference.data, np.ndarray)
+    # The caller's operands remain borrowed and lazy.
+    assert isinstance(data.H_bc_mass.data, da.Array)
+    assert isinstance(data.bc_reference.data, da.Array)
     with registered_model():
         eager.add()
     assert calls == ["computed"]
@@ -214,6 +223,12 @@ def test_one_state_has_only_mean_even_with_positive_scale(double_precision, scal
         np.testing.assert_allclose((result.likelihood_contribution - _affine_expression(result)).eval(), 0., atol=1e-12)
 
 
+@pytest.mark.parametrize("scale", [None, -0.1, np.nan, np.inf, -np.inf])
+def test_additive_choice_rejects_invalid_anomaly_scale(scale):
+    with pytest.raises((ValueError, TypeError)):
+        AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, scale)
+
+
 def test_weighted_additive_binding_requires_centering_weights(double_precision):
     data, observations = _native_boundary()
     with pytest.raises(ValueError, match="require bc_centering_weights"):
@@ -221,6 +236,19 @@ def test_weighted_additive_binding_requires_centering_weights(double_precision):
             observations, raw_transport(data),
         )
 
+
+@pytest.mark.parametrize(
+    "choice",
+    [
+        AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.),
+        AnomalyScalingChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.1),
+    ],
+)
+def test_absolute_inputs_are_rejected_where_the_representation_is_identified(choice):
+    data, observations = _native_boundary()
+    inputs = xr.Dataset({"mf": observations, "H_bc": data.H_bc_anomaly})
+    with pytest.raises(ValueError, match=f"The {choice.kind} boundary requires centered boundary operands; prepare again"):
+        co2_runner._bind_co2_boundary(inputs, choice)
 
 
 @pytest.mark.parametrize(
