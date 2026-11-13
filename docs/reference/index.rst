@@ -106,7 +106,8 @@ for the explicit retained-state intervention and its fixed-reduction scope.
 
    openghg_inversions.biosphere_prior.BiospherePrior
    openghg_inversions.biosphere_prior.calibrate_biosphere_prior
-   openghg_inversions.models.biosphere.add_biosphere_state
+   openghg_inversions.models.biosphere.resolve_retained_flux_prior
+   openghg_inversions.models.biosphere.add_retained_flux_state
    openghg_inversions.models.biosphere.annotate_biosphere_prior
 
 Configure and persist CO2 priors

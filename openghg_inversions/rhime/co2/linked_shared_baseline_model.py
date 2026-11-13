@@ -367,6 +367,7 @@ def build_shared_co2_o2_cached_sigma_model(
             tuple(terms), covariance=covariance, modelled_mean=mean, observations=observed,
             observation_error=independent_error_sd, site_coord=site_coord, site_index=site_index,
             initial_amplitudes=initial_amplitudes, site_amplitude_prior=priors["amplitude"], output_dim=output_dim,
+            flux_prior=prior,
         )
     return replace(cached, boundary_outputs=_linked_outputs(baseline))
 
