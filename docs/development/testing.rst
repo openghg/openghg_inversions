@@ -25,10 +25,11 @@ The expensive tests fall into two groups:
 
 * Tests that start a new Python interpreter: subprocess import checks,
   installed-command workflows and samplers that spawn chain processes. Each
-  child pays the package import, up to about 9 s on a laptop, because
-  ``openghg_inversions.rhime`` imports PyMC, the CO2 recipes and parts of
-  OpenGHG; the installed workflows also sample. Eighteen such test functions
-  took about 290 s (46 %). They are marked ``fresh_process``.
+  child pays the package import, which then took up to about 9 s on a laptop
+  because ``openghg_inversions.rhime`` loaded PyMC, the CO2 recipes and parts
+  of OpenGHG eagerly (#1072 has since made those imports lazy); the installed
+  workflows also sampled. Eighteen such test functions took about 290 s
+  (46 %). They are marked ``fresh_process``.
 * Statistical-accuracy checks, which draw thousands of samples to compare
   posterior moments against an independent oracle.
 
