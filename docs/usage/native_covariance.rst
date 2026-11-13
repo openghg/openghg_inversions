@@ -37,10 +37,15 @@ The classes have the following distinct roles.
      - Concrete latitude/longitude covariance action. Optional class labels
        set cross-class covariance to zero; this alone does not assert
        probabilistic independence outside a joint Gaussian model.
+   * - ``ClassMixedExponentialCovariance``
+     - Class-blocked covariance with a kernel chosen per class: classes named
+       in ``class_kernels`` use a dense ``GeodesicExponentialKernel``, the
+       others the separable kernel. See :ref:`geodesic-class-blocks`.
    * - ``IndependentSourceCovariance``
      - Composes ordered, source-specific spatial covariances into a
-       block-diagonal native covariance. Its blocks currently must be
-       ``SeparableExponentialCovariance`` instances. Covariance application
+       block-diagonal native covariance. Its blocks must be
+       ``SeparableExponentialCovariance`` or
+       ``ClassMixedExponentialCovariance`` instances. Covariance application
        and solves use the common action interface; only multisource basis
        expansion needs a separate source-aware path.
    * - ``RetainedProjectionStrategy``
@@ -276,6 +281,70 @@ These product blocks are inputs to that work; they must not be described or
 persisted as though they were already the complete result. Arbitrary
 reporting-function products :math:`Q`, low-rank-plus-diagonal numerical views,
 and likelihood integration are also outside this API.
+
+.. _geodesic-class-blocks:
+
+Dense geodesic class blocks
+---------------------------
+
+``SeparableExponentialCovariance`` uses
+:math:`\exp(-|\Delta\phi|/\ell_\phi - |\Delta\lambda|/\ell_\lambda)` in
+degrees. That distance is an L1 distance, so diagonal correlations decay
+faster than north-south or east-west ones, and a longitude length fixed in
+degrees means a shorter east-west length in km at high latitude.
+``ClassMixedExponentialCovariance`` replaces the kernel of chosen classes by
+
+.. math::
+
+   K_c(i, j) = \exp\!\left(-\frac{d_{\mathrm{gc}}(i, j)}{\ell_c}\right),
+
+with :math:`d_{\mathrm{gc}}` the haversine great-circle distance between cell
+centres on a sphere of radius ``earth_radius_km`` (by default
+:math:`111 \cdot 180/\pi` km, so one degree of arc is 111 km, matching the
+km-to-degree conversion of separable lengths). This kernel is positive definite
+on the sphere for every :math:`\ell_c > 0`, isotropic in local km, and
+non-separable. Other classes keep the separable kernel, and cells in different
+classes stay uncorrelated:
+
+.. math::
+
+   B = \sigma^2 \sum_c M_c K_c M_c .
+
+.. code-block:: python
+
+   from openghg_inversions.native_covariance import (
+       ClassMixedExponentialCovariance,
+       GeodesicExponentialKernel,
+   )
+
+   gpp = ClassMixedExponentialCovariance(
+       lat, lon,
+       class_labels=basis_class,            # e.g. 1 inner land, 2 sea, 4xx outer land
+       class_kernels={1: GeodesicExponentialKernel(500.0)},
+       sigma=0.5,
+       latitude_correlation_length=500 / 111,
+       longitude_correlation_length=500 / (111 * np.cos(np.deg2rad(50))),
+   )
+   ff = gpp.with_sigma(0.6)  # same kernel, shared dense factor
+
+Per-source configuration goes through ``IndependentSourceCovariance``, whose
+blocks may mix separable and class-mixed sources with their own lengths.
+
+Each dense class of :math:`n` cells is built once and stored as one
+Fortran-ordered :math:`n \times n` float64 array, :math:`8n^2` bytes (1.1 GB
+for 11,832 cells), that holds :math:`K_c` in its upper triangle and the unit
+lower-triangular Cholesky factor in its lower triangle, so no second dense copy
+is kept. Construction runs the Cholesky factorization and a LAPACK reciprocal
+condition estimate, and raises ``numpy.linalg.LinAlgError`` if the block
+is not numerically positive definite; ``geodesic_diagnostics`` reports the
+estimate and ``minimum_eigenvalues()`` the smallest eigenvalue by Lanczos
+iterations on the cached factor. Apply costs :math:`2n^2` flops per right-hand
+side (``dsymm``); solve uses two triangular solves for dense classes and the
+matrix-free conjugate gradients of the class-blocked separable action,
+restricted to the separable classes. ``with_sigma`` changes the amplitude
+without rebuilding the block. ``to_dataset`` records the separable
+configuration, class labels and class kernels; two covariances whose datasets
+differ only in the ``sigma`` attribute share the same unit kernel.
 
 Units and persistence
 ---------------------
