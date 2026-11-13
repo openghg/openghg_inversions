@@ -13,3 +13,4 @@ the current CO₂ recipes are their most advanced users.
    retained_state_reconstruction
    affine_flux_map
    coherent_reduction
+   posterior_response

@@ -377,10 +377,20 @@ at their stated sampling support. The established
 ``postprocessing.diagnostics`` module remains an output compatibility adapter;
 calculating a score does not apply a scientific acceptance threshold.
 
+Directional posterior-response utilities estimate local sensitivities and their
+Monte Carlo error from saved draws. See :doc:`/usage/posterior_response` for
+their assumptions, usage and interpretation limits.
+
 .. autosummary::
    :nosignatures:
 
    openghg_inversions.inference.diagnostics.posterior_summary
+   openghg_inversions.posterior_response.likelihood_score
+   openghg_inversions.posterior_response.gaussian_conditional_score
+   openghg_inversions.posterior_response.gaussian_prior_shift_score
+   openghg_inversions.posterior_response.response_summary
+   openghg_inversions.posterior_response.paired_response_summary
+   openghg_inversions.posterior_response.response_diagnostics
    openghg_inversions.postprocessing.metrics.bayes_r2_by_site
    openghg_inversions.postprocessing.metrics.bayes_r2_by_site_resample
 
