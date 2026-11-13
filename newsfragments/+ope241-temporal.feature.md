@@ -1,0 +1,1 @@
+Add explicit bounded nearest and linear point-sample boundary policies and interval-mean containment for surface CO2/O2 acquisition and preparation, selecting native fields before particle contraction while retaining the default forward hold.

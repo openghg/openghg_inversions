@@ -22,6 +22,7 @@ from openghg.types import SearchError
 from openghg.util import relative_time_offset
 
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
+from openghg_inversions.inversion_data._boundary import BoundaryTemporalPolicy
 from openghg_inversions.inversion_data import _site_options
 from openghg_inversions.inversion_data._provenance import (
     InputProvenance, MergedDataProvenance, selected_provenance,
@@ -327,6 +328,7 @@ class MergedData:
         reference: float | None = None,
         reference_units: str | None = None,
         mass_tolerance: float | None = None,
+        boundary_temporal_policy: BoundaryTemporalPolicy | None = None,
     ) -> MergedData:
         """Acquire fresh merged data using complete aligned selectors.
 
@@ -344,10 +346,16 @@ class MergedData:
         transport requires time-resolved selectors and complete flux history
         and residual months. Mixed native source axes are rejected until native
         reporting can represent them; supplied-input preparation supports them.
+        ``boundary_temporal_policy`` selects native curtain fields before particle
+        contraction, independently of later boundary inference periods. Opt-in
+        policies require explicit input semantics and retrieval padding; padding
+        covers adjacent files within one selected product.
         """
         if boundary_representation not in {"ordinary", "centered"}:
             raise ValueError("boundary_representation must be ordinary or centered.")
         if surface_transport is None:
+            if boundary_temporal_policy is not None:
+                raise ValueError("Boundary temporal policy requires explicit surface_transport.")
             if boundary_representation == "centered":
                 raise ValueError("Centered acquisition requires surface_transport and use_bc=True.")
             acquired = _acquire_scenario_data(
@@ -369,6 +377,7 @@ class MergedData:
                 use_bc=use_bc, bc_input=bc_input, flux_non_finite_check=flux_non_finite_check,
                 boundary_representation=boundary_representation, reference=reference,
                 reference_units=reference_units, mass_tolerance=mass_tolerance,
+                boundary_temporal_policy=boundary_temporal_policy,
             )
         return cls(
             site_data=acquired.site_data, flux_data=acquired.flux_data,
@@ -514,10 +523,18 @@ def _acquire_scenario_data(
 def _get_boundary_data(
     *, use_bc: bool, species: str, domain: str, bc_input: str | None,
     start_date: str, end_date: str, store: str,
+    temporal_policy: BoundaryTemporalPolicy | None = None,
 ) -> tuple[BoundaryConditionsData | None, InputProvenance | None]:
     """Retrieve optional curtains, retaining the interval governing the requested start."""
     if not use_bc:
         return None, None
+    policy = temporal_policy or BoundaryTemporalPolicy()
+    if policy.method != "hold":
+        if policy.retrieval_padding is None:
+            raise ValueError("Fresh temporal boundary retrieval requires explicit retrieval_padding.")
+        padding = pd.Timedelta(policy.retrieval_padding)
+        start_date = str(pd.Timestamp(start_date) - padding)
+        end_date = str(pd.Timestamp(end_date) + padding)
     try:
         catalog = search_bc(
             species=species, domain=domain, bc_input=bc_input,
@@ -525,9 +542,12 @@ def _get_boundary_data(
         )
         query_start = pd.Timestamp(start_date)
         # Label slicing otherwise drops the governing interval, including off-anchor labels.
-        for period in catalog.results.get("time_period", pd.Series(dtype=object)).dropna().unique():
+        for period in (catalog.results.get("time_period", pd.Series(dtype=object)).dropna().unique()
+                       if policy.method == "hold" else []):
             query_start = min(query_start, pd.Timestamp(start_date) - relative_time_offset(period=period))
-        selected_uuids = catalog.results.get("uuid", pd.Series(dtype=object)).dropna().tolist()
+        selected_uuids = list(dict.fromkeys(catalog.results.get("uuid", pd.Series(dtype=object)).dropna()))
+        if policy.method != "hold" and len(selected_uuids) > 1:
+            raise SearchError("Temporal padding matched distinct boundary products; select one product via bc_input/store.")
         selection_kwargs: dict[str, Any] = {"uuid": selected_uuids} if selected_uuids else {}
         boundary = get_bc(
             species=species, domain=domain, bc_input=bc_input,
@@ -536,7 +556,21 @@ def _get_boundary_data(
             **selection_kwargs,
         )
     except SearchError as exc:
+        if policy.method != "hold":
+            raise SearchError(f"Could not find matching boundary conditions: {exc}") from exc
         raise SearchError("Could not find matching boundary conditions.") from exc
+    if policy.method == "interval":
+        if policy.bounds not in boundary.data:
+            raise ValueError("Declared boundary bounds variable is missing.")
+        bounds = boundary.data[policy.bounds]
+        if bounds.ndim != 2 or bounds.dims[0] != "time" or bounds.shape != (boundary.data.sizes["time"], 2):
+            raise ValueError("Boundary bounds must have shape (time, 2).")
+        if bounds.dtype.kind != "M":
+            raise ValueError("Boundary bounds must contain datetime64 metadata.")
+        # Named acquisition boundary: resolve small interval metadata together,
+        # while preserving the borrowed curtain graphs and original wrapper.
+        boundary = copy(boundary)
+        boundary.data = boundary.data.assign({policy.bounds: bounds.compute()})
     return boundary, selected_provenance(boundary, store, requested_version="latest")
 
 
@@ -662,6 +696,7 @@ def acquire_surface_data(
     reference: float | None = None,
     reference_units: str | None = None,
     mass_tolerance: float | None = None,
+    boundary_temporal_policy: BoundaryTemporalPolicy | None = None,
 ) -> MergedData:
     """Acquire surface inputs using retained native releases to plan flux support.
 
@@ -669,6 +704,9 @@ def acquire_surface_data(
     specify exactly one integrated or time-resolved mode per flux source, for
     continuous surface CO2/O2 mole fractions. Boundaries are ordinary by default;
     explicit centered boundaries require reference, reference units and mass tolerance.
+    ``boundary_temporal_policy`` selects/interpolates native curtains before weighting.
+    Opt-in retrieval requires explicit padding within one selected product; declared
+    interval bounds alone are materialized here as small datetime metadata.
 
     Retrieve observation/footprint pairs first, then the union of backward
     histories and complete residual months. Missing sites are dropped together
@@ -681,6 +719,8 @@ def acquire_surface_data(
             inadequate temporal support, or invalid surface/boundary inputs.
         SearchError: No retained sites or requested flux/boundary data are available.
     """
+    if boundary_temporal_policy is not None and not use_bc:
+        raise ValueError("Boundary temporal policy requires use_bc=True.")
     if flux_sources is None:
         raise ValueError("`flux_sources` must be specified")
     if species.lower() not in {"co2", "o2"}:
@@ -786,6 +826,7 @@ def acquire_surface_data(
     bc_data, boundary_provenance = _get_boundary_data(
         use_bc=use_bc, species=species, domain=domain, bc_input=bc_input,
         start_date=start_date, end_date=end_date, store=bc_store,
+        temporal_policy=boundary_temporal_policy,
     )
     if bc_data is not None and boundary_provenance is not None:
         bc_data = _with_selected_provenance(bc_data, boundary_provenance)
@@ -807,6 +848,7 @@ def acquire_surface_data(
                 species=species.lower(), transport=transport, boundary_view=boundary_view,
                 boundary_representation=boundary_representation, boundary_reference=reference,
                 boundary_reference_units=reference_units, boundary_mass_tolerance=mass_tolerance,
+                boundary_temporal_policy=boundary_temporal_policy,
             )
             prepared = _attach_surface_provenance(
                 prepared, site_footprint=footprint, source_footprints={source: footprint for source in transport},

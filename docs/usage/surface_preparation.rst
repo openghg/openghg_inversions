@@ -37,7 +37,8 @@ For centered preparation, OGI normalizes all four stable boundary curtains toget
 explicit tolerance for their total raw mass versus unity. Choose that tolerance
 from the footprint's justified numerical error. Nonfinite or negative weights,
 zero mass, and mass outside the tolerance fail validation. Boundary coverage must
-be declared by ``time_period`` interval starts. Concentrations and references are
+be declared by ``time_period`` interval starts for the default hold policy;
+explicit alternatives are described below. Concentrations and references are
 converted to common units before subtraction. Centered preparation arithmetic uses float64; this cannot recover precision already lost in stored input.
 
 Input validation
@@ -131,6 +132,82 @@ Inputs are borrowed. The producer owns shallow metadata containers around
 provider calls; payload calculations remain lazy where supported. Provider
 observation alignment can evaluate observation-validity masks to select rows.
 Preparation and model materialization remain explicit execution boundaries.
+
+Boundary field time policies
+----------------------------
+
+Surface acquisition and supplied-input preparation accept an explicit
+``BoundaryTemporalPolicy`` through ``boundary_temporal_policy``. Omitting it
+preserves the existing forward hold on timestamp labels. Centered hold requires
+``time_period`` to declare coverage from each label, including the final one.
+No policy infers whether midpoint labels represent instantaneous values or means.
+
+For a user-declared point-sample input contract:
+
+.. code-block:: python
+
+   from openghg_inversions.inversion_data import BoundaryTemporalPolicy
+
+   point_policy = BoundaryTemporalPolicy(
+       method="linear", input_semantics="point", max_gap="6h",
+       retrieval_padding="6h",
+   )
+
+Pass ``boundary_temporal_policy=point_policy`` with ``transport=...`` to
+``prepare_surface_site`` or ``acquire_surface_data``. For
+``MergedData.from_options``, pass it with ``surface_transport=...``. ``linear``
+interpolates each native concentration field between enclosing samples before
+particle contraction. ``nearest`` selects the nearest field, choosing the later
+timestamp on an exact tie. Both reject requests outside the source timestamp
+range. The explicit ``max_gap`` guards missing support: it limits the enclosing
+bracket for linear interpolation and the distance to the selected nearest
+sample. A six-hour guard does not declare a three-hour cadence. Irregular
+timestamps are supported within these rules.
+
+For an explicitly declared interval-mean contract, supply an eager datetime
+variable on the boundary dataset with one pair of bounds per timestamp:
+
+.. code-block:: python
+
+   mean_policy = BoundaryTemporalPolicy(
+       method="interval", input_semantics="interval_mean",
+       bounds="time_bounds", retrieval_padding="6h",
+   )
+
+Bounds use shape ``(time, 2)``. Each interval includes its start and excludes
+its end; intervals must have positive duration and cannot overlap. Every
+requested release must fall within an interval. Labels may be midpoints;
+coverage comes from the explicit bounds. Selection uses the supplied mean as
+a constant field inside its interval, preserving that mean before contraction.
+This also represents a supplied timestep-weighted interval mean as constant
+within its bounds. It does not recover variability inside the interval or imply
+that contraction with varying particle weights preserves a transported mean.
+Point interpolation is not a mean-preserving reconstruction of interval means.
+
+For fresh acquisition, ``retrieval_padding`` widens the boundary search and
+retrieval on both sides so adjacent files can provide support across month or
+year seams within one selected OpenGHG product UUID. Distinct matching products
+are ambiguous and are rejected; acquisition does not concatenate them. Choose
+enough padding for the declared source support; retrieval
+still fails when required values or intervals are absent. Supplied-input callers
+must include adjacent support themselves. Lazy boundary payloads remain borrowed;
+fresh interval acquisition explicitly materializes only the requested datetime
+bounds metadata at retrieval. Supplied-input preparation requires eager bounds
+and does not compute them implicitly.
+
+These policies act at native receptor release times before observation averaging.
+They do not change ``bc_freq``, boundary coefficient periods, or the scalar
+arithmetic reference ``c``. They do not sample individual particle exit times or
+interpolate an already transported ``H_bc``. Prepared site attributes record the
+selected temporal policy and declared contract.
+
+The archived TM5 ``user_output_mix.F90`` inspected for OPE-241 accumulates
+timestep-weighted interval means and writes midpoint coordinates. Its exact
+identity with the CORSO producer build remains unconfirmed. Thus the explicit
+mean contract is available to a caller with justified bounds; this evidence
+does not reinterpret existing production inputs or change their default policy.
+Nearest selection equalled interval containment on the complete July
+three-hour grid used in that sensitivity study; this is not a general identity.
 
 Retrieval and retained native flux
 ----------------------------------

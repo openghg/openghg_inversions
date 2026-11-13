@@ -67,7 +67,7 @@ def test_native_boundaries_forwarded_and_reconstructed_before_rounding(inputs, m
         boundary_mass_tolerance=0.01,
         output_units="ppb",
     )
-    assert seen == {"species": "co2", "reference": 400.0, "reference_units": "ppm", "mass_tolerance": 0.01}
+    assert seen == {"species": "co2", "reference": 400.0, "reference_units": "ppm", "mass_tolerance": 0.01, "temporal_policy": None}
     assert result.bc_reference.item() == pytest.approx(400000.0)
     assert result.bc_reference.dims == ()
     np.testing.assert_allclose(result.bc_anomaly_n, 1.0)
