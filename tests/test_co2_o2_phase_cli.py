@@ -57,7 +57,7 @@ def test_installed_unequal_axis_sequence_retains_joint_science(tmp_path, monkeyp
               "--output-dir", str(tmp_path / "prior")])
     samplers = []
 
-    def constructed(built, sampler):
+    def constructed(built, sampler, **kwargs):
         """Record the resolved sampler and return joint draws of its size."""
         samplers.append(sampler)
         return constructed_joint_trace(prepared, chains=sampler.chains, draws=sampler.draws)
