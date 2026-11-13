@@ -163,6 +163,7 @@ openghg_inversions = [
     "postprocessing/*.json",
     "config/templates/*.ini",
     "rhime/config/*.ini",
+    "rhime/*.pyi",
     "rhime/config/*.toml",
 ]
 
