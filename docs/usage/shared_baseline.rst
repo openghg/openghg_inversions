@@ -156,8 +156,10 @@ For example, with already prepared scientific inputs:
    )
 
 The ordinary ``build_shared_co2_model`` accepts the same bound baseline and
-existing CO2 likelihood options, including a custom likelihood builder. Both
-routes consume the same mean. They retain existing observation-error and
+existing CO2 likelihood options: the default additive Gaussian or the built-in
+fixed-OU likelihood. Like centered CO2 boundaries, it rejects custom likelihood
+callbacks, because they would receive centered observations. Both routes
+consume the same mean. They retain existing observation-error and
 aggregation-error policies. This recipe supports one CO2 channel; linked
 CO2/O2 construction is outside its interface.
 
