@@ -25,7 +25,7 @@ from openghg.util import (  # pyright: ignore[reportPrivateImportUsage, reportAt
 
 from openghg_inversions._serialization_codecs import _copy_json_mapping, _decode_json_mapping
 from openghg_inversions.array_ops import require_unique_index, same_index, validate_covariance_coordinates
-from openghg_inversions.coherent_reduction import CoherentGaussianReduction
+from openghg_inversions.coherent_reduction import CoherentGaussianReduction, InformationSelection
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.observation_error import (
@@ -516,6 +516,45 @@ def requested_co2_facts(
     return facts
 
 
+def _record_information_selection(
+    mapped: xr.Dataset,
+    selection: InformationSelection,
+    *,
+    state_dim: str,
+    reduced_state_dim: str,
+    observation_dim: str,
+) -> None:
+    """Save threshold diagnostics and deactivate marginalised states in place.
+
+    ``mapped`` is the dataset under construction by :func:`prepare_co2_inputs`.
+    """
+    diagnostics = {
+        "state_information": selection.information,
+        "state_information_threshold": selection.threshold,
+        "state_information_marginalised": selection.marginalised,
+    }
+    for name, array in diagnostics.items():
+        mapped[name] = _borrow_without_axis_coordinates(
+            _renamed(array, {reduced_state_dim: state_dim}, name=name), state_dim
+        )
+    increase = selection.unresolved_variance_increase
+    mapped["aggregation_error_variance_increase"] = _borrow_without_axis_coordinates(
+        _renamed(increase, {observation_dim: "nmeasure"}, name="aggregation_error_variance_increase"),
+        "nmeasure",
+    )
+    marginalised = mapped["state_information_marginalised"]
+    if not bool(marginalised.any()):
+        return
+    active = mapped["state_is_active"] if "state_is_active" in mapped else xr.ones_like(marginalised)
+    fixed = mapped["state_fixed_value"] if "state_fixed_value" in mapped else xr.full_like(
+        mapped["alpha_prior_mean"], 1.0, dtype=float
+    )
+    mapped["state_is_active"] = (active.astype(bool) & ~marginalised).rename("state_is_active")
+    mapped["state_fixed_value"] = xr.where(
+        marginalised, mapped["alpha_prior_mean"], fixed
+    ).rename("state_fixed_value").assign_attrs(units="1")
+
+
 def prepare_co2_inputs(
     canonical_inputs: PreparedInputs,
     reduction: CoherentGaussianReduction,
@@ -523,6 +562,7 @@ def prepare_co2_inputs(
     aggregation_error_rank: int | None = 512,
     bc_centering_weights: xr.DataArray | None = None,
     provenance: Mapping[str, Any] | None = None,
+    information_selection: InformationSelection | None = None,
 ) -> Co2PreparedInputs:
     """Map one coherent Gaussian reduction into the CO2 replay contract.
 
@@ -562,6 +602,16 @@ def prepare_co2_inputs(
         provenance: Optional JSON-serializable project or preparation
             provenance. The reduction strategy and LRPD diagnostics are added
             by this boundary.
+        information_selection: Optional result of
+            :func:`~openghg_inversions.coherent_reduction.marginalise_low_information_states`
+            whose ``reduction`` is ``reduction``. Its per-state information,
+            thresholds, marginalised mask and ``diag A`` increase are saved as
+            ``state_information``, ``state_information_threshold``,
+            ``state_information_marginalised`` and
+            ``aggregation_error_variance_increase``, and summarized under
+            ``provenance["information_threshold"]``. Marginalised states are
+            made inactive with fixed value equal to their retained prior mean,
+            so they receive no posterior update.
 
     Returns:
         A structurally validated, serializable artifact accepted by both CO2
@@ -758,6 +808,17 @@ def prepare_co2_inputs(
         mode = "low_rank"
 
     metadata = dict(provenance or {})
+    if information_selection is not None:
+        if information_selection.reduction is not reduction:
+            raise ValueError("information_selection must describe the supplied coherent reduction.")
+        _record_information_selection(
+            mapped,
+            information_selection,
+            state_dim=state_dim,
+            reduced_state_dim=reduced_state_dim,
+            observation_dim=observation_dim,
+        )
+        metadata["information_threshold"] = information_selection.provenance
     declared_strategy = metadata.get("projection_strategy")
     if declared_strategy is not None and declared_strategy != reduction.projection_strategy:
         raise ValueError("CO2 provenance projection_strategy conflicts with the coherent reduction.")

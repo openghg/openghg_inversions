@@ -150,6 +150,92 @@ Inspect the recorded retained-spectrum and reconstruction metrics directly::
 These diagnostics describe the covariance approximation; they do not certify
 that the chosen rank is adequate for a particular likelihood.
 
+Marginalising low-information states
+------------------------------------
+
+Some retained states barely affect the observations. A state with a tiny
+signal and a wide LogNormal prior can still sit far in the prior tail during
+sampling, where the signal becomes large and the sampler diverges. Such states
+can be integrated out before sampling with an information threshold on
+:class:`~openghg_inversions.models.StateActivity`.
+
+For retained prior standard deviation :math:`s_j = \sqrt{(C_\alpha)_{jj}}`
+and prior observation-error or model-mismatch variance :math:`\sigma_o^2`,
+the prior-predicted information of state :math:`j` is
+
+.. math::
+
+   I_j = \sum_o \frac{\left((H_\alpha)_{oj}\, s_j\right)^2}{\sigma_o^2}.
+
+It uses only the prior and the operator, never observed values. States with
+:math:`I_j < I_{\min}` are marginalised. Split the retained states into kept
+:math:`K` and marginalised :math:`D`, with
+:math:`G = C_{DK} C_{KK}^{-1}` and Schur complement
+:math:`S = C_{DD} - G C_{KD}`. The exact model given :math:`\alpha_K` is
+
+.. math::
+
+   y \mid \alpha_K \sim \mathcal N\!\left(
+      Hm + H'_K(\alpha_K - \Pi_K m),\; R + A + H_D S H_D^\mathsf{T}
+   \right),
+   \qquad
+   H'_K = H_K + H_D G.
+
+This is the coherent reduction with restriction :math:`\Pi_K`; when the
+marginalised states are prior-uncorrelated with the kept ones it equals
+reducing again with the smaller bucket basis. The prior predictive covariance
+of :math:`y` is unchanged. The returned reduction keeps the full state axis
+and sets the marginalised effective-operator columns to zero, so model
+construction removes them in the same way as zero-sensitivity states::
+
+   from openghg_inversions.coherent_reduction import marginalise_low_information_states
+   from openghg_inversions.models import StateActivity
+
+   selection = marginalise_low_information_states(
+       reduction,
+       observation_variance=mismatch_variance,  # sigma_o**2 on the observation axis
+       policy=StateActivity(group_coord="source", min_information={"o2_ocean": 0.1}),
+   )
+   co2_inputs = prepare_co2_inputs(
+       canonical_inputs,
+       selection.reduction,
+       information_selection=selection,
+   )
+
+``min_information`` is either one number, applied to every state, or a
+mapping from labels of ``group_coord`` to thresholds. A mapping applies the
+threshold only to those groups. For example, it can screen only ocean states,
+with separate CO2-ocean and O2-ocean groups in linked CO2/O2 models. The
+default ``None`` keeps every state, and the input reduction is returned
+unchanged. :func:`~openghg_inversions.models.resolve_state_activity` rejects
+a policy that still carries a threshold, because fixing a state at model time
+would discard its variance instead of moving it into :math:`A`.
+
+``selection.information``, ``selection.threshold``,
+``selection.marginalised`` and ``selection.unresolved_variance_increase``
+(the change in :math:`\operatorname{diag} A`) are returned with the
+reduction. ``selection.to_dataset()`` collects them for saving, and
+``selection.provenance`` summarizes them as JSON. With
+``information_selection``, the CO2 handoff saves them as
+``state_information``, ``state_information_threshold``,
+``state_information_marginalised`` and
+``aggregation_error_variance_increase``. It also records the summary under
+``provenance["information_threshold"]`` and marks marginalised states
+inactive, with fixed value equal to their retained prior mean. Linked CO2/O2
+preparation receives covariance blocks rather than a reduction, so pass
+``selection.provenance`` in its ``provenance`` argument.
+
+Marginalised regions receive no posterior update. Retained-state flux and
+country reconstructions hold them at the prior mean. When they are
+prior-correlated with kept states, the exact conditional mean would also
+regress them on the kept states, and the reconstruction leaves that term out.
+Country uncertainty computed only from retained states omits the
+marginalised states' variance, because that variance is now in :math:`A`.
+Use :math:`A`-based functionals when the uncertainty of those regions
+matters. Calibrate :math:`I_{\min}` on synthetic observations: an information of
+``0.1`` means one prior standard deviation of the state changes the
+observations by about a third of one noise standard deviation in total.
+
 Assumptions and limitations
 ---------------------------
 

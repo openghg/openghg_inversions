@@ -59,6 +59,7 @@ from openghg_inversions.models.state_activity import (
     StateActivity,
     active_prior_args,
     detect_zero_sensitivity,
+    information_thresholds,
     prepare_linear_sensitivity,
     resolve_state_activity,
 )
@@ -102,6 +103,7 @@ __all__ = [
     "add_offset_component",
     "active_prior_args",
     "detect_zero_sensitivity",
+    "information_thresholds",
     "prepare_linear_sensitivity",
     "resolve_state_activity",
 ]
