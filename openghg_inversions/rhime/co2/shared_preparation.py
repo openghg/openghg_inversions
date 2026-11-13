@@ -259,8 +259,7 @@ def _validate_operator_identity(
     sampled = _restore_state(value.original_sampled_outer, "original_state", prior)
     means = _restore_state(value.outer_column_mean, "original_state", prior)
     multi = value.attrs["mode"].startswith("multiplicative")
-    keep = ~outer | sampled if multi else ~outer
-    positions, outer_positions = np.flatnonzero(keep.data), np.flatnonzero(outer.data)
+    positions, outer_positions = _kept_positions(value.attrs["mode"], outer, sampled), np.flatnonzero(outer.data)
     centered = h - means
     transformed = xr.where(sampled, centered, h).transpose(*h.dims) if multi else h
     physical_outer = xr.dot(h.where(outer, 0), prior.mean, dim=dim)
@@ -306,141 +305,195 @@ def _validate_operator_identity(
         _same_array(value[name], array, name, roundoff=roundoff.get(name))
 
 
+_SNAPSHOT_VARIABLES = frozenset({
+    "original_prior_mean", "original_prior_covariance", "retained_mean", "retained_covariance",
+    "original_outer", "original_sampled_outer", "sampled_outer", "original_outer_mean",
+    "bc_prescribed_centered", "bc_reference_shift", "reference", "delta_sd",
+    "centering_weights", "outer_column_mean", "bc_pattern_mean", "bc_pattern_raw", "flux_sensitivity",
+    "original_outer_operator", "physical_outer_prior", "fixed_prior_contribution",
+    "physical_bc_prior", "native_H_bc_anomaly", "native_H_bc_mass", "native_bc_reference",
+    "physical_prior_baseline", "complete_prior_concentration",
+})
+_OUTER_MODES = frozenset({"fixed", "multiplicative", "multiplicative_shrunk"})
+# Both channels freeze the same prior selection, so these fields must agree across them.
+_SHARED_STATE_VARIABLES = frozenset({
+    "retained_mean", "retained_covariance", "original_outer", "original_sampled_outer",
+    "sampled_outer", "original_outer_mean",
+})
+
+
+def _calibration_names(snapshot: xr.Dataset) -> set[str]:
+    """Return the saved calibration variable names in one snapshot."""
+    return {name for name in snapshot if isinstance(name, str) and name.startswith("calibration_")}
+
+
+def _kept_positions(mode: str, outer: xr.DataArray, sampled: xr.DataArray) -> np.ndarray:
+    """Return the state positions a mode keeps: inner states, plus sampled outer states when multiplicative."""
+    keep = ~outer | sampled if mode.startswith("multiplicative") else ~outer
+    return np.flatnonzero(keep.data)
+
+
+def _validate_channel_snapshot(
+    prepared: Co2O2PreparedInputs, channel: str, bound: SharedBaseline, *, numerical: bool,
+) -> str:
+    """Check one channel's frozen snapshot against its native inputs.
+
+    Args:
+        prepared: Handoff carrying the snapshot and the inputs it was frozen from.
+        channel: ``"co2"`` or ``"o2"``.
+        bound: The channel's frozen shared baseline.
+        numerical: Also check finite values and recompute every frozen operator
+            from its saved inputs. Requires dense payloads.
+
+    Returns:
+        str: The channel's concentration unit.
+
+    Raises:
+        ValueError: If the snapshot is incomplete, or its choice, identity,
+            units, rows, selectors, prior or (when ``numerical``) operators do
+            not match the inputs.
+    """
+    value = bound.data
+    prior = prepared.retained_prior
+    if value.attrs.get("shared_snapshot_schema") != SHARED_SNAPSHOT_SCHEMA or _SNAPSHOT_VARIABLES - set(value):
+        raise ValueError(f"{channel} shared baseline is missing frozen scientific operands; prepare again.")
+    if _choice_record(bound.choice) != json.loads(value.attrs["shared_choice_json"]):
+        raise ValueError("Shared baseline choice identity must match its snapshot.")
+    if bound.choice.mode != value.attrs.get("mode") or (numerical and bound.choice.delta_sd != float(value.delta_sd)):
+        raise ValueError("Shared baseline choice and numerical operands must match.")
+    if value.attrs.get("mode") not in _OUTER_MODES:
+        raise ValueError("Shared channels require a supported outer mode.")
+    if (value.attrs["mode"] == "multiplicative_shrunk") != ("calibration_attrs" in value.attrs):
+        raise ValueError("Only multiplicative_shrunk requires a resolved frozen calibration.")
+    if value.attrs.get("native_ratio_provenance") != prepared.o2_sensitivity.attrs.get("oxidation_ratio_provenance"):
+        raise ValueError("Shared baseline signed-ratio provenance must match.")
+
+    h = getattr(prepared, f"{channel}_sensitivity")
+    row = str(h.dims[0])
+    if value.attrs.get("linked_channel") != channel or value.attrs.get("native_observation_dim") != row:
+        raise ValueError(f"{channel} shared baseline native channel identity must match.")
+    obs = _native_channel(prepared.observations, channel, row)
+    # Lazy unit labels are checked once they are materialized, not by computing them here.
+    units = (value.attrs.get("units")
+             if not numerical and isinstance(obs.observation_units.data, DaskArray) else _channel_units(obs))
+    if value.attrs.get("units") != units or value.reference.attrs.get("units") != units:
+        raise ValueError(f"{channel} shared baseline units must match observations.")
+    if value.delta_sd.attrs.get("units") != units:
+        raise ValueError(f"{channel} delta width units must match observations.")
+    if row not in value.indexes or not value.indexes[row].equals(obs.indexes[row]):
+        raise ValueError(f"{channel} shared baseline rows must match observations.")
+    if value.reference.ndim or value.delta_sd.ndim:
+        raise ValueError("Shared baseline references and delta widths must be scalar.")
+
+    if any(value[name].dtype != bool for name in ("original_outer", "original_sampled_outer", "sampled_outer")):
+        raise ValueError("Shared baseline outer selectors must be boolean.")
+    if value.attrs.get("state_dim") != prior.state_dim or value.attrs.get("covariance_dim") != prior.covariance_dim:
+        raise ValueError("Shared baseline state dimensions must match the original prior.")
+    original_states = value.original_prior_mean.get_index("original_state")
+    for selector in (value.original_outer, value.original_sampled_outer):
+        if selector.dims != ("original_state",) or not selector.get_index("original_state").equals(original_states):
+            raise ValueError("Shared baseline original selectors must match the original prior.")
+    _same_array(_restore_state(value.original_prior_mean, "original_state", prior), prior.mean,
+                "original_prior_mean")
+    _same_array(_restore_state(value.original_prior_covariance, "original_state", prior),
+                prior.arithmetic_covariance, "original_prior_covariance")
+
+    if numerical:
+        if any(not np.isfinite(array.data).all() for array in value.data_vars.values()
+               if np.issubdtype(array.dtype, np.number)):
+            raise ValueError("Shared baseline numerical operands must be finite.")
+        if float(value.delta_sd) <= 0:
+            raise ValueError("Shared baseline delta widths must be positive.")
+        raw_bc = prepared.boundary_operands[channel]
+        boundary = bound.choice.boundary
+        if boundary is None or isinstance(boundary, AdditiveChoice) or (
+            isinstance(boundary, AnomalyScalingChoice) and boundary.reference == "stored"
+        ):
+            _same_array(value.reference, raw_bc.bc_reference, "stored reference")
+        _validate_operator_identity(
+            value, h, _native_channel(prepared.fixed_prior_contribution, channel, row), raw_bc,
+            obs.assign_attrs(units=units), prior,
+        )
+    return units
+
+
+def _validate_selected_prior(prepared: Co2O2PreparedInputs, snapshot: xr.Dataset) -> None:
+    """Check the saved signed ratios and that the retained moments select the saved or calibrated prior.
+
+    Raises:
+        ValueError: If ratio values, the calibration or the selected moments
+            differ from the prepared inputs.
+    """
+    from .co2_o2_preparation import _ratio_record
+
+    ratio = prepared.o2_co2_flux_ratio
+    ratio_record = _ratio_record(
+        ratio, prepared.o2_co2_flux_ratio_unavailable_reason,
+        np.asarray(ratio.data) if ratio is not None else np.empty(0),
+    )
+    if json.loads(snapshot.attrs["native_ratio_provenance"]) != ratio_record:
+        raise ValueError("Shared baseline signed-ratio values and provenance must match.")
+    prior = selected_prior = prepared.retained_prior
+    if snapshot.attrs["mode"] == "multiplicative_shrunk":
+        calibration = snapshot[sorted(_calibration_names(snapshot))]
+        calibration = calibration.rename({
+            name: name.removeprefix("calibration_") for name in set(calibration.variables) | set(calibration.dims)
+            if isinstance(name, str) and name.startswith("calibration_")
+        }).assign_attrs(json.loads(snapshot.attrs["calibration_attrs"]))
+        if (calibration.attrs.get("biosphere_prior_schema") != "openghg_inversions.biosphere_prior/v1"
+                or calibration.attrs.get("family") != "lognormal"):
+            raise ValueError("Shared shrinkage requires a resolved positive prior.")
+        _same_array(calibration.baseline_mean, prior.mean, "calibration baseline mean")
+        _same_array(calibration.baseline_covariance, prior.arithmetic_covariance,
+                    "calibration baseline covariance")
+        calibrated_positive = BiospherePrior.from_dataset(calibration).positive_prior
+        if calibrated_positive is None:
+            raise ValueError("Shared shrinkage requires a resolved positive prior.")
+        selected_prior = calibrated_positive
+    outer, sampled = snapshot.original_outer, snapshot.original_sampled_outer
+    if bool((sampled & ~outer).any()):
+        raise ValueError("Shared sampled_outer must be a subset of outer.")
+    positions = _kept_positions(snapshot.attrs["mode"], outer, sampled)
+    _same_array(snapshot.retained_mean, selected_prior.mean.isel({prior.state_dim: positions}),
+                "selected prior mean")
+    _same_array(snapshot.retained_covariance, selected_prior.arithmetic_covariance.isel(
+        {prior.state_dim: positions, prior.covariance_dim: positions}),
+        "selected prior covariance")
+
+
 def _validate_shared_baseline(prepared: Co2O2PreparedInputs, *, numerical: bool) -> None:
-    """Validate frozen identities at preparation/storage boundaries, without refitting."""
+    """Validate frozen identities at preparation/storage boundaries, without refitting.
+
+    Args:
+        prepared: Handoff whose shared baselines, if any, are checked.
+        numerical: Also check values and recompute frozen operators. Requires
+            dense payloads; without it, only label and metadata checks run.
+
+    Raises:
+        ValueError: If either channel's snapshot is invalid or the two channels
+            disagree on mode, units, calibration or prior selection.
+    """
     shared = prepared.shared_baseline
     if not shared:
         return
     if set(shared) != {"co2", "o2"} or set(prepared.boundary_operands) != {"co2", "o2"}:
         raise ValueError("Shared baselines require both channels and their raw boundary operands.")
-    modes, channel_units = set(), set()
-    required = {
-        "original_prior_mean", "original_prior_covariance", "retained_mean", "retained_covariance",
-        "original_outer", "original_sampled_outer", "sampled_outer", "original_outer_mean",
-        "bc_prescribed_centered", "bc_reference_shift", "reference", "delta_sd",
-        "centering_weights", "outer_column_mean", "bc_pattern_mean", "bc_pattern_raw", "flux_sensitivity",
-        "original_outer_operator", "physical_outer_prior", "fixed_prior_contribution",
-        "physical_bc_prior", "native_H_bc_anomaly", "native_H_bc_mass", "native_bc_reference",
-        "physical_prior_baseline", "complete_prior_concentration",
+    channel_units = {
+        _validate_channel_snapshot(prepared, channel, bound, numerical=numerical) for channel, bound in shared.items()
     }
-    for channel, bound in shared.items():
-        value = bound.data
-        if value.attrs.get("shared_snapshot_schema") != SHARED_SNAPSHOT_SCHEMA or required - set(value):
-            raise ValueError(f"{channel} shared baseline is missing frozen scientific operands; prepare again.")
-        if _choice_record(bound.choice) != json.loads(value.attrs["shared_choice_json"]):
-            raise ValueError("Shared baseline choice identity must match its snapshot.")
-        if bound.choice.mode != value.attrs.get("mode") or (numerical and bound.choice.delta_sd != float(value.delta_sd)):
-            raise ValueError("Shared baseline choice and numerical operands must match.")
-        if value.attrs.get("mode") not in {"fixed", "multiplicative", "multiplicative_shrunk"}:
-            raise ValueError("Shared channels require a supported outer mode.")
-        if (value.attrs["mode"] == "multiplicative_shrunk") != ("calibration_attrs" in value.attrs):
-            raise ValueError("Only multiplicative_shrunk requires a resolved frozen calibration.")
-        if value.attrs.get("native_ratio_provenance") != prepared.o2_sensitivity.attrs.get("oxidation_ratio_provenance"):
-            raise ValueError("Shared baseline signed-ratio provenance must match.")
-        row = str(getattr(prepared, f"{channel}_sensitivity").dims[0])
-        if value.attrs.get("linked_channel") != channel or value.attrs.get("native_observation_dim") != row:
-            raise ValueError(f"{channel} shared baseline native channel identity must match.")
-        obs = _native_channel(prepared.observations, channel, row)
-        units = (value.attrs.get("units")
-                 if not numerical and isinstance(obs.observation_units.data, DaskArray) else _channel_units(obs))
-        if value.attrs.get("units") != units or value.reference.attrs.get("units") != units:
-            raise ValueError(f"{channel} shared baseline units must match observations.")
-        if value.delta_sd.attrs.get("units") != units:
-            raise ValueError(f"{channel} delta width units must match observations.")
-        if row not in value.indexes or not value.indexes[row].equals(obs.indexes[row]):
-            raise ValueError(f"{channel} shared baseline rows must match observations.")
-        if value.reference.ndim or value.delta_sd.ndim:
-            raise ValueError("Shared baseline references and delta widths must be scalar.")
-        if numerical:
-            original_h = getattr(prepared, f"{channel}_sensitivity")
-            original_fixed = _native_channel(prepared.fixed_prior_contribution, channel, row)
-            dense, raw_bc = value, prepared.boundary_operands[channel]
-            if any(not np.isfinite(array.data).all() for array in dense.data_vars.values()
-                   if np.issubdtype(array.dtype, np.number)):
-                raise ValueError("Shared baseline numerical operands must be finite.")
-            if float(dense.delta_sd) <= 0:
-                raise ValueError("Shared baseline delta widths must be positive.")
-            boundary = bound.choice.boundary
-            if boundary is None or isinstance(boundary, AdditiveChoice) or (
-                isinstance(boundary, AnomalyScalingChoice) and boundary.reference == "stored"
-            ):
-                _same_array(dense.reference, raw_bc.bc_reference, "stored reference")
-            _validate_operator_identity(
-                dense, original_h, original_fixed, raw_bc,
-                obs.assign_attrs(units=units), prepared.retained_prior,
-            )
-        for name in ("original_outer", "original_sampled_outer", "sampled_outer"):
-            if value[name].dtype != bool:
-                raise ValueError("Shared baseline outer selectors must be boolean.")
-        channel_units.add(units)
-        modes.add(value.attrs.get("mode"))
-        prior = prepared.retained_prior
-        if value.attrs.get("state_dim") != prior.state_dim or value.attrs.get("covariance_dim") != prior.covariance_dim:
-            raise ValueError("Shared baseline state dimensions must match the original prior.")
-        for selector in (value.original_outer, value.original_sampled_outer):
-            if selector.dims != ("original_state",) or not selector.get_index("original_state").equals(
-                value.original_prior_mean.get_index("original_state")
-            ):
-                raise ValueError("Shared baseline original selectors must match the original prior.")
-        for name, expected in (("original_prior_mean", prior.mean),
-                               ("original_prior_covariance", prior.arithmetic_covariance)):
-            original = value[name]
-            rename = {coord: (prior.state_dim if coord == "original_state" else
-                              prior.covariance_dim if coord == "original_state_cov" else
-                              coord.removeprefix("original_state_"))
-                      for coord in set(original.coords) | set(original.dims) if isinstance(coord, str) and coord.startswith("original_state")}
-            _same_array(original.rename(rename), expected, name)
-    if len(modes) != 1 or not modes <= {"fixed", "multiplicative", "multiplicative_shrunk"}:
+    left, right = shared["co2"].data, shared["o2"].data
+    if left.attrs["mode"] != right.attrs["mode"]:
         raise ValueError("Both shared channels must use the same supported mode.")
     if len(channel_units) != 1:
         raise ValueError("Linked shared baselines require common channel units.")
-    left, right = shared["co2"].data, shared["o2"].data
-    calibration_names = {name for name in left if isinstance(name, str) and name.startswith("calibration_")}
-    if calibration_names != {name for name in right if isinstance(name, str) and name.startswith("calibration_")}:
+    calibration_names = _calibration_names(left)
+    if (calibration_names != _calibration_names(right)
+            or left.attrs.get("calibration_attrs") != right.attrs.get("calibration_attrs")):
         raise ValueError("Both shared channels must retain the same calibration identity.")
-    if left.attrs.get("calibration_attrs") != right.attrs.get("calibration_attrs"):
-        raise ValueError("Both shared channels must retain the same calibration identity.")
-    for field_name in {"retained_mean", "retained_covariance", "original_outer", "original_sampled_outer",
-                       "sampled_outer", "original_outer_mean"} | calibration_names:
+    for field_name in _SHARED_STATE_VARIABLES | calibration_names:
         _same_array(left[field_name], right[field_name], field_name)
-
     if numerical:
-        from .co2_o2_preparation import _ratio_record
-        ratio = prepared.o2_co2_flux_ratio
-        ratio_record = _ratio_record(
-            ratio, prepared.o2_co2_flux_ratio_unavailable_reason,
-            np.asarray(ratio.data) if ratio is not None else np.empty(0),
-        )
-        if json.loads(left.attrs["native_ratio_provenance"]) != ratio_record:
-            raise ValueError("Shared baseline signed-ratio values and provenance must match.")
-        value = left
-        selected_prior = prior
-        if value.attrs["mode"] == "multiplicative_shrunk":
-            calibration = value[[name for name in value if isinstance(name, str) and name.startswith("calibration_")]]
-            calibration = calibration.rename({
-                name: name.removeprefix("calibration_") for name in set(calibration.variables) | set(calibration.dims)
-                if isinstance(name, str) and name.startswith("calibration_")
-            }).assign_attrs(json.loads(value.attrs["calibration_attrs"]))
-            if (calibration.attrs.get("biosphere_prior_schema") != "openghg_inversions.biosphere_prior/v1"
-                    or calibration.attrs.get("family") != "lognormal"):
-                raise ValueError("Shared shrinkage requires a resolved positive prior.")
-            _same_array(calibration.baseline_mean, prior.mean, "calibration baseline mean")
-            _same_array(calibration.baseline_covariance, prior.arithmetic_covariance,
-                        "calibration baseline covariance")
-            calibrated_positive = BiospherePrior.from_dataset(calibration).positive_prior
-            if calibrated_positive is None:
-                raise ValueError("Shared shrinkage requires a resolved positive prior.")
-            selected_prior = calibrated_positive
-        outer, sampled = value.original_outer, value.original_sampled_outer
-        if bool((sampled & ~outer).any()):
-            raise ValueError("Shared sampled_outer must be a subset of outer.")
-        keep = ~outer | sampled if value.attrs["mode"].startswith("multiplicative") else ~outer
-        positions = np.flatnonzero(keep.data)
-        _same_array(value.retained_mean, selected_prior.mean.isel({prior.state_dim: positions}),
-                    "selected prior mean")
-        _same_array(value.retained_covariance, selected_prior.arithmetic_covariance.isel(
-            {prior.state_dim: positions, prior.covariance_dim: positions}),
-            "selected prior covariance")
+        _validate_selected_prior(prepared, left)
 
 
 _Array = TypeVar("_Array", xr.DataArray, xr.Dataset)
@@ -482,18 +535,12 @@ def materialize_linked_shared_inputs(
         tuple: Eager prepared handoff, selected independent error SDs and resolved
             likelihood operands. Reuse these values for construction and saving.
     """
-    from .co2_o2_runner import _validate_independent_error_labels, _validate_independent_error_values
+    from .co2_o2_runner import _agreed_independent_error, _independent_error_candidates
     from openghg_inversions.models.boundary import require_centered_precision
 
     require_centered_precision()
     _validate_shared_baseline(prepared, numerical=False)
-    saved = prepared.independent_error_sd
-    error = saved if independent_error_sd is None else independent_error_sd
-    if error is None:
-        raise ValueError("Supply independent_error_sd explicitly or in the prepared artifact.")
-    errors = [error] if saved is None or saved is error else [error, saved]
-    for value in errors:
-        _validate_independent_error_labels(prepared.observations, value)
+    errors = _independent_error_candidates(prepared, independent_error_sd)
     native_rows = (str(prepared.co2_sensitivity.dims[0]), str(prepared.o2_sensitivity.dims[0]))
     arrays, frozen, raw, ratio, aggregation, dense_errors, resolved_likelihood = compute(
         {name: _dense_consumed(getattr(prepared, name), native_rows=native_rows) for name in (
@@ -507,13 +554,7 @@ def materialize_linked_shared_inputs(
         [_dense_consumed(value, native_rows=native_rows) for value in errors], to_dense_tree(dict(likelihood or {})),
         optimize_graph=False,
     )
-    for value in dense_errors:
-        _validate_independent_error_values(value)
-        if not value.observation_units.variable.equals(arrays["observations"].observation_units.variable):
-            raise ValueError("independent_error_sd observation_units must match prepared observations.")
-    error = dense_errors[0]
-    if len(dense_errors) == 2 and not error.variable.equals(dense_errors[1].variable):
-        raise ValueError("Explicit independent_error_sd must match the prepared artifact values.")
+    error = _agreed_independent_error(arrays["observations"], dense_errors)
     materialized = replace(
         prepared, **arrays, shared_baseline={name: replace(prepared.shared_baseline[name], data=value)
                                           for name, value in frozen.items()}, boundary_operands=raw,
