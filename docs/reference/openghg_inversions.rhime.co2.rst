@@ -14,7 +14,6 @@ openghg\_inversions.rhime.co2
    openghg_inversions.rhime.co2.co2_cached_sigma_model
    openghg_inversions.rhime.co2.co2_cached_sigma_runner
    openghg_inversions.rhime.co2.co2_model
-   openghg_inversions.rhime.co2.shared_baseline_model
    openghg_inversions.rhime.co2.co2_o2_cached_sigma_model
    openghg_inversions.rhime.co2.co2_o2_cached_sigma_runner
    openghg_inversions.rhime.co2.co2_o2_configuration
@@ -31,3 +30,4 @@ openghg\_inversions.rhime.co2
    openghg_inversions.rhime.co2.execution
    openghg_inversions.rhime.co2.handoffs
    openghg_inversions.rhime.co2.inference
+   openghg_inversions.rhime.co2.shared_baseline_model
