@@ -89,6 +89,7 @@ __all__ = [
     "InvertibleNativeCovarianceAction",
     "NativeCovarianceAction",
     "SeparableExponentialCovariance",
+    "same_unit_kernel",
 ]
 
 
@@ -977,6 +978,7 @@ class _DenseGeodesicBlock:
                 f"Geodesic covariance block for class {label} "
                 f"(correlation_length_km={kernel.correlation_length_km:g}, {size} cells) is not positive "
                 f"definite: Cholesky failed at leading minor {info}"
+                + _coincident_cells_message(storage, latitude, longitude)
             )
         if info < 0:  # pragma: no cover - LAPACK argument error
             raise np.linalg.LinAlgError(f"LAPACK dpotrf failed with info={info}")
@@ -990,6 +992,7 @@ class _DenseGeodesicBlock:
                 f"(correlation_length_km={kernel.correlation_length_km:g}, {size} cells) is numerically "
                 f"singular: reciprocal 1-norm condition estimate {reciprocal_condition:.3g} is below "
                 f"{_GEODESIC_MIN_RECIPROCAL_CONDITION:.3g}"
+                + _coincident_cells_message(storage, latitude, longitude)
             )
         pivots = np.diag(storage).copy()
         storage[np.diag_indices(size)] = kernel_diagonal
@@ -1100,6 +1103,12 @@ class ClassMixedExponentialCovariance:
         "_separable_index",
         "_sigma",
     )
+    _blocks: tuple[_DenseGeodesicBlock, ...]
+    _class_kernels: Mapping[object, GeodesicExponentialKernel]
+    _separable: SeparableExponentialCovariance
+    _separable_boxes: tuple[tuple[slice, slice, np.ndarray], ...]
+    _separable_index: np.ndarray
+    _sigma: float
 
     schema = "openghg_inversions.class_mixed_exponential_covariance"
     schema_version = 1
@@ -1135,18 +1144,27 @@ class ClassMixedExponentialCovariance:
         separable: SeparableExponentialCovariance,
         sigma: float,
         class_kernels: Mapping[object, GeodesicExponentialKernel],
+        reuse: tuple[ClassMixedExponentialCovariance, ...] = (),
     ) -> None:
         """Resolve class kernels against the separable class masks.
+
+        Each key is replaced by the class label found in the grid, and the
+        kernels are ordered by class (first appearance in row-major order), so
+        the stored configuration does not depend on the key spelling or the
+        mapping order.
 
         Args:
             separable: Unit-sigma class-blocked separable covariance supplying
                 coordinates, separable factors and class masks.
             sigma: Validated marginal standard deviation.
             class_kernels: Requested dense kernel per class label.
+            reuse: Covariances whose dense blocks are shared, instead of
+                rebuilt, when one has the same unit kernel.
 
         Raises:
-            ValueError: If the class kernels are empty, name absent classes or
-                name one class twice, or a native dimension is reserved.
+            ValueError: If the class kernels are empty, name absent classes,
+                name one class twice or use a Boolean key for a non-Boolean
+                label, or a native dimension is reserved.
             TypeError: If a kernel is not a :class:`GeodesicExponentialKernel`.
         """
         reserved = _MIXED_SERIALIZED_NAMES.intersection(separable.native_dims)
@@ -1166,12 +1184,31 @@ class ClassMixedExponentialCovariance:
         for key, kernel in kernels.items():
             if not isinstance(kernel, GeodesicExponentialKernel):
                 raise TypeError(f"Kernel for class {key!r} must be a GeodesicExponentialKernel")
-            matches = [index for index, label in enumerate(mask_labels) if _scalar_label_equal(key, label)]
+            matches = [
+                index
+                for index, label in enumerate(mask_labels)
+                if _is_boolean(key) == _is_boolean(label) and _scalar_label_equal(key, label)
+            ]
             if not matches:
+                if _is_boolean(key):
+                    raise ValueError(f"class_kernels key {key!r} is Boolean but the class labels are not")
                 raise ValueError(f"class_kernels names class {key!r}, which is absent from class_labels")
             if matches[0] in resolved:
                 raise ValueError(f"class_kernels names class {key!r} more than once")
-            resolved[matches[0]] = (key.item() if isinstance(key, np.generic) else key, kernel)
+            label = mask_labels[matches[0]]
+            resolved[matches[0]] = (label.item() if isinstance(label, np.generic) else label, kernel)
+        canonical = {resolved[index][0]: resolved[index][1] for index in sorted(resolved)}
+
+        self._sigma = sigma
+        for candidate in reuse:
+            same_kernels = dict(candidate._class_kernels) == canonical
+            if same_kernels and same_unit_kernel(candidate._separable, separable):
+                self._separable = candidate._separable
+                self._class_kernels = candidate._class_kernels
+                self._blocks = candidate._blocks
+                self._separable_boxes = candidate._separable_boxes
+                self._separable_index = candidate._separable_index
+                return
 
         latitude_values = np.asarray(separable._latitude.values, dtype=np.float64)
         longitude_values = np.asarray(separable._longitude.values, dtype=np.float64)
@@ -1191,8 +1228,7 @@ class ClassMixedExponentialCovariance:
             )
         separable_masks = [mask for index, mask in enumerate(masks) if index not in resolved]
         self._separable = separable
-        self._sigma = sigma
-        self._class_kernels = MappingProxyType({label: kernel for label, kernel in resolved.values()})
+        self._class_kernels = MappingProxyType(canonical)
         self._blocks = tuple(blocks)
         self._separable_boxes = _mixed_class_bounding_boxes(separable_masks)
         self._separable_index = (
@@ -1250,8 +1286,20 @@ class ClassMixedExponentialCovariance:
 
     @property
     def class_kernels(self) -> Mapping[object, GeodesicExponentialKernel]:
-        """Read-only mapping from dense class label to its kernel."""
+        """Read-only mapping from dense class label to its kernel.
+
+        Keys are the class labels as found in ``class_labels`` and are ordered
+        by class (first appearance in row-major grid order).
+        """
         return self._class_kernels
+
+    def same_unit_kernel(self, other: object) -> bool:
+        """Return whether ``other`` has the same unit-variance kernel.
+
+        See :func:`same_unit_kernel`; ``sigma`` and the class-label name and
+        attributes are ignored.
+        """
+        return same_unit_kernel(self, other)
 
     @property
     def geodesic_diagnostics(self) -> tuple[GeodesicBlockDiagnostics, ...]:
@@ -1345,8 +1393,8 @@ class ClassMixedExponentialCovariance:
             of the separable configuration under this class's schema, with
             ``sigma`` and the dense class kernels over a ``geodesic_class``
             dimension (tagged-JSON class labels, kernel kind, length and
-            radius in km). Two covariances with the same dataset apart from
-            the ``sigma`` attribute share an identical unit kernel.
+            radius in km), in class order. Use :meth:`same_unit_kernel` to
+            compare unit kernels.
         """
         dataset = self._separable.to_dataset()
         labels = list(self._class_kernels)
@@ -1564,3 +1612,121 @@ def _mixed_class_bounding_boxes(
         lon_slice = slice(int(columns[0]), int(columns[-1]) + 1)
         boxes.append((lat_slice, lon_slice, mask[lat_slice, lon_slice]))
     return tuple(boxes)
+
+
+def same_unit_kernel(first: object, second: object) -> bool:
+    """Return whether two covariance actions share the same unit-variance kernel.
+
+    Two actions share a unit kernel when ``B_first / sigma_first**2`` equals
+    ``B_second / sigma_second**2``. This compares the action type, native
+    dimension names, coordinate values, resolved separable latitude and
+    longitude lengths, class-label values (with their types) and, for
+    :class:`ClassMixedExponentialCovariance`, every dense class kernel. It
+    ignores ``sigma``, the class-label name and attributes, and coordinate
+    attributes. Unsupported or different action types compare unequal.
+
+    Args:
+        first: A :class:`SeparableExponentialCovariance` or
+            :class:`ClassMixedExponentialCovariance`.
+        second: The action to compare with.
+
+    Returns:
+        ``True`` when the unit kernels are identical.
+    """
+    if type(first) is not type(second):
+        return False
+    if not isinstance(first, SeparableExponentialCovariance | ClassMixedExponentialCovariance):
+        return False
+    other = cast(SeparableExponentialCovariance | ClassMixedExponentialCovariance, second)
+    if first is other:
+        return True
+    if first.native_dims != other.native_dims:
+        return False
+    for mine, theirs in ((first.latitude, other.latitude), (first.longitude, other.longitude)):
+        if not np.array_equal(np.asarray(mine.values), np.asarray(theirs.values)):
+            return False
+    lengths = (first.latitude_correlation_length, first.longitude_correlation_length)
+    if lengths != (other.latitude_correlation_length, other.longitude_correlation_length):
+        return False
+    if not _class_label_values_equal(first.class_labels, other.class_labels):
+        return False
+    if isinstance(first, ClassMixedExponentialCovariance):
+        assert isinstance(other, ClassMixedExponentialCovariance)
+        return list(first.class_kernels.items()) == list(other.class_kernels.items())
+    return True
+
+
+def _class_label_values_equal(first: xr.DataArray | None, second: xr.DataArray | None) -> bool:
+    """Compare class-label values and types, ignoring name and attributes."""
+    if first is None or second is None:
+        return first is None and second is None
+    left = np.asarray(first.values)
+    right = np.asarray(second.values)
+    if left.shape != right.shape:
+        return False
+    if left.dtype != object and right.dtype != object:
+        return left.dtype.kind == right.dtype.kind and bool(np.array_equal(left, right))
+    encode = np.frompyfunc(_encode_tagged_json_value, 1, 1)
+    try:
+        return bool(np.array_equal(encode(left), encode(right)))
+    except TypeError:
+        return False
+
+
+def _is_boolean(value: object) -> bool:
+    """Return whether a class label or key is a Python or NumPy Boolean."""
+    return isinstance(value, bool | np.bool_)
+
+
+def _coincident_cells_message(storage: np.ndarray, latitude: np.ndarray, longitude: np.ndarray) -> str:
+    """Describe the first pair of cells at the same point of the sphere, if any.
+
+    Called only after a failed factorization. ``dpotrf`` leaves the strict
+    upper triangle, which holds the kernel, untouched.
+
+    Args:
+        storage: Block storage whose strict upper triangle holds the kernel.
+        latitude: Cell-centre latitudes in degrees.
+        longitude: Cell-centre longitudes in degrees.
+
+    Returns:
+        An explanatory suffix for the error message, or ``""``.
+    """
+    threshold = 1.0 - 1.0e-12
+    for column in range(1, storage.shape[0]):
+        rows = np.flatnonzero(storage[:column, column] >= threshold)
+        if rows.size:
+            row = int(rows[0])
+            return (
+                f"; cells at (lat {latitude[row]:g}, lon {longitude[row]:g}) and "
+                f"(lat {latitude[column]:g}, lon {longitude[column]:g}) coincide on the sphere "
+                "(for example several cells at a pole or longitudes 360 degrees apart)"
+            )
+    return ""
+
+
+def _class_mixed_from_parts(
+    separable: SeparableExponentialCovariance,
+    sigma: float,
+    class_kernels: Mapping[object, GeodesicExponentialKernel],
+    reuse: tuple[ClassMixedExponentialCovariance, ...] = (),
+) -> ClassMixedExponentialCovariance:
+    """Build a class-mixed covariance, sharing dense blocks with ``reuse`` when possible.
+
+    Args:
+        separable: Unit-sigma class-blocked separable covariance.
+        sigma: Marginal standard deviation.
+        class_kernels: Dense kernel per class label.
+        reuse: Earlier covariances whose blocks may be shared.
+
+    Returns:
+        The covariance; it shares its dense blocks with the first covariance
+        in ``reuse`` that has the same unit kernel.
+    """
+    if separable.class_labels is None:
+        raise ValueError("ClassMixedExponentialCovariance requires class_labels")
+    if separable.sigma != 1.0:
+        raise ValueError("The separable part of a class-mixed covariance must have unit sigma")
+    result = object.__new__(ClassMixedExponentialCovariance)
+    result._initialize(separable, _positive_finite(sigma, "sigma"), class_kernels, reuse)
+    return result

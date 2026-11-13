@@ -52,6 +52,7 @@ from openghg_inversions.native_covariance import (
     ClassMixedExponentialCovariance,
     GeodesicExponentialKernel,
     SeparableExponentialCovariance,
+    _class_mixed_from_parts,
     _decode_class_kernels,
 )
 from openghg_inversions._serialization_codecs import (
@@ -69,7 +70,8 @@ SourceSpatialCovariance = SeparableExponentialCovariance | ClassMixedExponential
 
 _SEPARABLE_KERNEL = "separable_exponential"
 _CLASS_MIXED_KERNEL = "class_mixed_exponential"
-_CLASS_MIXED_SCHEMA_VERSION = 2
+# Separable-only configurations keep writing the original version-1 layout.
+_SEPARABLE_ONLY_SCHEMA_VERSION = 1
 _CLASS_MIXED_VARIABLE_NAMES = (
     "spatial_kernel",
     "geodesic_class_encoded",
@@ -113,15 +115,17 @@ class IndependentSourceCovariance:
 
     Notes:
         The source mapping and source-dimension properties are read-only.
-        Serialization writes ``schema_version`` 1 when every block is
-        separable and version 2 when any block is class-mixed.
+        ``schema_version`` is the newest version written and read (2).
+        Serialization writes it when any block is class-mixed and keeps the
+        unchanged version-1 layout when every block is separable; both
+        versions can be restored.
         Changed configuration requires explicit reconstruction.
     """
 
     __slots__ = ("_source_covariances", "_source_dim", "_source_labels")
 
     schema = "openghg_inversions.independent_source_covariance"
-    schema_version = 1
+    schema_version = 2
 
     def __init__(
         self,
@@ -162,6 +166,13 @@ class IndependentSourceCovariance:
         class_mixed = any(isinstance(item, ClassMixedExponentialCovariance) for item in covariances.values())
         if class_mixed and source_dim in _CLASS_MIXED_RESERVED_NAMES:
             raise ValueError(f"source_dim {source_dim!r} is reserved by the serialized schema")
+        if class_mixed:
+            spatial_dims = next(iter(covariances.values())).native_dims
+            reserved_mixed = _CLASS_MIXED_RESERVED_NAMES.intersection(spatial_dims)
+            if reserved_mixed:
+                raise ValueError(
+                    f"spatial dimension {sorted(reserved_mixed)[0]!r} is reserved by the serialized schema"
+                )
 
         reference = next(iter(covariances.values()))
         if source_dim in reference.native_dims:
@@ -361,7 +372,7 @@ class IndependentSourceCovariance:
             },
             attrs={
                 "schema": self.schema,
-                "schema_version": self.schema_version,
+                "schema_version": _SEPARABLE_ONLY_SCHEMA_VERSION,
                 "source_dim": self.source_dim,
                 "latitude_dim": first.native_dims[0],
                 "longitude_dim": first.native_dims[1],
@@ -412,7 +423,7 @@ class IndependentSourceCovariance:
         dataset["geodesic_class_kernel"] = xr.DataArray(kinds.astype(str), dims=dims, coords=coords)
         dataset["geodesic_correlation_length_km"] = xr.DataArray(lengths, dims=dims, coords=coords)
         dataset["geodesic_earth_radius_km"] = xr.DataArray(radii, dims=dims, coords=coords)
-        dataset.attrs["schema_version"] = _CLASS_MIXED_SCHEMA_VERSION
+        dataset.attrs["schema_version"] = self.schema_version
 
     @classmethod
     def from_dataset(cls, dataset: xr.Dataset) -> IndependentSourceCovariance:
@@ -433,9 +444,9 @@ class IndependentSourceCovariance:
         if dataset.attrs.get("schema") != cls.schema:
             raise ValueError(f"Expected source covariance schema {cls.schema!r}")
         schema_version = dataset.attrs.get("schema_version")
-        if schema_version not in (cls.schema_version, _CLASS_MIXED_SCHEMA_VERSION):
+        if schema_version not in (_SEPARABLE_ONLY_SCHEMA_VERSION, cls.schema_version):
             raise ValueError("Unsupported independent-source covariance schema version")
-        class_mixed = schema_version == _CLASS_MIXED_SCHEMA_VERSION
+        class_mixed = schema_version == cls.schema_version
         if dataset.attrs.get("class_label_encoding") != _TAGGED_JSON_VALUE_ENCODING:
             raise ValueError("Unsupported independent-source class-label encoding")
         source_dim = str(dataset.attrs.get("source_dim", ""))
@@ -533,15 +544,25 @@ class IndependentSourceCovariance:
                 continue
             if labels is None:
                 raise ValueError(f"Serialized class-mixed source {label!r} requires class labels")
-            covariances[label] = ClassMixedExponentialCovariance(
+            separable = SeparableExponentialCovariance(
                 latitude=dataset.coords[latitude_dim],
                 longitude=dataset.coords[longitude_dim],
-                class_labels=labels,
-                class_kernels=class_kernels,
-                sigma=float(dataset["sigma"].sel({source_dim: label}).item()),
+                sigma=1.0,
                 correlation_length=correlation_length,
                 latitude_correlation_length=latitude_length if latitude_explicit else None,
                 longitude_correlation_length=longitude_length if longitude_explicit else None,
+                class_labels=labels,
+            )
+            # Sources with the same unit kernel (for example GPP and TER built
+            # with ``with_sigma``) share one dense factor after restoration.
+            restored_mixed = tuple(
+                block for block in covariances.values() if isinstance(block, ClassMixedExponentialCovariance)
+            )
+            covariances[label] = _class_mixed_from_parts(
+                separable,
+                float(dataset["sigma"].sel({source_dim: label}).item()),
+                class_kernels,
+                reuse=restored_mixed,
             )
         return cls(covariances, source_dim=source_dim)
 

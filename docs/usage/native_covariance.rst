@@ -343,8 +343,12 @@ side (``dsymm``); solve uses two triangular solves for dense classes and the
 matrix-free conjugate gradients of the class-blocked separable action,
 restricted to the separable classes. ``with_sigma`` changes the amplitude
 without rebuilding the block. ``to_dataset`` records the separable
-configuration, class labels and class kernels; two covariances whose datasets
-differ only in the ``sigma`` attribute share the same unit kernel.
+configuration, class labels and class kernels, keyed by the class labels found
+in the grid and ordered by class. ``same_unit_kernel`` (also a method) tells
+whether two actions have the same unit-variance kernel, ignoring ``sigma`` and
+class-label metadata. ``IndependentSourceCovariance`` writes schema version 2
+when any source is class-mixed (version 1, unchanged, otherwise), and on
+restore sources with the same unit kernel share one dense factor.
 
 Units and persistence
 ---------------------
