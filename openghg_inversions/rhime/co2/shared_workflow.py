@@ -40,6 +40,25 @@ def build_linked_shared_workflow(
 
     The returned materialized preparation must also be used for annotation.
     Inferred fixed-OU amplitudes select the maintained matched cache target.
+
+    Args:
+        prepared: Linked handoff containing frozen native shared baselines.
+        independent_error_sd: Error SDs on the joint observation axis, or None
+            to use saved errors. Explicit and saved errors must agree in labels,
+            observation units and values when both are supplied.
+        tau_hours: Fixed OU timescales, scalar or keyed by species/site. None
+            selects independent Gaussian errors.
+        fixed_site_amplitudes: Fixed OU amplitudes, scalar or keyed by species/site.
+            Mutually exclusive with site_amplitude_prior.
+        site_amplitude_prior: Prior for inferred OU amplitudes; selects the
+            matched cached recipe and requires tau_hours.
+        initial_site_amplitudes: Initial inferred OU amplitudes, scalar or keyed
+            by species/site. Requires site_amplitude_prior.
+
+    Returns:
+        tuple[openghg_inversions.rhime.builders.RhimeModelBuildResult, openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel | None, openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs]:
+            Concrete build with scientific output roles, optional cached sampling
+            target, and the eager preparation reused for annotation and saving.
     """
     require_centered_precision()
     if not prepared.shared_baseline:
@@ -94,7 +113,20 @@ def build_linked_shared_workflow(
 def annotate_linked_shared_workflow(
     trace: xr.DataTree, *, built: RhimeModelBuildResult, prepared: Co2O2PreparedInputs,
 ) -> xr.DataTree:
-    """Restore normal linked labels/predictions and persist complete frozen context."""
+    """Restore normal linked labels/predictions and persist complete frozen context.
+
+    Args:
+        trace: Sampled linked trace with restored observation labels.
+        built:
+            Concrete graph and its scientific output roles.
+        prepared:
+            Materialized handoff returned by build_linked_shared_workflow,
+            containing the frozen native shared baselines.
+
+    Returns:
+        xarray.DataTree: Annotated trace carrying absolute predictions, scientific
+            roles and frozen channel baselines for later reconstruction.
+    """
     trace = annotate_co2_o2_trace(trace, built=built)
     trace = annotate_linked_shared_baseline_trace(trace, prepared.shared_baseline)
     trace.attrs["rhime_recipe"] = "co2_o2_shared_baseline"
@@ -110,13 +142,17 @@ def sample_linked_shared_workflow(
     """Sample with maintained compact deterministic reconstruction and OU cache.
 
     Args:
-        prepared: Linked handoff with already frozen native shared baselines.
-        sampler: Resolved sampling controls; cached OU selects its maintained step order.
-        model_options: Explicit linked likelihood options accepted by the workflow builder.
+        prepared:
+            Linked handoff with already frozen native shared baselines.
+        sampler:
+            Resolved sampling controls; cached OU selects its maintained step order.
+        **model_options:
+            Explicit linked likelihood options accepted by the workflow builder.
 
     Returns:
-        Annotated trace with restored labels, absolute predictives, selected sampled
-        states and frozen preparations. Physical diagnostics are reconstructed later.
+        xarray.DataTree: Annotated trace with restored labels, absolute predictives,
+            selected sampled states and frozen preparations. Physical diagnostics
+            are reconstructed later.
     """
     if model_options.get("tau_hours") is not None and sampler.nuts_sampler != "pymc":
         raise ValueError("Linked fixed-OU requires nuts_sampler='pymc'.")
