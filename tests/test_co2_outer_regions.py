@@ -12,6 +12,7 @@ from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.co2 import build_co2_model
+from boundary_test_utils import bound_model_arguments
 
 
 def _grouped_inputs() -> tuple[xr.Dataset, CorrelatedLognormalPrior]:
@@ -90,13 +91,17 @@ def _build(
 ) -> pm.Model:
     return build_co2_model(
         dataset["H"],
-        retained_prior=retained_prior,
-        fixed_prior_contribution=dataset["fixed_prior_contribution"],
-        observations=dataset["mf"],
-        observation_error=dataset["mf_error"],
-        aggregation_error=resolve_aggregation_error(dataset, "none"),
-        fixed_model_mismatch=1.0,
-        **kwargs,
+        **bound_model_arguments(
+            {
+                "retained_prior": retained_prior,
+                "fixed_prior_contribution": dataset["fixed_prior_contribution"],
+                "observations": dataset["mf"],
+                "observation_error": dataset["mf_error"],
+                "aggregation_error": resolve_aggregation_error(dataset, "none"),
+                "fixed_model_mismatch": 1.0,
+                **kwargs,
+            }
+        ),
     )
 
 

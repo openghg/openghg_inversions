@@ -1,4 +1,5 @@
 import warnings
+from dataclasses import dataclass
 
 import dask.array as da
 from dask import delayed
@@ -17,13 +18,52 @@ from openghg_inversions.array_ops import (
     get_xr_dummies,
     iter_multi_index_level_slices,
     jax_to_numpy,
+    materialize_together,
     require_unique_index,
     same_index,
     sparse_xr_dot,
     select_gathered_data_array,
     to_dense,
+    to_dense_tree,
     validate_covariance_coordinates,
 )
+
+
+def test_materialize_together_runs_a_shared_graph_once_and_keeps_coordinates_lazy(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Related payloads compute in one call; coordinates stay lazy; sparse becomes dense."""
+    executions = []
+
+    @delayed
+    def shared_values() -> tuple[np.ndarray, np.ndarray]:
+        executions.append("payload")
+        return np.array([1.0, 0.0]), np.array([[2.0, 3.0]])
+
+    @delayed
+    def auxiliary_values() -> np.ndarray:
+        executions.append("coordinate")
+        return np.array([5.0, 6.0])
+
+    shared = shared_values()
+    auxiliary = da.from_delayed(auxiliary_values(), shape=(2,), dtype=float)
+    first = xr.DataArray(
+        da.from_delayed(shared[0], shape=(2,), dtype=float).map_blocks(sparse.COO.from_numpy),
+        dims="cell",
+        coords={"cell": [0, 1], "auxiliary": ("cell", auxiliary)},
+        name="first",
+    )
+    second = xr.DataArray(da.from_delayed(shared[1], shape=(1, 2), dtype=float), dims=("row", "cell"), name="second")
+
+    with caplog.at_level("DEBUG", logger="openghg_inversions.array_ops"):
+        first_result, second_result = materialize_together(first, second, purpose="test boundary")
+
+    assert executions == ["payload"]
+    assert isinstance(first_result.data, np.ndarray)
+    np.testing.assert_array_equal(first_result.data, [1.0, 0.0])
+    np.testing.assert_array_equal(second_result.data, [[2.0, 3.0]])
+    assert first_result.auxiliary.data is first.auxiliary.data
+    assert "Materializing test boundary: first(2,) (lazy), second(1, 2) (lazy)" in caplog.text
 
 
 @pytest.mark.parametrize("sparse_payload", [False, True])
@@ -94,6 +134,49 @@ def test_get_xr_dummies_accepts_unlabelled_dimension(return_sparse: bool) -> Non
     np.testing.assert_array_equal(result.category, [0, 1])
     data = result.data.todense() if return_sparse else result.data
     np.testing.assert_array_equal(data, [[1, 0], [0, 1], [1, 0]])
+
+
+@dataclass(frozen=True)
+class _Record:
+    data: xr.Dataset
+    prior: dict
+    scale: float
+
+
+def test_to_dense_tree_densifies_nested_records_for_one_compute() -> None:
+    """Datasets, mappings and dataclasses keep Dask graphs until one joint compute."""
+    from dask import compute
+
+    sparse_chunks = da.from_array(sparse.COO.from_numpy(np.array([0.0, 2.0])), chunks=1)
+    record = _Record(
+        xr.Dataset({"h": ("x", sparse_chunks)}), {"mu": xr.DataArray(sparse_chunks, dims="x"), "pdf": "normal"}, 1.5,
+    )
+
+    dense = to_dense_tree((record, [record.prior["mu"]]))
+
+    assert isinstance(dense[0], _Record) and dense[0].scale == 1.5
+    assert isinstance(dense[0].data.h.data._meta, np.ndarray)
+    assert isinstance(dense[0].prior["mu"].data._meta, np.ndarray)
+    assert record.data.h.data is sparse_chunks
+    ((computed, values),) = compute(dense)
+    np.testing.assert_array_equal(computed.data.h.values, [0.0, 2.0])
+    assert computed.prior["pdf"] == "normal"
+    assert isinstance(values[0].data, np.ndarray)
+
+
+def test_to_dense_tree_keeps_named_tuples() -> None:
+    """Named tuples are rebuilt from positional fields rather than one iterable."""
+    from typing import NamedTuple
+
+    class _Pair(NamedTuple):
+        left: xr.DataArray
+        right: float
+
+    sparse_chunks = da.from_array(sparse.COO.from_numpy(np.array([0.0, 2.0])), chunks=1)
+    dense = to_dense_tree(_Pair(xr.DataArray(sparse_chunks, dims="x"), 1.0))
+
+    assert isinstance(dense, _Pair) and dense.right == 1.0
+    assert isinstance(dense.left.data._meta, np.ndarray)
 
 
 def test_to_dense_accepts_mixed_payloads_under_sparse_dask_metadata() -> None:

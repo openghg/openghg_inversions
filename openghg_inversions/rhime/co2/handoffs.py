@@ -72,7 +72,7 @@ class Co2Preparation:
 def _preparation_record(manifest: str | Path) -> tuple[Path, dict[str, Any]]:
     path, record = read_manifest(manifest, "openghg_inversions.co2.prepare", (
         "prepared_inputs", "generation", "start_date", "end_date", "domain",
-    ))
+    ), schema_version=2)
     if not isinstance(record["generation"], str) or not record["generation"]:
         raise ValueError(f"CO2 preparation {path} requires a nonempty generation.")
     return path, record
@@ -84,7 +84,7 @@ def _finish_preparation(
 ) -> Path:
     """Publish one preparation record after saving or validating its numerical pair."""
     record = {
-        "schema": "openghg_inversions.co2.prepare", "schema_version": 1,
+        "schema": "openghg_inversions.co2.prepare", "schema_version": 2,
         "producer": "openghg_inversions", "stage": "prepare", "generation": uuid4().hex,
         "prepared_inputs": os.path.relpath(prepared_path, destination), **facts,
         "provenance": installed_ogi_provenance(),
@@ -128,6 +128,7 @@ def prepare(
     canonical_inputs: PreparedInputs | None = None,
     reduction: CoherentGaussianReduction | None = None,
     aggregation_error_rank: int | None = 512,
+    bc_centering_weights: xr.DataArray | None = None,
     affine_artifact: AffineFluxMapArtifact | None = None, affine_path: str | Path | None = None,
 ) -> Path:
     """Prepare a coherent reduction or import a saved prepared/affine pair.
@@ -137,6 +138,9 @@ def prepare(
     callers retain those files for later sampling/replay. New pairs use
     :func:`save_preparation` and the existing numerical codecs. Defining priors, covariance, operators and
     projections belong to the coherent preparation, never an inference override.
+    ``bc_centering_weights`` is stored with new centered preparations, as in
+    :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`;
+    weighted additive boundaries require it.
     """
     if (canonical_inputs is None) != (reduction is None):
         raise ValueError("Pass canonical_inputs and reduction together.")
@@ -144,12 +148,14 @@ def prepare(
         raise ValueError("Pass either prepared_path or canonical_inputs with reduction.")
     if affine_artifact is not None and affine_path is not None:
         raise ValueError("Pass either affine_artifact or affine_path.")
+    if bc_centering_weights is not None and canonical_inputs is None:
+        raise ValueError("bc_centering_weights apply only to a new preparation from canonical_inputs.")
     if canonical_inputs is not None:
         if affine_path is not None:
             raise ValueError("A new preparation requires affine_artifact, not an imported companion path.")
         prepared = prepare_co2_inputs(
             canonical_inputs, cast(CoherentGaussianReduction, reduction),
-            aggregation_error_rank=aggregation_error_rank,
+            aggregation_error_rank=aggregation_error_rank, bc_centering_weights=bc_centering_weights,
         )
         return save_preparation(
             prepared, output_dir=output_dir, start_date=start_date, end_date=end_date, domain=domain,
@@ -218,7 +224,7 @@ def save_samples(
     )
     save_trace(trace, destination / "posterior.nc")
     return finish_checkpoint(destination, "sample", {
-        "schema": "openghg_inversions.co2.sample", "schema_version": 1,
+        "schema": "openghg_inversions.co2.sample", "schema_version": 2,
         "producer": "openghg_inversions", "stage": "sample", "inference_kind": "mcmc",
         "preparation": os.path.relpath(preparation_path, destination),
         "preparation_generation": preparation_generation, "posterior": "posterior.nc",
@@ -266,7 +272,7 @@ def load_samples(sample_manifest: str | Path) -> Co2Output:
     """
     path, record = read_manifest(sample_manifest, "openghg_inversions.co2.sample", (
         "preparation", "preparation_generation", "posterior", "inference_kind",
-    ))
+    ), schema_version=2)
     if record["inference_kind"] != "mcmc":
         raise ValueError(f"CO2 samples {path} require inference_kind='mcmc'.")
     generation = record["preparation_generation"]

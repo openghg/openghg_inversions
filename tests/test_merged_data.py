@@ -198,8 +198,13 @@ def test_native_openghg_public_retrieval_preserves_selected_version(monkeypatch,
         expected = "v2"
         assert selected_provenance(result, requested_version="latest").dataversion == "v2"
     elif kind == "flux":
-        # Skip catalog period planning, which would search a real object store.
-        monkeypatch.setattr(getters, "_flux_periods", lambda *args, **kwargs: set())
+        catalog_queries = []
+
+        def search_flux(**kwargs):
+            catalog_queries.append(kwargs)
+            return SimpleNamespace(results=pd.DataFrame({"time_period": ["hourly"]}))
+
+        monkeypatch.setattr(getters, "search_flux", search_flux)
         result = getters.get_flux_data(
             sources=["inventory"],
             species="ch4",
@@ -208,6 +213,9 @@ def test_native_openghg_public_retrieval_preserves_selected_version(monkeypatch,
             start_date="2020-01-01",
             end_date="2020-01-02",
         )["inventory"]
+        assert catalog_queries == [
+            {"species": "ch4", "source": "inventory", "domain": "EUROPE", "store": "archive"}
+        ]
         expected = "v7"
     else:
         inlets = [10.0, 100.0] if kind.endswith("multiple") else [10.0, 10.0]
