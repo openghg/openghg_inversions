@@ -385,7 +385,7 @@ def test_likelihoods_reject_reordered_observation_error_coordinates(
                 )
 
 
-def test_additive_sigma_likelihood_applies_minimum_error_floor() -> None:
+def test_additive_sigma_likelihood_applies_minimum_error_floor(double_precision) -> None:
     """The complete additive likelihood floors total marginal error."""
     data = _base_data()
     data["min_error"] = ("nmeasure", np.array([0.0, 1.0, 0.0]))
