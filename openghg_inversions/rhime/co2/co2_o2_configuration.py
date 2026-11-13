@@ -10,6 +10,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.boundary import Choice, MultiplicativeChoice
@@ -75,8 +76,8 @@ def load_co2_o2_params(
             options[name] = value
     if type(options.get("format_version", 1)) is not int or options.get("format_version", 1) != 1:
         raise ValueError("config.format_version must be the integer 1.")
-    if options.get("recipe", "co2_o2") != "co2_o2":
-        raise ValueError("config.recipe must be 'co2_o2' for linked execution.")
+    if options.get("recipe", "co2_o2") not in {"co2_o2", "co2_o2_shared_baseline"}:
+        raise ValueError("config.recipe must be co2_o2 or co2_o2_shared_baseline.")
     if "variant" in options:
         raise ValueError("Linked CO2/O2 configuration has no variant selector; select the scientific likelihood.")
     return options
@@ -101,7 +102,7 @@ def _validate_co2_o2_option_names(*requests: Mapping[str, object]) -> None:
         **{f"channels.{channel}" + (f".{path}" if path else ""): names
            for channel in ("co2", "o2") for path, names in channel_sections.items()},
         "likelihood": frozenset({"kind", "tau_hours", "fixed_site_amplitudes", "site_amplitude_prior",
-                                 "site_amplitude_prior_scale"}),
+                                 "site_amplitude_prior_scale", "initial_site_amplitudes"}),
         "likelihood.site_amplitude_prior": _PRIOR_OPTION_NAMES,
         "sampling": _SAMPLING_OPTION_NAMES,
         "outputs": frozenset(Co2O2OutputOptions.__dataclass_fields__),
@@ -165,18 +166,24 @@ def validate_co2_o2_units(prepared: Co2O2PreparedInputs) -> str:
     return unit
 
 
-def _likelihood(config: Mapping[str, object]) -> dict[str, object] | None:
+def _likelihood(config: Mapping[str, object], *, inferred_amplitudes: bool = False) -> dict[str, object] | None:
     options = _table(config.get("likelihood", {}), "likelihood")
     kind = options.get("kind", "fixed_independent")
+    if "site_amplitude_prior_scale" in options:
+        raise ValueError("likelihood.site_amplitude_prior_scale is unsupported; use site_amplitude_prior.")
+    if "initial_site_amplitudes" in options and not (
+        inferred_amplitudes and kind == "fixed_ou" and "site_amplitude_prior" in options
+    ):
+        raise ValueError("likelihood.initial_site_amplitudes is unused without shared inferred fixed_ou amplitudes.")
     if kind == "fixed_independent":
         options.pop("kind", None)
         _reject_unknown(options, "likelihood")
         return None
     if kind != "fixed_ou":
         raise ValueError("Linked likelihood.kind must be 'fixed_independent' or 'fixed_ou'.")
-    if "site_amplitude_prior" in options or "site_amplitude_prior_scale" in options:
+    if not inferred_amplitudes and ("site_amplitude_prior" in options or "site_amplitude_prior_scale" in options):
         raise ValueError("Configured linked inferred OU amplitudes are not supported yet; use fixed_site_amplitudes.")
-    if "fixed_site_amplitudes" not in options:
+    if not inferred_amplitudes and "fixed_site_amplitudes" not in options:
         raise ValueError("Configured linked fixed_ou requires fixed_site_amplitudes; inferred OU is not supported yet.")
     return options
 
@@ -205,6 +212,9 @@ class Co2O2ModelConfig:
     tau_hours: float | Mapping[str, float] | None = None
     fixed_site_amplitudes: float | Mapping[str, float] | None = None
     biosphere_prior_path: Path | None = None
+    recipe: str = "co2_o2"
+    site_amplitude_prior: Mapping[str, Any] | None = None
+    initial_site_amplitudes: float | Mapping[str, float] | None = None
 
     def __post_init__(self) -> None:
         for item in fields(self):
@@ -219,10 +229,16 @@ class Co2O2ModelConfig:
     def from_params(cls, config: Mapping[str, object]) -> Co2O2ModelConfig:
         """Parse active channel/likelihood choices without touching arrays."""
         options = _table(config, "config")
+        recipe = options.get("recipe", "co2_o2")
+        if recipe not in {"co2_o2", "co2_o2_shared_baseline"}:
+            raise ValueError("Unsupported linked recipe.")
+        shared = recipe == "co2_o2_shared_baseline"
         channels = _table(options.get("channels", {}), "channels")
         units: dict[str, str] = {}
         errors: dict[str, float] = {}
         model: dict[str, Any] = {}
+        if shared and "biosphere" in options:
+            raise ValueError("Shared baseline calibration belongs to the frozen preparation.")
         if "biosphere" in options:
             biosphere = _table(options["biosphere"], "biosphere")
             model["biosphere_prior_path"] = _artifact_path(_take(biosphere, "path", "biosphere"), "biosphere.path")
@@ -234,6 +250,8 @@ class Co2O2ModelConfig:
             if "independent_error_sd" in channel:
                 errors[name] = _number(channel.pop("independent_error_sd"), f"channels.{name}.independent_error_sd", positive=True)
             selected = {key: channel.pop(key) for key in ("boundary", "offset") if key in channel}
+            if shared and selected:
+                raise ValueError("Shared baseline boundary and offset choices belong to the frozen preparation.")
             activity = None
             if "boundary" in selected:
                 boundary = _table(selected["boundary"], f"channels.{name}.boundary")
@@ -256,9 +274,9 @@ class Co2O2ModelConfig:
             raise ValueError("Configure independent_error_sd for both linked channels or omit it for both.")
         if units["co2"] != units["o2"]:
             raise ValueError("The linked configuration currently requires identical CO2 and O2 channel units.")
-        likelihood = _likelihood(options)
-        kwargs = {} if likelihood is None else _co2_likelihood(likelihood)["likelihood_kwargs"]
-        return cls(units["co2"], units["o2"], _frozen(errors), **_frozen(model), **kwargs)
+        likelihood = _likelihood(options, inferred_amplitudes=shared)
+        kwargs = {} if likelihood is None else _co2_likelihood(likelihood, matched_ou=shared)["likelihood_kwargs"]
+        return cls(units["co2"], units["o2"], _frozen(errors), recipe=recipe, **_frozen(model), **kwargs)
 
     def bind(self, prepared: Co2O2PreparedInputs) -> dict[str, Any]:
         """Bind channel errors and check units at the scientific array boundary.
@@ -267,10 +285,16 @@ class Co2O2ModelConfig:
         expand over labelled observations; agreement with saved errors is checked
         by model construction at its materialization boundary.
         """
-        unit = validate_co2_o2_units(prepared)
+        shared = bool(prepared.shared_baseline)
+        if shared != (self.recipe == "co2_o2_shared_baseline"):
+            raise ValueError("Configured linked recipe does not match the frozen preparation.")
+        unit = prepared.shared_baseline["co2"].data.attrs["units"] if shared else validate_co2_o2_units(prepared)
+        if shared and prepared.shared_baseline["o2"].data.attrs["units"] != unit:
+            raise ValueError("Linked shared baselines require common channel units.")
         if unit != self.co2_units or unit != self.o2_units:
             raise ValueError("Configured channels.co2/o2.units do not match prepared observation_units.")
         observations = prepared.observations
+        independent: xr.DataArray | None
         if self.independent_error_sd:
             species = observations.species.values
             errors = np.empty(observations.size, dtype=np.float64)
@@ -282,13 +306,15 @@ class Co2O2ModelConfig:
             independent = prepared.independent_error_sd
             if independent is None:
                 raise ValueError("Omitted channel independent_error_sd requires errors in the prepared artifact.")
-        result = {item.name: getattr(self, item.name) for item in fields(self)
-                  if item.name not in {"co2_units", "o2_units", "independent_error_sd", "boundary", "biosphere_prior_path"}
+        result: dict[str, Any] = {item.name: getattr(self, item.name) for item in fields(self)
+                  if item.name not in {"co2_units", "o2_units", "independent_error_sd", "boundary", "biosphere_prior_path", "recipe"}
                   and getattr(self, item.name) is not None}
         if self.biosphere_prior_path is not None:
             from .prior_configuration import load_biosphere_prior
 
             result["biosphere_prior"] = load_biosphere_prior(self.biosphere_prior_path)
+        if shared:
+            return {**result, "independent_error_sd": independent}
         return {**result, "independent_error_sd": independent, "boundary": self._channel_boundaries(prepared)}
 
     def artifact_paths(self) -> tuple[Path, ...]:

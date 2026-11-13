@@ -123,7 +123,8 @@ def test_fixed_ou_configuration_retains_species_site_mappings_and_backend():
     ],
 )
 def test_new_configured_path_rejects_inferred_ou_explicitly(likelihood):
-    with pytest.raises(ValueError, match="inferred OU"):
+    message = "site_amplitude_prior_scale is unsupported" if "site_amplitude_prior_scale" in likelihood else "inferred OU"
+    with pytest.raises(ValueError, match=message):
         Co2O2ModelConfig.from_params({**_config(), "likelihood": likelihood}).bind(_prepared())
 
 

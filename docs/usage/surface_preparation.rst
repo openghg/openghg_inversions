@@ -258,7 +258,7 @@ Old rounded ``H_bc`` alone cannot recover accurate centered operands.
 
 Standalone CO₂ and linked CO₂/O₂ prepared inputs support saving and reopening
 both ordinary boundaries and centered operands, in the current dedicated
-prepared-input schemas (version 3 for CO₂, version 5 for linked CO₂/O₂). Older
+prepared-input schemas (version 3 for CO₂, version 6 for linked CO₂/O₂). Older
 internal artifacts must be prepared again. See :doc:`prepared_format_support`
 for supported formats.
 

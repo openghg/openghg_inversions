@@ -125,6 +125,7 @@ def _prepared_stub(array: xr.DataArray) -> SimpleNamespace:
         provenance={},
         independent_error_sd=None,
         boundary_operands={},
+        shared_baseline={},
     )
 
 

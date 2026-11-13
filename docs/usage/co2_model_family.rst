@@ -3,6 +3,10 @@ CO₂ model family
 
 The advanced CO₂ model family contains the **CO₂-only** and **linked CO₂/O₂**
 recipes. O₂ is a tracer in the linked recipe, not a standalone supported model.
+The optional :doc:`linked_shared_workflow` runs the linked atmospheric baseline
+with a saved full-support preparation, ordinary or cached inference, and pure
+physical-source and atmospheric reconstruction.
+
 Both recipes begin from scientific arrays that have already been prepared; they
 are not alternative species settings for the complete standard runner.
 

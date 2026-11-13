@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import warnings
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
 import numpy as np
@@ -74,6 +74,49 @@ def _validate_independent_error_values(array: xr.DataArray) -> None:
         raise ValueError("independent_error_sd must contain only finite positive real numeric values.")
 
 
+def _independent_error_candidates(
+    prepared: Co2O2PreparedInputs, independent_error_sd: xr.DataArray | None,
+) -> list[xr.DataArray]:
+    """Return the selected error vector, then any distinct saved vector, with checked labels.
+
+    Args:
+        prepared: Handoff whose observations and saved errors are borrowed.
+        independent_error_sd: Explicit error vector, or None to use saved errors.
+
+    Returns:
+        list[xarray.DataArray]: The selected vector, followed by the saved vector
+            when both exist and are different objects. Payloads stay lazy.
+
+    Raises:
+        ValueError: If no error vector is available or labels do not match the
+            prepared observations.
+    """
+    saved = prepared.independent_error_sd
+    selected = saved if independent_error_sd is None else independent_error_sd
+    if selected is None:
+        raise ValueError("Supply independent_error_sd explicitly or in the prepared artifact.")
+    errors = [selected] if saved is None or saved is selected else [selected, saved]
+    for error in errors:
+        _validate_independent_error_labels(prepared.observations, error)
+    return errors
+
+
+def _agreed_independent_error(observations: xr.DataArray, dense_errors: Sequence[xr.DataArray]) -> xr.DataArray:
+    """Check materialized error candidates against dense observations and return the selected one.
+
+    Raises:
+        ValueError: If row units or values are invalid, or explicit and saved
+            values disagree.
+    """
+    for error in dense_errors:
+        if not np.array_equal(error["observation_units"].data, observations["observation_units"].data):
+            raise ValueError("independent_error_sd observation_units must match the prepared observations.")
+        _validate_independent_error_values(error)
+    if len(dense_errors) == 2 and not np.array_equal(dense_errors[0].data, dense_errors[1].data):
+        raise ValueError("Explicit independent_error_sd must match the prepared artifact values.")
+    return dense_errors[0]
+
+
 def _materialize_co2_o2_replay_inputs(
     prepared: Co2O2PreparedInputs, independent_error_sd: xr.DataArray | None,
     boundary: Mapping[str, Bound], *, prior_parameters: Mapping[str, Any],
@@ -101,16 +144,7 @@ def _materialize_co2_o2_replay_inputs(
             values are not finite positive real numbers, or saved and explicit
             errors disagree.
     """
-    saved_error = getattr(prepared, "independent_error_sd", None)
-    if independent_error_sd is None:
-        independent_error_sd = saved_error
-    if independent_error_sd is None:
-        raise ValueError("Supply independent_error_sd explicitly or in the prepared artifact.")
-    errors = [independent_error_sd]
-    if saved_error is not None and saved_error is not independent_error_sd:
-        errors.append(saved_error)
-    for error in errors:
-        _validate_independent_error_labels(prepared.observations, error)
+    errors = _independent_error_candidates(prepared, independent_error_sd)
     materialized: tuple[xr.DataArray, ...]
     bound: dict[str, Bound]
     priors: dict[str, Any]
@@ -119,15 +153,8 @@ def _materialize_co2_o2_replay_inputs(
          prepared.co2_sensitivity, prepared.o2_sensitivity, *errors),
         dict(boundary), dict(prior_parameters),
     )))
-    observations = materialized[0]
-    dense_errors = materialized[4:]
-    for error in dense_errors:
-        if not np.array_equal(error["observation_units"].data, observations["observation_units"].data):
-            raise ValueError("independent_error_sd observation_units must match the prepared observations.")
-        _validate_independent_error_values(error)
-    if len(dense_errors) == 2 and not np.array_equal(dense_errors[0].data, dense_errors[1].data):
-        raise ValueError("Explicit independent_error_sd must match the prepared artifact values.")
-    return (*materialized[:4], dense_errors[0]), bound, priors
+    error = _agreed_independent_error(materialized[0], materialized[4:])
+    return (*materialized[:4], error), bound, priors
 
 
 def _co2_o2_metadata(
@@ -308,6 +335,8 @@ def build_rhime_co2_o2(
         ValueError: If input labels, errors, channel baseline choices, state
             activity or covariance are inconsistent with the linked model.
     """
+    if prepared_inputs.shared_baseline:
+        raise ValueError("Shared baseline preparations require sample_linked_shared_workflow.")
     prepared = prepared_inputs
     _validate_channel_offset_options(offset_prior, offset_args)
     materialized, bound, eager_priors = _materialize_co2_o2_replay_inputs(
