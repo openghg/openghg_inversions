@@ -57,6 +57,7 @@ def _lower_until_target(monkeypatch, terms, observations):
         terms, covariance=None, modelled_mean=pt.zeros(2), observations=observations,
         observation_error=xr.ones_like(observations), site_coord=None, site_index=None,
         initial_amplitudes=None, site_amplitude_prior={}, output_dim="observation",
+        flux_prior=None,
     )
 
 

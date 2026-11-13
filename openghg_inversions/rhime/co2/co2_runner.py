@@ -19,7 +19,11 @@ from dask import compute as dask_compute
 from dask.base import unpack_collections
 
 from openghg_inversions.biosphere_prior import BiospherePrior
-from openghg_inversions.models.biosphere import annotate_biosphere_prior
+from openghg_inversions.models.biosphere import (
+    annotate_biosphere_prior,
+    resolve_retained_flux_prior,
+    retained_flux_prior_family,
+)
 from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.array_ops import to_dense_tree
@@ -494,7 +498,8 @@ def build_co2_from_materialized(
     before its likelihood is constructed.
 
     Args:
-        biosphere_prior: Optional explicit calibration of the retained state prior.
+        biosphere_prior: Optional explicit calibration of the retained state
+            prior, checked here against the materialized retained prior.
         model_inputs: Selected scientific arrays already materialized together.
         prepared_inputs: Preparation supplying aggregation mode and provenance.
         priors: Materialized prior parameters under their concrete graph names.
@@ -506,7 +511,8 @@ def build_co2_from_materialized(
 
     Raises:
         ValueError: If selected inputs or numerical priors remain lazy, or
-            scientific components reject the supplied choices.
+            scientific components reject the supplied choices, or
+            ``biosphere_prior`` does not calibrate the retained prior.
     """
     prepared = prepared_inputs
     names = co2_model_input_names(
@@ -544,15 +550,17 @@ def build_co2_from_materialized(
         aggregation_error=aggregation_error,
     )
     prior_covariance = model_inputs["alpha_prior_covariance"]
-    retained_prior = CorrelatedLognormalPrior(
-        model_inputs["alpha_prior_mean"],
-        prior_covariance,
-        covariance_dim=str(prior_covariance.dims[-1]),
+    flux_prior = resolve_retained_flux_prior(
+        CorrelatedLognormalPrior(
+            model_inputs["alpha_prior_mean"],
+            prior_covariance,
+            covariance_dim=str(prior_covariance.dims[-1]),
+        ),
+        biosphere_prior,
     )
     model = _build_co2_model(
         model_inputs["H"],
-        retained_prior=retained_prior,
-        biosphere_prior=biosphere_prior,
+        retained_prior=flux_prior,
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
@@ -601,7 +609,7 @@ def build_co2_from_materialized(
             metadata={
                 "recipe": "co2",
                 "kind": "builtin",
-                "prior": biosphere_prior.data.attrs["family"] if biosphere_prior is not None else "correlated arithmetic-moment lognormal",
+                "prior": retained_flux_prior_family(flux_prior),
                 "no_model_error": no_model_error,
                 "use_bc": boundary is not None,
                 **(boundary_outputs.metadata if boundary_outputs is not None else {"boundary_formulation": None}),
