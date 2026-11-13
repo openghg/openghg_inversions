@@ -5,6 +5,7 @@ import json
 import warnings
 
 import pytest
+from pydantic import ValidationError
 
 from openghg_inversions.rhime.ini import read_rhime_ini
 from openghg_inversions.rhime.params import (
@@ -70,8 +71,9 @@ def test_old_flat_manifest_data_still_loads(tmp_path):
 
 
 def test_unknown_group_field_is_rejected():
-    with pytest.raises(ValueError, match="Unsupported `bc_basis` option"):
+    with pytest.raises(ValidationError) as error:
         RhimeConfig.from_params(_params(bc_basis={"algorithm": "NESW", "height": 1.0}), multisector=False)
+    assert error.value.errors()[0]["loc"] == ("height",)
 
 
 def test_ini_keeps_flat_spelling_without_warning(tmp_path):

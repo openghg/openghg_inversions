@@ -68,7 +68,7 @@ def test_files_override_inactive_algorithm_without_reinterpreting_time_alignment
 
 @pytest.mark.parametrize("algorithm", [None, "unknown", 123])
 def test_applicable_algorithm_is_validated_before_resource_work(algorithm):
-    with pytest.raises(ValueError, match=r"bc_basis\.algorithm.*NESW"):
+    with pytest.raises(ValueError, match=r"algorithm"):
         RhimeConfig.from_params(_params(use_bc=True, bc_basis={"algorithm": algorithm}), multisector=False)
 
 

@@ -13,8 +13,13 @@ from __future__ import annotations
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import MISSING, dataclass, fields
+from math import isfinite
 from pathlib import Path
 from typing import Any, get_args, get_type_hints
+
+import numpy as np
+from pydantic import ConfigDict, TypeAdapter, ValidationInfo, field_serializer, field_validator
+from pydantic.dataclasses import dataclass as validated_dataclass
 
 from openghg_inversions.basis.boundary import BOUNDARY_BASIS_ALGORITHMS, boundary_basis
 from openghg_inversions.rhime._resources import resolve_resource_paths
@@ -40,14 +45,16 @@ from openghg_inversions.rhime.specs import (
 )
 
 
-@dataclass(frozen=True, kw_only=True)
+@validated_dataclass(frozen=True, kw_only=True, config=ConfigDict(strict=True, extra="forbid", validate_default=True))
 class BcBasisOptions:
     """Boundary-condition basis selection, used only when BCs are enabled.
 
-    The external form is the nested ``bc_basis`` mapping (a TOML ``[bc_basis]``
-    table) keyed by field name. INI files spell the same options flat, for
-    example ``bc_basis_algorithm``; see :func:`nest_flat_options`. Direct
-    construction expects resolved values and performs no validation.
+    The external form is the nested ``bc_basis`` mapping keyed by field name.
+    INI files spell the same options flat, for example ``bc_basis_algorithm``;
+    see :func:`nest_flat_options`. Construction
+    validates field types without reading files or executing numerical values.
+    :meth:`from_params` checks algorithm applicability when BCs are active.
+    JSON export requires finite numbers, including inactive split heights.
 
     Attributes:
         paths: Exact labelled BC basis files. When set, they take precedence
@@ -58,11 +65,35 @@ class BcBasisOptions:
         split_height: Finite twelve-region split in the curtains' native
             height-coordinate units; no unit conversion or vertical datum is
             assumed. Ignored by NESW and by exact files.
+
+    Raises:
+        pydantic.ValidationError: If a field has an invalid type or an unknown
+            constructor keyword is supplied.
     """
 
     paths: tuple[Path, ...] | None = None
     algorithm: str | None = "NESW"
     split_height: float = 3000.0
+
+    @field_validator("split_height", mode="before")
+    @classmethod
+    def _eager_height(cls, value: Any, info: ValidationInfo) -> Any:
+        """Accept eager scalar numbers without invoking arbitrary conversion hooks."""
+        if isinstance(value, np.integer | np.floating):
+            value = value.item()
+        if type(value) not in (int, float):
+            raise ValueError("split_height requires an eager numeric scalar")
+        if info.mode == "json" and not isfinite(value):
+            raise ValueError("JSON split_height must be finite")
+        return value
+
+    @field_serializer("split_height", when_used="json")
+    @staticmethod
+    def _json_height(value: float) -> float:
+        """Reject nonfinite values before the JSON serializer can replace them with null."""
+        if not isfinite(value):
+            raise ValueError("JSON split_height must be finite")
+        return value
 
     @classmethod
     def from_params(cls, params: Mapping[str, Any] | BcBasisOptions, *, active: bool) -> BcBasisOptions:
@@ -81,18 +112,14 @@ class BcBasisOptions:
             The selection, with defaults for omitted fields.
 
         Raises:
-            ValueError: If ``params`` is not a mapping, names an unknown field,
-                or an active built-in selection has an unknown algorithm or an
-                invalid split height.
+            ValueError: If field types or names are invalid, or an active
+                built-in selection has an unknown algorithm or invalid height.
         """
         if isinstance(params, BcBasisOptions):
             options = params
         else:
             if not isinstance(params, Mapping):
                 raise ValueError(f"`bc_basis` must be a mapping; got {type(params).__name__}.")
-            unknown = sorted(set(params) - {f.name for f in fields(cls)})
-            if unknown:
-                raise ValueError(f"Unsupported `bc_basis` option(s): {unknown!r}")
             options = cls(**params)
         if active and options.paths is None:
             if options.algorithm not in BOUNDARY_BASIS_ALGORITHMS:
@@ -107,8 +134,53 @@ class BcBasisOptions:
         return options
 
     def to_params(self) -> dict[str, Any]:
-        """Return the nested mapping that :meth:`from_params` reads back, borrowing values."""
-        return {f.name: getattr(self, f.name) for f in fields(self)}
+        """Return nested Python options, retaining Path objects and path tuples.
+
+        Returns:
+            A new field mapping accepted by :meth:`from_params`.
+        """
+        return _BC_BASIS_ADAPTER.dump_python(self)
+
+    def to_json(self) -> str:
+        """Encode portable options without reading selected resources.
+
+        Returns:
+            JSON with paths encoded as strings and tuples as arrays.
+
+        Raises:
+            pydantic_core.PydanticSerializationError: If the split height is nonfinite.
+        """
+        return _BC_BASIS_ADAPTER.dump_json(self).decode()
+
+    @classmethod
+    def from_json(cls, encoded: str | bytes, *, active: bool) -> BcBasisOptions:
+        """Read portable options and check applicability for the consuming phase.
+
+        Args:
+            encoded: JSON options with optional fields defaulted as in construction.
+            active: Whether the data configuration uses BC inputs.
+
+        Returns:
+            Validated options. Relative paths remain relative; the frontend owns
+            resolution against its invocation directory.
+
+        Raises:
+            ValueError: If JSON, field values, or the active selection are invalid.
+        """
+        return cls.from_params(_BC_BASIS_ADAPTER.validate_json(encoded), active=active)
+
+    @classmethod
+    def json_schema(cls) -> dict[str, Any]:
+        """Describe the portable option fields from the same dataclass declaration.
+
+        Returns:
+            JSON Schema for the nested ``bc_basis`` value. Conditional algorithm
+            applicability remains owned by :meth:`from_params`.
+        """
+        return _BC_BASIS_ADAPTER.json_schema()
+
+
+_BC_BASIS_ADAPTER = TypeAdapter(BcBasisOptions)
 
 
 @dataclass(frozen=True)
