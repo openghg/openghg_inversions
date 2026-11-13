@@ -270,6 +270,7 @@ def test_staged_import_and_sampling_reject_an_inconsistent_preparation(
         handoffs.sample(manifest, model=model, output_dir=tmp_path / "s")
 
 
+@pytest.mark.usefixtures("double_precision")
 def test_full_runner_builds_from_configuration(tmp_path: Path, merged: MergedData, partition: Path) -> None:
     config = request(partition, boundary_representation="centered")
     config["model"] = {"boundary": {"prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.01}}}
