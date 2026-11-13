@@ -267,6 +267,10 @@ class SharedBaselineChoice:
             calibration = calibrated_prior.to_dataset()
             rename = {name: f"calibration_{name}" for name in set(calibration.variables) | set(calibration.dims)}
             result = xr.merge([result, calibration.rename(rename)], join="exact", compat="no_conflicts")
+            # Merging keeps only the bound record's attributes, so carry the
+            # calibration's policy and audit attributes under the same prefix
+            # as its variables; the saved record then restores the calibration.
+            result = result.assign_attrs({f"calibration_{key}": value for key, value in calibration.attrs.items()})
         return SharedBaseline(self, result)
 
 
