@@ -12,7 +12,7 @@ import warnings
 from collections.abc import Iterator, Mapping, Sequence
 from copy import copy
 from dataclasses import asdict, dataclass, field, replace
-from typing import Any, Literal
+from typing import Any, cast
 
 import pandas as pd
 import xarray as xr
@@ -323,10 +323,9 @@ class MergedData:
         bc_input: str | None = None,
         flux_non_finite_check: FluxNonFiniteCheck = "lazy",
         surface_transport: Mapping[str, TransportMode] | None = None,
-        boundary_representation: Literal["ordinary", "centered"] = "ordinary",
-        reference: float | None = None,
-        reference_units: str | None = None,
-        mass_tolerance: float | None = None,
+        boundary_reference: float | None = None,
+        boundary_reference_units: str | None = None,
+        boundary_mass_tolerance: float | None = None,
     ) -> MergedData:
         """Acquire fresh merged data using complete aligned selectors.
 
@@ -337,19 +336,23 @@ class MergedData:
         ``flux_domain`` selects the source flux dataset domain, defaulting to
         the footprint ``domain``. It does not imply a nested inner domain.
         ``surface_transport`` explicitly selects independent per-source surface
-        CO2/O2 convolution, bypassing ModelScenario. Ordinary boundaries use
-        OpenGHG baseline sensitivities with climatology disabled.
-        ``boundary_representation="centered"`` requires explicit ``mass_tolerance``,
-        ``reference`` and ``reference_units``. Reference values alone do not select centering. Resolved
+        CO2/O2 convolution, bypassing ModelScenario. Its boundaries keep
+        centered anomaly/mass/reference operands, which require explicit
+        ``boundary_mass_tolerance``, ``boundary_reference`` and
+        ``boundary_reference_units``; preparation later selects the ordinary
+        or centered representation with
+        :func:`~openghg_inversions.inversion_data.select_boundary_representation`.
+        The ModelScenario route keeps OpenGHG absolute baseline sensitivities
+        with climatology disabled and so supports only ordinary preparation. Resolved
         transport requires time-resolved selectors and complete flux history
         and residual months. Mixed native source axes are rejected until native
         reporting can represent them; supplied-input preparation supports them.
         """
-        if boundary_representation not in {"ordinary", "centered"}:
-            raise ValueError("boundary_representation must be ordinary or centered.")
         if surface_transport is None:
-            if boundary_representation == "centered":
-                raise ValueError("Centered acquisition requires surface_transport and use_bc=True.")
+            if any(value is not None for value in (
+                boundary_reference, boundary_reference_units, boundary_mass_tolerance,
+            )):
+                raise ValueError("Boundary reference and mass tolerance apply only with surface_transport.")
             acquired = _acquire_scenario_data(
                 species=species, site_options=site_options, domain=domain,
                 start_date=start_date, end_date=end_date, flux_sources=flux_sources,
@@ -367,8 +370,8 @@ class MergedData:
                 flux_store=flux_store, flux_domain=flux_domain, fp_model=fp_model,
                 fp_species=fp_species, calibration_scale=calibration_scale,
                 use_bc=use_bc, bc_input=bc_input, flux_non_finite_check=flux_non_finite_check,
-                boundary_representation=boundary_representation, reference=reference,
-                reference_units=reference_units, mass_tolerance=mass_tolerance,
+                boundary_reference=boundary_reference, boundary_reference_units=boundary_reference_units,
+                boundary_mass_tolerance=boundary_mass_tolerance,
             )
         return cls(
             site_data=acquired.site_data, flux_data=acquired.flux_data,
@@ -637,6 +640,49 @@ def _get_site_inputs(
 
 
 
+def check_surface_request(
+    *,
+    species: str,
+    site_options: _site_options.SiteOptions,
+    flux_sources: Sequence[str] | None,
+    transport: Mapping[str, str],
+    use_bc: bool = True,
+    boundary_reference: float | None = None,
+    boundary_reference_units: str | None = None,
+    boundary_mass_tolerance: float | None = None,
+) -> None:
+    """Check surface acquisition options that need no retrieval.
+
+    :func:`acquire_surface_data` calls this before retrieval; configuration
+    parsers can call it to reject an unusable request earlier. Arguments are
+    those of :func:`acquire_surface_data`.
+
+    Raises:
+        ValueError: If the species, platforms, transport modes, footprint
+            selectors or boundary options cannot form a surface request.
+    """
+    if flux_sources is None:
+        raise ValueError("`flux_sources` must be specified")
+    if species.lower() not in {"co2", "o2"}:
+        raise ValueError("Surface acquisition currently supports only CO2 and O2.")
+    if not transport or set(transport) != set(flux_sources):
+        raise ValueError("surface_transport must specify exactly one mode per flux source.")
+    if any(mode not in {"integrated", "time_resolved"} for mode in transport.values()):
+        raise ValueError("Surface transport modes must be 'integrated' or 'time_resolved'.")
+    for inlet, platform in zip(site_options.inlet, site_options.platform, strict=True):
+        if is_column_observation(inlet, platform) or (
+            platform is not None and not is_surface_platform(platform)
+        ):
+            raise ValueError("Surface acquisition supports only continuous surface platforms.")
+    if use_bc:
+        if boundary_mass_tolerance is None:
+            raise ValueError("Surface boundaries require boundary_mass_tolerance.")
+        if boundary_reference is None or boundary_reference_units is None:
+            raise ValueError("Surface boundaries require boundary_reference and boundary_reference_units.")
+    if "time_resolved" in transport.values() and not all(site_options.time_resolved):
+        raise ValueError("Time-resolved transport requires time_resolved=True site selectors.")
+
+
 def acquire_surface_data(
     *,
     species: str,
@@ -658,17 +704,17 @@ def acquire_surface_data(
     use_bc: bool = True,
     bc_input: str | None = None,
     flux_non_finite_check: FluxNonFiniteCheck = "lazy",
-    boundary_representation: Literal["ordinary", "centered"] = "ordinary",
-    reference: float | None = None,
-    reference_units: str | None = None,
-    mass_tolerance: float | None = None,
+    boundary_reference: float | None = None,
+    boundary_reference_units: str | None = None,
+    boundary_mass_tolerance: float | None = None,
 ) -> MergedData:
     """Acquire surface inputs using retained native releases to plan flux support.
 
     Shared selectors follow :meth:`MergedData.from_options`. ``transport`` must
     specify exactly one integrated or time-resolved mode per flux source, for
-    continuous surface CO2/O2 mole fractions. Boundaries are ordinary by default;
-    explicit centered boundaries require reference, reference units and mass tolerance.
+    continuous surface CO2/O2 mole fractions. Boundaries keep centered
+    anomaly/mass/reference operands and require the boundary reference, its
+    units and the mass tolerance.
 
     Retrieve observation/footprint pairs first, then the union of backward
     histories and complete residual months. Missing sites are dropped together
@@ -681,35 +727,17 @@ def acquire_surface_data(
             inadequate temporal support, or invalid surface/boundary inputs.
         SearchError: No retained sites or requested flux/boundary data are available.
     """
-    if flux_sources is None:
-        raise ValueError("`flux_sources` must be specified")
-    if species.lower() not in {"co2", "o2"}:
-        raise ValueError("Surface acquisition currently supports only CO2 and O2.")
     if flux_domain is not None and flux_domain.lower() != domain.lower():
         raise ValueError(
             "Fresh surface acquisition requires matching flux and footprint domains "
             "to retain native reporting axes; use prepare_surface_site for supplied inputs."
         )
-    if not transport or set(transport) != set(flux_sources):
-        raise ValueError("surface_transport must specify exactly one mode per flux source.")
-    if any(mode not in {"integrated", "time_resolved"} for mode in transport.values()):
-        raise ValueError("Surface transport modes must be 'integrated' or 'time_resolved'.")
-    for inlet, platform in zip(site_options.inlet, site_options.platform, strict=True):
-        if is_column_observation(inlet, platform) or (
-            platform is not None and not is_surface_platform(platform)
-        ):
-            raise ValueError("Surface acquisition supports only continuous surface platforms.")
-    if boundary_representation not in {"ordinary", "centered"}:
-        raise ValueError("boundary_representation must be ordinary or centered.")
-    if boundary_representation == "centered":
-        if not use_bc:
-            raise ValueError("Centered acquisition requires surface_transport and use_bc=True.")
-        if mass_tolerance is None:
-            raise ValueError("Centered surface boundaries require mass_tolerance.")
-        if reference is None or reference_units is None:
-            raise ValueError("Centered surface boundaries require reference and reference_units.")
-    if "time_resolved" in transport.values() and not all(site_options.time_resolved):
-        raise ValueError("Time-resolved transport requires time_resolved=True site selectors.")
+    check_surface_request(
+        species=species, site_options=site_options, flux_sources=flux_sources, transport=transport,
+        use_bc=use_bc, boundary_reference=boundary_reference,
+        boundary_reference_units=boundary_reference_units, boundary_mass_tolerance=boundary_mass_tolerance,
+    )
+    flux_sources = cast(Sequence[str], flux_sources)
 
     # Resolve each retained site's observation bins once, before planning flux support.
     retained_inputs: list[tuple[int, ObsData, FootprintData]] = []
@@ -805,8 +833,8 @@ def acquire_surface_data(
             prepared = _surface_site_responses(
                 aligned_obs, site_fp, native_fp, {source: native_fp for source in transport}, flux_views,
                 species=species.lower(), transport=transport, boundary_view=boundary_view,
-                boundary_representation=boundary_representation, boundary_reference=reference,
-                boundary_reference_units=reference_units, boundary_mass_tolerance=mass_tolerance,
+                boundary_reference=boundary_reference, boundary_reference_units=boundary_reference_units,
+                boundary_mass_tolerance=boundary_mass_tolerance,
             )
             prepared = _attach_surface_provenance(
                 prepared, site_footprint=footprint, source_footprints={source: footprint for source in transport},

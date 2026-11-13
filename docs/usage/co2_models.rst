@@ -213,8 +213,9 @@ CO₂ uses :func:`~openghg_inversions.rhime.co2.run_co2` or the Python/CLI model
 selector. Preparation, model, sampler and output values are resolved at their
 concrete owners; saved sampling accepts decoded model/likelihood choices and a
 separate ``sampling`` mapping. The model selects the backend and update.
-Native-resolution acquisition and coherent-reduction construction
-are separate from this configured prepared-input route.
+``[prepared_inputs]`` either imports a saved preparation with ``path`` or, for
+CO₂ only, builds one from configured acquisition; see
+:ref:`co2-configured-preparation`.
 
 Ordinary preparation and science use
 :class:`~openghg_inversions.rhime.co2.Co2PreparationConfig` and
@@ -680,6 +681,117 @@ default additive-sigma likelihood; its scientific options belong in
 ``fixed_model_mismatch`` arguments. The returned trace records the selected
 callable identity and its explicit options using the ordinary likelihood
 provenance attributes.
+
+.. _co2-configured-preparation:
+
+Build a CO2 preparation from configured acquisition
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Instead of ``prepared_inputs.path``, an ``acquisition`` table builds a new
+preparation in the same configuration. The full runner and the staged
+``prepare`` command then acquire continuous-surface CO₂ through explicit
+surface transport (see :doc:`surface_preparation`), select observations,
+derive observation errors, build the flux and boundary bases, reduce a native
+Gaussian prior coherently and save the prepared inputs with their affine
+companion:
+
+.. code-block:: toml
+
+   [prepared_inputs]
+   start_date = "2020-01-01"
+   end_date = "2020-02-01"
+   domain = "EUROPE"
+   # Optional: the boundary choice selects this when omitted.
+   # boundary_representation = "centered"
+   aggregation_error_rank = 512        # or "exact"
+
+   [prepared_inputs.acquisition]
+   sites = ["MHD", "TAC"]
+   averaging_period = "1h"
+   inlet = ["10m", "185m"]
+   time_resolved = true    # required by time_resolved surface transport
+   flux_sources = ["biosphere", "fossil"]
+   surface_transport = { biosphere = "time_resolved", fossil = "integrated" }
+   boundary_reference = 400.0
+   boundary_reference_units = "ppm"
+   boundary_mass_tolerance = 1e-4
+
+   [prepared_inputs.observations]
+   filters = ["daytime9to5"]
+
+   [prepared_inputs.basis]
+   algorithm = "weighted"
+   nbasis = 100
+   bc_algorithm = "NESW"
+
+   [prepared_inputs.native_prior]
+   sigma = 0.5
+   correlation_length = 1.5
+
+``acquisition`` takes the site selectors of
+:class:`~openghg_inversions.inversion_data.SiteOptions` (``time_resolved = true``
+is required when any source uses ``time_resolved`` transport), the flux sources
+with one surface transport mode each, store and dataset selectors (``obs_store``,
+``footprint_store``, ``flux_store``, ``bc_store``, ``fp_model`` and so on) and,
+with boundaries, the reference and mass tolerance. ``boundary_reference`` is a
+value you choose, such as a typical background; it is stored unchanged (see
+:doc:`surface_preparation`). These options are checked when the configuration
+is read, before any retrieval. All sources share one dimensionless native
+scaling field; the first source weights basis design.
+
+``basis`` takes ``algorithm`` (``"weighted"`` or ``"quadtree"``), ``nbasis``,
+``path``, ``partition_path``, ``landsea_path``, ``outer_regions_path``,
+``fix_outer_regions``, ``bc_algorithm``, ``bc_split_height`` and ``bc_paths``.
+``"region_constrained"`` is not available here yet because it needs a
+configured class map (`#454
+<https://github.com/openghg/openghg_inversions/issues/454>`_). ``native_prior`` gives
+the constant native mean (default 1) and the separable exponential covariance
+(``sigma`` and correlation lengths in degrees). The requested window and
+domain are required.
+
+Boundary representation
+"""""""""""""""""""""""
+
+Acquisition keeps centered boundary operands, so one merged dataset can feed
+either prepared representation. The configured ``[model.boundary]`` choice
+decides which one preparation produces: each choice class states which
+representations it can bind and which extra inputs it needs
+(:func:`~openghg_inversions.models.boundary.boundary_preparation`).
+
+.. list-table:: Prepared boundary representation
+   :header-rows: 1
+
+   * - ``[model.boundary] type``
+     - Omitted ``boundary_representation``
+     - Explicit choice
+   * - ``"multiplicative"`` (or no boundary)
+     - ``"ordinary"``
+     - ``"ordinary"`` or ``"centered"``
+   * - ``"additive"``
+     - ``"centered"``, with ``bc_centering_weights_path`` for weighted anomalies
+     - ``"centered"`` only
+   * - ``"anomaly_scaling"``
+     - ``"centered"``
+     - ``"centered"`` only
+
+Use ``"centered"`` with a multiplicative boundary where precision matters,
+for example for large absolute backgrounds. A saved preparation can serve
+several model configurations: prepare it as ``"centered"`` to keep every
+boundary family available.
+
+Every stage checks the preparation against the configured choice. Building a
+centered preparation from merged data without centered operands (the
+ModelScenario route) fails; importing or sampling a preparation whose
+representation the choice cannot bind fails before model construction, as does
+an explicit ``boundary_representation`` that differs from a saved artifact, or
+a weighted additive choice without stored weights.
+
+Python callers can supply in-memory merged data instead of acquiring:
+``run_co2(config_file=..., merged_data=merged)`` or
+``handoffs.prepare(**Co2PreparationConfig.from_params(params).preparation_arguments(),
+merged_data=merged, output_dir=...)``. Supplied data must match the requested
+species, domain and window. Linked CO₂/O₂ configurations still import a saved
+artifact.
 
 .. _co2-scalar-sigma-recipe:
 

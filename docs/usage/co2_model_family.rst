@@ -144,10 +144,12 @@ calculates and writes requested products. Full execution uses no manifests.
 Direct scientific callers can compose materialization, model construction,
 sampling and trace annotation explicitly; see :doc:`co2_models`.
 
-Saved phases call those same scientific operations. ``prepare`` references an
-existing numerical artifact and its optional affine companion in place; keep
-those files available for later operations. Python callers
-can also prepare from canonical inputs and a coherent reduction. A new
+Saved phases call those same scientific operations. ``prepare`` either builds
+a new preparation from ``[prepared_inputs.acquisition]`` (see
+:ref:`co2-configured-preparation`) or references an existing numerical artifact
+and its optional affine companion in place; keep imported files available for
+later operations. Python callers can also prepare from canonical inputs and a
+coherent reduction. A new
 prepared/affine pair is saved with the existing codecs and checked by the affine
 loader before its manifest is written. Imported pairs retain their numerical
 association. Both routes retain source labels, grids and projection meaning.
@@ -216,10 +218,9 @@ Inferred-OU tuning belongs to ``sampling.sigma_target_accept`` and
 The configured ``rhime run --model co2`` CLI route uses
 ``run_co2`` and writes requested products. Python
 ``rhime.run(model="co2", config_file="co2.toml")`` selects the same configured
-runner and returns ``Co2Output``. Acquisition and construction of the defining
-native-resolution reduction remain separate from this prepared-input route.
-That extension is tracked in
-`CO₂ native preparation #890 <https://github.com/openghg/openghg_inversions/issues/890>`_.
+runner and returns ``Co2Output``. Replace ``prepared_inputs.path`` with an
+``acquisition`` table to acquire and construct the defining native-resolution
+reduction in the same run; see :ref:`co2-configured-preparation`.
 
 Alternatively, save preparation and inference separately:
 
