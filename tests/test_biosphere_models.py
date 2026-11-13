@@ -79,17 +79,15 @@ def test_full_and_enhancement_ordinary_cached_prediction_density_and_no_default_
     )
     identity = calibrate_biosphere_prior(baseline, **inputs, residual_sd_multiplier=1)
     same = build_co2_model(
-        **kwargs,
-        biosphere_prior=identity,
+        **{**kwargs, "retained_prior": identity},
         likelihood_builder=add_fixed_ou_gaussian_likelihood,
         likelihood_kwargs=likelihood,
     )
     point = original.initial_point()
     np.testing.assert_allclose(original.compile_logp()(point), same.compile_logp()(point), rtol=1e-14)
-    cached = build_co2_cached_sigma_model(**kwargs, biosphere_prior=calibration, **likelihood)
+    cached = build_co2_cached_sigma_model(**{**kwargs, "retained_prior": calibration}, **likelihood)
     ordinary = build_co2_model(
-        **kwargs,
-        biosphere_prior=calibration,
+        **{**kwargs, "retained_prior": calibration},
         likelihood_builder=add_fixed_ou_gaussian_likelihood,
         likelihood_kwargs=likelihood,
     )
@@ -162,8 +160,8 @@ def test_linked_species_share_one_calibration_and_density(family, active_group, 
     likelihood = dict(tau_hours=5, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75})
     if active_group is not None:
         kwargs["state_activity"] = partial_activity(calibration, active_group)
-    ordinary = build_co2_o2_model(**kwargs, biosphere_prior=calibration, **likelihood)
-    cached = build_co2_o2_cached_sigma_model(**kwargs, biosphere_prior=calibration, **likelihood)
+    ordinary = build_co2_o2_model(**{**kwargs, "retained_prior": calibration}, **likelihood)
+    cached = build_co2_o2_cached_sigma_model(**{**kwargs, "retained_prior": calibration}, **likelihood)
     point = ordinary.initial_point()
     point["flux_scaling_latent"] = np.array([0.1, -0.3, 0.2, -0.1, 0.4])
     x, mean = state_and_mean(ordinary, point)

@@ -10,6 +10,7 @@ import xarray as xr
 from openghg_inversions.biosphere_prior import BiospherePrior
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
+from openghg_inversions.models.biosphere import resolve_retained_flux_prior, retained_flux_prior_family
 from openghg_inversions.models.boundary import Choice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.contracts import OutputContract
@@ -64,8 +65,9 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     :ref:`centered boundary contract <surface-centered-boundary-contract>`.
 
     Args:
-        biosphere_prior: Optional explicit calibration against the existing retained prior;
-            omission preserves existing behavior.
+        biosphere_prior: Optional explicit calibration of the prepared retained
+            prior, checked once before graph construction; omission preserves
+            existing behavior.
         prepared_inputs: Linked handoff containing joint labelled observations,
             native-channel sensitivities, affine contribution, retained prior,
             joint aggregation covariance, ratio provenance, and optional
@@ -121,8 +123,9 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             inconsistent; selected centered boundaries use a floatX other
             than float64; OU scales or amplitudes are invalid; or the sampler
             requests an unsupported backend, step, tuning control, or
-            predictive keyword. Label, prior, covariance, and activity errors
-            from model construction also propagate.
+            predictive keyword, or ``biosphere_prior`` does not calibrate the
+            prepared retained prior. Label, prior, covariance, and activity
+            errors from model construction also propagate.
         TypeError: If channel offset frequency or boolean options have
             unsupported types, or the sampler is neither a configuration nor
             ``"default"``.
@@ -139,14 +142,14 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     offset_prior = eager_priors["offset"]
     site_amplitude_prior = eager_priors["amplitude"]
     observations, fixed, co2, o2, error = materialized
+    flux_prior = resolve_retained_flux_prior(prepared.retained_prior, biosphere_prior)
     cached = _build_co2_o2_cached_sigma_model(
         observations=observations,
         fixed_prior_contribution=fixed,
         co2_sensitivity=co2,
         o2_sensitivity=o2,
         aggregation_error=prepared.aggregation_error,
-        retained_prior=prepared.retained_prior,
-        biosphere_prior=biosphere_prior,
+        retained_prior=flux_prior,
         independent_error_sd=error,
         tau_hours=tau_hours,
         site_amplitude_prior=site_amplitude_prior,
@@ -157,9 +160,8 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         offset_args=offset_args,
     )
     metadata = _co2_o2_metadata(prepared, observations=observations)
-    if biosphere_prior is not None:
-        metadata["prior"] = biosphere_prior.data.attrs["family"]
     metadata.update(
+        prior=retained_flux_prior_family(flux_prior),
         recipe="co2_o2_cached_sigma_fixed_ou",
         likelihood="joint Gaussian with fixed OU blocks by (species, site)",
     )

@@ -12,19 +12,17 @@ import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
 
-from openghg_inversions.biosphere_prior import BiospherePrior
-from openghg_inversions.models.biosphere import add_biosphere_state
 from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array, to_dense_tree
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models import (
     StateActivity,
-    add_correlated_lognormal_state_with_activity,
     apply_linear_sensitivity,
     prepare_linear_sensitivity,
     registered_model,
     resolve_state_activity,
 )
 from openghg_inversions.models.additive_sigma import add_additive_sigma_likelihood
+from openghg_inversions.models.biosphere import RetainedFluxPrior, add_retained_flux_state
 from openghg_inversions.models.boundary import Bound
 from openghg_inversions.models.components import (
     AffineBlock,
@@ -280,8 +278,7 @@ def build_co2_o2_model(
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
     aggregation_error: AggregationError,
-    retained_prior: CorrelatedLognormalPrior,
-    biosphere_prior: BiospherePrior | None = None,
+    retained_prior: RetainedFluxPrior,
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
@@ -339,10 +336,10 @@ def build_co2_o2_model(
             embed the fixed oxidation ratios.
         aggregation_error: Joint fixed aggregation covariance, including its
             cross-channel block.
-        biosphere_prior: Optional explicit calibration against the existing retained prior;
-            omission preserves existing behavior.
         retained_prior: Correlated arithmetic-moment prior for the one state
-            vector shared by both channels.
+            vector shared by both channels, or a biosphere calibration of it
+            already checked by
+            :func:`~openghg_inversions.models.biosphere.resolve_retained_flux_prior`.
         independent_error_sd: Joint per-row independent standard deviations in
             each observation row's native units.
         state_activity: Optional labelled policy fixing or activating retained
@@ -391,7 +388,6 @@ def build_co2_o2_model(
         tau_hours=tau_hours,
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
-        biosphere_prior=biosphere_prior,
     )
 
 
@@ -402,7 +398,7 @@ def _build_co2_o2_model(
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
     aggregation_error: AggregationError,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: RetainedFluxPrior,
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
@@ -412,7 +408,6 @@ def _build_co2_o2_model(
     tau_hours: float | Mapping[str, float] | None = None,
     fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     site_amplitude_prior: Mapping[str, Any] | None = None,
-    biosphere_prior: BiospherePrior | None = None,
 ) -> pm.Model:
     """Construct the linked CO2/O2 graph from eager inputs.
 
@@ -434,13 +429,7 @@ def _build_co2_o2_model(
     activity = resolve_state_activity(prepared_sensitivity.removed, state_activity)
 
     with registered_model() as model:
-        state = (
-            add_correlated_lognormal_state_with_activity(
-                activity, retained_prior, var_name="flux_scaling",
-            )
-            if biosphere_prior is None
-            else add_biosphere_state(activity, retained_prior, biosphere_prior)
-        ).state
+        state = add_retained_flux_state(activity, retained_prior, var_name="flux_scaling").state
 
         # Preparation declares that this sensitivity already contains the fixed,
         # signed O2:CO2 oxidation ratios; do not multiply them again.

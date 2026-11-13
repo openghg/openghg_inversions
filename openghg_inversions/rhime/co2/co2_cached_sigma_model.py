@@ -16,11 +16,13 @@ from pymc.pytensorf import floatX
 from pytensor.graph.traversal import graph_inputs
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.biosphere_prior import BiospherePrior
-from openghg_inversions.models.biosphere import add_biosphere_state
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inference.cached_sigma import PytensorMarginalQuadraticCache
 from openghg_inversions.array_ops import to_dense_tree
+from openghg_inversions.models.biosphere import (
+    RetainedFluxPrior,
+    add_prepared_retained_flux_state,
+    prepare_retained_flux_prior,
+)
 from openghg_inversions.models.boundary import Bound
 from openghg_inversions.models.cached_sigma import (
     FixedOuCachedSigmaTarget,
@@ -30,13 +32,11 @@ from openghg_inversions.models.components import (
     AffineBlock,
     AffineConcentrationTerm,
     _add_offset_component_result,
-    _add_prepared_correlated_lognormal_state_with_activity,
     add_coherent_affine_component,
     add_model_data,
     apply_linear_sensitivity,
     likelihood_representation,
     warn_constant_offset_confounding,
-    prepare_active_correlated_lognormal_prior,
 )
 from openghg_inversions.models.coords import add_coords, registered_model
 from openghg_inversions.models.fixed_ou import (
@@ -76,6 +76,7 @@ class Co2CachedSigmaModel:
     ``initial_values`` contains untransformed sampling overrides or PyMC
     initialization strategies, lifted from graph metadata. The matched runner
     resolves them separately for construction and each sampling chain.
+    ``flux_prior`` is the retained flux prior the graph samples.
     """
 
     model: pm.Model
@@ -87,6 +88,7 @@ class Co2CachedSigmaModel:
     modelled_mean: TensorVariable
     cached_state_logp: TensorVariable
     initial_values: dict[str, Any]
+    flux_prior: RetainedFluxPrior
     boundary: Bound | None = None
 
 
@@ -163,6 +165,7 @@ def _add_cached_likelihood(
     initial_amplitudes: np.ndarray | None,
     site_amplitude_prior: PriorArgs,
     output_dim: str,
+    flux_prior: RetainedFluxPrior,
 ) -> Co2CachedSigmaModel:
     """Lower ordered scientific terms once at the cached-likelihood boundary."""
     blocks = tuple(block for term in terms for block in term.blocks)
@@ -287,14 +290,14 @@ def _add_cached_likelihood(
         modelled_mean=modelled_mean,
         cached_state_logp=cached_state_logp,
         initial_values=initial_values,
+        flux_prior=flux_prior,
     )
 
 
 def build_co2_cached_sigma_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedLognormalPrior,
-    biosphere_prior: BiospherePrior | None = None,
+    retained_prior: RetainedFluxPrior,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -332,9 +335,10 @@ def build_co2_cached_sigma_model(
         flux_sensitivity: Reduced sensitivity with the output dimension and
             one labelled retained-state dimension, in concentration units per
             unit dimensionless flux scaling.
-        biosphere_prior: Optional explicit retained-state calibration; omission preserves the existing prior.
         retained_prior: Complete labelled arithmetic-moment prior for the
-            positive, dimensionless retained flux-scaling state.
+            positive, dimensionless retained flux-scaling state, or a biosphere
+            calibration of it already checked by
+            :func:`~openghg_inversions.models.biosphere.resolve_retained_flux_prior`.
         fixed_prior_contribution: Fixed coherent-reduction affine contribution
             on the output dimension, in the observations' concentration units.
         observations: Observed CO2 concentrations on the output dimension,
@@ -402,14 +406,13 @@ def build_co2_cached_sigma_model(
         offset_drop_first=offset_drop_first,
         offset_per_site=offset_per_site,
         output_dim=output_dim,
-        biosphere_prior=biosphere_prior,
     )
 
 
 def _build_co2_cached_sigma_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: RetainedFluxPrior,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -424,7 +427,6 @@ def _build_co2_cached_sigma_model(
     offset_drop_first: bool = False,
     offset_per_site: bool = True,
     output_dim: str = "nmeasure",
-    biosphere_prior: BiospherePrior | None = None,
 ) -> Co2CachedSigmaModel:
     """Construct the cached fixed-OU CO2 graph from eager inputs.
 
@@ -465,11 +467,7 @@ def _build_co2_cached_sigma_model(
         activity,
         output_dim=output_dim,
     )
-    active_state_prior = (
-        prepare_active_correlated_lognormal_prior(activity, retained_prior, var_name="flux_scaling")
-        if biosphere_prior is None
-        else None
-    )
+    active_state_prior = prepare_retained_flux_prior(activity, retained_prior, var_name="flux_scaling")
 
     fixed_prior_data = fixed_prior_contribution.transpose(output_dim).compute()
     factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
@@ -494,12 +492,8 @@ def _build_co2_cached_sigma_model(
         site_labels=site_labels,
     )
     with registered_model():
-        state_result = (
-            _add_prepared_correlated_lognormal_state_with_activity(
-                activity, active_state_prior, var_name="flux_scaling",
-            )
-            if biosphere_prior is None
-            else add_biosphere_state(activity, retained_prior, biosphere_prior)
+        state_result = add_prepared_retained_flux_state(
+            activity, active_state_prior, var_name="flux_scaling",
         )
         contribution = apply_linear_sensitivity(
             prepared_flux,
@@ -566,6 +560,7 @@ def _build_co2_cached_sigma_model(
             initial_amplitudes=initial_amplitudes,
             site_amplitude_prior=site_amplitude_prior,
             output_dim=output_dim,
+            flux_prior=retained_prior,
         )
         return replace(cached, boundary=boundary)
 
