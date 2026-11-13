@@ -13,7 +13,7 @@ from typing import Any, get_type_hints
 
 from ._resources import resolve_resource_paths
 from .ini import read_rhime_ini
-from .params import REQUEST_CLAIM_NAMES, DataConfig, option_groups
+from .params import DATA_OPTION_GROUPS, REQUEST_CLAIM_NAMES, DataConfig, nest_flat_options, option_groups
 from .specs import RhimeOutputSpec
 
 
@@ -34,7 +34,8 @@ def load_params(
         config_file: Explicit INI file, or ``None``.
         params_file: Explicit JSON file, or ``None``. Pass at most one source.
         overrides: Invocation values, flat or grouped. Relative paths resolve
-            from the working directory.
+            from the working directory. A nested option group, such as
+            ``bc_basis``, overrides the file's group field by field.
         phase_groups: Owner groups a saved phase uses. Overrides for other groups
             are unsuitable, only these groups are resolved, and repeated data
             facts belong to ``model`` when ``data`` is inactive.
@@ -43,10 +44,15 @@ def load_params(
         Values keyed by every owner group (``data``, ``model``, ``sampler``,
         ``output``); groups outside ``phase_groups`` are empty.
 
+    JSON sources and overrides should give data option groups in nested form;
+    flat spellings such as ``bc_basis_algorithm`` are nested with a
+    ``DeprecationWarning``. INI files keep their flat spelling.
+
     Raises:
-        ValueError: If both sources are given, the source is not a mapping, or any
-            name is unknown or unsuitable for the phase. All such names are
-            reported together.
+        ValueError: If both sources are given, the source is not a mapping, any
+            name is unknown or unsuitable for the phase, or a data option group
+            is given in both flat and nested form. Unknown and unsuitable names
+            are reported together.
     """
     if config_file is not None and params_file is not None:
         raise ValueError("Pass at most one of `config_file` or `params_file`.")
@@ -63,23 +69,28 @@ def load_params(
     groups: dict[str, dict[str, Any]] = {group: {} for group in owners}
     unsuitable = []
     # Classify names only: values of inactive groups are never resolved.
+    group_keys = {group.key for group in DATA_OPTION_GROUPS}
     for values, is_override in ((params, False), (overrides or {}, True)):
         if not isinstance(values, Mapping):
             raise ValueError(f"RHIME parameters must be a mapping; got {type(values).__name__}.")
+        values = _nest_data_groups(values)
         for key, value in values.items():
             if key in owners and not isinstance(value, Mapping):
                 raise ValueError(f"`{key}` must be a mapping.")
             for name, item in (value.items() if key in owners else [(key, value)]):
+                owner: str | None
                 if key in owners:
                     owner = key
                 elif name in REQUEST_CLAIM_NAMES:
                     owner = claims_owner
                 else:
                     owner = next((group for group, names in owners.items() if name in names), None)
-                known = owner is not None and name in owners[owner]
-                if not known or (is_override and owner not in active):
+                if owner is None or name not in owners[owner] or (is_override and owner not in active):
                     unsuitable.append(f"{key}.{name}" if key in owners else name)
                     continue
+                previous = groups[owner].get(name)
+                if name in group_keys and isinstance(previous, Mapping) and isinstance(item, Mapping):
+                    item = {**previous, **item}
                 groups[owner][name] = item
     if unsuitable:
         where = "" if phase_groups is None else " for this phase"
@@ -91,4 +102,12 @@ def load_params(
             groups[group],
             annotations=annotations, base_dir=Path.cwd(),
         )
+    return result
+
+
+def _nest_data_groups(values: Mapping[str, Any]) -> dict[str, Any]:
+    """Nest deprecated flat data option-group names, at top level and under ``data``."""
+    result = nest_flat_options(values, DATA_OPTION_GROUPS, deprecated=True)
+    if isinstance(result.get("data"), Mapping):
+        result["data"] = nest_flat_options(result["data"], DATA_OPTION_GROUPS, deprecated=True)
     return result

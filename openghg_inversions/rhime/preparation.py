@@ -361,7 +361,7 @@ def resolve_bc_basis(data_config: Any) -> BoundaryBasis:
     """Load enabled exact BC resources, or select a built-in basis builder.
 
     Configuration owns algorithm validation. Exact files take precedence over
-    the algorithm choice. With no files, ``bc_basis_algorithm`` selects the
+    the algorithm choice. With no files, ``bc_basis.algorithm`` selects the
     NESW or twelve-region builder, which reads only each site's coordinates.
     Disabled BCs perform no resource I/O and return the NESW builder, which
     preparation never calls. Selected files are loaded before acquisition using
@@ -382,9 +382,10 @@ def resolve_bc_basis(data_config: Any) -> BoundaryBasis:
 
     if not data_config.use_bc:
         return nesw_basis
-    if data_config.bc_basis_paths is not None:
-        return load_bc_basis(data_config.bc_basis_paths)
-    return boundary_basis(data_config.bc_basis_algorithm, split_height=data_config.bc_basis_split_height)
+    selection = data_config.bc_basis
+    if selection.paths is not None:
+        return load_bc_basis(selection.paths)
+    return boundary_basis(selection.algorithm, split_height=selection.split_height)
 
 
 def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:

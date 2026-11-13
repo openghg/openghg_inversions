@@ -767,7 +767,8 @@ def inner_data_config(
         footprint_store=inner_footprint_store or outer_data.footprint_store,
         flux_store=inner_flux_store or outer_data.flux_store,
         flux_domain=inner_flux_domain,
-        use_bc=False, bc_input=None, bc_basis_paths=None, fix_basis_outer_regions=False,
+        use_bc=False, bc_input=None, bc_basis=replace(outer_data.bc_basis, paths=None),
+        fix_basis_outer_regions=False,
         basis_algorithm=inner_basis_algorithm if inner_basis_algorithm is not None else "quadtree",
         nbasis=outer_data.nbasis if inner_nbasis is None else inner_nbasis,
     )

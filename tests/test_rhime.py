@@ -3881,7 +3881,7 @@ def test_rhime_configuration_builds_specs_before_preparation(tmp_path: Path) -> 
     assert setup.data.site_options.time_resolved == (True,)
     assert setup.data.basis_algorithm == "weighted"
     assert setup.data.nbasis == 100
-    assert setup.data.bc_basis_paths is None
+    assert setup.data.bc_basis.paths is None
     assert setup.model.likelihood.min_error_options == {"by_site": False}
     for selector in ("inlet", "instrument", "platform", "fp_height"):
         assert getattr(setup.data.site_options, selector) == (None,)

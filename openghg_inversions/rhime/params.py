@@ -10,6 +10,7 @@ defaults; scientific callable signatures do not define the external schema.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
@@ -40,28 +41,203 @@ from openghg_inversions.rhime.specs import (
 
 
 @dataclass(frozen=True, kw_only=True)
+class BcBasisOptions:
+    """Boundary-condition basis selection, used only when BCs are enabled.
+
+    The external form is the nested ``bc_basis`` mapping (a TOML ``[bc_basis]``
+    table) keyed by field name. INI files spell the same options flat, for
+    example ``bc_basis_algorithm``; see :func:`nest_flat_options`. Direct
+    construction expects resolved values and performs no validation.
+
+    Attributes:
+        paths: Exact labelled BC basis files. When set, they take precedence
+            and ``algorithm`` is inactive.
+        algorithm: Built-in basis used without files: ``"NESW"`` (one region
+            per whole curtain) or ``"twelve-region"`` (two lower horizontal
+            halves and one upper region per curtain).
+        split_height: Finite twelve-region split in the curtains' native
+            height-coordinate units; no unit conversion or vertical datum is
+            assumed. Ignored by NESW and by exact files.
+    """
+
+    paths: tuple[Path, ...] | None = None
+    algorithm: str | None = "NESW"
+    split_height: float = 3000.0
+
+    @classmethod
+    def from_params(cls, params: Mapping[str, Any] | BcBasisOptions, *, active: bool) -> BcBasisOptions:
+        """Resolve the nested ``bc_basis`` mapping.
+
+        The built-in algorithm and split height are validated only when the
+        selection is active and no exact files are selected, so disabled or
+        file-backed selections may carry inactive values.
+
+        Args:
+            params: Field values keyed by field name, with resolved filesystem
+                paths, or an already resolved selection.
+            active: Whether the data configuration uses BC inputs.
+
+        Returns:
+            The selection, with defaults for omitted fields.
+
+        Raises:
+            ValueError: If ``params`` is not a mapping, names an unknown field,
+                or an active built-in selection has an unknown algorithm or an
+                invalid split height.
+        """
+        if isinstance(params, BcBasisOptions):
+            options = params
+        else:
+            if not isinstance(params, Mapping):
+                raise ValueError(f"`bc_basis` must be a mapping; got {type(params).__name__}.")
+            unknown = sorted(set(params) - {f.name for f in fields(cls)})
+            if unknown:
+                raise ValueError(f"Unsupported `bc_basis` option(s): {unknown!r}")
+            options = cls(**params)
+        if active and options.paths is None:
+            if options.algorithm not in BOUNDARY_BASIS_ALGORITHMS:
+                raise ValueError(
+                    f"`bc_basis.algorithm` must be one of {BOUNDARY_BASIS_ALGORITHMS!r} without selected files; "
+                    f"got {options.algorithm!r}."
+                )
+            try:
+                boundary_basis(options.algorithm, split_height=options.split_height)
+            except ValueError as exc:
+                raise ValueError(f"`bc_basis.split_height`: {exc}") from exc
+        return options
+
+    def to_params(self) -> dict[str, Any]:
+        """Return the nested mapping that :meth:`from_params` reads back, borrowing values."""
+        return {f.name: getattr(self, f.name) for f in fields(self)}
+
+
+@dataclass(frozen=True)
+class OptionGroup:
+    """External spelling of one nested option group.
+
+    The nested form is ``{key: {field: value}}``; the flat INI form of the
+    same option is ``<prefix><key>_<field>``. Flat names are generated from
+    the dataclass fields, never split at underscores.
+
+    Attributes:
+        key: Nested mapping key and the owning configuration field name.
+        options: Dataclass whose fields are the group's option names.
+    """
+
+    key: str
+    options: type
+
+    def flat_names(self, prefix: str = "") -> dict[str, str]:
+        """Map each flat option name to its field name.
+
+        Args:
+            prefix: Outer prefix stacked before ``key``, such as ``"inner_"``.
+
+        Returns:
+            A new mapping from ``<prefix><key>_<field>`` to ``field``.
+        """
+        stem = f"{prefix}{self.key}_"
+        return {stem + f.name: f.name for f in fields(self.options)}
+
+
+# Option groups nested inside ``DataConfig``; register new groups here.
+DATA_OPTION_GROUPS: tuple[OptionGroup, ...] = (
+    OptionGroup("bc_basis", BcBasisOptions),
+)
+
+
+def nest_flat_options(
+    params: Mapping[str, Any], groups: Sequence[OptionGroup], *, prefix: str = "", deprecated: bool = False,
+) -> dict[str, Any]:
+    """Move flat group options into nested group mappings.
+
+    For example, ``{"bc_basis_algorithm": "NESW"}`` becomes
+    ``{"bc_basis": {"algorithm": "NESW"}}``. Only exact flat names derived
+    from each group's fields are moved; other names are kept as they are.
+
+    Args:
+        params: Options for one configuration owner.
+        groups: Option groups that the owner nests.
+        prefix: Outer prefix stacked before each group key, such as ``"inner_"``;
+            the nested key is then ``prefix + key``.
+        deprecated: Whether flat spellings emit a ``DeprecationWarning``.
+
+    Returns:
+        A new dictionary, borrowing option values.
+
+    Raises:
+        ValueError: If a group is given in both flat and nested form.
+    """
+    result = dict(params)
+    for group in groups:
+        key = prefix + group.key
+        flat = {name: field for name, field in group.flat_names(prefix).items() if name in result}
+        if not flat:
+            continue
+        if key in result:
+            raise ValueError(f"`{key}` is given both as a mapping and as flat option(s) {sorted(flat)!r}; use one form.")
+        if deprecated:
+            warnings.warn(
+                f"Flat option(s) {sorted(flat)!r} are deprecated; pass a nested `{key}` mapping with "
+                f"field(s) {sorted(flat.values())!r} instead.",
+                DeprecationWarning, stacklevel=3,
+            )
+        result[key] = {field: result.pop(name) for name, field in flat.items()}
+    return result
+
+
+@dataclass(frozen=True, kw_only=True)
 class DataConfig:
     """Resolved acquisition and preparation choices, independent of inference.
 
     External options enter through ``from_params``. Ordinary option containers
     are owned; numerical payloads remain borrowed. Direct construction expects
-    resolved values and does not copy or execute scientific work.
+    resolved values and does not copy or execute scientific work. Option
+    groups registered in :data:`DATA_OPTION_GROUPS`, such as ``bc_basis``,
+    are nested mappings in external options; their flat INI spellings are
+    accepted with a ``DeprecationWarning``.
 
     Attributes:
-        bc_basis_paths: Exact labelled BC basis files. When ``use_bc`` is true
-            and these are set, they take precedence and ``bc_basis_algorithm``
-            is inactive.
-        bc_basis_algorithm: Built-in basis used without files: ``"NESW"``
-            (one region per whole curtain) or ``"twelve-region"`` (two lower
-            horizontal halves and one upper region per curtain).
-        bc_basis_split_height: Finite twelve-region split in the curtains'
-            native height-coordinate units; no unit conversion or vertical
-            datum is assumed. Ignored by NESW and by exact files.
+        site_options: Per-site observation and footprint selectors.
+        species: Species name used for OpenGHG searches.
+        domain: Footprint domain.
+        start_date: Inclusive start of the inversion period.
+        end_date: Exclusive end of the inversion period.
+        flux_sources: OpenGHG flux ``source`` values, in model order.
+        split_by_sectors: Whether flux sources are kept as separate sectors
+            (multisector recipe) rather than combined.
+        bc_store: OpenGHG store searched for boundary conditions.
+        obs_store: OpenGHG store searched for observations.
+        footprint_store: OpenGHG store searched for footprints.
+        flux_store: OpenGHG store searched for fluxes.
+        flux_domain: Domain of the source flux dataset; ``None`` uses ``domain``.
+        fp_model: Footprint model name, when selecting among models.
+        fp_species: Footprint species, when it differs from ``species``.
+        calibration_scale: Observation calibration scale to convert to.
+        use_bc: Whether boundary-condition inputs are acquired and prepared.
+        basis_path: Exact retained ``BasisFunctions`` artifact.
+        basis_partition_path: Exact labelled flux basis partition file.
+        landsea_path: Land/sea class map used by basis preparation.
+        basis_partition_paths: Exact labelled partition files, sorted before
+            loading; mutually exclusive with the two singular basis paths.
+        bc_basis: Boundary-condition basis selection, used when ``use_bc`` is true.
+        outer_regions_path: Fixed outer-region map used by basis preparation.
+        bc_input: OpenGHG boundary-condition input name, when selecting among several.
+        basis_algorithm: Flux basis algorithm used when no basis file is
+            selected: ``"quadtree"``, ``"weighted"`` or ``"region_constrained"``.
+        nbasis: Requested number of flux basis regions.
         filters: Filter names, or per-site filter names, applied before
             observation errors and basis construction.
         filter_options: Keyword options for named filters, such as
             ``{"local_influence": {"window_size": 5, "threshold": 0.15}}``.
             Omitted options keep each filter's defaults.
+        fix_basis_outer_regions: Whether outer regions are fixed from
+            ``outer_regions_path`` during basis preparation.
+        averaging_error: Whether observation averaging variability is added
+            to the observation uncertainty.
+        basis_output_path: Optional file at which the prepared basis is saved.
+        flux_non_finite_check: Non-finite flux handling: ``"lazy"`` keeps the
+            zero fill lazy; ``"count"`` computes exact non-finite counts.
     """
 
     site_options: SiteOptions
@@ -84,9 +260,7 @@ class DataConfig:
     basis_partition_path: Path | None = None
     landsea_path: Path | None = None
     basis_partition_paths: tuple[Path, ...] | None = None
-    bc_basis_paths: tuple[Path, ...] | None = None
-    bc_basis_algorithm: str | None = "NESW"
-    bc_basis_split_height: float = 3000.0
+    bc_basis: BcBasisOptions = BcBasisOptions()
     outer_regions_path: Path | None = None
     bc_input: str | None = None
     basis_algorithm: str | None = "weighted"
@@ -98,10 +272,9 @@ class DataConfig:
     basis_output_path: Path | None = None
     flux_non_finite_check: FluxNonFiniteCheck = "lazy"
 
-
     @classmethod
     def option_names(cls) -> frozenset[str]:
-        """External names declared by data and site-selector owners."""
+        """External names declared by data and site-selector owners, including group keys."""
         return frozenset(f.name for f in fields(cls) if f.name != "site_options") | frozenset(
             f.name for f in fields(SiteOptions)
         )
@@ -119,7 +292,9 @@ class DataConfig:
     def from_params(cls, params: Mapping[str, Any], *, multisector: bool = False) -> DataConfig:
         """Resolve acquisition and preparation options without constructing other groups.
 
-        Unknown or wrong-phase names fail. An explicit ``split_by_sectors``
+        Option groups are nested mappings, such as ``bc_basis={"algorithm": "NESW"}``.
+        Their flat spellings, such as ``bc_basis_algorithm``, are deprecated but
+        still accepted. Unknown or wrong-phase names fail. An explicit ``split_by_sectors``
         must agree with the selected ``multisector`` recipe. Select the data mapping from
         ``group_params`` first when consuming a shared configuration file.
 
@@ -131,10 +306,11 @@ class DataConfig:
             Resolved data choices with owned option containers and borrowed arrays.
 
         Raises:
-            ValueError: If required options are missing, values are invalid, or an
+            ValueError: If required options are missing, values are invalid, an
+                option group is given in both flat and nested form, or an
                 explicit layout conflicts with the selected recipe.
         """
-        remaining = normalise_rhime_params(params)
+        remaining = nest_flat_options(normalise_rhime_params(params), DATA_OPTION_GROUPS, deprecated=True)
         remaining = resolve_resource_paths(remaining, annotations=get_type_hints(cls), base_dir=Path.cwd())
         unsupported = sorted(set(remaining) - cls.option_names())
         if unsupported:
@@ -161,18 +337,8 @@ class DataConfig:
         if (remaining.get("basis_path") is None and remaining.get("basis_partition_path") is None
                 and remaining.get("basis_partition_paths") is None and basis_algorithm not in allowed):
             raise ValueError(f"`basis_algorithm` must be one of {allowed!r}; got {basis_algorithm!r}.")
-        if remaining.get("use_bc", cls.use_bc) and remaining.get("bc_basis_paths") is None:
-            bc_algorithm = remaining.get("bc_basis_algorithm", cls.bc_basis_algorithm)
-            if bc_algorithm not in BOUNDARY_BASIS_ALGORITHMS:
-                raise ValueError(
-                    f"`bc_basis_algorithm` must be one of {BOUNDARY_BASIS_ALGORITHMS!r} without selected files; "
-                    f"got {bc_algorithm!r}."
-                )
-            try:
-                boundary_basis(bc_algorithm, split_height=remaining.get(
-                    "bc_basis_split_height", cls.bc_basis_split_height))
-            except ValueError as exc:
-                raise ValueError(f"`bc_basis_split_height`: {exc}") from exc
+        remaining["bc_basis"] = BcBasisOptions.from_params(
+            remaining.get("bc_basis", {}), active=remaining.get("use_bc", cls.use_bc))
         remaining["sites"] = as_list(remaining["sites"])
         site_options = SiteOptions.from_inputs(**{
             f.name: remaining.pop(f.name) for f in fields(SiteOptions) if f.name in remaining
@@ -190,11 +356,12 @@ class DataConfig:
     def to_params(self) -> dict[str, Any]:
         """Return these choices as external options that :meth:`from_params` reads back.
 
-        Site selectors are flattened to their option names; values are borrowed.
+        Site selectors are flattened to their option names; option groups are
+        nested mappings. Values are borrowed.
         """
-        site_names = {f.name for f in fields(SiteOptions)}
-        params = {name: getattr(self, name) for name in self.option_names() - site_names}
-        params.update({name: getattr(self.site_options, name) for name in site_names})
+        params = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "site_options"}
+        params.update({f.name: getattr(self.site_options, f.name) for f in fields(SiteOptions)})
+        params.update({group.key: getattr(self, group.key).to_params() for group in DATA_OPTION_GROUPS})
         return params
 
 
@@ -269,7 +436,9 @@ def group_params(params: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     """Group canonical flat options without validating inactive values or defaults.
 
     Already grouped mappings are accepted as well. Names are checked even for
-    inactive groups; each selected resolver owns its value validation.
+    inactive groups; each selected resolver owns its value validation. Flat
+    spellings of data option groups, such as ``bc_basis_algorithm``, are
+    nested with a ``DeprecationWarning``.
 
     Args:
         params: Canonical flat options or data/model/sampler/output group mappings.
@@ -278,7 +447,8 @@ def group_params(params: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
         New dictionaries grouped by their explicit owners, borrowing option values.
 
     Raises:
-        ValueError: If a group is not a mapping or an option name is unsupported.
+        ValueError: If a group is not a mapping, an option name is unsupported,
+            or a data option group is given in both flat and nested form.
     """
     owners = option_groups()
     if set(params) & owners.keys():
@@ -289,12 +459,14 @@ def group_params(params: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
             if not isinstance(values, Mapping):
                 raise ValueError(f"`{group}` must be a mapping.")
             values = dict(values)
+            if group == "data":
+                values = nest_flat_options(values, DATA_OPTION_GROUPS, deprecated=True)
             unknown.extend(f"{group}.{name}" for name in set(values) - names)
             result[group] = values
         if unknown:
             raise ValueError(f"Unsupported grouped RHIME parameter(s): {sorted(unknown)!r}")
         return result
-    normalized = dict(params)
+    normalized = nest_flat_options(params, DATA_OPTION_GROUPS, deprecated=True)
     validate_supported_params(normalized)
     result = {group: {} for group in owners}
     for name, value in normalized.items():

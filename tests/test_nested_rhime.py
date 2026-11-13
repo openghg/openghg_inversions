@@ -549,7 +549,7 @@ def test_inner_data_config_is_reusable_independently_of_reporting(tmp_path, outp
     assert inner.basis_partition_paths is None
     assert inner.basis_output_path is None
     assert inner.use_bc is False
-    assert inner.bc_input is None and inner.bc_basis_paths is None
+    assert inner.bc_input is None and inner.bc_basis.paths is None
     explicit = nested_module.inner_data_config(
         config.data, inner_domain="EUROPE-6km", inner_nbasis=40,
         inner_basis_path=tmp_path / "inner.nc", inner_basis_output_path=tmp_path / "export.nc",
