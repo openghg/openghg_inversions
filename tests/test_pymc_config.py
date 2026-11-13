@@ -80,3 +80,14 @@ def test_rhime_import_does_not_mutate_initialized_pytensor() -> None:
 
     assert values["floatX"] == "float64"
     assert values["warn"] == "ignore"
+
+
+def test_pytest_session_starts_from_package_precision_policy() -> None:
+    """The test session applies the startup policy whichever module pytest imports first."""
+    import pytensor
+
+    from openghg_inversions._pymc_config import _pytensor_flag_is_explicit
+
+    if _pytensor_flag_is_explicit("floatX"):
+        pytest.skip("PYTENSOR_FLAGS selects floatX explicitly.")
+    assert pytensor.config.floatX == "float32"
