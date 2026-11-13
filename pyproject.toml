@@ -183,6 +183,7 @@ testpaths = ["tests"]
 markers = [
   "compiled_backend: graph, predictive and sampler checks also run with the Numba linker on request",
   "create_frozen: tests that generate/update frozen regression outputs (not run by default)",
+  "fresh_process: starts a new Python interpreter (subprocess, installed command or spawned chains); run in CI, skippable while iterating",
   "country_file_smoke: optional real country-file HDF5 backend smoke tests",
   "rhime_contract: current public RHIME workflow compatibility contracts",
   "slow: tests that take a long time",

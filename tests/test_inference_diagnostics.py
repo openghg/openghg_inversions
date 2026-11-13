@@ -36,6 +36,7 @@ def test_posterior_summary_preserves_chains_and_precision(monkeypatch: pytest.Mo
     assert np.isnan(result.state.sel(metric="mcse_mean").item())
 
 
+@pytest.mark.fresh_process
 def test_posterior_summary_import_is_backend_neutral() -> None:
     """Loading saved-trace diagnostics does not initialize PyMC or recipes."""
     subprocess.run(

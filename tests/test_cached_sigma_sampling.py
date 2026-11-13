@@ -218,6 +218,7 @@ def _sample_observed_spawn_chains(*, observed=True):
 
 
 @pytest.mark.compiled_backend
+@pytest.mark.fresh_process
 def test_observed_spawn_chains_preserve_shared_cache_and_generic_joint_density():
     target, shared, model, point, first = _sample_observed_spawn_chains()
     *_, second = _sample_observed_spawn_chains()
@@ -538,6 +539,7 @@ def _sample_two_spawn_chains(seed: int):
         )
 
 
+@pytest.mark.fresh_process
 def test_two_spawn_chains_are_reproducible_and_emit_cached_diagnostics() -> None:
     first = _sample_two_spawn_chains(20260913)
     second = _sample_two_spawn_chains(20260913)
