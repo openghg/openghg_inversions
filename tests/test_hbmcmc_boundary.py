@@ -55,6 +55,7 @@ def test_import_boundary_detects_forbidden_dependencies(source):
     assert list(_legacy_imports(source, "openghg_inversions.rhime")) == [1]
 
 
+@pytest.mark.fresh_process
 def test_modern_entry_routes_work_with_legacy_imports_blocked():
     script = '''
 import importlib.abc
