@@ -555,7 +555,7 @@ def test_co2_operations_derives_default_model_error_alignment(monkeypatch: Any) 
 
 
 @pytest.mark.parametrize("mean_shift", [False, True])
-def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any, mean_shift: bool) -> None:
+def test_public_co2_runner_selects_boundary_and_offset_once(double_precision, monkeypatch: Any, mean_shift: bool) -> None:
     """The public runner materializes and composes boundary and offset once."""
     inputs = _production_boundary_inputs()
     if mean_shift:
@@ -1294,7 +1294,7 @@ def test_requested_facts_check_configuration_against_numerical_provenance() -> N
 
 
 @pytest.mark.parametrize("reference", [400.0, 200_000.0])
-def test_centered_additive_boundary_preserves_small_concentration_corrections(reference):
+def test_centered_additive_boundary_preserves_small_concentration_corrections(double_precision, reference):
     """O2's large reference never scales the additive concentration uncertainty."""
     inputs = _timed_golden_inputs()
     anomaly = np.asarray([[0.2, -0.1], [0.3, 0.05]])
@@ -1327,7 +1327,7 @@ def test_centered_additive_boundary_preserves_small_concentration_corrections(re
 
 
 @pytest.mark.parametrize(("operand", "value"), [("bc_reference", np.inf), ("bc_reference", np.nan), ("H_bc_mass", np.nan)])
-def test_centered_additive_boundary_rejects_nonfinite_reference(operand, value):
+def test_centered_additive_boundary_rejects_nonfinite_reference(double_precision, operand, value):
     inputs = _timed_golden_inputs()
     operands = xr.Dataset({
         "H_bc_anomaly": (("nmeasure", "bc_region"), [[.1], [.2]], {"units": "ppm"}),
@@ -1354,7 +1354,7 @@ def test_multiplicative_boundary_binds_explicit_periods():
     assert "G_bc" not in model.named_vars
 
 
-def test_direct_centered_model_rejects_custom_likelihood():
+def test_direct_centered_model_rejects_custom_likelihood(double_precision):
     """A centered boundary accepts only the default or built-in fixed-OU likelihood."""
     inputs = _timed_golden_inputs()
     operands = xr.Dataset({
