@@ -239,6 +239,46 @@ conditioning; they must be exactly the fit's inactive states, which are
 otherwise held fixed without their variance and make complete uncertainty
 undefined.
 
+Staged CO2 outputs
+~~~~~~~~~~~~~~~~~~
+
+The staged CO2 pipeline reports complete country totals when the prepared
+artifact carries the country products:
+
+1. Build :math:`Q` from the signed reference flux the affine reconstruction
+   will carry with
+   :func:`~openghg_inversions.postprocessing.co2_flux_outputs.co2_flux_country_functionals`
+   and the reporting country file, and pass it to
+   :func:`~openghg_inversions.coherent_reduction.reduce_native_gaussian` with
+   ``functional_dim="country_functional"``.
+2. :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`
+   saves ``reduction.functional_products`` in the prepared artifact's
+   ``country_functionals`` node (schema version 4) and summarizes them under
+   ``provenance["country_functionals"]``. Only full-restriction products on
+   the ``country_functional`` axis are accepted.
+3. Replay (:func:`openghg_inversions.rhime.co2.handoffs.postprocess`, or
+   :func:`~openghg_inversions.rhime.co2.execution.run_co2`) rebuilds each
+   posterior draw's residual ``mf - model_mean`` and the fit's own
+   :math:`(A + R)^{-1}` with
+   :func:`~openghg_inversions.rhime.co2.co2_unresolved.co2_unresolved_conditioning`,
+   restricts the products to the requested countries, and labels country
+   outputs ``"complete_native"``. Without products they stay
+   ``"retained_state_conditional"``. Native-grid flux is unchanged.
+
+The solve follows the recorded likelihood. Additive-sigma and site-sigma fits
+use the stored :math:`A` plus ``epsilon**2 - diag(A)`` for each draw. Fixed-OU
+fits, with fixed or inferred amplitudes, rebuild the fit's
+:class:`~openghg_inversions.models.fixed_ou.FixedOuLowRank` from the recorded
+observation error, OU site index and time scales, with each draw's
+amplitudes. Other likelihoods raise an error rather than claiming complete
+outputs. :math:`A` is the representation stored in the artifact, so the
+default rank-512 artifact pairs exact-:math:`B_\perp` products with its
+low-rank :math:`A`; prepare with ``aggregation_error_rank=None`` to condition
+on the exact :math:`A`, and check ``conditional_covariance_min_eigenvalue``.
+Country sector totals are summed from the same complete (country, source)
+draws. States marginalised at preparation are declared from
+``state_information_marginalised`` when the artifact records it.
+
 Assumptions and limitations
 ---------------------------
 

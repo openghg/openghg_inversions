@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -26,7 +27,12 @@ if TYPE_CHECKING:
     from openghg_inversions.rhime.co2.co2_affine_output import BoundCo2AffineFluxMap
 
 
-__all__ = ["co2_native_flux_outputs", "co2_country_flux_outputs", "co2_country_functionals"]
+__all__ = [
+    "co2_native_flux_outputs",
+    "co2_country_flux_outputs",
+    "co2_country_functionals",
+    "co2_flux_country_functionals",
+]
 
 COUNTRY_FUNCTIONAL_DIM = "country_functional"
 FUNCTIONAL_SOURCE = "functional_source"
@@ -81,10 +87,10 @@ def _output_inputs(
     return samples, source_dim, attrs
 
 
-def _flux_unit_scale(bound: BoundCo2AffineFluxMap) -> float:
+def _flux_unit_scale(flux: xr.DataArray) -> float:
     """Convert the signed reference flux to the reporting unit without loading it."""
     try:
-        units = cf_ureg.parse_expression(bound.affine_map.flux.attrs["units"])
+        units = cf_ureg.parse_expression(flux.attrs["units"])
         return float(cf_ureg.Quantity(units).to("mol / m^2 / s").magnitude)
     except Exception as exc:
         raise ValueError("CO2 reference flux units must convert to mol m-2 s-1.") from exc
@@ -96,13 +102,31 @@ def _summarize(
     prefix: str,
     group: str,
     source_dim: str | None,
+    source_to_sector: Mapping[str, str] | None = None,
 ) -> xr.Dataset:
-    """Sum signed sources before reducing samples, retaining source summaries."""
+    """Sum signed sources before reducing samples, retaining source and sector summaries.
+
+    Each sector sums its sources from the same draws as the total, so sector
+    and total summaries describe one joint sample.
+    """
     total = draws.sum(source_dim, skipna=False) if source_dim is not None else draws
     variables = {f"{prefix}_total_{group}": total}
     if source_dim is not None:
         variables[f"{prefix}_{group}"] = draws
+        for sector, sources in _sector_sources(source_to_sector).items():
+            selected = draws.sel({source_dim: draws[source_dim].isin(sources)})
+            variables[f"{prefix}_{sector}_{group}"] = selected.sum(source_dim, skipna=False)
     return calculate_stats(xr.Dataset(variables), stats=["mean", "stdev", "quantiles"])
+
+
+def _sector_sources(source_to_sector: Mapping[str, str] | None) -> dict[str, Sequence[str]]:
+    """Group native sources by reporting sector, in sorted sector order."""
+    if not source_to_sector:
+        return {}
+    return {
+        sector: [source for source, mapped in source_to_sector.items() if mapped == sector]
+        for sector in sorted(set(source_to_sector.values()))
+    }
 
 
 def _with_metadata(result: xr.Dataset, attrs: dict[str, str], *, units: str) -> xr.Dataset:
@@ -150,7 +174,7 @@ def co2_native_flux_outputs(trace: xr.DataTree, bound: BoundCo2AffineFluxMap) ->
         calculated after signed reconstruction and after source summation.
     """
     samples, source_dim, attrs = _output_inputs(trace, bound)
-    scale = _flux_unit_scale(bound)
+    scale = _flux_unit_scale(bound.affine_map.flux)
     bound = replace(bound, artifact=replace(bound.artifact, affine_map=bounded_affine_flux_map(bound.affine_map)))
     outputs = [
         _summarize(
@@ -165,7 +189,7 @@ def co2_native_flux_outputs(trace: xr.DataTree, bound: BoundCo2AffineFluxMap) ->
 
 
 def _weighted_country_flux(
-    bound: BoundCo2AffineFluxMap,
+    reference_flux: xr.DataArray,
     countries: Countries,
     *,
     source_dim: str | None = None,
@@ -173,10 +197,10 @@ def _weighted_country_flux(
     """Return signed country weights ``A F`` in grams of CO2 per year per unit scaling.
 
     Country membership may also vary by source when ``source_dim`` names the
-    map's native source dimension.
+    flux's native source dimension.
     """
     flux, matrix, area = xr.align(
-        bound.affine_map.flux, countries.matrix, countries.area_grid, join="exact", copy=False
+        reference_flux, countries.matrix, countries.area_grid, join="exact", copy=False
     )
     membership_dims = [{"country", "lat", "lon"}]
     if source_dim is not None:
@@ -190,7 +214,7 @@ def _weighted_country_flux(
         flux.astype("float64")
         * matrix
         * area
-        * _flux_unit_scale(bound)
+        * _flux_unit_scale(reference_flux)
         * (365 * 24 * 3600)
         * molar_mass("co2")
     )
@@ -228,8 +252,58 @@ def co2_country_functionals(
         ValueError: If the country grid does not exactly match the map, or
             the flux has dimensions other than the native ones, such as time.
     """
-    weighted = _weighted_country_flux(bound, countries, source_dim=source_dim)
-    native_dims = bound.affine_map.native_dims
+    return _country_functionals(
+        bound.affine_map.flux, countries, native_dims=bound.affine_map.native_dims, source_dim=source_dim
+    )
+
+
+def co2_flux_country_functionals(
+    flux: xr.DataArray,
+    countries: Countries,
+    *,
+    source_dim: str | None = None,
+) -> xr.DataArray:
+    """Return CO2 country totals ``Q`` from the signed reference flux alone.
+
+    This is :func:`co2_country_functionals` before any affine map exists. A
+    coherent preparation needs ``Q`` when it reduces the native problem, which
+    happens before the prepared artifact and therefore before the affine
+    reconstruction bound to it. ``Q`` depends only on the signed reference
+    flux ``F`` and the country membership ``A``, so the same flux the affine
+    map will carry gives the same ``Q``.
+
+    Args:
+        flux: Signed reference flux on ``(lat, lon)`` or
+            ``(source, lat, lon)``, with units convertible to
+            ``mol m-2 s-1``. Its dimension order is the native order.
+        countries: Country membership and cell areas on the flux's grid.
+        source_dim: The flux's source dimension, when country membership
+            varies by source.
+
+    Returns:
+        ``Q`` on ``("country_functional", *flux.dims)`` as described by
+        :func:`co2_country_functionals`.
+
+    Raises:
+        ValueError: If the flux is not on ``lat, lon`` native dimensions,
+            optionally preceded by one source dimension, or if the country
+            grid does not exactly match it.
+    """
+    native_dims = tuple(str(dim) for dim in flux.dims)
+    if native_dims[-2:] != ("lat", "lon") or len(native_dims) not in (2, 3):
+        raise ValueError("CO2 country functionals require lat/lon flux dimensions, optionally preceded by source.")
+    return _country_functionals(flux, countries, native_dims=native_dims, source_dim=source_dim)
+
+
+def _country_functionals(
+    flux: xr.DataArray,
+    countries: Countries,
+    *,
+    native_dims: tuple[str, ...],
+    source_dim: str | None,
+) -> xr.DataArray:
+    """Return labelled country functionals for one signed flux on ``native_dims``."""
+    weighted = _weighted_country_flux(flux, countries, source_dim=source_dim)
     extra = set(weighted.dims) - {"country", *native_dims}
     if extra:
         raise ValueError(
@@ -260,6 +334,7 @@ def co2_country_flux_outputs(
     countries: Countries,
     *,
     unresolved: UnresolvedFunctionalConditioning | None = None,
+    source_to_sector: Mapping[str, str] | None = None,
 ) -> xr.Dataset:
     """Summarize affine CO2 country flux without constructing native flux draws.
 
@@ -286,14 +361,20 @@ def co2_country_flux_outputs(
             moved into the unresolved part. Inactive states come from the
             trace's ``<flux_scale>_is_active`` constant data or, when it is
             absent, from posterior draws that are all identical.
+        source_to_sector: Optional mapping from every native source of a
+            multisource map to a reporting sector. Each sector's country
+            totals are summed from the same draws as the source and total
+            values, so complete sector totals keep the unresolved
+            contribution and the cross-source covariance.
 
     Returns:
         xarray.Dataset:
             ``country_total_prior_*`` and ``country_total_posterior_*`` mean,
             population standard deviation, and 0.159/0.841 quantiles in grams of
             CO2 per fixed 365-day year. Multisource maps additionally retain
-            ``country_prior_*`` and ``country_posterior_*`` on the source axis.
-            Other flux dimensions, such as time, remain in the result. Summaries
+            ``country_prior_*`` and ``country_posterior_*`` on the source axis,
+            and, with ``source_to_sector``, ``country_<sector>_prior_*`` and
+            ``country_<sector>_posterior_*``. Other flux dimensions, such as time, remain in the result. Summaries
             are computed in bounded non-sample blocks. Compact country
             reference/response arrays use dense chunk payloads and are prepared like
             ordinary country projections, chunking their output dimensions within
@@ -320,12 +401,26 @@ def co2_country_flux_outputs(
     """
     samples, source_dim, attrs = _output_inputs(trace, bound)
     attrs["annualization"] = ANNUALIZATION
+    if source_to_sector:
+        if source_dim is None:
+            raise ValueError("CO2 source_to_sector requires a multisource affine map.")
+        labels = set(map(str, bound.affine_map.flux[source_dim].values))
+        if set(source_to_sector) != labels:
+            raise ValueError("CO2 source_to_sector must map every native source exactly once.")
+        attrs["source_to_sector"] = json.dumps(dict(source_to_sector), sort_keys=True)
     if unresolved is not None:
         return _complete_country_outputs(
-            trace, samples, bound, countries, unresolved, source_dim=source_dim, attrs=attrs
+            trace,
+            samples,
+            bound,
+            countries,
+            unresolved,
+            source_dim=source_dim,
+            attrs=attrs,
+            source_to_sector=source_to_sector,
         )
     affine = bound.affine_map
-    weighted_flux = _weighted_country_flux(bound, countries, source_dim=source_dim)
+    weighted_flux = _weighted_country_flux(affine.flux, countries, source_dim=source_dim)
     # These package-internal affine helpers preserve exact state validation,
     # dimensionless conversion and lazy bucket/explicit prolongation. Reusing
     # them avoids introducing a second reconstruction or quantity-map API.
@@ -342,7 +437,11 @@ def co2_country_flux_outputs(
             response = _bounded_projection(response, [affine.state_dim])
             reference = _bounded_projection(reference, [])
         draws = reference + xr.dot(response, centred.astype("float64"), dim=affine.state_dim)
-        outputs.append(_summarize(draws, prefix="country", group=group, source_dim=source_dim))
+        outputs.append(
+            _summarize(
+                draws, prefix="country", group=group, source_dim=source_dim, source_to_sector=source_to_sector
+            )
+        )
     return _with_metadata(xr.merge(outputs), attrs, units="g yr-1")
 
 
@@ -355,6 +454,7 @@ def _complete_country_outputs(
     *,
     source_dim: str | None,
     attrs: dict[str, str],
+    source_to_sector: Mapping[str, str] | None = None,
 ) -> xr.Dataset:
     """Summarize complete native country functionals, conditioning each posterior draw."""
     affine = bound.affine_map
@@ -431,7 +531,11 @@ def _complete_country_outputs(
         draws = draws.unstack(COUNTRY_FUNCTIONAL_DIM)
         if source_dim is not None:
             draws = draws.rename({FUNCTIONAL_SOURCE: source_dim})
-        outputs.append(_summarize(draws, prefix="country", group=group, source_dim=source_dim))
+        outputs.append(
+            _summarize(
+                draws, prefix="country", group=group, source_dim=source_dim, source_to_sector=source_to_sector
+            )
+        )
     attrs["uncertainty_scope"] = COMPLETE_NATIVE
     attrs["unresolved_conditioning"] = unresolved.solve.description
     attrs["marginalised_state_count"] = str(int(marginalised.sum()))
