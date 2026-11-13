@@ -36,3 +36,4 @@ openghg\_inversions.rhime.co2
    openghg_inversions.rhime.co2.shared_outputs
    openghg_inversions.rhime.co2.shared_preparation
    openghg_inversions.rhime.co2.shared_workflow
+   openghg_inversions.rhime.co2.surface_templates

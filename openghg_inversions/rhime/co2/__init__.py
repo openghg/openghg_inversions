@@ -60,10 +60,12 @@ from .execution import run_co2
 from .co2_outputs import Co2Output
 from .co2_o2_outputs import Co2O2Output, Co2O2OutputOptions
 
+from .surface_templates import prepare_linked_surface_templates
 from .shared_preparation import prepare_linked_shared_inputs
 from .shared_workflow import sample_linked_shared_workflow
 
 __all__ = [
+    "prepare_linked_surface_templates",
     "prepare_linked_shared_inputs", "sample_linked_shared_workflow",
     "bind_linked_shared_baseline", "build_shared_co2_o2_model",
     "build_shared_co2_o2_cached_sigma_model", "annotate_linked_shared_baseline_trace",
