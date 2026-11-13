@@ -36,6 +36,21 @@ def pytest_configure(config: pytest.Config) -> None:
     configure_pytensor()
 
 
+
+@pytest.fixture
+def double_precision():
+    """Build PyTensor graphs at float64 for tests whose contract or tolerance needs double precision.
+
+    The session starts at the package's float32 default (see ``pytest_configure``),
+    so a test that needs float64 must request it. Modules may define their own
+    fixture of the same name, which takes precedence.
+    """
+    import pytensor  # Imported here so the session's startup policy runs first.
+
+    with pytensor.config.change_flags(floatX="float64"):
+        yield
+
+
 _raw_data_path = Path(__file__).resolve().parent / "data"
 _TEST_STORE_DIR_NAME = "openghg_inversions_testing_store"
 _SATELLITE_TEST_STORE_DIR_NAME = "openghg_inversions_satellite_testing_store"
