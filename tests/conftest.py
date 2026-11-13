@@ -17,11 +17,39 @@ from openghg.standardise import (
 import xarray as xr
 from zarr.storage import ZipStore
 
+from openghg_inversions._pymc_config import configure_pytensor
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from tests.helpers import make_trace
 
 pytest_plugins = ["tests.surface_provider"]
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Apply the package's PyTensor startup policy before collection imports any test module.
+
+    Without this, the session floatX depends on which module pytest imports
+    first: a PyMC-first module keeps PyTensor's float64 default, while an
+    ``openghg_inversions``-first module selects the float32 production default.
+    Tests that need float64 request it with a scoped ``change_flags``.
+    """
+    configure_pytensor()
+
+
+
+@pytest.fixture
+def double_precision():
+    """Build PyTensor graphs at float64 for tests whose contract or tolerance needs double precision.
+
+    The session starts at the package's float32 default (see ``pytest_configure``),
+    so a test that needs float64 must request it. Modules may define their own
+    fixture of the same name, which takes precedence.
+    """
+    import pytensor  # Imported here so the session's startup policy runs first.
+
+    with pytensor.config.change_flags(floatX="float64"):
+        yield
+
 
 _raw_data_path = Path(__file__).resolve().parent / "data"
 _TEST_STORE_DIR_NAME = "openghg_inversions_testing_store"
