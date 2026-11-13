@@ -12,7 +12,6 @@ from dask.callbacks import Callback
 import numpy as np
 import pandas as pd
 import pymc as pm
-import pytensor
 import pytest
 import xarray as xr
 
@@ -83,14 +82,11 @@ def test_reusable_builder_and_annotation_support_native_prior_prediction(fixed_o
 
     prepared = _prepared()
     options = {"tau_hours": 6, "fixed_site_amplitudes": 0.5} if fixed_ou else {}
-    # Float32 multivariate-normal draws fail under Numba; see the strict xfail in
-    # tests/models/test_likelihoods.py (#770). This test checks labels, not precision.
-    with pytensor.config.change_flags(floatX="float64"):
-        built = build_rhime_co2_o2(
-            prepared_inputs=prepared, independent_error_sd=_independent_error(prepared), **options,
-        )
-        with built.model:
-            trace = pm.sample_prior_predictive(draws=3, random_seed=165)
+    built = build_rhime_co2_o2(
+        prepared_inputs=prepared, independent_error_sd=_independent_error(prepared), **options,
+    )
+    with built.model:
+        trace = pm.sample_prior_predictive(draws=3, random_seed=165)
     trace = restore_inferencedata_coords(trace, get_coord_registry(built.model))
     annotate_co2_o2_trace(trace, built=built)
 
