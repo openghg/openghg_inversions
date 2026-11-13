@@ -183,10 +183,11 @@ def test_invalid_lognormal_is_rejected_without_covariance_projection():
     assert not json.loads(gaussian.data.attrs["calibration_report"])["lognormal_valid"]
 
 
-def test_exact_enhancement_marginal_serialization_and_reconstruction(tmp_path):
+@pytest.mark.parametrize("label_array", [False, True])
+def test_exact_enhancement_marginal_serialization_and_reconstruction(tmp_path, label_array):
     result = calibrate()
     labels = ["g-b", "g-a", "t-a", "fossil"]
-    marginal = result.lognormal_marginal(labels)
+    marginal = result.lognormal_marginal(xr.DataArray(labels, dims="selection") if label_array else labels)
     positions = [2, 0, 1, 3]
     np.testing.assert_array_equal(
         marginal.arithmetic_covariance, result.data.covariance.to_numpy()[np.ix_(positions, positions)]
