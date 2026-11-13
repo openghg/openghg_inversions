@@ -1,0 +1,762 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Keeping the test suite fast &#8212; OpenGHG Inversions</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
+
+    <script src="../_static/documentation_options.js?v=1dba82e2"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'development/testing';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.21.0';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://openghg.github.io/openghg_inversions/versions.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = 'devel';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner =
+            false;
+        </script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Maintain the documentation" href="documentation.html" />
+    <link rel="prev" title="Validation and labelled-array patterns" href="validation_and_xarray.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="devel" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+<aside class="bd-header-announcement" aria-label="Announcement">
+  <div class="bd-header-announcement__content">Unreleased development documentation; use <a href="https://openghg.github.io/openghg_inversions/stable/">stable</a> for supported releases. <a href="https://openghg.github.io/openghg_inversions/versions/">All documentation versions</a>.</div>
+</aside>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">OpenGHG Inversions</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../usage/usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/index.html">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-2"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-2"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-2"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-2">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../usage/usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/index.html">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-3"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-3"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-3"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-3">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="rhime_model_development.html">Developing RHIME models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="boundary_offset_identifiability.html">Boundary corrections and observation offsets</a></li>
+<li class="toctree-l1"><a class="reference internal" href="specifications.html">Development guidance and behavioral specifications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture_principles.html">Architecture principles and recipe boundaries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="numerical_array_ownership.html">Numerical array ownership and execution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="validation_and_xarray.html">Validation and labelled-array patterns</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Keeping the test suite fast</a></li>
+<li class="toctree-l1"><a class="reference internal" href="documentation.html">Maintain the documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="observation_uncertainty.html">Missing observation uncertainty: behavior and decisions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="fixed_ou_likelihood.html">Fixed-OU likelihood and cached quadratics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="fixed_ou_evidence.html">Fixed-OU experiment evidence</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="migration_960.html">Migration evidence before compatibility removal</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="migration_960_historical.html">Released 0.7 migration evidence</a></li>
+<li class="toctree-l2"><a class="reference internal" href="migration_960_resources.html">Migration resource evidence for issue 960</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="releasing.html">Releases and branch maintenance</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Developing OpenGHG Inversions</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Keeping the test suite fast</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="keeping-the-test-suite-fast">
+<h1>Keeping the test suite fast<a class="headerlink" href="#keeping-the-test-suite-fast" title="Link to this heading">#</a></h1>
+<p>The default suite has about 5,100 cases. Most of them are cheap: in a serial
+run on 11 November 2026 (Python linker, one process), 4,125 cases took under
+0.05 s each and 31 s in total. Most of the runtime came from a few dozen tests:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Per-test cost</p></th>
+<th class="head"><p>Cases</p></th>
+<th class="head"><p>Share of the 634 s run</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>5 s or more</p></td>
+<td><p>24</p></td>
+<td><p>49 %</p></td>
+</tr>
+<tr class="row-odd"><td><p>1 s to 5 s</p></td>
+<td><p>45</p></td>
+<td><p>14 %</p></td>
+</tr>
+<tr class="row-even"><td><p>under 0.05 s</p></td>
+<td><p>4,125</p></td>
+<td><p>5 %</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The expensive tests fall into two groups:</p>
+<ul class="simple">
+<li><p>Tests that start a new Python interpreter: subprocess import checks,
+installed-command workflows and samplers that spawn chain processes. Each
+child pays the package import, which then took up to about 9 s on a laptop
+because <code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime</span></code> loaded PyMC, the CO2 recipes and parts
+of OpenGHG eagerly (#1072 has since made those imports lazy); the installed
+workflows also sampled. Eighteen such test functions took about 290 s
+(46 %). They are marked <code class="docutils literal notranslate"><span class="pre">fresh_process</span></code>.</p></li>
+<li><p>Statistical-accuracy checks, which draw thousands of samples to compare
+posterior moments against an independent oracle.</p></li>
+</ul>
+<p>The rules below keep new work out of those groups unless it needs to be
+there, and keep the cheap tests from multiplying without adding protection.</p>
+<section id="running-tests-while-iterating">
+<h2>Running tests while iterating<a class="headerlink" href="#running-tests-while-iterating" title="Link to this heading">#</a></h2>
+<p>Run the tests that own the code you are changing, not the whole suite. Run
+the relevant broader groups before handing off a change, and leave the full
+suite and tox to the final check (see the Testing section of <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>).</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Area</p></th>
+<th class="head"><p>Paths</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Configuration and request validation</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/test_rhime_configuration.py</span> <span class="pre">tests/test_rhime_resolved_run.py</span>
+<span class="pre">tests/test_public_run_api.py</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Model components and likelihoods</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/models</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Basis functions</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/test_basis_*.py</span> <span class="pre">tests/test_constrained_basis_algorithm.py</span>
+<span class="pre">tests/test_weighted_basis_algorithm.py</span> <span class="pre">tests/test_bc_basis_*.py</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Surface acquisition and preparation</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tox</span> <span class="pre">-e</span> <span class="pre">py312-surfacePilot</span></code> lists the owning modules</p></td>
+</tr>
+<tr class="row-even"><td><p>Stage handoffs and replay</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/test_*handoff*.py</span> <span class="pre">tests/test_staged_workflow.py</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>CO2 and CO2/O2 recipes</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/test_co2_*.py</span> <span class="pre">tests/test_rhime_co2_*.py</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Postprocessing and outputs</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/postprocessing</span> <span class="pre">tests/test_output_contract.py</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Useful pytest options while iterating:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">-m</span> <span class="pre">&quot;not</span> <span class="pre">slow</span> <span class="pre">and</span> <span class="pre">not</span> <span class="pre">create_frozen</span> <span class="pre">and</span> <span class="pre">not</span> <span class="pre">fresh_process&quot;</span></code> skips tests
+that start new interpreters. Passing <code class="docutils literal notranslate"><span class="pre">-m</span></code> replaces the default marker
+expression in <code class="docutils literal notranslate"><span class="pre">addopts</span></code>, so keep the <code class="docutils literal notranslate"><span class="pre">slow</span></code> and <code class="docutils literal notranslate"><span class="pre">create_frozen</span></code>
+exclusions. CI runs <code class="docutils literal notranslate"><span class="pre">fresh_process</span></code> tests, so run them yourself before
+handing off a change to imports, entry points, the CLI or stage handoffs.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-x</span> <span class="pre">--lf</span></code> reruns the last failures and stops at the first new one.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-k</span> <span class="pre">&lt;expression&gt;</span></code> selects tests by name within a group.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--durations=15</span></code> reports the slowest cases, so you notice a new expensive
+test before review does.</p></li>
+</ul>
+</section>
+<section id="parallel-runs">
+<h2>Parallel runs<a class="headerlink" href="#parallel-runs" title="Link to this heading">#</a></h2>
+<p>pytest-xdist is in the <code class="docutils literal notranslate"><span class="pre">test</span></code> dependency group, not the default one, and
+<code class="docutils literal notranslate"><span class="pre">addopts</span></code> does not set <code class="docutils literal notranslate"><span class="pre">-n</span></code>, so a plain <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">run</span> <span class="pre">pytest</span></code> is serial. Use it
+for full or broad runs, where it is about three times faster locally (634 s
+serial against 208 s with four workers on a 10-core laptop):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">DASK_NUM_WORKERS</span><span class="o">=</span><span class="m">2</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>--group<span class="w"> </span><span class="nb">test</span><span class="w"> </span>pytest<span class="w"> </span>-n<span class="w"> </span><span class="m">2</span><span class="w"> </span>--dist<span class="o">=</span>worksteal<span class="w"> </span>--ignore<span class="o">=</span>tests/typing
+</pre></div>
+</div>
+<p>Use <code class="docutils literal notranslate"><span class="pre">-n</span> <span class="pre">2</span></code> by default and more workers only when the machine is otherwise
+idle; several agents or terminals each starting workers compete for the same
+cores and memory. Keep focused runs serial, where worker start-up costs more
+than it saves. The slowest single test (about 50 s) bounds a parallel run.</p>
+</section>
+<section id="pytensor-backend-and-precision">
+<h2>PyTensor backend and precision<a class="headerlink" href="#pytensor-backend-and-precision" title="Link to this heading">#</a></h2>
+<p>Pytest uses PyTensor’s Python linker by default (<code class="docutils literal notranslate"><span class="pre">tests/_pytensor_defaults.py</span></code>
+adds <code class="docutils literal notranslate"><span class="pre">linker=py</span></code> to <code class="docutils literal notranslate"><span class="pre">PYTENSOR_FLAGS</span></code> when no linker is set). This matches
+CI and avoids native compilation, which made graph-heavy modules about 40 %
+slower. Compiled coverage is explicit: tests marked <code class="docutils literal notranslate"><span class="pre">compiled_backend</span></code> are
+rerun with <code class="docutils literal notranslate"><span class="pre">PYTENSOR_FLAGS=linker=numba</span></code> in a fresh serial process, and any
+explicit <code class="docutils literal notranslate"><span class="pre">linker</span></code> entry in <code class="docutils literal notranslate"><span class="pre">PYTENSOR_FLAGS</span></code> is kept. See the README for the
+exact command.</p>
+<p>Focused runs can currently fail under the package’s float32 default, depending
+on which modules import PyTensor first (<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/770">#770</a>). If a test that
+passes in the full suite fails in a focused run with a float32/float64
+tolerance mismatch, that is #770, not your change. Do not make a test pass by
+forcing float64 globally; precision-sensitive tests should state their
+precision explicitly.</p>
+</section>
+<section id="writing-tests-that-stay-cheap">
+<h2>Writing tests that stay cheap<a class="headerlink" href="#writing-tests-that-stay-cheap" title="Link to this heading">#</a></h2>
+<p><strong>One rule, one test, at the layer that owns it.</strong> Test a validation rule
+where it is implemented, usually configuration or request loading. Do not
+re-test it through each public runner with data acquisition patched out. A
+runner test only needs to show that validation runs before work starts, and
+one input is enough for that.</p>
+<p><strong>Do not multiply independent parametrize axes.</strong> A product such as
+route × bad value × file format runs the same branch many times. Before adding
+an axis, check that each value reaches different production code. Then:</p>
+<ul class="simple">
+<li><p>test every input against one route, and every route against one input;</p></li>
+<li><p>use one representative per failure class (for example negative, <code class="docutils literal notranslate"><span class="pre">nan</span></code> and
+wrong type), not several values that fail the same check;</p></li>
+<li><p>for numerical tests with three or more axes, use a small hand-picked table or
+pairwise coverage rather than the full product;</p></li>
+<li><p>put a case that expects a different error in its own test.</p></li>
+</ul>
+<p><strong>Keep retired-feature guards in one table.</strong> When an option or alias is
+removed, add it to one parametrized “removed names are rejected” test per
+layer instead of writing a new test for each removal. Remove such guards once
+the retirement has shipped in a release, unless the removed name is likely to
+reappear in users’ configuration files.</p>
+<p><strong>Assert behaviour, not structure.</strong> Do not assert <code class="docutils literal notranslate"><span class="pre">__module__</span></code>, <code class="docutils literal notranslate"><span class="pre">__all__</span></code>
+contents, absent private names, signatures or mock call order when a returned
+value, saved file or raised error can be checked instead.</p>
+<p><strong>Check file formats and metadata without real sampling.</strong> Tests of labels,
+units, manifests, provenance or output layout should use
+<code class="docutils literal notranslate"><span class="pre">tests.helpers.make_trace</span></code> or saved samples. Keep real sampling for tests
+whose subject is the sampler or the posterior.</p>
+<p><strong>Share expensive setup deliberately.</strong> Build an expensive, read-only result
+(a preparation, a compiled function, a fitted trace) once in a module-scoped
+fixture, and copy it into <code class="docutils literal notranslate"><span class="pre">tmp_path</span></code> when a test writes to it. Compile a
+PyTensor function once per test, not once per evaluation point. Do not widen
+fixture scope for mutable inputs.</p>
+<p><strong>Justify per-family copies.</strong> A rule shared by the standard, multisector,
+nested, CO2 and CO2/O2 families belongs in one test over the shared code,
+parametrized by family where needed. A per-family test should check something
+that only that family implements. Where the families still implement the same
+rule separately, prefer moving the rule into shared code over copying its
+test again.</p>
+</section>
+<section id="tests-that-are-expensive-on-purpose">
+<h2>Tests that are expensive on purpose<a class="headerlink" href="#tests-that-are-expensive-on-purpose" title="Link to this heading">#</a></h2>
+<p>Some tests need real processes or many draws. Keep them, but make the cost
+visible and bounded:</p>
+<ul class="simple">
+<li><p><strong>Fresh-process tests.</strong> Mark them <code class="docutils literal notranslate"><span class="pre">fresh_process</span></code>, and state in the
+docstring which import-time or process-boundary behaviour the test
+protects. Check several modules or conditions in one child process rather
+than starting one per parameter, unless each needs a clean interpreter.</p></li>
+<li><p><strong>Statistical-accuracy tests.</strong> Use one representative case in the default
+run and mark the rest <code class="docutils literal notranslate"><span class="pre">slow</span></code>. Draw counts above about 100, quadrature
+oracles and MCSE gates are signs that a test belongs in this group. Say in the
+docstring roughly how long it takes.</p></li>
+<li><p><strong>Installed-command workflows.</strong> Keep one real run per distinct entry point
+and route, and check detailed output contracts in cheaper tests.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">slow</span></code> tests are excluded by default (<code class="docutils literal notranslate"><span class="pre">addopts</span></code> in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>) and
+run with <code class="docutils literal notranslate"><span class="pre">-m</span> <span class="pre">slow</span></code>.</p>
+</section>
+<section id="reviewing-test-changes">
+<h2>Reviewing test changes<a class="headerlink" href="#reviewing-test-changes" title="Link to this heading">#</a></h2>
+<p>When a change adds tests, run its new tests with <code class="docutils literal notranslate"><span class="pre">--durations</span></code> and check:</p>
+<ul class="simple">
+<li><p>each new parametrize axis reaches distinct production code;</p></li>
+<li><p>any new case slower than about 1 s has a reason in its docstring;</p></li>
+<li><p>no new fresh-process, sampling or installed-command test duplicates an
+existing one.</p></li>
+</ul>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="validation_and_xarray.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Validation and labelled-array patterns</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="documentation.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Maintain the documentation</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#running-tests-while-iterating">Running tests while iterating</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#parallel-runs">Parallel runs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#pytensor-backend-and-precision">PyTensor backend and precision</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#writing-tests-that-stay-cheap">Writing tests that stay cheap</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#tests-that-are-expensive-on-purpose">Tests that are expensive on purpose</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#reviewing-test-changes">Reviewing test changes</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/development/testing.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
