@@ -12,6 +12,12 @@ import xarray as xr
 
 from dask import compute as dask_compute
 
+from openghg_inversions.biosphere_prior import BiospherePrior
+from openghg_inversions.models.biosphere import (
+    annotate_biosphere_prior,
+    resolve_retained_flux_prior,
+    retained_flux_prior_family,
+)
 from openghg_inversions.array_ops import select_gathered_data_array, to_dense_tree
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
@@ -280,6 +286,7 @@ def _linked_boundary_contract(boundary: Mapping[str, Bound]) -> tuple[dict[str, 
 
 def build_rhime_co2_o2(
     *,
+    biosphere_prior: BiospherePrior | None = None,
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
@@ -303,7 +310,8 @@ def build_rhime_co2_o2(
 
     Raises:
         ValueError: If input labels, errors, channel baseline choices, state
-            activity or covariance are inconsistent with the linked model.
+            activity or covariance are inconsistent with the linked model, or
+            ``biosphere_prior`` does not calibrate the prepared retained prior.
     """
     prepared = prepared_inputs
     _validate_channel_offset_options(offset_prior, offset_args)
@@ -316,13 +324,14 @@ def build_rhime_co2_o2(
     observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = (
         materialized
     )
+    flux_prior = resolve_retained_flux_prior(prepared.retained_prior, biosphere_prior)
     model = _build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
         co2_sensitivity=co2_sensitivity,
         o2_sensitivity=o2_sensitivity,
         aggregation_error=prepared.aggregation_error,
-        retained_prior=prepared.retained_prior,
+        retained_prior=flux_prior,
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
         tau_hours=tau_hours,
@@ -340,7 +349,11 @@ def build_rhime_co2_o2(
         variable_roles["offset_concentration"] = "offset_concentration"
     if bound or offset_prior:
         variable_roles["baseline_concentration"] = "baseline_concentration"
-    metadata = {**_co2_o2_metadata(prepared, observations=observations), **boundary_metadata}
+    metadata = {
+        **_co2_o2_metadata(prepared, observations=observations),
+        **boundary_metadata,
+        "prior": retained_flux_prior_family(flux_prior),
+    }
     if tau_hours is not None:
         variable_roles.update(
             {
@@ -362,6 +375,7 @@ def build_rhime_co2_o2(
 
 def run_rhime_co2_o2_from_prepared_inputs(
     *,
+    biosphere_prior: BiospherePrior | None = None,
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
@@ -386,6 +400,9 @@ def run_rhime_co2_o2_from_prepared_inputs(
     to the caller rather than the model API.
 
     Args:
+        biosphere_prior: Optional explicit calibration of the prepared retained
+            prior, checked once before graph construction; omission preserves
+            existing behavior.
         prepared_inputs: Validated preparation handoff containing joint
             observations and affine intercept on ``("observation",)``, separate
             channel sensitivities on their native observation axes and the retained
@@ -442,6 +459,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
         raise ValueError("Linked fixed-OU requires nuts_sampler='pymc'.")
     built = build_rhime_co2_o2(
         prepared_inputs=prepared_inputs,
+        biosphere_prior=biosphere_prior,
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
         boundary=boundary,
@@ -452,7 +470,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
         site_amplitude_prior=site_amplitude_prior,
     )
     trace = sample_rhime_model(built, sampler)
-    return annotate_co2_o2_trace(trace, built=built)
+    return annotate_co2_o2_trace(trace, built=built, biosphere_prior=biosphere_prior)
 
 
 def _annotate_linked_fixed_ou_trace(
@@ -492,6 +510,7 @@ def annotate_co2_o2_trace(
     trace: xr.DataTree,
     *,
     built: RhimeModelBuildResult,
+    biosphere_prior: BiospherePrior | None = None,
 ) -> xr.DataTree:
     """Attach the built joint model's scientific meaning after coordinate restoration.
 
@@ -502,10 +521,22 @@ def annotate_co2_o2_trace(
     repeated annotation does not add the shift twice. See
     :ref:`surface-centered-boundary-contract`.
 
+    ``biosphere_prior`` explicitly supplies optional resolved calibration for
+    persistence; the PyMC model carries no ambient calibration attribute.
+
     Both posterior and native prior-predictive traces retain roles, units,
     preparation provenance and used priors. Fixed-OU traces additionally retain
     species/site grouping and joint likelihood/predictive scope. The trace is
     updated and returned; no graph is constructed or inference performed.
+
+    Args:
+        trace: Trace with restored coordinates, updated in place.
+        built: Build result whose model produced ``trace``.
+        biosphere_prior: Optional resolved retained-state calibration to
+            persist with the trace.
+
+    Returns:
+        The annotated ``trace``.
     """
     trace.attrs["rhime_boundary_format_version"] = BOUNDARY_FORMAT_VERSION
     restore_absolute_predictives(trace)
@@ -523,4 +554,4 @@ def annotate_co2_o2_trace(
             trace[name]["y"].attrs["rhime_predictive_scope"] = "joint_observation_vector"
     if "fixed_ou_timescale" in built.output_contract.variable_roles:
         trace = _annotate_linked_fixed_ou_trace(trace, observations=trace["observed_data"].dataset["y"])
-    return trace
+    return annotate_biosphere_prior(trace, biosphere_prior)

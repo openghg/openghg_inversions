@@ -61,6 +61,7 @@ def build_co2_inference(
     )
     return build_co2_from_materialized(
         inputs, prepared_inputs=prepared, priors=priors, boundary=boundary,
+        biosphere_prior=model.get("biosphere_prior"),
         sigma_alignment=model.get("sigma_alignment"),
         sigma_prior=model.get("sigma_prior"),
         fixed_model_mismatch=model.get("fixed_model_mismatch"),
@@ -79,9 +80,11 @@ def annotate_co2_inference(
     """Keep exact joint prediction and likelihood semantics on inferred OU output."""
     units = prepared.inv_inputs["mf"].attrs.get("units")
     if cached is not None:
-        return _annotate_cached_co2_trace(trace, built, concentration_units=units)
+        return _annotate_cached_co2_trace(
+            trace, built, concentration_units=units, biosphere_prior=model.get("biosphere_prior"),
+        )
     return annotate_co2_trace(
-        trace, built, concentration_units=units,
+        trace, built, concentration_units=units, biosphere_prior=model.get("biosphere_prior"),
         likelihood_builder=model.get("likelihood_builder"), likelihood_kwargs=model.get("likelihood_kwargs"),
     )
 

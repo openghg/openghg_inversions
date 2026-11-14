@@ -281,9 +281,7 @@ def test_active_prior_is_prepared_once_for_graph_and_sampler(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     graph_prior: dict[str, CorrelatedLognormalPrior] = {}
-    original_add_state = (
-        co2_cached_sigma_model._add_prepared_correlated_lognormal_state_with_activity
-    )
+    original_add_state = co2_cached_sigma_model.add_prepared_retained_flux_state
 
     def capture_graph_prior(*args: Any, **kwargs: Any) -> Any:
         graph_prior["value"] = args[1]
@@ -291,7 +289,7 @@ def test_active_prior_is_prepared_once_for_graph_and_sampler(
 
     monkeypatch.setattr(
         co2_cached_sigma_model,
-        "_add_prepared_correlated_lognormal_state_with_activity",
+        "add_prepared_retained_flux_state",
         capture_graph_prior,
     )
     cached = _build(
