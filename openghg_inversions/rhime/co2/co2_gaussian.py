@@ -159,26 +159,41 @@ def _gaussian_state_prior(
     """Return the Gaussian retained-state moments and their PSD factor record."""
     mean = inputs["alpha_prior_mean"]
     covariance = inputs["alpha_prior_covariance"]
+    description = "correlated arithmetic-moment gaussian"
     if biosphere is not None:
-        mean, _ = xr.align(biosphere.data.baseline_mean, mean, join="exact")
+        baseline_mean, _ = xr.align(biosphere.data.baseline_mean, mean, join="exact")
+        if not (np.array_equal(baseline_mean.values, mean.values)
+                and np.array_equal(biosphere.data.baseline_covariance.values, covariance.values)):
+            raise ValueError("Biosphere calibration must use this preparation's baseline arithmetic moments.")
         covariance = biosphere.data.covariance
+        description = str(biosphere.data.attrs["family"])
     state_dim = str(mean.dims[0])
     factor = psd_factor(np.asarray(covariance.values, dtype=np.float64))
     labelled = xr.DataArray(
         factor.factor, dims=(state_dim, _MODE_DIM),
         coords={**mean.coords, _MODE_DIM: np.arange(factor.factor.shape[1])},
     )
-    return GaussianStatePrior(mean=mean, factor=labelled), factor.diagnostics
+    return GaussianStatePrior(mean=mean, factor=labelled, description=description), factor.diagnostics
 
 
 def _co2_noise_factor(
     inputs: xr.Dataset, prepared: Co2PreparedInputs, fixed_model_mismatch: Any,
 ) -> tuple[NDArray[np.float64], dict[str, Any]]:
-    """Return ``F_W = [L_A | diag(sqrt(R))]`` for the fixed CO2 likelihood error.
+    """Return a factor ``F_W`` of the fixed CO2 likelihood covariance ``A + R``.
 
-    The mismatch follows the CO2 builder: an explicit labelled value is
-    installed in ``inputs``; otherwise an explicit scalar wins over a prepared
-    ``fixed_model_mismatch`` field.
+    ``R = diag(mf_error**2 + fixed_model_mismatch**2)``. The mismatch follows
+    the CO2 builder: an explicit labelled value is installed in ``inputs``;
+    otherwise an explicit scalar wins over a prepared ``fixed_model_mismatch``
+    field. Low-rank and diagonal aggregation errors give the exact
+    ``[low_rank_factor | diag(sqrt(R + diagonal_residual_variance))]``.
+
+    A dense ``A`` gives the Cholesky factor of ``A + R`` formed directly, which
+    is backward stable for that covariance; Paige's method then never inverts
+    it. When that matrix is not numerically positive definite, for example
+    with zero ``R``, the factor is ``[L_A | diag(sqrt(R))]`` with ``L_A`` from
+    an eigendecomposition of ``A`` that clips only negative eigenvalues. No
+    positive eigenvalue is dropped: a mode below any relative tolerance can
+    still exceed ``R``.
     """
     error = np.asarray(inputs["mf_error"].transpose("nmeasure").values, dtype=np.float64)
     if fixed_model_mismatch is not None and not isinstance(fixed_model_mismatch, xr.DataArray):
@@ -194,15 +209,31 @@ def _co2_noise_factor(
     if aggregation.mode in ("low_rank", "diagonal"):
         assert aggregation.diagonal_variance is not None
         variance = variance + np.asarray(aggregation.diagonal_variance.values, dtype=np.float64)
+    if aggregation.mode == "dense":
+        assert aggregation.covariance is not None
+        covariance = np.asarray(aggregation.covariance.values, dtype=np.float64)
+        covariance = 0.5 * (covariance + covariance.T)
+        total = covariance.copy()
+        total[np.diag_indices_from(total)] += variance
+        try:
+            factor = np.asarray(np.linalg.cholesky(total), dtype=np.float64)
+        except np.linalg.LinAlgError:
+            pass
+        else:
+            record["noise_factor_method"] = "cholesky(A + R)"
+            return factor, record
+        del total
+        clipped = psd_factor(covariance)
+        record["noise_factor_method"] = "[eigh_clip(A) | diag(sqrt(R))]"
+        record["aggregation_psd_factor"] = clipped.diagnostics
+        return np.hstack([clipped.factor, np.diag(np.sqrt(variance))]), record
     columns = [np.diag(np.sqrt(variance))]
     if aggregation.mode == "low_rank":
         assert aggregation.factor is not None
         columns.insert(0, np.asarray(aggregation.factor.values, dtype=np.float64))
-    elif aggregation.mode == "dense":
-        assert aggregation.covariance is not None
-        factor = psd_factor(np.asarray(aggregation.covariance.values, dtype=np.float64))
-        record["aggregation_psd_factor"] = factor.diagnostics
-        columns.insert(0, factor.factor)
+    record["noise_factor_method"] = {
+        "low_rank": "[low_rank_factor | diag(sqrt(R + D))]", "diagonal": "diag(sqrt(R + D))", "none": "diag(sqrt(R))",
+    }[aggregation.mode]
     return np.hstack(columns), record
 
 

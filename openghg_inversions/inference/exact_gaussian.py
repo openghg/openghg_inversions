@@ -191,9 +191,10 @@ def solve_linear_gaussian_model(
     """Solve the exact posterior of a linear-Gaussian graph by Paige's method.
 
     Args:
-        model: Graph whose free variables have fixed Normal priors.
-        likelihood_mean: Likelihood mean expression aligned with
-            ``observations``.
+        model: Graph whose free variables have fixed Normal priors, with one
+            observed variable and no potentials.
+        likelihood_mean: Mean expression of the single observed variable,
+            aligned with ``observations``.
         observations: Observed values used by the likelihood.
         noise_factor: Factor of the fixed likelihood covariance.
         rng: Generator for the affinity check.
@@ -201,7 +202,21 @@ def solve_linear_gaussian_model(
 
     Returns:
         The free variables and their exact joint posterior.
+
+    Raises:
+        ValueError: If the graph has potentials or other than one observed
+            variable, or fails :func:`normal_variables` or :func:`affine_maps`.
     """
+    if model.potentials:
+        raise ValueError(
+            "The Gaussian estimator cannot include pm.Potential terms: "
+            f"{[str(potential.name) for potential in model.potentials]!r}."
+        )
+    if len(model.observed_RVs) != 1:
+        raise ValueError(
+            "The Gaussian estimator requires exactly one observed variable, whose mean it reads; found "
+            f"{[str(rv.name) for rv in model.observed_RVs]!r}."
+        )
     variables = normal_variables(model)
     (mean_map,) = affine_maps(model, [likelihood_mean], variables, rng=rng)
     posterior = paige_gls(

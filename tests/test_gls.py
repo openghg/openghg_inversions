@@ -136,15 +136,37 @@ def test_posterior_draws_use_the_square_factor():
     np.testing.assert_allclose(draws, posterior.mean + standard @ posterior.cov_factor.T)
 
 
-def test_psd_factor_records_clipped_and_omitted_eigenvalues():
+def test_psd_factor_keeps_positive_modes_and_records_clipping():
     vectors = np.linalg.qr(np.random.default_rng(5).normal(size=(4, 4)))[0]
     matrix = vectors @ np.diag([2.0, 1.0, 1e-20, -1e-14]) @ vectors.T
     result = psd_factor(matrix)
-    assert result.factor.shape == (4, 2)
-    np.testing.assert_allclose(result.factor @ result.factor.T, vectors[:, :2] @ np.diag([2.0, 1.0]) @ vectors[:, :2].T,
-                               atol=1e-13)
-    assert result.diagnostics["rank"] == 2
-    assert result.diagnostics["negative_count"] == 1
+    eigenvalues = np.linalg.eigvalsh(0.5 * (matrix + matrix.T))
+    assert result.diagnostics["rank"] == result.factor.shape[1] == int((eigenvalues > 0).sum())
+    np.testing.assert_allclose(result.factor @ result.factor.T, matrix, atol=2e-14)
+    assert result.diagnostics["dropped_positive_max"] == 0.0
+    assert result.diagnostics["negative_count"] >= 1
     assert result.diagnostics["negative_clipped_max"] == pytest.approx(1e-14, rel=1e-2)
+    assert result.diagnostics["negative_clipped_sum"] >= result.diagnostics["negative_clipped_max"]
+    truncated = psd_factor(matrix, rtol=1e-10)
+    assert truncated.factor.shape == (4, 2)
+    assert truncated.diagnostics["rank"] == 2
     with pytest.raises(ValueError, match="symmetric"):
         psd_factor(np.array([[1.0, 0.5], [0.0, 1.0]]))
+
+
+@pytest.mark.parametrize("prior_sd", [1e8, 1e12])
+def test_prior_and_noise_scales_are_balanced(prior_sd):
+    """A diffuse prior against small noise is equilibrated, not refused."""
+    rng = np.random.default_rng(6)
+    nobs, n = 12, 3
+    design = rng.normal(size=(nobs, n))
+    noise_sd = 1e-3 * rng.uniform(0.5, 2.0, nobs)
+    prior_mean = rng.normal(size=n)
+    y = design @ rng.normal(size=n) + noise_sd * rng.normal(size=nobs)
+    posterior = paige_gls(y, design, np.diag(noise_sd), prior_mean, prior_sd * np.eye(n))
+    weighted = design / noise_sd[:, None]
+    precision = weighted.T @ weighted + np.eye(n) / prior_sd**2
+    covariance = np.linalg.inv(precision)
+    mean = covariance @ (weighted.T @ (y / noise_sd) + prior_mean / prior_sd**2)
+    np.testing.assert_allclose(posterior.covariance, covariance, rtol=1e-10, atol=0)
+    np.testing.assert_allclose(posterior.mean, mean, rtol=1e-11)

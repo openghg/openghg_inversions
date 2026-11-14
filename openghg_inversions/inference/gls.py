@@ -22,6 +22,11 @@ separates the noise directions fixed by the data from the free directions
 and the posterior covariance is :math:`P P^T` with
 :math:`P = R_1^{-1} F_1 Z_1`.
 
+The system is first equilibrated by diagonal scalings: the state is written
+as :math:`x = m + D z` with :math:`D` the row norms of :math:`L_B`, and each
+observation row is divided by the row norm of :math:`F_W`. This balances
+prior and noise scales of any relative size without inverting a factor.
+
 Noise and prior factors may be rectangular or rank deficient. Each is first
 compressed to its numerical column space by a pivoted QR factorisation of its
 transpose, which yields a triangular factor of the same covariance without
@@ -55,7 +60,8 @@ class GlsDiagnostics:
     r"""Numerical ranks, condition estimates and residuals of one solve.
 
     Condition estimates are LAPACK ``trcon`` reciprocal 1-norm estimates of
-    triangular factors; ``nan`` marks an empty factor.
+    triangular factors of the equilibrated system (prior rows and noise rows
+    scaled to unit factor norm); ``nan`` marks an empty factor.
 
     Attributes:
         n_observations: Number of observation rows.
@@ -158,7 +164,7 @@ class PsdFactor:
     diagnostics: dict[str, Any]
 
 
-def psd_factor(matrix: ArrayLike, *, rtol: float | None = None) -> PsdFactor:
+def psd_factor(matrix: ArrayLike, *, rtol: float = 0.0) -> PsdFactor:
     """Factor a symmetric positive-semidefinite matrix by clipped eigenvalues.
 
     The symmetric part is decomposed with ``numpy.linalg.eigh``. Negative
@@ -166,10 +172,16 @@ def psd_factor(matrix: ArrayLike, *, rtol: float | None = None) -> PsdFactor:
     ``rtol * max_eigenvalue`` are omitted, so the factor has one column per
     retained mode. All repairs are recorded rather than hidden.
 
+    The default keeps every positive eigenvalue. Do not drop small positive
+    modes of a noise covariance: a mode below a relative tolerance can still
+    exceed a small diagonal mismatch added to it, and omitting it would
+    replace ``lambda + R`` by ``R`` in that direction. :func:`paige_gls`
+    determines numerical rank itself.
+
     Args:
         matrix: Square symmetric matrix.
-        rtol: Relative eigenvalue tolerance; defaults to
-            ``size * finfo(float64).eps``.
+        rtol: Relative eigenvalue tolerance; the default ``0`` clips only
+            negative eigenvalues.
 
     Returns:
         The factor and its clipping diagnostics.
@@ -189,9 +201,8 @@ def psd_factor(matrix: ArrayLike, *, rtol: float | None = None) -> PsdFactor:
     if asymmetry > 1e-10 * scale:
         raise ValueError("A PSD factor requires a symmetric matrix.")
     eigenvalues, eigenvectors = np.linalg.eigh(0.5 * (values + values.T))
-    relative = size * _EPS if rtol is None else float(rtol)
     largest = float(eigenvalues[-1]) if size else 0.0
-    tolerance = relative * max(largest, 0.0)
+    tolerance = float(rtol) * max(largest, 0.0)
     keep = eigenvalues > tolerance
     negative = eigenvalues < 0
     dropped_positive = (~keep) & ~negative
@@ -206,6 +217,7 @@ def psd_factor(matrix: ArrayLike, *, rtol: float | None = None) -> PsdFactor:
             "min_eigenvalue": float(eigenvalues[0]) if size else 0.0,
             "negative_count": int(negative.sum()),
             "negative_clipped_max": float(-eigenvalues[negative].min()) if negative.any() else 0.0,
+            "negative_clipped_sum": float(-eigenvalues[negative].sum()),
             "tolerance": tolerance,
             "dropped_positive_max": float(eigenvalues[dropped_positive].max()) if dropped_positive.any() else 0.0,
             "symmetry_max_abs": asymmetry,
@@ -339,15 +351,24 @@ def paige_gls(
     def tolerance(*shape: int) -> float:
         return float(rank_rtol) if rank_rtol is not None else max(shape + (1,)) * _EPS
 
-    noise_c, noise_rank, rcond_noise = _compress_factor(noise, tolerance(*noise.shape))
-    prior_c, prior_rank, _ = _compress_factor(prior, tolerance(*prior.shape))
+    # Equilibrate: x = m + D z with D the prior row scales, and divide each
+    # observation row by its noise scale. Both are diagonal, so no factor is
+    # inverted, and prior and noise scales of any relative size are balanced.
+    prior_scale = np.linalg.norm(prior, axis=1)
+    prior_scale[prior_scale == 0] = 1.0
+    noise_scale = np.linalg.norm(noise, axis=1)
+    noise_scale[noise_scale == 0] = 1.0
+    scaled_operator = operator * prior_scale[None, :] / noise_scale[:, None]
+    innovation = (observations - operator @ mean0) / noise_scale
+    noise_c, noise_rank, rcond_noise = _compress_factor(noise / noise_scale[:, None], tolerance(*noise.shape))
+    prior_c, prior_rank, _ = _compress_factor(prior / prior_scale[:, None], tolerance(*prior.shape))
 
-    # Stack the prior as pseudo-observations: A x = b + F v.
+    # Stack the prior as pseudo-observations: A z = b + F v.
     rows = nobs + n
     stacked = np.zeros((rows, n), order="F")
-    stacked[:nobs] = operator
+    stacked[:nobs] = scaled_operator
     stacked[nobs:] = np.eye(n)
-    rhs = np.concatenate([observations, mean0])[:, None]
+    rhs = np.concatenate([innovation, np.zeros(n)])[:, None]
     factor = np.zeros((rows, noise_rank + prior_rank), order="F")
     factor[:nobs, :noise_rank] = noise_c
     factor[nobs:, noise_rank:] = prior_c
@@ -383,14 +404,16 @@ def paige_gls(
         unreachable = c2.copy()
         rotated_f1 = np.asfortranarray(f1.T)
     constraint_residual = float(np.linalg.norm(unreachable))
-    if constraint_residual > consistency_rtol * max(float(np.linalg.norm(c2)), _TINY):
+    if constraint_residual > consistency_rtol * max(float(np.linalg.norm(projected)), _TINY):
         raise ValueError(
             "The observations are inconsistent with the rank-deficient noise model: "
             f"an unreachable data component of norm {constraint_residual:.3e} remains."
         )
 
-    mean = solve_triangular(r1, c1 - rotated_f1[:constraint_rank].T @ w1, lower=False, check_finite=False)
+    scaled_mean = solve_triangular(r1, c1 - rotated_f1[:constraint_rank].T @ w1, lower=False, check_finite=False)
+    mean = mean0 + prior_scale * scaled_mean
     free = solve_triangular(r1, rotated_f1[constraint_rank:].T, lower=False, check_finite=False)
+    free *= prior_scale[:, None]
     if free.shape[1] > n:
         # Compress P to a square factor with the same P P^T.
         upper = cast(NDArray[np.float64], np.linalg.qr(free.T, mode="r"))

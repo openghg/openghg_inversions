@@ -4,6 +4,7 @@ from copy import deepcopy
 import json
 from types import SimpleNamespace
 
+import mpmath
 import numpy as np
 import pytest
 import scipy.linalg as sl
@@ -12,6 +13,8 @@ import xarray as xr
 from examples.co2_handoffs import configuration, synthetic_inputs
 from openghg_inversions.rhime.co2 import execution, handoffs
 from openghg_inversions.rhime.co2 import inference as co2_inference
+from openghg_inversions.inference.gls import paige_gls, psd_factor
+from openghg_inversions.rhime.co2 import co2_gaussian
 from openghg_inversions.rhime.co2.co2_gaussian import GAUSSIAN_ALGORITHM, check_co2_gaussian_model
 from openghg_inversions.rhime.co2.co2_outputs import validate_co2_trace
 from openghg_inversions.rhime.co2.configuration import Co2ModelConfig, _resolve_co2_sampling
@@ -123,6 +126,7 @@ def test_non_gaussian_choices_are_refused_before_materialization(case, monkeypat
         raise AssertionError("Refused Gaussian choices must fail before reading arrays")
 
     monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(co2_gaussian, "materialize_co2_inputs", forbidden)
     with pytest.raises(ValueError, match=message):
         execution.run_co2(params=params, prepared=prepared, affine_artifact=affine)
 
@@ -152,11 +156,94 @@ def test_default_sampling_stays_nuts(case, monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("The default method must not reach the Gaussian estimator")
 
-    from openghg_inversions.rhime.co2 import co2_gaussian
-
     monkeypatch.setattr(co2_gaussian, "sample_co2_gaussian", forbidden)
     monkeypatch.setattr(co2_inference, "build_co2_inference", lambda *args: ("built", None))
     monkeypatch.setattr(co2_inference, "sample_rhime_model", lambda built, sampler: xr.DataTree())
     monkeypatch.setattr(co2_inference, "annotate_co2_inference", lambda trace, *args: trace)
     _, actual = co2_inference.sample_co2_inference(None, {}, default.sampler)
     assert actual["algorithm"] == "nuts"
+
+
+def test_calibrated_gaussian_biosphere_prior_is_used_and_recorded(case, double_precision):
+    prepared, _, params = case
+    inputs = prepared.inv_inputs
+    covariance = inputs.alpha_prior_covariance * 1.5
+    calibration = xr.Dataset(
+        {"baseline_mean": inputs.alpha_prior_mean, "baseline_covariance": inputs.alpha_prior_covariance,
+         "covariance": covariance, "biosphere": xr.ones_like(inputs.alpha_prior_mean, dtype=bool)},
+        attrs={"family": "gaussian", "calibration_report": "{}"},
+    )
+    biosphere = SimpleNamespace(data=calibration, to_dataset=lambda: calibration)
+    model = {**Co2ModelConfig.from_params(params).model_arguments(), "biosphere_prior": biosphere}
+    sampling = _resolve_co2_sampling(params, model=model)
+    trace, _ = co2_inference.sample_co2_inference(prepared, model, sampling.sampler, method="gaussian")
+    exact = trace["gaussian_posterior"].dataset
+    np.testing.assert_allclose(exact.prior_covariance.values[:2, :2], covariance.values, rtol=1e-12)
+    assert json.loads(trace.attrs["rhime_model_metadata"])["prior"] == "gaussian"
+    assert "biosphere_prior" in trace.children
+    altered = calibration.assign(baseline_covariance=covariance)
+    biosphere = SimpleNamespace(data=altered, to_dataset=lambda: altered)
+    with pytest.raises(ValueError, match="baseline arithmetic moments"):
+        co2_inference.sample_co2_inference(prepared, {**model, "biosphere_prior": biosphere}, sampling.sampler,
+                                           method="gaussian")
+
+
+def _dense_inputs(aggregation, error):
+    index = np.arange(aggregation.shape[0])
+    return xr.Dataset(
+        {"mf_error": ("nmeasure", error), "aggregation_error_covariance": (("nmeasure", "nmeasure_cov"), aggregation)},
+        coords={"nmeasure": index, "nmeasure_cov": index},
+    )
+
+
+def test_dense_noise_keeps_small_aggregation_modes_above_the_mismatch():
+    """Aggregation modes from 1e2 down to 1e-14 with R = 1e-12: none may be replaced by R alone."""
+    rng = np.random.default_rng(7)
+    nobs, n, mismatch = 60, 4, 1e-12
+    vectors = np.linalg.qr(rng.normal(size=(nobs, nobs)))[0]
+    aggregation = (vectors * np.logspace(2, -14, nobs)) @ vectors.T
+    aggregation = 0.5 * (aggregation + aggregation.T)
+    noise = aggregation + mismatch * np.eye(nobs)
+    design = rng.normal(size=(nobs, n))
+    prior_mean, prior_factor = rng.normal(size=n), np.diag([1.0, 2.0, 0.5, 1.5])
+    y = design @ (prior_mean + prior_factor @ rng.normal(size=n)) + np.linalg.cholesky(noise) @ rng.normal(size=nobs)
+
+    factor, record = co2_gaussian._co2_noise_factor(
+        _dense_inputs(aggregation, np.full(nobs, np.sqrt(mismatch))), SimpleNamespace(aggregation_error_mode="dense"),
+        0.0,
+    )
+    assert record["noise_factor_method"] == "cholesky(A + R)"
+    np.testing.assert_allclose(factor @ factor.T, noise, rtol=0, atol=1e-14)
+
+    mpmath.mp.dps = 40
+    to_mp = lambda array: mpmath.matrix(array.tolist())  # noqa: E731
+    noise_inverse = (to_mp(aggregation) + mpmath.diag([mpmath.mpf(mismatch)] * nobs)) ** -1
+    prior_precision = to_mp(prior_factor @ prior_factor.T) ** -1
+    covariance = (to_mp(design).T * noise_inverse * to_mp(design) + prior_precision) ** -1
+    mean = covariance * (to_mp(design).T * noise_inverse * to_mp(y[:, None]) + prior_precision * to_mp(prior_mean[:, None]))
+    reference_mean = np.array([float(value) for value in mean])
+    reference_sd = np.sqrt(np.diag(np.array(covariance.tolist(), dtype=float)))
+
+    def errors(noise_factor):
+        posterior = paige_gls(y, design, noise_factor, prior_mean, prior_factor)
+        return (np.max(np.abs(posterior.mean - reference_mean) / reference_sd),
+                np.max(np.abs(np.sqrt(np.diag(posterior.covariance)) / reference_sd - 1)))
+
+    mean_error, sd_error = errors(factor)
+    assert mean_error < 0.01 and sd_error < 1e-3
+    # A relative eigenvalue tolerance drops modes comparable to R and visibly biases the posterior.
+    truncated = psd_factor(aggregation, rtol=nobs * np.finfo(float).eps)
+    assert truncated.diagnostics["dropped_positive_max"] > 0.5 * mismatch
+    mean_error, sd_error = errors(np.hstack([truncated.factor, np.sqrt(mismatch) * np.eye(nobs)]))
+    assert mean_error > 0.3 and sd_error > 0.05
+
+
+def test_singular_dense_noise_falls_back_to_clipped_eigenvalues():
+    rng = np.random.default_rng(8)
+    low_rank = rng.normal(size=(6, 2))
+    factor, record = co2_gaussian._co2_noise_factor(
+        _dense_inputs(low_rank @ low_rank.T, np.zeros(6)), SimpleNamespace(aggregation_error_mode="dense"), 0.0,
+    )
+    assert record["noise_factor_method"] == "[eigh_clip(A) | diag(sqrt(R))]"
+    assert record["aggregation_psd_factor"]["dropped_positive_max"] == 0.0
+    np.testing.assert_allclose(factor @ factor.T, low_rank @ low_rank.T, atol=1e-12)

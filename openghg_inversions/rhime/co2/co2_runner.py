@@ -607,7 +607,7 @@ def build_co2_from_materialized(
                 "recipe": "co2",
                 "kind": "builtin",
                 "prior": (
-                    "correlated arithmetic-moment gaussian" if gaussian_prior is not None
+                    gaussian_prior.description if gaussian_prior is not None
                     else biosphere_prior.data.attrs["family"] if biosphere_prior is not None
                     else "correlated arithmetic-moment lognormal"
                 ),

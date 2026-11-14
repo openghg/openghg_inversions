@@ -59,10 +59,12 @@ class GaussianStatePrior:
         mean: Labelled arithmetic mean on the retained state dimension.
         factor: Labelled ``(state_dim, mode_dim)`` factor of the prior
             covariance, as returned by a PSD factorisation.
+        description: Prior family recorded in the model metadata.
     """
 
     mean: xr.DataArray
     factor: xr.DataArray
+    description: str = "correlated arithmetic-moment gaussian"
 
 
 def _fixed_mismatch_array(

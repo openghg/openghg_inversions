@@ -400,6 +400,11 @@ def prior_predictive(
 ) -> dict[str, Any]:
     """Check exact graph prior predictions without posterior inference.
 
+    This checks the NUTS graph, with the prepared correlated LogNormal (or
+    calibrated) retained prior, whatever ``sampling.method`` a later sample
+    stage selects. The Gaussian estimator's moment-matched Gaussian prior is
+    recorded in its ``gaussian_posterior`` group and ``prior`` draws instead.
+
     Construction/inference errors propagate before creating a destination. Only
     evaluated missing, empty or non-finite predictive evidence becomes a failed
     report. The check never repairs absent posterior/replay evidence.
