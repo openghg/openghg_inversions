@@ -215,6 +215,46 @@ Inferred-OU tuning belongs to ``sampling.sigma_target_accept`` and
 ``sampling.state_target_accept``. Saved Python sampling takes the same
 ``sampling`` mapping as the full configuration.
 
+Exact fixed-noise Gaussian estimation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For experiments that need the exact posterior of the linear-Gaussian model
+rather than NUTS draws, select the Gaussian estimator. NUTS stays the default.
+
+.. code-block:: toml
+
+   [likelihood]
+   kind = "additive_sigma"
+   no_model_error = true
+   fixed_model_mismatch = 0.8   # e.g. the median R of a previous NUTS run
+
+   [model.boundary]
+   prior = { pdf = "normal", mu = 1.0, sigma = 0.05 }
+
+   [sampling]
+   method = "gaussian"
+   draws = 1000
+   random_seed = 12345
+   sample_prior_predictive = 1000
+
+The retained flux state then has a Gaussian prior with the prepared arithmetic
+moments ``alpha_prior_mean`` and ``alpha_prior_covariance`` (the moments the
+default correlated LogNormal prior matches), and the likelihood covariance is
+the fixed ``mf_error**2 + fixed_model_mismatch**2`` on the diagonal plus the
+prepared aggregation covariance. The posterior is solved by Paige's generalised
+least squares (:func:`~openghg_inversions.inference.gls.paige_gls`), which never
+inverts, whitens or forms that covariance, so a very small mismatch on a
+rank-deficient aggregation covariance stays accurate. ``draws`` independent
+exact draws fill one posterior chain with the usual variables and roles, so
+replay and products are unchanged, and a ``gaussian_posterior`` trace group
+holds the exact moments, numerical ranks and condition estimates. The seed is
+recorded; one is drawn when ``random_seed`` is omitted.
+
+The estimator refuses what it cannot solve exactly: an inferred model-error
+scale, fixed-OU or other replacement likelihoods, non-Normal boundary or offset
+priors, calibrated biosphere priors with LogNormal states, and NUTS-only
+``sampling`` options. It requires ``PYTENSOR_FLAGS=floatX=float64``.
+
 The configured ``rhime run --model co2`` CLI route uses
 ``run_co2`` and writes requested products. Python
 ``rhime.run(model="co2", config_file="co2.toml")`` selects the same configured
