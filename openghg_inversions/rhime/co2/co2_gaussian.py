@@ -48,13 +48,17 @@ from openghg_inversions.inference.gls import psd_factor
 from openghg_inversions.inference.sampling import RhimeSampler
 from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice, MultiplicativeChoice
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
-from openghg_inversions.observation_error import resolve_aggregation_error
+from openghg_inversions.observation_error import (
+    aggregation_error_as_low_rank, prepare_low_rank_aggregation_error, resolve_aggregation_error,
+)
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 
 from .co2_model import GaussianStatePrior
 from .co2_preparation import Co2PreparedInputs
 from .co2_runner import annotate_co2_trace, build_co2_from_materialized, materialize_co2_inputs
-from .model_mismatch import EmpiricalBayesMismatch, empirical_bayes_mismatch, observation_sites, per_site_mismatch
+from .model_mismatch import (
+    EmpiricalBayesMismatch, empirical_bayes_mismatch, observation_sites, per_site_mismatch, type2_ml_mismatch,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -361,12 +365,45 @@ def _empirical_bayes(
     prior_state_variance = np.einsum("ij,j->i", mean_map.matrix**2, variables.prior_sd**2)
     aggregation = resolve_aggregation_error(inputs, prepared.aggregation_error_mode)
     sites = observation_sites(inputs["mf"])
-    sigma, record = empirical_bayes_mismatch(
-        choice, sites=sites, residual=residual, prior_state_variance=prior_state_variance,
-        aggregation_variance=np.asarray(aggregation.marginal_variance, dtype=np.float64),
-        error_variance=np.asarray(inputs["mf_error"].transpose("nmeasure").values, dtype=np.float64) ** 2,
+    error_variance = np.asarray(inputs["mf_error"].transpose("nmeasure").values, dtype=np.float64) ** 2
+    aggregation_variance = np.asarray(aggregation.marginal_variance, dtype=np.float64)
+    if choice.mode != "type2_ml":
+        return empirical_bayes_mismatch(
+            choice, sites=sites, residual=residual, prior_state_variance=prior_state_variance,
+            aggregation_variance=aggregation_variance, error_variance=error_variance,
+        )
+    nobs = residual.size
+    dense: NDArray[np.float64] | None = None
+    factor = np.zeros((nobs, 0))
+    diagonal = np.zeros(nobs)
+    if choice.aggregation == "exact":
+        if aggregation.mode == "dense":
+            assert aggregation.covariance is not None
+            dense = np.asarray(aggregation.covariance.values, dtype=np.float64)
+            representation = "exact dense aggregation covariance"
+        else:
+            factor, diagonal = aggregation_error_as_low_rank(aggregation)
+            dense = factor @ factor.T + np.diag(diagonal)
+            representation = f"exact dense form of the prepared {aggregation.mode} aggregation covariance"
+    elif aggregation.mode == "dense":
+        assert aggregation.covariance is not None
+        approximation = prepare_low_rank_aggregation_error(
+            aggregation.covariance, rank=min(choice.rank, nobs), covariance_dim=str(aggregation.covariance.dims[1]),
+        )
+        factor, diagonal = aggregation_error_as_low_rank(approximation.aggregation_error)
+        representation = (f"rank-{factor.shape[1]} low-rank-plus-diagonal approximation of the dense "
+                          f"aggregation covariance (relative Frobenius error "
+                          f"{approximation.diagnostics['relative_frobenius_reconstruction_error']:.3g})")
+    else:
+        factor, diagonal = aggregation_error_as_low_rank(aggregation)
+        representation = f"prepared {aggregation.mode} aggregation covariance (Woodbury)"
+    return type2_ml_mismatch(
+        choice, sites=sites, residual=residual,
+        state_factor=mean_map.matrix * variables.prior_sd[None, :],
+        aggregation_factor=factor, aggregation_diagonal=diagonal, aggregation_dense=dense,
+        aggregation_variance=aggregation_variance, error_variance=error_variance,
+        aggregation_representation=representation,
     )
-    return sigma, record
 
 
 def sample_co2_gaussian(
@@ -466,6 +503,12 @@ def sample_co2_gaussian(
         mismatch_record["sigma_by_site"] = by_site
     mismatch_record["units"] = prepared.inv_inputs["mf"].attrs.get("units")
     if isinstance(mismatch, EmpiricalBayesMismatch):
+        if mismatch_record["empirical_bayes"].get("converged") is False:
+            logger.warning(
+                "EMPIRICAL BAYES TYPE-II ML DID NOT CONVERGE after %d iterations (%s); the per-site sigma below is "
+                "the last iterate and may be unreliable.",
+                mismatch_record["empirical_bayes"]["iterations"], mismatch_record["empirical_bayes"]["message"],
+            )
         logger.warning(
             "Empirical Bayes model mismatch (%s, floor %g): sigma by site %s %s. The Gaussian posterior treats "
             "these as known, so it does not include sigma uncertainty, and the observations are used twice "
@@ -496,6 +539,12 @@ def sample_co2_gaussian(
     mismatch_summary = {key: value for key, value in mismatch_record.items() if key != "empirical_bayes"}
     if isinstance(mismatch, EmpiricalBayesMismatch):
         mismatch_summary.update(empirical_bayes_mode=mismatch.mode, empirical_bayes_floor=mismatch.floor)
+        if mismatch.mode == "type2_ml":
+            eb = mismatch_record["empirical_bayes"]
+            mismatch_summary.update({f"type2_ml_{name}": eb[name] for name in (
+                "aggregation", "aggregation_representation", "optimiser", "converged", "iterations",
+                "log_marginal_likelihood", "log_marginal_likelihood_start", "log_marginal_likelihood_floor",
+            )})
     actual: dict[str, Any] = {
         "algorithm": GAUSSIAN_ALGORITHM, "draws": sampler.draws, "chains": 1, "seed": seed,
         "prior_draws": prior_draws, "noise_rank": diagnostics["noise_rank"],

@@ -23,8 +23,10 @@ from openghg_inversions.rhime.co2.co2_gaussian import GAUSSIAN_ALGORITHM, check_
 from openghg_inversions.rhime.co2.co2_outputs import validate_co2_trace
 from openghg_inversions.rhime.co2.configuration import Co2ModelConfig, _resolve_co2_sampling
 from openghg_inversions.rhime.co2.model_mismatch import (
-    EmpiricalBayesMismatch, empirical_bayes_mismatch, parse_fixed_model_mismatch, per_site_mismatch,
+    EmpiricalBayesMismatch, GaussianMarginal, empirical_bayes_mismatch, parse_fixed_model_mismatch,
+    per_site_mismatch, type2_ml_mismatch,
 )
+from scipy.stats import multivariate_normal
 from openghg_inversions.serialization import load_trace, save_trace
 
 GAUSSIAN_SAMPLING = {"method": "gaussian", "draws": 40, "random_seed": 11, "sample_prior_predictive": 20,
@@ -490,3 +492,114 @@ def test_prior_predictive_maps_site_tables_and_refuses_empirical_bayes(case, tmp
     with pytest.raises(ValueError, match="empirical-Bayes"):
         handoffs.prior_predictive(manifest, model=Co2ModelConfig.from_params(params),
                                   output_dir=tmp_path / "eb-prior", draws=5)
+
+
+def _marginal_case(seed=0, n_per_site=20, exact=False):
+    rng = np.random.default_rng(seed)
+    codes = np.repeat([0, 1, 2], n_per_site)
+    n = codes.size
+    state, aggregation = rng.normal(size=(n, 5)), 0.5 * rng.normal(size=(n, 4))
+    diagonal, error = rng.uniform(0.1, 0.3, n), np.full(n, 0.01)
+    residual = 2 * rng.normal(size=n)
+    if exact:
+        marginal = GaussianMarginal(residual, codes, state, error, dense=aggregation @ aggregation.T + np.diag(diagonal))
+    else:
+        marginal = GaussianMarginal(residual, codes, np.hstack([state, aggregation]), diagonal + error)
+    covariance = state @ state.T + aggregation @ aggregation.T + np.diag(diagonal + error)
+    return marginal, residual, codes, covariance
+
+
+@pytest.mark.parametrize("exact", [False, True], ids=["low-rank", "exact"])
+def test_type2_marginal_likelihood_and_gradient(exact):
+    marginal, residual, codes, covariance = _marginal_case(exact=exact)
+    log_sigma = np.log([0.5, 1.0, 2.0])
+    value, gradient = marginal(log_sigma)
+    expected = multivariate_normal(np.zeros(residual.size), covariance + np.diag(np.exp(2 * log_sigma)[codes]))
+    assert value == pytest.approx(expected.logpdf(residual), rel=1e-12)
+    step = 1e-6
+    finite = [(marginal(log_sigma + step * unit)[0] - marginal(log_sigma - step * unit)[0]) / (2 * step)
+              for unit in np.eye(3)]
+    np.testing.assert_allclose(gradient, finite, rtol=1e-6)
+
+
+@pytest.mark.parametrize("truth", [(1.0, 1.0, 1.0, 1.0), (0.3, 0.8, 1.6, 3.0)], ids=["homoscedastic", "heteroscedastic"])
+def test_type2_ml_recovers_sigma_despite_a_shared_mode(truth):
+    """One shared mode of variance 100 defeats the moment mode but not the marginal likelihood."""
+    rng = np.random.default_rng(3)
+    n_per_site = 400
+    sites = np.repeat(["A", "B", "C", "D"], n_per_site)
+    n = sites.size
+    state = np.hstack([np.full((n, 1), 10.0), 0.3 * rng.normal(size=(n, 6))])
+    aggregation = 0.2 * rng.normal(size=(n, 3))
+    diagonal, error = np.full(n, 0.05), np.full(n, 0.01)
+    sigma_true = np.repeat(truth, n_per_site)
+    residual = (state @ rng.standard_normal(state.shape[1]) + aggregation @ rng.standard_normal(3)
+                + np.sqrt(diagonal + error + sigma_true**2) * rng.standard_normal(n))
+    aggregation_variance = np.sum(aggregation**2, axis=1) + diagonal
+    choice = EmpiricalBayesMismatch(mode="type2_ml", floor=0.05)
+    _, record = type2_ml_mismatch(
+        choice, sites=sites, residual=residual, state_factor=state, aggregation_factor=aggregation,
+        aggregation_diagonal=diagonal, aggregation_dense=None, aggregation_variance=aggregation_variance,
+        error_variance=error, aggregation_representation="test",
+    )
+    assert record["converged"] and record["log_marginal_likelihood"] >= record["log_marginal_likelihood_start"]
+    for site, value in zip("ABCD", truth):
+        assert record["by_site"][site]["sigma"] == pytest.approx(value, rel=0.15)
+    moment, _ = empirical_bayes_mismatch(
+        EmpiricalBayesMismatch(floor=0.05), sites=sites, residual=residual,
+        prior_state_variance=np.sum(state**2, axis=1), aggregation_variance=aggregation_variance, error_variance=error,
+    )
+    assert np.max(np.abs(moment / sigma_true - 1)) > 0.5
+
+
+def test_type2_ml_floor_and_allow_zero():
+    sites = np.repeat(["A", "B"], 10)
+    terms = dict(sites=sites, residual=np.zeros(20), state_factor=np.ones((20, 1)),
+                 aggregation_factor=np.zeros((20, 0)), aggregation_diagonal=np.full(20, 0.2), aggregation_dense=None,
+                 aggregation_variance=np.full(20, 0.2), error_variance=np.full(20, 1e-12),
+                 aggregation_representation="test")
+    sigma, record = type2_ml_mismatch(EmpiricalBayesMismatch(mode="type2_ml", floor=0.3), **terms)
+    np.testing.assert_allclose(sigma, 0.3)
+    assert all(site["at_floor"] and site["floor_applied"] for site in record["by_site"].values())
+    with pytest.raises(ValueError, match="at the floor 0 at every site"):
+        type2_ml_mismatch(EmpiricalBayesMismatch(mode="type2_ml", floor=0.0), **terms)
+    sigma, _ = type2_ml_mismatch(EmpiricalBayesMismatch(mode="type2_ml", floor=0.0, allow_zero=True), **terms)
+    assert np.all(sigma < 1e-5)
+
+
+def test_type2_ml_configuration():
+    path = "likelihood.fixed_model_mismatch"
+    choice = parse_fixed_model_mismatch(
+        {"empirical_bayes": "type2_ml", "floor": 0.1, "aggregation": "exact", "max_iterations": 50}, path)
+    assert (choice.mode, choice.aggregation, choice.max_iterations, choice.rank) == ("type2_ml", "exact", 50, 512)
+    with pytest.raises(ValueError, match="require empirical_bayes"):
+        parse_fixed_model_mismatch({"empirical_bayes": "prior_residual_moment", "floor": 0.1, "rank": 10}, path)
+    with pytest.raises(ValueError, match="low_rank' or 'exact"):
+        parse_fixed_model_mismatch({"empirical_bayes": "type2_ml", "floor": 0.1, "aggregation": "dense"}, path)
+
+
+@pytest.mark.parametrize("aggregation", ["low_rank", "exact"])
+def test_type2_ml_through_the_configured_estimator(case, caplog, double_precision, aggregation):
+    prepared, _, params = case
+    prepared = _two_site(prepared)
+    params["likelihood"]["fixed_model_mismatch"] = {"empirical_bayes": "type2_ml", "floor": 0.05,
+                                                    "aggregation": aggregation}
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        trace, actual = _run_gaussian(prepared, params)
+    record = json.loads(trace["gaussian_posterior"].dataset.attrs["model_mismatch"])["empirical_bayes"]
+    assert record["mode"] == "type2_ml" and record["aggregation"] == aggregation and record["label"] == "empirical Bayes"
+    assert "exact dense" in record["aggregation_representation"] if aggregation == "exact" else "Woodbury" in \
+        record["aggregation_representation"]
+    for name in ("optimiser", "iterations", "converged", "log_marginal_likelihood", "log_marginal_likelihood_start",
+                 "log_marginal_likelihood_floor"):
+        assert name in record
+    assert record["log_marginal_likelihood"] >= record["log_marginal_likelihood_floor"] - 1e-9
+    summary = actual["model_mismatch"]
+    assert summary["empirical_bayes_mode"] == "type2_ml" and set(summary["sigma_by_site"]) == {"MHD", "TAC"}
+    assert summary["type2_ml_converged"] == record["converged"]
+    np.testing.assert_allclose(
+        trace.constant_data.fixed_model_mismatch,
+        [summary["sigma_by_site"]["MHD"], summary["sigma_by_site"]["TAC"], summary["sigma_by_site"]["TAC"]],
+    )
+    eb = [message for message in caplog.messages if "Empirical Bayes model mismatch" in message]
+    assert len(eb) == 1 and "type2_ml" in eb[0] and "used twice" in eb[0]

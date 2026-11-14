@@ -290,9 +290,29 @@ The moment mode has two known limitations:
   the retained flux about 4.7 ppm² (about 98 % boundary), and a synthetic
   draw with a known 1 ppm mismatch returned zero at every site.
 
-A per-site type-II maximum-likelihood mode, which uses the full correlated
-prior-predictive covariance, is the proposed remedy and is not implemented
-yet. When every site is at its floor and the resulting independent variance is
+``"type2_ml"`` is the remedy for the second limitation. It maximises the exact
+Gaussian marginal likelihood of the prior residual,
+``log N(r; 0, K + diag(mf_error**2 + sigma_s**2))`` with
+``K = J diag(prior sd**2) J^T + A`` (retained flux, boundary and offset prior
+spread from the same affine map, plus aggregation error), jointly over
+``log sigma_s`` with L-BFGS-B and the analytic gradient, bounded below by the
+floor. Options: ``aggregation = "low_rank"`` (default; Woodbury with the
+prepared low-rank aggregation factor, or a rank-``rank`` approximation of a
+dense covariance, default rank 512) or ``"exact"`` (one dense Cholesky per
+evaluation), and ``max_iterations`` (default 200):
+
+.. code-block:: toml
+
+   [likelihood]
+   kind = "additive_sigma"
+   no_model_error = true
+   fixed_model_mismatch = { empirical_bayes = "type2_ml", floor = 0.1 }
+
+The optimiser, iteration count, convergence flag and the log marginal
+likelihood at the optimum, at the start and at the floor are recorded; a
+non-converged run is kept and logged with a loud extra warning. It is still
+empirical Bayes (data used twice, no sigma uncertainty), and under a prior
+equal to the truth it measures only noise plus aggregation error. When every site is at its floor and the resulting independent variance is
 below ``1e-6`` of the mean aggregation variance, the run is refused unless
 ``allow_zero = true``, since the posterior would be overconfident. Fixed
 OU-correlated mismatch is not yet supported. The prior-predictive check stage
