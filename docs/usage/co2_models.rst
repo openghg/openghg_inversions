@@ -1352,3 +1352,29 @@ interface as the CO2 runner described above. It supplies one normalized joint
 log likelihood per posterior draw and optional correlated joint prior and
 posterior predictive vectors, preserving cross-channel aggregation covariance.
 The joint likelihood must not be treated as pointwise observation densities.
+
+Linked runners using PyMC record the free random variables during sampling.
+After PyMC returns, they compute the joint log likelihood and evaluate every
+deterministic from the unchanged model graph.
+Observed random variables remain conditioned on their data during evaluation,
+following PyMC's ordinary recording and transform conventions.
+This avoids keeping observation-sized deterministics in both warmup/retained
+backend buffers and the converted posterior. Reconstruction allocates the final
+arrays once and evaluates one state at a time; it preserves all output names,
+precision, coordinates and absolute concentration semantics. The ordinary linked CLI and saved-input
+sampling route use the same storage strategy. Likelihood and deterministic
+reconstruction are logged as separate passes. This opt-in behavior has been
+validated for the linked recipes described here; other RHIME families and
+arbitrary public PyMC models retain their existing defaults. Direct builder users can select
+it with ``sample_rhime_model(built, sampler, recompute_deterministics=True)``.
+
+The returned trace still contains all requested draws and derived outputs, so
+its storage grows with chains, draws and observations. Prior and posterior
+prediction, serialization and diagnostics have their own memory costs. Other
+sampling backends, explicit trace backends or sampling callbacks, requests to
+include transformed variables and empty retained groups use the ordinary
+recording path.
+
+Burn discards only post-tuning retained draws, including the corresponding
+sample statistics and log likelihood. Saved ``warmup_*`` groups retain their
+complete tuning support, even when burn exceeds the number of tuning draws.

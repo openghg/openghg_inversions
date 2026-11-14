@@ -610,8 +610,10 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
+        recompute_deterministics: bool = False,
     ) -> xr.DataTree:
         """Record the model passed to sampling and return a sentinel trace."""
+        assert recompute_deterministics is False
         observed["sample_model"] = model
         assert variable_roles["concentration"] == "y"
         return sampled
@@ -1108,8 +1110,10 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
+        recompute_deterministics: bool = False,
     ) -> xr.DataTree:
         """Record the sampled model and return the sentinel posterior."""
+        assert recompute_deterministics is False
         observed["sample_model"] = model
         assert variable_roles["concentration"] == "y"
         return sampled
@@ -1224,8 +1228,10 @@ def test_multisource_order_survives_load_run_and_reconstruction(
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
+        recompute_deterministics: bool = False,
     ) -> xr.DataTree:
         """Return a sentinel trace for the multisource prepared run."""
+        assert recompute_deterministics is False
         assert "y" in model.named_vars
         assert variable_roles["concentration"] == "y"
         return sampled
