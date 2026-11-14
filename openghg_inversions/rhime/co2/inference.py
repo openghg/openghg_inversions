@@ -125,6 +125,9 @@ def sample_co2_inference(
         return sample_co2_gaussian(prepared, model, sampler)
     if method != "nuts":
         raise ValueError(f"Unknown CO2 inference method {method!r}; use 'nuts' or 'gaussian'.")
+    from .co2_gaussian import check_co2_nuts_mismatch
+
+    check_co2_nuts_mismatch(model)
     validate_co2_inference(model, sampler)
     built, cached = build_co2_inference(prepared, model)
     if cached is not None:

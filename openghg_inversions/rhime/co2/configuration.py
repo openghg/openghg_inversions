@@ -29,6 +29,7 @@ from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, normalise_optional_mapping
 
 from .co2_cached_sigma_runner import validate_cached_co2_sampler
+from .model_mismatch import EmpiricalBayesMismatch, parse_fixed_model_mismatch
 from .inference import uses_cached_ou
 
 
@@ -1081,13 +1082,11 @@ def _co2_likelihood(value: object, *, matched_ou: bool = False) -> dict[str, Any
                 options.pop("sigma_prior"), "likelihood.sigma_prior", positive=True
             )
         if "fixed_model_mismatch" in options:
-            fixed = _number(
-                options.pop("fixed_model_mismatch"),
-                "likelihood.fixed_model_mismatch",
+            # A scalar, a per-site table or an empirical-Bayes table; the
+            # last two are resolved by the Gaussian estimator only.
+            result["fixed_model_mismatch"] = parse_fixed_model_mismatch(
+                options.pop("fixed_model_mismatch"), "likelihood.fixed_model_mismatch",
             )
-            if fixed < 0.0:
-                raise ValueError("likelihood.fixed_model_mismatch must be non-negative.")
-            result["fixed_model_mismatch"] = fixed
     elif kind == "site_sigma":
         kwargs: dict[str, Any] = {}
         if "fixed_site_amplitudes" in options:
@@ -1204,7 +1203,7 @@ class Co2ModelConfig:
     offset_args: Mapping[str, Any] | None = None
     no_model_error: bool | None = None
     sigma_prior: Mapping[str, Any] | None = None
-    fixed_model_mismatch: float | None = None
+    fixed_model_mismatch: float | Mapping[str, float] | EmpiricalBayesMismatch | None = None
     likelihood_builder: Callable[..., Any] | None = None
     likelihood_kwargs: Mapping[str, Any] | None = None
     biosphere_prior_path: Path | None = None

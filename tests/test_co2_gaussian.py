@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 import json
+import logging
 from types import SimpleNamespace
 
 import mpmath
@@ -18,6 +19,9 @@ from openghg_inversions.rhime.co2 import co2_gaussian
 from openghg_inversions.rhime.co2.co2_gaussian import GAUSSIAN_ALGORITHM, check_co2_gaussian_model
 from openghg_inversions.rhime.co2.co2_outputs import validate_co2_trace
 from openghg_inversions.rhime.co2.configuration import Co2ModelConfig, _resolve_co2_sampling
+from openghg_inversions.rhime.co2.model_mismatch import (
+    EmpiricalBayesMismatch, empirical_bayes_mismatch, parse_fixed_model_mismatch, per_site_mismatch,
+)
 from openghg_inversions.serialization import load_trace, save_trace
 
 GAUSSIAN_SAMPLING = {"method": "gaussian", "draws": 40, "random_seed": 11, "sample_prior_predictive": 20,
@@ -176,8 +180,9 @@ def test_calibrated_gaussian_biosphere_prior_is_used_and_recorded(case, double_p
     biosphere = SimpleNamespace(data=calibration, to_dataset=lambda: calibration)
     model = {**Co2ModelConfig.from_params(params).model_arguments(), "biosphere_prior": biosphere}
     sampling = _resolve_co2_sampling(params, model=model)
-    trace, _ = co2_inference.sample_co2_inference(prepared, model, sampling.sampler, method="gaussian")
+    trace, actual = co2_inference.sample_co2_inference(prepared, model, sampling.sampler, method="gaussian")
     exact = trace["gaussian_posterior"].dataset
+    assert "state_prior_substitution" not in actual and "state_prior_substitution" not in exact.attrs
     np.testing.assert_allclose(exact.prior_covariance.values[:2, :2], covariance.values, rtol=1e-12)
     assert json.loads(trace.attrs["rhime_model_metadata"])["prior"] == "gaussian"
     assert "biosphere_prior" in trace.children
@@ -247,3 +252,133 @@ def test_singular_dense_noise_falls_back_to_clipped_eigenvalues():
     assert record["noise_factor_method"] == "[eigh_clip(A) | diag(sqrt(R))]"
     assert record["aggregation_psd_factor"]["dropped_positive_max"] == 0.0
     np.testing.assert_allclose(factor @ factor.T, low_rank @ low_rank.T, atol=1e-12)
+
+
+LOGGER = "openghg_inversions.rhime.co2.co2_gaussian"
+
+
+def _run_gaussian(prepared, params, **overrides):
+    model = {**Co2ModelConfig.from_params(params).model_arguments(), **overrides}
+    sampling = _resolve_co2_sampling(params, model=model)
+    return co2_inference.sample_co2_inference(prepared, model, sampling.sampler, method="gaussian")
+
+
+def test_scalar_site_and_measurement_mismatch_forms_agree(case, double_precision):
+    prepared, _, params = case
+    results = {}
+    for name, value in (("scalar", 0.3), ("site", {"MHD": 0.3})):
+        changed = deepcopy(params)
+        changed["likelihood"]["fixed_model_mismatch"] = value
+        results[name] = _run_gaussian(prepared, changed)
+    array = xr.full_like(prepared.inv_inputs.mf, 0.3)
+    results["array"] = _run_gaussian(prepared, params, fixed_model_mismatch=array)
+    sources = {"scalar": "specified scalar", "site": "specified per site", "array": "specified per measurement"}
+    reference = results["scalar"][0]["gaussian_posterior"].dataset
+    for name, (trace, actual) in results.items():
+        exact = trace["gaussian_posterior"].dataset
+        xr.testing.assert_allclose(exact[["posterior_mean", "posterior_covariance"]],
+                                   reference[["posterior_mean", "posterior_covariance"]], rtol=1e-12)
+        assert actual["model_mismatch"]["source"] == sources[name]
+        assert actual["model_mismatch"]["sigma_by_site"] == {"MHD": 0.3}
+        assert json.loads(exact.attrs["model_mismatch"])["source"] == sources[name]
+        np.testing.assert_allclose(trace.constant_data.fixed_model_mismatch, 0.3)
+
+
+def test_per_site_mismatch_names_exactly_the_observed_sites(case, double_precision):
+    observations = xr.DataArray([1.0, 2.0, 3.0], dims="nmeasure", coords={"site": ("nmeasure", ["A", "B", "A"])})
+    np.testing.assert_array_equal(per_site_mismatch({"A": 0.1, "B": 0.2}, observations), [0.1, 0.2, 0.1])
+    with pytest.raises(ValueError, match=r"missing: \['B'\]"):
+        per_site_mismatch({"A": 0.1}, observations)
+    with pytest.raises(ValueError, match=r"unknown: \['C'\]"):
+        per_site_mismatch({"A": 0.1, "B": 0.2, "C": 0.3}, observations)
+    prepared, affine, params = case
+    params["likelihood"]["fixed_model_mismatch"] = {"XXX": 0.1}
+    with pytest.raises(ValueError, match="unknown"):
+        execution.run_co2(params=params, prepared=prepared, affine_artifact=affine)
+    params["sampling"] = {"draws": 5, "tune": 5, "chains": 1}
+    with pytest.raises(ValueError, match='require sampling.method = "gaussian"'):
+        execution.run_co2(params=params, prepared=prepared, affine_artifact=affine)
+
+
+def test_mismatch_configuration_forms():
+    path = "likelihood.fixed_model_mismatch"
+    assert parse_fixed_model_mismatch(0.4, path) == 0.4
+    assert dict(parse_fixed_model_mismatch({"MHD": 0.4}, path)) == {"MHD": 0.4}
+    assert parse_fixed_model_mismatch({"empirical_bayes": "prior_residual_rms", "floor": 0.2}, path) == \
+        EmpiricalBayesMismatch("prior_residual_rms", 0.2)
+    assert parse_fixed_model_mismatch({"empirical_bayes": "prior_residual_moment"}, path).floor == 0.0
+    for bad, message in (({"empirical_bayes": "prior_residual_moment", "ceiling": 1.0}, "Unknown"),
+                         ({"empirical_bayes": "type_ii"}, "empirical_bayes must be one of"),
+                         ({"MHD": -1.0}, "non-negative"), ({}, "empty")):
+        with pytest.raises(ValueError, match=message):
+            parse_fixed_model_mismatch(bad, path)
+
+
+@pytest.mark.parametrize("mode,floor", [("prior_residual_moment", 0.0), ("prior_residual_rms", 0.0),
+                                        ("prior_residual_moment", 5.0)])
+def test_empirical_bayes_matches_hand_computed_prior_residual(case, caplog, double_precision, mode, floor):
+    prepared, _, params = case
+    params["likelihood"]["fixed_model_mismatch"] = {"empirical_bayes": mode, "floor": floor}
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        trace, actual = _run_gaussian(prepared, params)
+    inputs = prepared.inv_inputs
+    residual = (inputs.mf - inputs.fixed_prior_contribution - inputs.H.values @ inputs.alpha_prior_mean.values
+                - inputs.H_bc.values[:, 0] * 1.0).values
+    prior_variance = (np.einsum("ij,jk,ik->i", inputs.H.values, inputs.alpha_prior_covariance.values, inputs.H.values)
+                      + inputs.H_bc.values[:, 0] ** 2 * 0.1**2 + 0.1**2)
+    aggregation = (inputs.low_rank_factor**2).sum("agg_rank").values + inputs.diagonal_residual_variance.values
+    error = inputs.mf_error.values ** 2
+    mean_r2 = np.mean(residual**2)
+    raw_variance = mean_r2 if mode == "prior_residual_rms" else mean_r2 - prior_variance.mean() - aggregation.mean() - error.mean()
+    expected = max(np.sqrt(max(raw_variance, 0.0)), floor)
+
+    record = json.loads(trace["gaussian_posterior"].dataset.attrs["model_mismatch"])
+    site = record["empirical_bayes"]["by_site"]["MHD"]
+    assert record["source"] == "empirical Bayes" and record["empirical_bayes"]["label"] == "empirical Bayes"
+    np.testing.assert_allclose(
+        [site["mean_residual_squared"], site["mean_prior_state_variance"], site["mean_aggregation_variance"],
+         site["mean_mf_error_variance"], site["raw_variance"], site["sigma"]],
+        [mean_r2, prior_variance.mean(), aggregation.mean(), error.mean(), raw_variance, expected], rtol=1e-10,
+    )
+    assert site["floor_applied"] == (floor > np.sqrt(max(raw_variance, 0.0)))
+    assert actual["model_mismatch"]["sigma_by_site"]["MHD"] == pytest.approx(expected, rel=1e-10)
+    assert actual["model_mismatch"]["empirical_bayes_mode"] == mode
+    np.testing.assert_allclose(trace.constant_data.fixed_model_mismatch, expected, rtol=1e-10)
+    eb = [message for message in caplog.messages if "Empirical Bayes" in message]
+    assert len(eb) == 1
+    assert mode in eb[0] and "does not include sigma uncertainty" in eb[0] and "used twice" in eb[0]
+    assert sum("moment-matched" in message for message in caplog.messages) == 1
+    assert actual["state_prior_substitution"] == "lognormal→normal (moment-matched)"
+    assert trace["gaussian_posterior"].dataset.attrs["state_prior_substitution"] == actual["state_prior_substitution"]
+
+
+def test_specified_mismatch_logs_only_the_prior_substitution(case, caplog, double_precision):
+    prepared, _, params = case
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        _run_gaussian(prepared, params)
+    assert len(caplog.messages) == 1 and "lognormal→normal (moment-matched)" in caplog.messages[0]
+
+
+def test_prior_residual_moment_recovers_a_known_mismatch():
+    """Two sites with 20000 synthetic prior residuals each; the moment estimate is within sampling error."""
+    rng = np.random.default_rng(12)
+    n, truth = 20000, {"A": 0.7, "B": 0.25}
+    sites = np.repeat(["A", "B"], n)
+    prior_variance, aggregation, error = rng.uniform(0.5, 1.5, 2 * n), rng.uniform(0.1, 0.3, 2 * n), np.full(2 * n, 0.01)
+    sigma2 = np.array([truth[site] ** 2 for site in sites])
+    total = prior_variance + aggregation + error + sigma2
+    residual = np.sqrt(total) * rng.standard_normal(2 * n)
+    sigma, record = empirical_bayes_mismatch(
+        EmpiricalBayesMismatch(), sites=sites, residual=residual, prior_state_variance=prior_variance,
+        aggregation_variance=aggregation, error_variance=error,
+    )
+    for site, value in truth.items():
+        rows = sites == site
+        standard_error = np.sqrt(2 / n) * np.sqrt(np.mean(total[rows] ** 2))
+        assert abs(record["by_site"][site]["raw_variance"] - value**2) < 4 * standard_error
+        assert np.all(sigma[rows] == record["by_site"][site]["sigma"])
+    rms, _ = empirical_bayes_mismatch(
+        EmpiricalBayesMismatch("prior_residual_rms"), sites=sites, residual=residual,
+        prior_state_variance=prior_variance, aggregation_variance=aggregation, error_variance=error,
+    )
+    assert np.all(rms > sigma)

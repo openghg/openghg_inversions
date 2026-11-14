@@ -112,10 +112,10 @@ def run_co2(
     model_config = Co2ModelConfig.from_params(options)
     sampling = _resolve_co2_sampling(options, model=model_config.sampler_arguments())
     sampler = sampling.sampler
-    if sampling.method == "gaussian":
-        from .co2_gaussian import check_co2_gaussian_model
+    from .co2_gaussian import check_co2_gaussian_model, check_co2_nuts_mismatch
 
-        check_co2_gaussian_model({item.name: getattr(model_config, item.name) for item in fields(model_config)})
+    choices = {item.name: getattr(model_config, item.name) for item in fields(model_config)}
+    (check_co2_gaussian_model if sampling.method == "gaussian" else check_co2_nuts_mismatch)(choices)
     output_choices = resolve_co2_output(options)
     output = output_choices["output"]
     affine_path = preparation.affine_path

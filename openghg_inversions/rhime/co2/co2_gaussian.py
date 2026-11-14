@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import json
+import logging
 import secrets
 from typing import Any
 
@@ -40,7 +41,7 @@ import xarray as xr
 
 from openghg_inversions.biosphere_prior import BiospherePrior
 from openghg_inversions.inference.exact_gaussian import (
-    affine_maps, exact_gaussian_trace, solve_linear_gaussian_model,
+    affine_maps, exact_gaussian_trace, normal_variables, solve_linear_gaussian_model,
 )
 from openghg_inversions.inference.gls import psd_factor
 from openghg_inversions.inference.sampling import RhimeSampler
@@ -52,6 +53,12 @@ from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from .co2_model import GaussianStatePrior
 from .co2_preparation import Co2PreparedInputs
 from .co2_runner import annotate_co2_trace, build_co2_from_materialized, materialize_co2_inputs
+from .model_mismatch import EmpiricalBayesMismatch, empirical_bayes_mismatch, observation_sites, per_site_mismatch
+
+logger = logging.getLogger(__name__)
+
+STATE_PRIOR_SUBSTITUTION = "lognormal→normal (moment-matched)"
+"""Recorded when the default correlated LogNormal flux prior is replaced by its moment-matched Normal."""
 
 GAUSSIAN_ALGORITHM = "gaussian_paige_gls"
 """``rhime_actual_inference`` algorithm name of the exact Gaussian estimator."""
@@ -88,6 +95,23 @@ def require_gaussian_precision() -> None:
         raise ValueError(
             'method = "gaussian" requires PyTensor floatX=float64; set PYTENSOR_FLAGS=floatX=float64 '
             "before starting Python."
+        )
+
+
+def check_co2_nuts_mismatch(model: Mapping[str, Any]) -> None:
+    """Refuse per-site and empirical-Bayes mismatch tables outside the Gaussian estimator.
+
+    Args:
+        model: CO2 model choices or resolved model arguments.
+
+    Raises:
+        ValueError: If ``fixed_model_mismatch`` is a per-site or empirical-Bayes table.
+    """
+    mismatch = model.get("fixed_model_mismatch")
+    if isinstance(mismatch, Mapping | EmpiricalBayesMismatch):
+        raise ValueError(
+            "Per-site and empirical-Bayes likelihood.fixed_model_mismatch tables require "
+            'sampling.method = "gaussian"; NUTS takes a scalar fixed_model_mismatch.'
         )
 
 
@@ -288,10 +312,63 @@ def _gaussian_posterior_group(
     )
 
 
+def _likelihood_terms(built: RhimeModelBuildResult) -> tuple[Any, NDArray[np.float64]]:
+    """Return the likelihood mean expression and the observed values it is compared with."""
+    y = built.model["y"]
+    observations = np.asarray(built.model.rvs_to_values[y].data, dtype=np.float64)
+    return y.owner.op.dist_params(y.owner)[0], observations
+
+
+def _sigma_by_site(sites: NDArray[np.str_], sigma: NDArray[np.float64]) -> dict[str, float] | None:
+    """Return one standard deviation per site when it is constant within every site."""
+    result = {}
+    for site in dict.fromkeys(sites.tolist()):
+        values = np.unique(sigma[sites == site])
+        if values.size != 1:
+            return None
+        result[site] = float(values[0])
+    return result
+
+
+def _empirical_bayes(
+    choice: EmpiricalBayesMismatch, inputs: xr.Dataset, prepared: Co2PreparedInputs,
+    build: Any, rng: np.random.Generator,
+) -> tuple[xr.DataArray, dict[str, Any]]:
+    """Estimate the per-site empirical-Bayes mismatch from the prior residual of the Gaussian graph.
+
+    The graph is built with zero mismatch only to read its affine likelihood
+    mean and state priors: the residual is taken at the prior mean of every
+    state, and the prior-predictive state variance is the diagonal of
+    ``J diag(prior_sd**2) J^T`` (retained flux, boundary and offset states).
+    """
+    zero = xr.zeros_like(inputs["mf"], dtype=np.float64).rename("fixed_model_mismatch")
+    provisional = build(inputs.assign(fixed_model_mismatch=zero), zero)
+    mean, observations = _likelihood_terms(provisional)
+    variables = normal_variables(provisional.model)
+    (mean_map,) = affine_maps(provisional.model, [mean], variables, rng=rng)
+    residual = observations - (mean_map.offset + mean_map.matrix @ variables.prior_mean)
+    prior_state_variance = np.einsum("ij,j->i", mean_map.matrix**2, variables.prior_sd**2)
+    aggregation = resolve_aggregation_error(inputs, prepared.aggregation_error_mode)
+    sites = observation_sites(inputs["mf"])
+    sigma, record = empirical_bayes_mismatch(
+        choice, sites=sites, residual=residual, prior_state_variance=prior_state_variance,
+        aggregation_variance=np.asarray(aggregation.marginal_variance, dtype=np.float64),
+        error_variance=np.asarray(inputs["mf_error"].transpose("nmeasure").values, dtype=np.float64) ** 2,
+    )
+    return zero.copy(data=sigma), record
+
+
 def sample_co2_gaussian(
     prepared: Co2PreparedInputs, model: Mapping[str, Any], sampler: RhimeSampler,
 ) -> tuple[xr.DataTree, dict[str, Any]]:
     """Solve the exact fixed-noise Gaussian posterior and return a NUTS-layout trace.
+
+    The fixed mismatch may be a scalar, a per-site mapping, a per-measurement
+    ``DataArray`` or an :class:`~openghg_inversions.rhime.co2.model_mismatch.EmpiricalBayesMismatch`
+    (see :mod:`~openghg_inversions.rhime.co2.model_mismatch`); an explicit
+    value wins over a prepared ``fixed_model_mismatch`` field, which wins over
+    none. Replacing the default LogNormal flux prior by its moment-matched
+    Normal, and an empirical-Bayes mismatch, each log one warning.
 
     Args:
         prepared: CO2 preparation.
@@ -306,13 +383,16 @@ def sample_co2_gaussian(
         recorded inference description.
 
     Raises:
-        ValueError: If the model is not linear-Gaussian with fixed noise.
+        ValueError: If the model is not linear-Gaussian with fixed noise, or a
+            per-site mismatch does not name exactly the observed sites.
     """
     require_gaussian_precision()
     check_co2_gaussian_model(model)
+    mismatch = model.get("fixed_model_mismatch")
+    direct = mismatch if mismatch is None or isinstance(mismatch, int | float | xr.DataArray) else None
     inputs, priors, boundary = materialize_co2_inputs(
         prepared_inputs=prepared,
-        fixed_model_mismatch=model.get("fixed_model_mismatch"),
+        fixed_model_mismatch=direct,
         no_model_error=True,
         boundary=model.get("boundary"),
         offset_prior=model.get("offset_prior"),
@@ -320,21 +400,62 @@ def sample_co2_gaussian(
     )
     biosphere = model.get("biosphere_prior")
     gaussian_prior, prior_record = _gaussian_state_prior(inputs, biosphere)
-    built = build_co2_from_materialized(
-        inputs, prepared_inputs=prepared, priors=priors, boundary=boundary,
-        fixed_model_mismatch=model.get("fixed_model_mismatch"), no_model_error=True,
-        offset_prior=model.get("offset_prior"), offset_args=model.get("offset_args"),
-        gaussian_prior=gaussian_prior,
-    )
-    noise_factor, noise_record = _co2_noise_factor(inputs, prepared, model.get("fixed_model_mismatch"))
-    _check_noise_against_graph(built, noise_factor)
-    y = built.model["y"]
-    likelihood_mean = y.owner.op.dist_params(y.owner)[0]
-    observations = np.asarray(built.model.rvs_to_values[y].data, dtype=np.float64)
+    if biosphere is None:
+        logger.warning(
+            'method = "gaussian" replaces the default correlated LogNormal flux prior with the Normal prior of '
+            "the same arithmetic moments (alpha_prior_mean, alpha_prior_covariance): %s.",
+            STATE_PRIOR_SUBSTITUTION,
+        )
+
+    def build(model_inputs: xr.Dataset, fixed: Any) -> RhimeModelBuildResult:
+        return build_co2_from_materialized(
+            model_inputs, prepared_inputs=prepared, priors=priors, boundary=boundary,
+            fixed_model_mismatch=fixed, no_model_error=True,
+            offset_prior=model.get("offset_prior"), offset_args=model.get("offset_args"),
+            gaussian_prior=gaussian_prior,
+        )
 
     configured = (sampler.sample_kwargs or {}).get("random_seed")
     seed = int(configured) if configured is not None else secrets.randbits(63)
-    check_rng, trace_rng, report_rng = np.random.default_rng(seed).spawn(3)
+    check_rng, trace_rng, report_rng, mismatch_rng = np.random.default_rng(seed).spawn(4)
+    mismatch_record: dict[str, Any]
+    fixed: float | xr.DataArray | None
+    if isinstance(mismatch, EmpiricalBayesMismatch):
+        fixed, eb_record = _empirical_bayes(mismatch, inputs, prepared, build, mismatch_rng)
+        inputs = inputs.assign(fixed_model_mismatch=fixed)
+        mismatch_record = {"source": "empirical Bayes", "empirical_bayes": eb_record}
+    elif isinstance(mismatch, Mapping):
+        fixed = per_site_mismatch(mismatch, inputs["mf"])
+        inputs = inputs.assign(fixed_model_mismatch=fixed)
+        mismatch_record = {"source": "specified per site"}
+    else:
+        fixed = mismatch
+        mismatch_record = {"source": (
+            "specified scalar" if isinstance(mismatch, int | float)
+            else "specified per measurement" if isinstance(mismatch, xr.DataArray)
+            else "prepared fixed_model_mismatch" if "fixed_model_mismatch" in inputs else "none"
+        )}
+    built = build(inputs, fixed)
+    noise_factor, noise_record = _co2_noise_factor(inputs, prepared, fixed)
+    _check_noise_against_graph(built, noise_factor)
+    if "fixed_model_mismatch" in built.model.named_vars:
+        sigma = np.asarray(pytensor.function([], built.model["fixed_model_mismatch"])(), dtype=np.float64)
+        try:
+            by_site = _sigma_by_site(observation_sites(inputs["mf"]), sigma)
+        except ValueError:
+            by_site = None
+        mismatch_record["sigma_by_site"] = by_site
+    mismatch_record["units"] = prepared.inv_inputs["mf"].attrs.get("units")
+    if isinstance(mismatch, EmpiricalBayesMismatch):
+        logger.warning(
+            "Empirical Bayes model mismatch (%s, floor %g): sigma by site %s %s. The Gaussian posterior treats "
+            "these as known, so it does not include sigma uncertainty, and the observations are used twice "
+            "(to set sigma and to fit).",
+            mismatch.mode, mismatch.floor,
+            json.dumps({site: round(value, 6) for site, value in mismatch_record["sigma_by_site"].items()}),
+            mismatch_record["units"],
+        )
+    likelihood_mean, observations = _likelihood_terms(built)
     variables, posterior = solve_linear_gaussian_model(
         built.model, likelihood_mean=likelihood_mean, observations=observations,
         noise_factor=noise_factor, rng=check_rng,
@@ -353,27 +474,35 @@ def sample_co2_gaussian(
         0 if not sampler.sample_prior_predictive
         else sampler.draws if sampler.sample_prior_predictive is True else int(sampler.sample_prior_predictive)
     )
+    mismatch_summary = {key: value for key, value in mismatch_record.items() if key != "empirical_bayes"}
+    if isinstance(mismatch, EmpiricalBayesMismatch):
+        mismatch_summary.update(empirical_bayes_mode=mismatch.mode, empirical_bayes_floor=mismatch.floor)
     actual: dict[str, Any] = {
         "algorithm": GAUSSIAN_ALGORITHM, "draws": sampler.draws, "chains": 1, "seed": seed,
         "prior_draws": prior_draws, "noise_rank": diagnostics["noise_rank"],
         "prior_rank": diagnostics["prior_rank"], "constraint_rank": diagnostics["constraint_rank"],
+        "model_mismatch": mismatch_summary,
     }
+    attrs: dict[str, Any] = {
+        "algorithm": GAUSSIAN_ALGORITHM, "draws": sampler.draws, "seed": seed,
+        "state_prior": "gaussian with the prepared arithmetic moments" if biosphere is None
+        else "gaussian calibrated biosphere prior",
+        "gls_diagnostics": json.dumps(diagnostics, sort_keys=True),
+        "flux_prior_psd_factor": json.dumps(prior_record, sort_keys=True),
+        "noise_factor": json.dumps(noise_record, sort_keys=True),
+        "model_mismatch": json.dumps(mismatch_record, sort_keys=True),
+        "sampled_variables": json.dumps(list(variables.names)),
+    }
+    if biosphere is None:
+        actual["state_prior_substitution"] = attrs["state_prior_substitution"] = STATE_PRIOR_SUBSTITUTION
     trace[GAUSSIAN_POSTERIOR_GROUP] = _gaussian_posterior_group(
-        built, variables, posterior, trace, rng=report_rng, attrs={
-            "algorithm": GAUSSIAN_ALGORITHM, "draws": sampler.draws, "seed": seed,
-            "state_prior": "gaussian with the prepared arithmetic moments" if biosphere is None
-            else "gaussian calibrated biosphere prior",
-            "gls_diagnostics": json.dumps(diagnostics, sort_keys=True),
-            "flux_prior_psd_factor": json.dumps(prior_record, sort_keys=True),
-            "noise_factor": json.dumps(noise_record, sort_keys=True),
-            "sampled_variables": json.dumps(list(variables.names)),
-        },
+        built, variables, posterior, trace, rng=report_rng, attrs=attrs,
     )
     trace.attrs["rhime_actual_inference"] = json.dumps(actual)
     return trace, actual
 
 
 __all__ = [
-    "GAUSSIAN_ALGORITHM", "GAUSSIAN_POSTERIOR_GROUP", "check_co2_gaussian_likelihood", "check_co2_gaussian_model",
+    "GAUSSIAN_ALGORITHM", "GAUSSIAN_POSTERIOR_GROUP", "STATE_PRIOR_SUBSTITUTION", "check_co2_nuts_mismatch", "check_co2_gaussian_likelihood", "check_co2_gaussian_model",
     "require_gaussian_precision", "sample_co2_gaussian",
 ]

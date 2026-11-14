@@ -291,10 +291,10 @@ def sample(
     choices = _resolve_co2_sampling(
         {"sampling": sampling if sampling is not None else {}}, model=model_config.sampler_arguments(),
     )
-    if choices.method == "gaussian":
-        from .co2_gaussian import check_co2_gaussian_model
+    from .co2_gaussian import check_co2_gaussian_model, check_co2_nuts_mismatch
 
-        check_co2_gaussian_model({item.name: getattr(model_config, item.name) for item in fields(model_config)})
+    model_choices = {item.name: getattr(model_config, item.name) for item in fields(model_config)}
+    (check_co2_gaussian_model if choices.method == "gaussian" else check_co2_nuts_mismatch)(model_choices)
     preparation = load_preparation(preparation_manifest)
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
@@ -414,6 +414,9 @@ def prior_predictive(
     _check_draws(draws)
     stage = _check_stage(stage)
     model_config = model if isinstance(model, Co2ModelConfig) else Co2ModelConfig.from_params(load_co2_params(params=model))
+    from .co2_gaussian import check_co2_nuts_mismatch
+
+    check_co2_nuts_mismatch({"fixed_model_mismatch": model_config.fixed_model_mismatch})
     preparation = load_preparation(preparation_manifest)
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
