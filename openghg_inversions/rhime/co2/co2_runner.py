@@ -54,7 +54,7 @@ from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.sigma import SigmaAlignment
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
-from .co2_model import _build_co2_model, _normalise_offset_args
+from .co2_model import GaussianStatePrior, _build_co2_model, _normalise_offset_args
 from .co2_preparation import Co2PreparedInputs
 
 _CO2_SCIENTIFIC_INPUT_NAMES = (
@@ -478,6 +478,7 @@ def build_co2_from_materialized(
     no_model_error: bool = False,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
+    gaussian_prior: GaussianStatePrior | None = None,
 ) -> RhimeModelBuildResult:
     """Construct the CO2 model from explicitly materialized scientific inputs.
 
@@ -499,6 +500,9 @@ def build_co2_from_materialized(
         prepared_inputs: Preparation supplying aggregation mode and provenance.
         priors: Materialized prior parameters under their concrete graph names.
         boundary: Jointly materialized bound boundary, or None when disabled.
+        gaussian_prior: Optional Gaussian retained-state prior replacing the
+            prepared correlated LogNormal prior, for the Gaussian estimator.
+            It cannot be combined with ``biosphere_prior``.
 
     Returns:
         Constructed PyMC model with component-declared scientific roles, units
@@ -544,7 +548,7 @@ def build_co2_from_materialized(
         aggregation_error=aggregation_error,
     )
     prior_covariance = model_inputs["alpha_prior_covariance"]
-    retained_prior = CorrelatedLognormalPrior(
+    retained_prior = None if gaussian_prior is not None else CorrelatedLognormalPrior(
         model_inputs["alpha_prior_mean"],
         prior_covariance,
         covariance_dim=str(prior_covariance.dims[-1]),
@@ -566,6 +570,7 @@ def build_co2_from_materialized(
         boundary=boundary,
         offset_prior=priors["offset_latent"] if offset_prior is not None else None,
         offset_args=offset_args,
+        gaussian_prior=gaussian_prior,
     )
     variable_roles = {
         "observation": "y",
@@ -601,7 +606,11 @@ def build_co2_from_materialized(
             metadata={
                 "recipe": "co2",
                 "kind": "builtin",
-                "prior": biosphere_prior.data.attrs["family"] if biosphere_prior is not None else "correlated arithmetic-moment lognormal",
+                "prior": (
+                    gaussian_prior.description if gaussian_prior is not None
+                    else biosphere_prior.data.attrs["family"] if biosphere_prior is not None
+                    else "correlated arithmetic-moment lognormal"
+                ),
                 "no_model_error": no_model_error,
                 "use_bc": boundary is not None,
                 **(boundary_outputs.metadata if boundary_outputs is not None else {"boundary_formulation": None}),

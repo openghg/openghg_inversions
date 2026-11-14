@@ -8,7 +8,7 @@ Callers allocate checkpoint directories; writers publish completion last.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 import os
 from pathlib import Path
 from typing import Any, cast
@@ -50,6 +50,9 @@ from .inference import (
     annotate_co2_inference, build_co2_inference, sample_co2_inference, describe_co2_inference,
 )
 from .configuration import Co2ModelConfig, Co2NativePreparationConfig, _resolve_co2_sampling
+
+# Saved-sample inference kinds; the exact Gaussian estimator records its own.
+_INFERENCE_KINDS = {"nuts": "mcmc", "gaussian": "exact_gaussian"}
 
 
 @dataclass(frozen=True)
@@ -249,6 +252,9 @@ def save_samples(
     if preparation["generation"] != preparation_generation:
         raise ValueError(f"CO2 preparation {preparation_path} was replaced; samples require generation {preparation_generation!r}.")
     validate_co2_trace(trace)
+    from .co2_gaussian import GAUSSIAN_ALGORITHM
+
+    kind = _INFERENCE_KINDS["gaussian" if actual_inference.get("algorithm") == GAUSSIAN_ALGORITHM else "nuts"]
     prepared_path = reference(preparation_path, preparation["prepared_inputs"])
     affine_path = (
         reference(preparation_path, preparation["affine_reconstruction"])
@@ -261,7 +267,7 @@ def save_samples(
     save_trace(trace, destination / "posterior.nc")
     return finish_checkpoint(destination, "sample", {
         "schema": "openghg_inversions.co2.sample", "schema_version": 2,
-        "producer": "openghg_inversions", "stage": "sample", "inference_kind": "mcmc",
+        "producer": "openghg_inversions", "stage": "sample", "inference_kind": kind,
         "preparation": os.path.relpath(preparation_path, destination),
         "preparation_generation": preparation_generation, "posterior": "posterior.nc",
         "actual_inference": dict(actual_inference), "provenance": installed_ogi_provenance(),
@@ -285,6 +291,10 @@ def sample(
     choices = _resolve_co2_sampling(
         {"sampling": sampling if sampling is not None else {}}, model=model_config.sampler_arguments(),
     )
+    from .co2_gaussian import check_co2_gaussian_model, check_co2_nuts_mismatch
+
+    model_choices = {item.name: getattr(model_config, item.name) for item in fields(model_config)}
+    (check_co2_gaussian_model if choices.method == "gaussian" else check_co2_nuts_mismatch)(model_choices)
     preparation = load_preparation(preparation_manifest)
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
@@ -297,6 +307,7 @@ def sample(
     trace, actual = sample_co2_inference(
         preparation.prepared, model_options, choices.sampler,
         sigma_target_accept=choices.sigma_target_accept, state_target_accept=choices.state_target_accept,
+        method=choices.method,
     )
     return save_samples(
         preparation_manifest, trace, actual_inference=actual, preparation_generation=preparation.generation,
@@ -314,8 +325,10 @@ def _load_samples(sample_manifest: str | Path) -> tuple[Co2Output, tuple[Path, .
     path, record = read_manifest(sample_manifest, "openghg_inversions.co2.sample", (
         "preparation", "preparation_generation", "posterior", "inference_kind",
     ), schema_version=2)
-    if record["inference_kind"] != "mcmc":
-        raise ValueError(f"CO2 samples {path} require inference_kind='mcmc'.")
+    if record["inference_kind"] not in _INFERENCE_KINDS.values():
+        raise ValueError(
+            f"CO2 samples {path} require inference_kind in {sorted(_INFERENCE_KINDS.values())!r}."
+        )
     generation = record["preparation_generation"]
     if not isinstance(generation, str) or not generation:
         raise ValueError(f"CO2 samples {path} require a nonempty preparation generation.")
@@ -387,6 +400,14 @@ def prior_predictive(
 ) -> dict[str, Any]:
     """Check exact graph prior predictions without posterior inference.
 
+    This checks the NUTS graph, with the prepared correlated LogNormal (or
+    calibrated) retained prior, whatever ``sampling.method`` a later sample
+    stage selects. The Gaussian estimator's moment-matched Gaussian prior is
+    recorded in its ``gaussian_posterior`` group and ``prior`` draws instead.
+    A per-site ``fixed_model_mismatch`` table is mapped onto the observations;
+    an empirical-Bayes table is refused, because that sigma is estimated only
+    by the Gaussian sample stage.
+
     Construction/inference errors propagate before creating a destination. Only
     evaluated missing, empty or non-finite predictive evidence becomes a failed
     report. The check never repairs absent posterior/replay evidence.
@@ -396,6 +417,13 @@ def prior_predictive(
     _check_draws(draws)
     stage = _check_stage(stage)
     model_config = model if isinstance(model, Co2ModelConfig) else Co2ModelConfig.from_params(load_co2_params(params=model))
+    from .model_mismatch import EmpiricalBayesMismatch
+
+    if isinstance(model_config.fixed_model_mismatch, EmpiricalBayesMismatch):
+        raise ValueError(
+            "The prior-predictive check cannot use an empirical-Bayes fixed_model_mismatch, which is estimated "
+            "only by the Gaussian sample stage; use a scalar or per-site value for this check."
+        )
     preparation = load_preparation(preparation_manifest)
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
@@ -407,6 +435,12 @@ def prior_predictive(
     )
     check_prepared_boundary(preparation.prepared.inv_inputs, model_config.boundary)
     model_options = model_config.model_arguments()
+    if isinstance(model_options.get("fixed_model_mismatch"), Mapping):
+        from .model_mismatch import per_site_mismatch
+
+        model_options["fixed_model_mismatch"] = per_site_mismatch(
+            model_options["fixed_model_mismatch"], preparation.prepared.inv_inputs["mf"],
+        )
     report.unlink(missing_ok=True)
     built, cached = build_co2_inference(preparation.prepared, model_options)
     with built.model:

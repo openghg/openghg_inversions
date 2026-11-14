@@ -9,7 +9,7 @@ from importlib.resources.abc import Traversable
 from math import isfinite
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Literal
 
 import tomllib
 
@@ -29,6 +29,7 @@ from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, normalise_optional_mapping
 
 from .co2_cached_sigma_runner import validate_cached_co2_sampler
+from .model_mismatch import EmpiricalBayesMismatch, parse_fixed_model_mismatch
 from .inference import uses_cached_ou
 
 
@@ -265,7 +266,7 @@ def _validate_co2_option_names(*requests: Mapping[str, object]) -> None:
         "likelihood": _LIKELIHOOD_OPTION_NAMES,
         "likelihood.sigma_prior": _PRIOR_OPTION_NAMES,
         "likelihood.site_amplitude_prior": _PRIOR_OPTION_NAMES,
-        "sampling": _SAMPLING_OPTION_NAMES | {"sigma_target_accept", "state_target_accept"},
+        "sampling": _SAMPLING_OPTION_NAMES | {"method", "sigma_target_accept", "state_target_accept"},
         "outputs": frozenset(Co2OutputOptions.__dataclass_fields__) | {"source_to_sector"},
         "outputs.paris_postprocessing_kwargs": frozenset(ParisOptions.__dataclass_fields__),
     })
@@ -1081,13 +1082,11 @@ def _co2_likelihood(value: object, *, matched_ou: bool = False) -> dict[str, Any
                 options.pop("sigma_prior"), "likelihood.sigma_prior", positive=True
             )
         if "fixed_model_mismatch" in options:
-            fixed = _number(
-                options.pop("fixed_model_mismatch"),
-                "likelihood.fixed_model_mismatch",
+            # A scalar, a per-site table or an empirical-Bayes table; the
+            # last two are resolved by the Gaussian estimator only.
+            result["fixed_model_mismatch"] = parse_fixed_model_mismatch(
+                options.pop("fixed_model_mismatch"), "likelihood.fixed_model_mismatch",
             )
-            if fixed < 0.0:
-                raise ValueError("likelihood.fixed_model_mismatch must be non-negative.")
-            result["fixed_model_mismatch"] = fixed
     elif kind == "site_sigma":
         kwargs: dict[str, Any] = {}
         if "fixed_site_amplitudes" in options:
@@ -1204,7 +1203,7 @@ class Co2ModelConfig:
     offset_args: Mapping[str, Any] | None = None
     no_model_error: bool | None = None
     sigma_prior: Mapping[str, Any] | None = None
-    fixed_model_mismatch: float | None = None
+    fixed_model_mismatch: float | Mapping[str, float] | EmpiricalBayesMismatch | None = None
     likelihood_builder: Callable[..., Any] | None = None
     likelihood_kwargs: Mapping[str, Any] | None = None
     biosphere_prior_path: Path | None = None
@@ -1251,13 +1250,23 @@ class Co2ModelConfig:
         return tuple(Path(path).resolve() for path in (self.biosphere_prior_path, eigenbasis) if path is not None)
 
 
+# NUTS-only sampling options, refused with the exact Gaussian estimator.
+_NUTS_ONLY_SAMPLING_OPTIONS = ("burn", "tune", "chains", "target_accept", "sigma_target_accept", "state_target_accept")
+CO2_INFERENCE_METHODS = ("nuts", "gaussian")
+
+
 @dataclass(frozen=True)
 class _Co2Sampling:
-    """Resolved sampler and the matched OU transition tuning controls."""
+    """Resolved sampler, the matched OU transition tuning controls and the inference method.
+
+    ``method="gaussian"`` uses only the sampler's ``draws``, random seed and
+    predictive choices.
+    """
 
     sampler: RhimeSampler
     sigma_target_accept: float = 0.8
     state_target_accept: float = 0.9
+    method: Literal["nuts", "gaussian"] = "nuts"
 
 
 def _resolve_co2_sampling(config: Mapping[str, object], *, model: Mapping[str, Any]) -> _Co2Sampling:
@@ -1275,6 +1284,21 @@ def _resolve_co2_sampling(config: Mapping[str, object], *, model: Mapping[str, A
     sampling = _table(options.get("sampling", {}), "sampling")
     if "nuts_sampler" in sampling:
         raise ValueError("Configured CO2 selects its sampler from the likelihood; remove sampling.nuts_sampler.")
+    method = _string(sampling.pop("method", "nuts"), "sampling.method")
+    if method not in CO2_INFERENCE_METHODS:
+        raise ValueError(f"sampling.method must be one of {list(CO2_INFERENCE_METHODS)!r}, not {method!r}.")
+    if method == "gaussian":
+        from .co2_gaussian import check_co2_gaussian_likelihood, require_gaussian_precision
+
+        require_gaussian_precision()
+        check_co2_gaussian_likelihood(model)
+        unused = sorted(set(_NUTS_ONLY_SAMPLING_OPTIONS) & sampling.keys())
+        if unused:
+            raise ValueError(
+                f"sampling.method = 'gaussian' draws exact independent samples; remove NUTS-only "
+                f"option(s) {', '.join(f'sampling.{name}' for name in unused)}."
+            )
+        return _Co2Sampling(sampler=_sampling(sampling), method="gaussian")
     cached = uses_cached_ou(model)
     targets = {}
     for name, default in (("sigma_target_accept", 0.8), ("state_target_accept", 0.9)):

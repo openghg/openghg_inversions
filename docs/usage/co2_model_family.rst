@@ -215,6 +215,129 @@ Inferred-OU tuning belongs to ``sampling.sigma_target_accept`` and
 ``sampling.state_target_accept``. Saved Python sampling takes the same
 ``sampling`` mapping as the full configuration.
 
+Exact fixed-noise Gaussian estimation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For experiments that need the exact posterior of the linear-Gaussian model
+rather than NUTS draws, select the Gaussian estimator. NUTS stays the default.
+
+.. code-block:: toml
+
+   [likelihood]
+   kind = "additive_sigma"
+   no_model_error = true
+   fixed_model_mismatch = 0.8   # e.g. the median R of a previous NUTS run
+
+   [model.boundary]
+   prior = { pdf = "normal", mu = 1.0, sigma = 0.05 }
+
+   [sampling]
+   method = "gaussian"
+   draws = 1000
+   random_seed = 12345
+   sample_prior_predictive = 1000
+
+The retained flux state then has a Gaussian prior with the prepared arithmetic
+moments ``alpha_prior_mean`` and ``alpha_prior_covariance`` (the moments the
+default correlated LogNormal prior matches), and the likelihood covariance is
+the fixed ``mf_error**2 + fixed_model_mismatch**2`` on the diagonal plus the
+prepared aggregation covariance. The posterior is solved by Paige's generalised
+least squares (:func:`~openghg_inversions.inference.gls.paige_gls`) from a
+factor of that covariance, which it never inverts or whitens, so a very small
+mismatch on a nearly singular aggregation covariance stays accurate. ``draws`` independent
+exact draws fill one posterior chain with the usual variables and roles, so
+replay and products are unchanged, and a ``gaussian_posterior`` trace group
+holds the exact moments, numerical ranks and condition estimates. The seed is
+recorded; one is drawn when ``random_seed`` is omitted.
+
+With ``method = "gaussian"``, ``likelihood.fixed_model_mismatch`` (standard
+deviation, observation units) may be:
+
+- a scalar for every observation;
+- a per-site table, for example ``fixed_model_mismatch = { MHD = 0.6, TAC = 0.9 }``;
+  it must name exactly the observed sites;
+- a per-measurement ``DataArray`` on ``nmeasure`` (Python API);
+- an **empirical Bayes** estimate per site,
+  ``fixed_model_mismatch = { empirical_bayes = "prior_residual_moment", floor = 0.1 }``.
+  ``floor`` (ppm) is required; a declared mismatch or the median sigma of a
+  previous NUTS run is a sensible value.
+
+An explicit value in any form wins over a prepared ``fixed_model_mismatch``
+field, which wins over none. Empirical Bayes uses the prior residual
+``r = y - mean(prior state)``, the affine likelihood mean at the prior mean of
+every state (intercept, retained flux, boundary and offset).
+``"prior_residual_moment"`` (the default) sets
+``sigma_s**2 = max(0, mean_s(r**2) - mean_s(prior-predictive state variance)
+- mean_s(aggregation variance) - mean_s(mf_error**2))``, where the state
+variance is the diagonal of ``H B H^T`` plus the boundary and offset prior
+variance, then applies the floor. ``"prior_residual_rms"`` uses
+``sqrt(mean_s(r**2))``; it also counts the prior flux spread and aggregation
+error, so it overstates sigma. Either is a point estimate: the posterior does
+not include sigma uncertainty and uses the observations twice. Every term, the
+floor and whether it applied are recorded per site in the
+``gaussian_posterior`` attribute ``model_mismatch``.
+
+The moment mode has two known limitations:
+
+- Under a prior equal to the truth (for example the UOB control) the prior
+  residual is only observation noise plus aggregation error. The estimate is
+  then biased low by the whole subtracted prior state spread, not merely
+  noisy, and usually returns the floor; it is no evidence about model error.
+- When the prior-predictive variance sits in a few modes shared across
+  observations, a per-site mean of ``r**2`` has only a handful of effective
+  degrees of freedom. In the E-r07 configuration the four shared boundary
+  scalings contribute about 271 ppm² of the average subtracted variance and
+  the retained flux about 4.7 ppm² (about 98 % boundary), and a synthetic
+  draw with a known 1 ppm mismatch returned zero at every site.
+
+``"type2_ml"`` is the remedy for the second limitation. It maximises the exact
+Gaussian marginal likelihood of the prior residual,
+``log N(r; 0, K + diag(mf_error**2 + sigma_s**2))`` with
+``K = J diag(prior sd**2) J^T + A`` (retained flux, boundary and offset prior
+spread from the same affine map, plus aggregation error), jointly over
+``log sigma_s`` with L-BFGS-B and the analytic gradient, bounded below by the
+floor. Options: ``aggregation = "low_rank"`` (default; Woodbury with the
+prepared low-rank aggregation factor, or a rank-``rank`` approximation of a
+dense covariance, default rank 512) or ``"exact"`` (one dense Cholesky per
+evaluation), and ``max_iterations`` (default 200). With a dense prepared
+aggregation covariance the default fits sigma under the rank-``rank``
+approximation (its relative Frobenius error is recorded) while the posterior
+itself uses the exact covariance; the two likelihoods differ most at small
+sigma (on E-r07 the log marginal likelihood at the floor was -1.6e6 with the
+approximation and -1.05e7 exactly), so choose ``aggregation = "exact"`` when
+sigma is small relative to the aggregation error. Sites that end at the
+per-site upper bound (ten times their residual RMS) are flagged and warned.
+
+.. code-block:: toml
+
+   [likelihood]
+   kind = "additive_sigma"
+   no_model_error = true
+   fixed_model_mismatch = { empirical_bayes = "type2_ml", floor = 0.1 }
+
+The optimiser, iteration count, convergence flag and the log marginal
+likelihood at the optimum, at the start and at the floor are recorded; a
+non-converged run is kept and logged with a loud extra warning. It is still
+empirical Bayes (data used twice, no sigma uncertainty), and under a prior
+equal to the truth it measures only noise plus aggregation error. When every site is at its floor and the resulting independent variance is
+below ``1e-6`` of the mean aggregation variance, the run is refused unless
+``allow_zero = true``, since the posterior would be overconfident. Fixed
+OU-correlated mismatch is not yet supported. The prior-predictive check stage
+maps a per-site table but refuses an empirical-Bayes one.
+
+When no calibrated biosphere prior is configured, a Gaussian run logs a
+warning (Python ``logging``, which reaches stderr when the application
+configures no logging handlers, as the ``rhime`` CLI does not) that the
+default LogNormal flux prior was replaced by its moment-matched Normal, and
+records ``state_prior_substitution = "lognormal→normal (moment-matched)"`` in
+``rhime_actual_inference`` and the ``gaussian_posterior`` attributes. An
+empirical-Bayes run logs one more warning with the mode and the per-site sigma.
+
+The estimator refuses what it cannot solve exactly: an inferred model-error
+scale, fixed-OU or other replacement likelihoods, non-Normal boundary or offset
+priors, calibrated biosphere priors with LogNormal states, and NUTS-only
+``sampling`` options. It requires ``PYTENSOR_FLAGS=floatX=float64``.
+
 The configured ``rhime run --model co2`` CLI route uses
 ``run_co2`` and writes requested products. Python
 ``rhime.run(model="co2", config_file="co2.toml")`` selects the same configured

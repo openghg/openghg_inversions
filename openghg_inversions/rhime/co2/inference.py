@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal
 
 import xarray as xr
 
@@ -98,6 +98,9 @@ def describe_co2_inference(recorded: object) -> dict[str, Any]:
         record["algorithm"] = recorded["algorithm"]
     if recorded.get("target_accept_source") == "pm.sample_default":
         record["target_accept_source"] = "pm.sample_default"
+    seed = recorded.get("seed")
+    if isinstance(seed, int) and not isinstance(seed, bool) and seed >= 0:
+        record["seed"] = seed
     for name in ("target_accept", "sigma_target_accept", "state_target_accept"):
         value = recorded.get(name)
         if isinstance(value, int | float) and not isinstance(value, bool) and 0 < value < 1:
@@ -108,8 +111,23 @@ def describe_co2_inference(recorded: object) -> dict[str, Any]:
 def sample_co2_inference(
     prepared: Co2PreparedInputs, model: Mapping[str, Any], sampler: RhimeSampler, *,
     sigma_target_accept: float = 0.8, state_target_accept: float = 0.9,
+    method: Literal["nuts", "gaussian"] = "nuts",
 ) -> tuple[xr.DataTree, dict[str, Any]]:
-    """Build the selected graph, sample its matched steps and record their settings."""
+    """Build the selected graph, sample its matched steps and record their settings.
+
+    ``method="gaussian"`` instead solves the exact fixed-noise Gaussian
+    posterior with :func:`~openghg_inversions.rhime.co2.co2_gaussian.sample_co2_gaussian`
+    and returns independent draws in the same trace layout.
+    """
+    if method == "gaussian":
+        from .co2_gaussian import sample_co2_gaussian
+
+        return sample_co2_gaussian(prepared, model, sampler)
+    if method != "nuts":
+        raise ValueError(f"Unknown CO2 inference method {method!r}; use 'nuts' or 'gaussian'.")
+    from .co2_gaussian import check_co2_nuts_mismatch
+
+    check_co2_nuts_mismatch(model)
     validate_co2_inference(model, sampler)
     built, cached = build_co2_inference(prepared, model)
     if cached is not None:
