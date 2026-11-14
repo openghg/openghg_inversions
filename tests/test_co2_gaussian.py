@@ -1,12 +1,15 @@
 """Configured exact fixed-noise Gaussian estimation for the single-tracer CO2 recipe."""
 
 from copy import deepcopy
+from dataclasses import replace
 import json
 import logging
+import warnings
 from types import SimpleNamespace
 
 import mpmath
 import numpy as np
+import pandas as pd
 import pytest
 import scipy.linalg as sl
 import xarray as xr
@@ -305,10 +308,13 @@ def test_mismatch_configuration_forms():
     assert parse_fixed_model_mismatch(0.4, path) == 0.4
     assert dict(parse_fixed_model_mismatch({"MHD": 0.4}, path)) == {"MHD": 0.4}
     assert parse_fixed_model_mismatch({"empirical_bayes": "prior_residual_rms", "floor": 0.2}, path) == \
-        EmpiricalBayesMismatch("prior_residual_rms", 0.2)
-    assert parse_fixed_model_mismatch({"empirical_bayes": "prior_residual_moment"}, path).floor == 0.0
-    for bad, message in (({"empirical_bayes": "prior_residual_moment", "ceiling": 1.0}, "Unknown"),
-                         ({"empirical_bayes": "type_ii"}, "empirical_bayes must be one of"),
+        EmpiricalBayesMismatch(mode="prior_residual_rms", floor=0.2)
+    assert parse_fixed_model_mismatch(
+        {"empirical_bayes": "prior_residual_moment", "floor": 0.0, "allow_zero": True}, path,
+    ).allow_zero
+    for bad, message in (({"empirical_bayes": "prior_residual_moment", "floor": 0.1, "ceiling": 1.0}, "Unknown"),
+                         ({"empirical_bayes": "prior_residual_moment"}, "floor is required.*NUTS"),
+                         ({"empirical_bayes": "type_ii", "floor": 0.1}, "empirical_bayes must be one of"),
                          ({"MHD": -1.0}, "non-negative"), ({}, "empty")):
         with pytest.raises(ValueError, match=message):
             parse_fixed_model_mismatch(bad, path)
@@ -369,7 +375,7 @@ def test_prior_residual_moment_recovers_a_known_mismatch():
     total = prior_variance + aggregation + error + sigma2
     residual = np.sqrt(total) * rng.standard_normal(2 * n)
     sigma, record = empirical_bayes_mismatch(
-        EmpiricalBayesMismatch(), sites=sites, residual=residual, prior_state_variance=prior_variance,
+        EmpiricalBayesMismatch(floor=0.0), sites=sites, residual=residual, prior_state_variance=prior_variance,
         aggregation_variance=aggregation, error_variance=error,
     )
     for site, value in truth.items():
@@ -378,7 +384,109 @@ def test_prior_residual_moment_recovers_a_known_mismatch():
         assert abs(record["by_site"][site]["raw_variance"] - value**2) < 4 * standard_error
         assert np.all(sigma[rows] == record["by_site"][site]["sigma"])
     rms, _ = empirical_bayes_mismatch(
-        EmpiricalBayesMismatch("prior_residual_rms"), sites=sites, residual=residual,
+        EmpiricalBayesMismatch(mode="prior_residual_rms", floor=0.0), sites=sites, residual=residual,
         prior_state_variance=prior_variance, aggregation_variance=aggregation, error_variance=error,
     )
     assert np.all(rms > sigma)
+
+
+def test_negligible_floor_bound_mismatch_is_refused_unless_allowed():
+    sites = np.array(["A", "A", "B", "B"])
+    terms = dict(sites=sites, residual=np.zeros(4), prior_state_variance=np.ones(4),
+                 aggregation_variance=np.full(4, 0.2), error_variance=np.full(4, 1e-12))
+    with pytest.raises(ValueError, match="at the floor 0 at every site.*allow_zero"):
+        empirical_bayes_mismatch(EmpiricalBayesMismatch(floor=0.0), **terms)
+    sigma, record = empirical_bayes_mismatch(EmpiricalBayesMismatch(floor=0.0, allow_zero=True), **terms)
+    assert np.all(sigma == 0) and all(site["at_floor"] for site in record["by_site"].values())
+    sigma, _ = empirical_bayes_mismatch(EmpiricalBayesMismatch(floor=0.5), **terms)
+    np.testing.assert_array_equal(sigma, 0.5)
+
+
+def test_moment_mode_fails_when_a_shared_mode_dominates_the_prior_spread():
+    """One shared boundary-like scalar of variance 100 swamps a true sigma of 1 at every site.
+
+    Per-site means of r**2 then share one draw of that scalar, so the subtraction of its expected
+    variance is dominated by one chi-squared(1) sample: the estimate lands on the floor or far from
+    the truth in essentially every draw, although each site has 400 observations.
+    """
+    sites = np.repeat(["A", "B", "C", "D", "E"], 400)
+    shared_variance, truth = 100.0, 1.0
+    prior_variance = np.full(sites.size, shared_variance)
+    recovered = 0
+    for seed in range(20):
+        rng = np.random.default_rng(seed)
+        residual = np.sqrt(shared_variance) * rng.standard_normal() + truth * rng.standard_normal(sites.size)
+        _, record = empirical_bayes_mismatch(
+            EmpiricalBayesMismatch(floor=0.05), sites=sites, residual=residual, prior_state_variance=prior_variance,
+            aggregation_variance=np.zeros(sites.size), error_variance=np.zeros(sites.size),
+        )
+        recovered += all(abs(site["sigma"] - truth) < 0.5 for site in record["by_site"].values())
+    assert recovered <= 1
+
+
+def _two_site(prepared):
+    """Relabel the synthetic case's three observations onto two sites, keeping the MultiIndex."""
+    index = prepared.inv_inputs.indexes["nmeasure"]
+    relabelled = pd.MultiIndex.from_arrays([["MHD", "TAC", "TAC"], index.get_level_values("time")], names=index.names)
+    inputs = prepared.inv_inputs.drop_vars(["nmeasure", *index.names]).assign_coords(
+        xr.Coordinates.from_pandas_multiindex(relabelled, "nmeasure"))
+    sites = xr.Dataset({"averaging_period": ("site", ["1h", "1h"])}, coords={"site": ["MHD", "TAC"]})
+    return replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs, site_metadata=sites))
+
+
+def test_two_site_per_site_and_empirical_bayes_mismatch(case, double_precision):
+    prepared, _, params = case
+    prepared = _two_site(prepared)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error", message=".*MultiIndex.*", category=DeprecationWarning)
+        site_params = deepcopy(params)
+        site_params["likelihood"]["fixed_model_mismatch"] = {"MHD": 0.2, "TAC": 0.5}
+        site_trace, site_actual = _run_gaussian(prepared, site_params)
+        array = xr.full_like(prepared.inv_inputs.mf, 0.0).copy(data=[0.2, 0.5, 0.5])
+        array_trace, _ = _run_gaussian(prepared, params, fixed_model_mismatch=array)
+        eb_params = deepcopy(params)
+        eb_params["likelihood"]["fixed_model_mismatch"] = {"empirical_bayes": "prior_residual_moment", "floor": 0.05}
+        eb_trace, eb_actual = _run_gaussian(prepared, eb_params)
+    assert site_actual["model_mismatch"]["sigma_by_site"] == {"MHD": 0.2, "TAC": 0.5}
+    np.testing.assert_allclose(site_trace.constant_data.fixed_model_mismatch, [0.2, 0.5, 0.5])
+    for name in ("posterior_mean", "posterior_covariance"):
+        np.testing.assert_allclose(site_trace["gaussian_posterior"].dataset[name],
+                                   array_trace["gaussian_posterior"].dataset[name], rtol=1e-12)
+
+    inputs = prepared.inv_inputs
+    residual = (inputs.mf - inputs.fixed_prior_contribution - inputs.H.values @ inputs.alpha_prior_mean.values
+                - inputs.H_bc.values[:, 0]).values
+    prior_variance = (np.einsum("ij,jk,ik->i", inputs.H.values, inputs.alpha_prior_covariance.values, inputs.H.values)
+                      + inputs.H_bc.values[:, 0] ** 2 * 0.1**2 + 0.1**2)
+    aggregation = (inputs.low_rank_factor**2).sum("agg_rank").values + inputs.diagonal_residual_variance.values
+    total = residual**2 - prior_variance - aggregation - inputs.mf_error.values**2
+    expected = {site: max(np.sqrt(max(total[rows].mean(), 0.0)), 0.05)
+                for site, rows in (("MHD", [0]), ("TAC", [1, 2]))}
+    by_site = json.loads(eb_trace["gaussian_posterior"].dataset.attrs["model_mismatch"])["empirical_bayes"]["by_site"]
+    assert set(by_site) == {"MHD", "TAC"} and by_site["TAC"]["n_observations"] == 2
+    for site, value in expected.items():
+        assert by_site[site]["sigma"] == pytest.approx(value, rel=1e-10)
+        assert eb_actual["model_mismatch"]["sigma_by_site"][site] == pytest.approx(value, rel=1e-10)
+    np.testing.assert_allclose(eb_trace.constant_data.fixed_model_mismatch,
+                               [expected["MHD"], expected["TAC"], expected["TAC"]], rtol=1e-10)
+
+
+def test_numpy_scalar_mismatch_is_recorded_as_a_scalar(case, double_precision):
+    prepared, _, params = case
+    _, actual = _run_gaussian(prepared, params, fixed_model_mismatch=np.float32(0.25))
+    assert actual["model_mismatch"]["source"] == "specified scalar"
+    assert actual["model_mismatch"]["sigma_by_site"]["MHD"] == pytest.approx(0.25)
+
+
+def test_prior_predictive_maps_site_tables_and_refuses_empirical_bayes(case, tmp_path):
+    prepared, affine, params = case
+    manifest = handoffs.save_preparation(prepared, output_dir=tmp_path / "prepare", affine_artifact=affine,
+                                         **params["prepared_inputs"])
+    params["likelihood"]["fixed_model_mismatch"] = {"MHD": 0.3}
+    result = handoffs.prior_predictive(manifest, model=Co2ModelConfig.from_params(params),
+                                       output_dir=tmp_path / "prior", draws=5, random_seed=1)
+    assert result["status"] == "pass"
+    params["likelihood"]["fixed_model_mismatch"] = {"empirical_bayes": "prior_residual_moment", "floor": 0.1}
+    with pytest.raises(ValueError, match="empirical-Bayes"):
+        handoffs.prior_predictive(manifest, model=Co2ModelConfig.from_params(params),
+                                  output_dir=tmp_path / "eb-prior", draws=5)

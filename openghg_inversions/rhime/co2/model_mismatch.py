@@ -10,7 +10,9 @@ deviation :math:`\sigma` added in quadrature to ``mf_error``. With
   refused;
 - a per-measurement ``xarray.DataArray`` on ``nmeasure`` (Python API);
 - an **empirical Bayes** choice ``{empirical_bayes = "prior_residual_moment",
-  floor = 0.1}``, estimated per site from the prior residuals.
+  floor = 0.1}``, estimated per site from the prior residuals. ``floor`` is
+  required; a declared mismatch or the median sigma of a previous NUTS run is a
+  sensible value.
 
 Precedence is unchanged: an explicit value (in any of these forms) wins over a
 prepared ``fixed_model_mismatch`` field, which wins over no mismatch.
@@ -32,10 +34,31 @@ Empirical Bayes uses the prior residual :math:`r = y - \bar y`, where
 
 Both are point estimates: the posterior treats :math:`\sigma` as known, so
 it carries no :math:`\sigma` uncertainty, and the observations are used twice,
-to set :math:`\sigma` and to fit. When the prior equals the truth (for example
-the UOB control), the prior residual is pure observation noise plus aggregation
-error, so an empirical-Bayes :math:`\sigma` there says nothing about real model
-error.
+to set :math:`\sigma` and to fit. Known limitations of the moment mode:
+
+- When the prior equals the truth (for example the UOB control), the prior
+  residual is pure observation noise plus aggregation error. Its expectation
+  lacks the whole prior state spread that the moment mode subtracts, so the
+  estimate is biased low by the mean of :math:`\mathrm{diag}(H B H^T)` (and
+  the boundary and offset spread), not merely noisy, and usually returns the
+  floor. An empirical-Bayes :math:`\sigma` there is no evidence about model
+  error.
+- When the prior-predictive variance sits in a few modes shared across
+  observations, a per-site mean of :math:`r^2` has only a handful of effective
+  degrees of freedom, so the subtraction is dominated by sampling error. In
+  the E-r07 configuration the four shared boundary scalings contribute about
+  271 ppm² of the average subtracted variance and the retained flux about
+  4.7 ppm², about 98 % from the boundary.
+
+A per-site type-II maximum-likelihood estimate, maximising
+:math:`\log N(y; \bar y, K + \mathrm{diag}(e^2 + \sigma_s^2))` with the full
+correlated prior-predictive covariance :math:`K`, is the proposed remedy; it is
+not implemented yet.
+
+The floor is required. When every site sits at its floor and the resulting
+mean :math:`e^2 + \sigma^2` is below ``1e-6`` times the mean aggregation
+variance, the estimate is refused unless ``allow_zero = true``: such a
+mismatch would make the posterior overconfident.
 """
 
 from __future__ import annotations
@@ -54,18 +77,23 @@ EmpiricalBayesMode = Literal["prior_residual_moment", "prior_residual_rms"]
 EMPIRICAL_BAYES_MODES: tuple[str, ...] = get_args(EmpiricalBayesMode)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class EmpiricalBayesMismatch:
     """Per-site empirical-Bayes model mismatch, estimated from prior residuals.
 
     Attributes:
+        floor: Required minimum per-site standard deviation in observation
+            units, for example a declared mismatch or a NUTS median.
         mode: ``"prior_residual_moment"`` (default) or ``"prior_residual_rms"``;
             see the module documentation.
-        floor: Minimum per-site standard deviation in observation units.
+        allow_zero: Accept a result where every site is at its floor and the
+            total independent variance is negligible against the aggregation
+            variance.
     """
 
+    floor: float
     mode: EmpiricalBayesMode = "prior_residual_moment"
-    floor: float = 0.0
+    allow_zero: bool = False
 
     def __post_init__(self) -> None:
         """Validate the mode and the floor."""
@@ -73,6 +101,8 @@ class EmpiricalBayesMismatch:
             raise ValueError(f"empirical_bayes must be one of {list(EMPIRICAL_BAYES_MODES)!r}, not {self.mode!r}.")
         if isinstance(self.floor, bool) or not isfinite(float(self.floor)) or float(self.floor) < 0:
             raise ValueError("The empirical-Bayes floor must be finite and non-negative.")
+        if not isinstance(self.allow_zero, bool):
+            raise TypeError("allow_zero must be a boolean.")
 
 
 FixedMismatch = float | Mapping[str, float] | EmpiricalBayesMismatch | xr.DataArray
@@ -110,10 +140,18 @@ def parse_fixed_model_mismatch(value: object, path: str) -> float | Mapping[str,
         mode = table.pop("empirical_bayes")
         if not isinstance(mode, str):
             raise TypeError(f"{path}.empirical_bayes must be a mode name.")
-        floor = number(table.pop("floor"), f"{path}.floor") if "floor" in table else 0.0
+        if "floor" not in table:
+            raise ValueError(
+                f"{path}.floor is required with empirical_bayes: set a minimum sigma in observation units, "
+                "for example the declared mismatch or the median sigma of a previous NUTS run."
+            )
+        floor = number(table.pop("floor"), f"{path}.floor")
+        allow_zero = table.pop("allow_zero", False)
+        if not isinstance(allow_zero, bool):
+            raise TypeError(f"{path}.allow_zero must be a boolean.")
         if table:
             raise ValueError(f"Unknown empirical-Bayes option(s): {', '.join(f'{path}.{name}' for name in table)}.")
-        return EmpiricalBayesMismatch(mode=mode, floor=floor)  # type: ignore[arg-type]
+        return EmpiricalBayesMismatch(mode=mode, floor=floor, allow_zero=allow_zero)  # type: ignore[arg-type]
     if not table:
         raise ValueError(f"{path} must not be an empty site table.")
     if any(not isinstance(site, str) or not site.strip() for site in table):
@@ -184,6 +222,11 @@ def empirical_bayes_mismatch(
         Per-observation standard deviations and a JSON-safe record with, per
         site, the observation count, every averaged term, the raw estimate,
         the final value and whether the floor applied.
+
+    Raises:
+        ValueError: If every site is at its floor and the mean of
+            ``error_variance + sigma**2`` is below ``1e-6`` times the mean
+            ``aggregation_variance``, unless ``choice.allow_zero``.
     """
     sigma = np.empty_like(residual, dtype=np.float64)
     by_site: dict[str, dict[str, Any]] = {}
@@ -205,8 +248,18 @@ def empirical_bayes_mismatch(
         value = max(raw, choice.floor)
         sigma[rows] = value
         by_site[site] = {**terms, "raw_variance": float(raw_variance), "raw_sigma": raw, "sigma": value,
-                         "floor_applied": bool(choice.floor > raw)}
-    return sigma, {"label": "empirical Bayes", **asdict(choice), "by_site": by_site}
+                         "floor_applied": bool(choice.floor > raw), "at_floor": bool(raw <= choice.floor)}
+    independent = float(np.mean(error_variance + sigma**2))
+    negligible = independent < 1e-6 * float(np.mean(aggregation_variance))
+    if negligible and all(item["at_floor"] for item in by_site.values()) and not choice.allow_zero:
+        raise ValueError(
+            f"Empirical-Bayes sigma ({choice.mode}) is at the floor {choice.floor:g} at every site and the mean "
+            f"independent variance {independent:.3g} is negligible against the aggregation variance, which "
+            "would make the posterior overconfident. Set a larger floor (for example the declared mismatch or a "
+            "NUTS median sigma), or allow_zero = true to accept it."
+        )
+    return sigma, {"label": "empirical Bayes", **asdict(choice), "by_site": by_site,
+                   "mean_independent_variance": independent}
 
 
 __all__ = [

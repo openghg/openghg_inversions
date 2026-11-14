@@ -31,8 +31,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 import json
 import logging
+import numbers
 import secrets
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -330,10 +331,20 @@ def _sigma_by_site(sites: NDArray[np.str_], sigma: NDArray[np.float64]) -> dict[
     return result
 
 
+def _is_scalar(value: object) -> bool:
+    """Return whether ``value`` is a real scalar mismatch, including NumPy scalars but not booleans."""
+    return isinstance(value, numbers.Real) and not isinstance(value, bool | np.bool_)
+
+
+def _with_mismatch(inputs: xr.Dataset, values: NDArray[np.float64]) -> xr.Dataset:
+    """Install per-observation mismatch values as a bare variable on the existing ``nmeasure`` index."""
+    return inputs.assign(fixed_model_mismatch=("nmeasure", np.asarray(values, dtype=np.float64)))
+
+
 def _empirical_bayes(
     choice: EmpiricalBayesMismatch, inputs: xr.Dataset, prepared: Co2PreparedInputs,
     build: Any, rng: np.random.Generator,
-) -> tuple[xr.DataArray, dict[str, Any]]:
+) -> tuple[NDArray[np.float64], dict[str, Any]]:
     """Estimate the per-site empirical-Bayes mismatch from the prior residual of the Gaussian graph.
 
     The graph is built with zero mismatch only to read its affine likelihood
@@ -341,8 +352,8 @@ def _empirical_bayes(
     state, and the prior-predictive state variance is the diagonal of
     ``J diag(prior_sd**2) J^T`` (retained flux, boundary and offset states).
     """
-    zero = xr.zeros_like(inputs["mf"], dtype=np.float64).rename("fixed_model_mismatch")
-    provisional = build(inputs.assign(fixed_model_mismatch=zero), zero)
+    provisional_inputs = _with_mismatch(inputs, np.zeros(inputs.sizes["nmeasure"]))
+    provisional = build(provisional_inputs, provisional_inputs["fixed_model_mismatch"])
     mean, observations = _likelihood_terms(provisional)
     variables = normal_variables(provisional.model)
     (mean_map,) = affine_maps(provisional.model, [mean], variables, rng=rng)
@@ -355,7 +366,7 @@ def _empirical_bayes(
         aggregation_variance=np.asarray(aggregation.marginal_variance, dtype=np.float64),
         error_variance=np.asarray(inputs["mf_error"].transpose("nmeasure").values, dtype=np.float64) ** 2,
     )
-    return zero.copy(data=sigma), record
+    return sigma, record
 
 
 def sample_co2_gaussian(
@@ -389,7 +400,8 @@ def sample_co2_gaussian(
     require_gaussian_precision()
     check_co2_gaussian_model(model)
     mismatch = model.get("fixed_model_mismatch")
-    direct = mismatch if mismatch is None or isinstance(mismatch, int | float | xr.DataArray) else None
+    # Labelled and table forms are installed below as bare values on the existing index.
+    direct = mismatch if mismatch is None or _is_scalar(mismatch) else None
     inputs, priors, boundary = materialize_co2_inputs(
         prepared_inputs=prepared,
         fixed_model_mismatch=direct,
@@ -421,18 +433,25 @@ def sample_co2_gaussian(
     mismatch_record: dict[str, Any]
     fixed: float | xr.DataArray | None
     if isinstance(mismatch, EmpiricalBayesMismatch):
-        fixed, eb_record = _empirical_bayes(mismatch, inputs, prepared, build, mismatch_rng)
-        inputs = inputs.assign(fixed_model_mismatch=fixed)
+        sigma_rows, eb_record = _empirical_bayes(mismatch, inputs, prepared, build, mismatch_rng)
+        inputs = _with_mismatch(inputs, sigma_rows)
+        fixed = inputs["fixed_model_mismatch"]
         mismatch_record = {"source": "empirical Bayes", "empirical_bayes": eb_record}
     elif isinstance(mismatch, Mapping):
-        fixed = per_site_mismatch(mismatch, inputs["mf"])
-        inputs = inputs.assign(fixed_model_mismatch=fixed)
+        inputs = _with_mismatch(inputs, per_site_mismatch(mismatch, inputs["mf"]).values)
+        fixed = inputs["fixed_model_mismatch"]
         mismatch_record = {"source": "specified per site"}
+    elif isinstance(mismatch, xr.DataArray):
+        if mismatch.dims != ("nmeasure",):
+            raise ValueError(f"fixed_model_mismatch must have dims ('nmeasure',); got {mismatch.dims!r}.")
+        aligned, _ = xr.align(mismatch, inputs["mf"], join="exact")
+        inputs = _with_mismatch(inputs, aligned.values)
+        fixed = inputs["fixed_model_mismatch"]
+        mismatch_record = {"source": "specified per measurement"}
     else:
-        fixed = mismatch
+        fixed = float(cast(float, mismatch)) if _is_scalar(mismatch) else mismatch
         mismatch_record = {"source": (
-            "specified scalar" if isinstance(mismatch, int | float)
-            else "specified per measurement" if isinstance(mismatch, xr.DataArray)
+            "specified scalar" if _is_scalar(mismatch)
             else "prepared fixed_model_mismatch" if "fixed_model_mismatch" in inputs else "none"
         )}
     built = build(inputs, fixed)

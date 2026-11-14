@@ -404,6 +404,9 @@ def prior_predictive(
     calibrated) retained prior, whatever ``sampling.method`` a later sample
     stage selects. The Gaussian estimator's moment-matched Gaussian prior is
     recorded in its ``gaussian_posterior`` group and ``prior`` draws instead.
+    A per-site ``fixed_model_mismatch`` table is mapped onto the observations;
+    an empirical-Bayes table is refused, because that sigma is estimated only
+    by the Gaussian sample stage.
 
     Construction/inference errors propagate before creating a destination. Only
     evaluated missing, empty or non-finite predictive evidence becomes a failed
@@ -414,9 +417,13 @@ def prior_predictive(
     _check_draws(draws)
     stage = _check_stage(stage)
     model_config = model if isinstance(model, Co2ModelConfig) else Co2ModelConfig.from_params(load_co2_params(params=model))
-    from .co2_gaussian import check_co2_nuts_mismatch
+    from .model_mismatch import EmpiricalBayesMismatch
 
-    check_co2_nuts_mismatch({"fixed_model_mismatch": model_config.fixed_model_mismatch})
+    if isinstance(model_config.fixed_model_mismatch, EmpiricalBayesMismatch):
+        raise ValueError(
+            "The prior-predictive check cannot use an empirical-Bayes fixed_model_mismatch, which is estimated "
+            "only by the Gaussian sample stage; use a scalar or per-site value for this check."
+        )
     preparation = load_preparation(preparation_manifest)
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
@@ -428,6 +435,12 @@ def prior_predictive(
     )
     check_prepared_boundary(preparation.prepared.inv_inputs, model_config.boundary)
     model_options = model_config.model_arguments()
+    if isinstance(model_options.get("fixed_model_mismatch"), Mapping):
+        from .model_mismatch import per_site_mismatch
+
+        model_options["fixed_model_mismatch"] = per_site_mismatch(
+            model_options["fixed_model_mismatch"], preparation.prepared.inv_inputs["mf"],
+        )
     report.unlink(missing_ok=True)
     built, cached = build_co2_inference(preparation.prepared, model_options)
     with built.model:

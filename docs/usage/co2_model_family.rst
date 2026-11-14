@@ -259,6 +259,8 @@ deviation, observation units) may be:
 - a per-measurement ``DataArray`` on ``nmeasure`` (Python API);
 - an **empirical Bayes** estimate per site,
   ``fixed_model_mismatch = { empirical_bayes = "prior_residual_moment", floor = 0.1 }``.
+  ``floor`` (ppm) is required; a declared mismatch or the median sigma of a
+  previous NUTS run is a sensible value.
 
 An explicit value in any form wins over a prepared ``fixed_model_mismatch``
 field, which wins over none. Empirical Bayes uses the prior residual
@@ -271,20 +273,38 @@ variance is the diagonal of ``H B H^T`` plus the boundary and offset prior
 variance, then applies the floor. ``"prior_residual_rms"`` uses
 ``sqrt(mean_s(r**2))``; it also counts the prior flux spread and aggregation
 error, so it overstates sigma. Either is a point estimate: the posterior does
-not include sigma uncertainty and uses the observations twice. Under a prior
-equal to the truth (for example the UOB control) the prior residual is only
-observation noise plus aggregation error, so an empirical-Bayes sigma there is
-not evidence about model error. Every term, the floor and whether it applied
-are recorded per site in the ``gaussian_posterior`` attribute
-``model_mismatch``. Fixed OU-correlated mismatch is not yet supported.
+not include sigma uncertainty and uses the observations twice. Every term, the
+floor and whether it applied are recorded per site in the
+``gaussian_posterior`` attribute ``model_mismatch``.
 
-Each Gaussian run logs a warning (Python ``logging``, which reaches stderr when
-the application configures no logging handlers, as the ``rhime`` CLI does not)
-that the default LogNormal flux prior was replaced by its moment-matched
-Normal, and records ``state_prior_substitution = "lognormal→normal
-(moment-matched)"`` in ``rhime_actual_inference`` and the
-``gaussian_posterior`` attributes. An empirical-Bayes run logs one more warning
-with the mode and the per-site sigma.
+The moment mode has two known limitations:
+
+- Under a prior equal to the truth (for example the UOB control) the prior
+  residual is only observation noise plus aggregation error. The estimate is
+  then biased low by the whole subtracted prior state spread, not merely
+  noisy, and usually returns the floor; it is no evidence about model error.
+- When the prior-predictive variance sits in a few modes shared across
+  observations, a per-site mean of ``r**2`` has only a handful of effective
+  degrees of freedom. In the E-r07 configuration the four shared boundary
+  scalings contribute about 271 ppm² of the average subtracted variance and
+  the retained flux about 4.7 ppm² (about 98 % boundary), and a synthetic
+  draw with a known 1 ppm mismatch returned zero at every site.
+
+A per-site type-II maximum-likelihood mode, which uses the full correlated
+prior-predictive covariance, is the proposed remedy and is not implemented
+yet. When every site is at its floor and the resulting independent variance is
+below ``1e-6`` of the mean aggregation variance, the run is refused unless
+``allow_zero = true``, since the posterior would be overconfident. Fixed
+OU-correlated mismatch is not yet supported. The prior-predictive check stage
+maps a per-site table but refuses an empirical-Bayes one.
+
+When no calibrated biosphere prior is configured, a Gaussian run logs a
+warning (Python ``logging``, which reaches stderr when the application
+configures no logging handlers, as the ``rhime`` CLI does not) that the
+default LogNormal flux prior was replaced by its moment-matched Normal, and
+records ``state_prior_substitution = "lognormal→normal (moment-matched)"`` in
+``rhime_actual_inference`` and the ``gaussian_posterior`` attributes. An
+empirical-Bayes run logs one more warning with the mode and the per-site sigma.
 
 The estimator refuses what it cannot solve exactly: an inferred model-error
 scale, fixed-OU or other replacement likelihoods, non-Normal boundary or offset
