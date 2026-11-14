@@ -803,6 +803,81 @@ def _add_prepared_correlated_lognormal_state_with_activity(
     return StateVectorResult(latent=latent, state=state, activity=activity)
 
 
+def add_correlated_gaussian_state_with_activity(
+    activity: ResolvedStateActivity,
+    mean: xr.DataArray,
+    factor: xr.DataArray,
+    /,
+    *,
+    var_name: str,
+) -> StateVectorResult:
+    """Construct a whitened correlated Gaussian state with exact fixed values.
+
+    Active states are ``mean + factor @ latent`` with a standard-normal
+    ``{var_name}_latent`` on the factor's column dimension; inactive states
+    keep their fixed values and active states are also recorded as
+    ``{var_name}_active``, as in
+    :func:`add_correlated_lognormal_state_with_activity`. The active rows of a
+    factor of the full covariance are an exact factor of the active marginal
+    covariance, so no refactorisation is needed. A rank-deficient factor is
+    accepted; the state is then confined to its range.
+
+    Args:
+        activity: Resolved activity in canonical full-state order.
+        mean: Labelled arithmetic mean on the full state dimension.
+        factor: Labelled ``(state_dim, mode_dim)`` matrix whose product with
+            its transpose is the full prior covariance.
+        var_name: Name of the full user-facing state vector.
+
+    Returns:
+        The latent (``None`` when every state is fixed), full state and
+        activity.
+
+    Raises:
+        ValueError: If the labels differ from the activity's state labels or
+            the factor is not two-dimensional on the state dimension.
+    """
+    state_dim = activity.state_dim
+    if mean.dims != (state_dim,) or factor.ndim != 2 or factor.dims[0] != state_dim:
+        raise ValueError(
+            f"A Gaussian state needs a mean on ({state_dim!r},) and a factor on ({state_dim!r}, mode); "
+            f"got {mean.dims!r} and {factor.dims!r}."
+        )
+    activity_index = activity.zero_sensitivity.coords[state_dim].to_index()
+    for name, value in (("mean", mean), ("factor", factor)):
+        if not value.coords[state_dim].to_index().equals(activity_index):
+            raise ValueError(f"Gaussian state {name} labels must match state-activity labels in the same order.")
+    mode_dim = str(factor.dims[1])
+    add_coords(activity.zero_sensitivity.coords, model_dims=(state_dim,))
+    active_indices = activity.active_indices
+    latent: TensorVariable | None = None
+    full_state: TensorVariable | None = None
+    if activity.n_active != activity.n_state:
+        add_model_data(activity.active.rename(f"{var_name}_is_active"), f"{var_name}_is_active")
+        full_state = add_model_data(
+            activity.fixed_value.rename(f"{var_name}_fixed_value"), f"{var_name}_fixed_value",
+        )
+    if activity.n_active:
+        add_coords({mode_dim: np.arange(factor.sizes[mode_dim])}, model_dims=(mode_dim,))
+        latent = pm.Normal(f"{var_name}_latent", 0.0, 1.0, dims=mode_dim)
+        active_mean = pt.as_tensor_variable(np.asarray(mean.values, dtype=np.float64)[active_indices])
+        active_factor = pt.as_tensor_variable(np.asarray(factor.values, dtype=np.float64)[active_indices])
+        active_state = active_mean + pt.dot(active_factor, latent)
+        if full_state is None:
+            full_state = active_state
+        else:
+            # Mirror the LogNormal component's labelled active-state output.
+            active_dim, active_coords = _active_state_coords(
+                mean.coords[state_dim], active_indices, f"{var_name}_active",
+            )
+            labels = xr.DataArray(np.zeros(active_indices.size), dims=(active_dim,), coords=active_coords)
+            add_coords(labels.coords, model_dims=(active_dim,))
+            active_state = pm.Deterministic(f"{var_name}_active", active_state, dims=active_dim)
+            full_state = pt.set_subtensor(full_state[active_indices], active_state)
+    state = pm.Deterministic(var_name, full_state, dims=state_dim)
+    return StateVectorResult(latent=latent, state=state, activity=activity)
+
+
 def prepare_active_correlated_lognormal_prior(
     activity: ResolvedStateActivity,
     prior: CorrelatedLognormalPrior,

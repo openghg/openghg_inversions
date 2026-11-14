@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import fields
 import json
 from pathlib import Path
 from typing import Any, cast
@@ -111,6 +112,10 @@ def run_co2(
     model_config = Co2ModelConfig.from_params(options)
     sampling = _resolve_co2_sampling(options, model=model_config.sampler_arguments())
     sampler = sampling.sampler
+    if sampling.method == "gaussian":
+        from .co2_gaussian import check_co2_gaussian_model
+
+        check_co2_gaussian_model({item.name: getattr(model_config, item.name) for item in fields(model_config)})
     output_choices = resolve_co2_output(options)
     output = output_choices["output"]
     affine_path = preparation.affine_path
@@ -183,7 +188,7 @@ def run_co2(
     model = model_config.model_arguments()
     trace, actual = sample_co2_inference(
         prepared, model, sampler, sigma_target_accept=sampling.sigma_target_accept,
-        state_target_accept=sampling.state_target_accept,
+        state_target_accept=sampling.state_target_accept, method=sampling.method,
     )
     result = make_co2_output(prepared=prepared, trace=trace, bound=bound,
                             output_metadata={"sampler": actual,

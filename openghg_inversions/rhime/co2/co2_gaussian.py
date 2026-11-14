@@ -1,0 +1,346 @@
+r"""Exact fixed-noise Gaussian estimation for the single-tracer CO2 recipe.
+
+Selected with ``[sampling] method = "gaussian"``, this estimator replaces NUTS
+for a linear-Gaussian version of the ordinary CO2 graph:
+
+- the retained flux state has a Gaussian prior with the prepared arithmetic
+  moments ``alpha_prior_mean`` and ``alpha_prior_covariance`` (the same
+  moments the default correlated LogNormal prior matches), built as a
+  whitened state from a PSD factor of the covariance;
+- boundary and offset states keep their configured priors, which must be
+  Normal;
+- the likelihood is the additive-Gaussian likelihood with fixed error,
+  :math:`W = A + R` with :math:`R = \mathrm{diag}(s_y^2 + s_{fixed}^2)` and
+  the prepared aggregation covariance :math:`A`.
+
+The graph is built by the same CO2 builder as for NUTS. Its likelihood mean
+is read as an affine map of the free Normal variables and checked to be
+affine, so the intercept, boundary representation and offsets enter exactly
+as in the sampled model. :func:`~openghg_inversions.inference.gls.paige_gls`
+solves the posterior with the noise factor
+:math:`F_W = [L_A \mid \mathrm{diag}(\sqrt{R})]`, never forming or whitening
+:math:`W`. Independent exact draws then pass through the same graph, so the
+trace has the NUTS layout, roles and units, and existing replay and products
+run unchanged. A ``gaussian_posterior`` group records the exact moments.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+import json
+import secrets
+from typing import Any
+
+import numpy as np
+from numpy.typing import NDArray
+import pytensor
+import xarray as xr
+
+from openghg_inversions.biosphere_prior import BiospherePrior
+from openghg_inversions.inference.exact_gaussian import (
+    affine_maps, exact_gaussian_trace, solve_linear_gaussian_model,
+)
+from openghg_inversions.inference.gls import psd_factor
+from openghg_inversions.inference.sampling import RhimeSampler
+from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice, MultiplicativeChoice
+from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.observation_error import resolve_aggregation_error
+from openghg_inversions.rhime.builders import RhimeModelBuildResult
+
+from .co2_model import GaussianStatePrior
+from .co2_preparation import Co2PreparedInputs
+from .co2_runner import annotate_co2_trace, build_co2_from_materialized, materialize_co2_inputs
+
+GAUSSIAN_ALGORITHM = "gaussian_paige_gls"
+"""``rhime_actual_inference`` algorithm name of the exact Gaussian estimator."""
+
+GAUSSIAN_POSTERIOR_GROUP = "gaussian_posterior"
+"""Trace group holding the exact Gaussian moments."""
+
+_MODE_DIM = "flux_scaling_mode"
+_ALTERNATIVE = 'or use method = "nuts"'
+
+
+def _require_normal(prior: Mapping[str, Any] | None, label: str) -> None:
+    """Refuse a configured non-Normal prior before any array is read."""
+    if prior is None:
+        return
+    pdf = str(prior.get("pdf", "")).casefold().replace("-", "").replace("_", "")
+    if pdf != "normal":
+        raise ValueError(
+            f'method = "gaussian" requires a Normal {label} prior, not {prior.get("pdf")!r}; '
+            f'set its pdf to "normal" {_ALTERNATIVE}.'
+        )
+
+
+def require_gaussian_precision() -> None:
+    """Require a float64 PyTensor process, as the graph supplies the affine map.
+
+    ``pm.Data`` casts registered arrays to the global ``floatX``; a float32
+    graph would round the design and intercept to about seven digits.
+
+    Raises:
+        ValueError: If ``floatX`` is not float64.
+    """
+    if pytensor.config.floatX != "float64":
+        raise ValueError(
+            'method = "gaussian" requires PyTensor floatX=float64; set PYTENSOR_FLAGS=floatX=float64 '
+            "before starting Python."
+        )
+
+
+def check_co2_gaussian_likelihood(model: Mapping[str, Any]) -> None:
+    """Refuse a likelihood other than additive-Gaussian with fixed error.
+
+    Args:
+        model: Mapping with the selected ``likelihood_builder``, as from
+            :meth:`~openghg_inversions.rhime.co2.configuration.Co2ModelConfig.sampler_arguments`.
+
+    Raises:
+        ValueError: For a fixed-OU or other replacement likelihood.
+    """
+    builder = model.get("likelihood_builder")
+    if builder is add_fixed_ou_gaussian_likelihood:
+        raise ValueError(
+            'method = "gaussian" does not yet support fixed-OU correlation (likelihood.kind = "fixed_ou"); '
+            f'use likelihood.kind = "additive_sigma" with a fixed model mismatch {_ALTERNATIVE}.'
+        )
+    if builder is not None:
+        raise ValueError(
+            'method = "gaussian" supports only likelihood.kind = "additive_sigma" with fixed error; '
+            f"the selected likelihood infers its error or is not Gaussian {_ALTERNATIVE}."
+        )
+
+
+def check_co2_gaussian_model(model: Mapping[str, Any]) -> None:
+    """Refuse model choices that the fixed-noise Gaussian estimator cannot solve exactly.
+
+    Configuration-only checks run before any preparation is opened; the
+    biosphere family is checked once the calibrated prior is loaded, and the
+    built graph is checked again for Normal priors and an affine mean.
+
+    Args:
+        model: CO2 model choices, as fields of
+            :class:`~openghg_inversions.rhime.co2.configuration.Co2ModelConfig`
+            or the resolved arguments from its ``model_arguments``.
+
+    Raises:
+        ValueError: For a fixed-OU or other non-additive likelihood, an
+            inferred model-error scale, a non-Normal boundary or offset prior,
+            or a calibrated biosphere prior that is not Gaussian on every state.
+    """
+    check_co2_gaussian_likelihood(model)
+    if not model.get("no_model_error", False):
+        raise ValueError(
+            'method = "gaussian" needs a fixed likelihood error, but this model samples the model-error '
+            "scale sigma. Set likelihood.no_model_error = true and a fixed model mismatch "
+            "(likelihood.fixed_model_mismatch = ..., e.g. the median R from a previous NUTS run), "
+            f"{_ALTERNATIVE}."
+        )
+    _require_normal(model.get("offset_prior"), "offset")
+    boundary = model.get("boundary")
+    if isinstance(boundary, MultiplicativeChoice):
+        _require_normal(boundary.prior, "boundary")
+    elif isinstance(boundary, AdditiveChoice | AnomalyScalingChoice):
+        _require_normal(boundary.mean_prior, "boundary mean-shift")
+    biosphere = model.get("biosphere_prior")
+    if biosphere is not None:
+        family = biosphere.data.attrs.get("family")
+        if family != "gaussian" or not bool(biosphere.data.biosphere.all()):
+            raise ValueError(
+                f'method = "gaussian" cannot use a {family} biosphere prior: its protected states are '
+                f"LogNormal. Remove model.biosphere to use the prepared Gaussian moments {_ALTERNATIVE}."
+            )
+
+
+def _gaussian_state_prior(
+    inputs: xr.Dataset, biosphere: BiospherePrior | None,
+) -> tuple[GaussianStatePrior, dict[str, Any]]:
+    """Return the Gaussian retained-state moments and their PSD factor record."""
+    mean = inputs["alpha_prior_mean"]
+    covariance = inputs["alpha_prior_covariance"]
+    if biosphere is not None:
+        mean, _ = xr.align(biosphere.data.baseline_mean, mean, join="exact")
+        covariance = biosphere.data.covariance
+    state_dim = str(mean.dims[0])
+    factor = psd_factor(np.asarray(covariance.values, dtype=np.float64))
+    labelled = xr.DataArray(
+        factor.factor, dims=(state_dim, _MODE_DIM),
+        coords={**mean.coords, _MODE_DIM: np.arange(factor.factor.shape[1])},
+    )
+    return GaussianStatePrior(mean=mean, factor=labelled), factor.diagnostics
+
+
+def _co2_noise_factor(
+    inputs: xr.Dataset, prepared: Co2PreparedInputs, fixed_model_mismatch: Any,
+) -> tuple[NDArray[np.float64], dict[str, Any]]:
+    """Return ``F_W = [L_A | diag(sqrt(R))]`` for the fixed CO2 likelihood error.
+
+    The mismatch follows the CO2 builder: an explicit labelled value is
+    installed in ``inputs``; otherwise an explicit scalar wins over a prepared
+    ``fixed_model_mismatch`` field.
+    """
+    error = np.asarray(inputs["mf_error"].transpose("nmeasure").values, dtype=np.float64)
+    if fixed_model_mismatch is not None and not isinstance(fixed_model_mismatch, xr.DataArray):
+        mismatch = np.full_like(error, float(fixed_model_mismatch))
+    elif "fixed_model_mismatch" in inputs:
+        mismatch = np.asarray(inputs["fixed_model_mismatch"].transpose("nmeasure").values, dtype=np.float64)
+    else:
+        mismatch = np.zeros_like(error)
+    variance = error**2 + mismatch**2
+    aggregation = resolve_aggregation_error(inputs, prepared.aggregation_error_mode)
+    record: dict[str, Any] = {"aggregation_error_mode": aggregation.mode,
+                              "independent_variance": "mf_error**2 + fixed_model_mismatch**2"}
+    if aggregation.mode in ("low_rank", "diagonal"):
+        assert aggregation.diagonal_variance is not None
+        variance = variance + np.asarray(aggregation.diagonal_variance.values, dtype=np.float64)
+    columns = [np.diag(np.sqrt(variance))]
+    if aggregation.mode == "low_rank":
+        assert aggregation.factor is not None
+        columns.insert(0, np.asarray(aggregation.factor.values, dtype=np.float64))
+    elif aggregation.mode == "dense":
+        assert aggregation.covariance is not None
+        factor = psd_factor(np.asarray(aggregation.covariance.values, dtype=np.float64))
+        record["aggregation_psd_factor"] = factor.diagnostics
+        columns.insert(0, factor.factor)
+    return np.hstack(columns), record
+
+
+def _check_noise_against_graph(built: RhimeModelBuildResult, noise_factor: NDArray[np.float64]) -> None:
+    """Require the factor's marginal variances to match the graph's ``epsilon``."""
+    epsilon = np.asarray(pytensor.function([], built.model["epsilon"])(), dtype=np.float64)
+    marginal = np.einsum("ij,ij->i", noise_factor, noise_factor)
+    if not np.allclose(marginal, epsilon**2, rtol=1e-8, atol=1e-12 * float(np.max(epsilon**2, initial=0.0))):
+        raise RuntimeError("The Gaussian noise factor does not reproduce the graph's marginal error.")
+
+
+def _state_labels(trace: xr.DataTree, name: str) -> list[str]:
+    """Return readable labels for the flattened elements of one posterior variable."""
+    variable = trace["posterior"].dataset[name].isel(chain=0, draw=0, drop=True)
+    if variable.ndim == 0:
+        return [name]
+    index = variable.to_series().index
+    return [f"{name}[{', '.join(map(str, label)) if isinstance(label, tuple) else label}]" for label in index]
+
+
+def _gaussian_posterior_group(
+    built: RhimeModelBuildResult, variables: Any, posterior: Any, trace: xr.DataTree,
+    *, rng: np.random.Generator, attrs: Mapping[str, Any],
+) -> xr.Dataset:
+    """Return exact physical moments of the flux scaling and other sampled states."""
+    model = built.model
+    reported = ["flux_scaling"] + [name for name in variables.names if not name.startswith("flux_scaling")]
+    maps = affine_maps(model, [model[name] for name in reported], variables, rng=rng)
+    offset = np.concatenate([item.offset for item in maps])
+    matrix = np.vstack([item.matrix for item in maps])
+    posterior_factor = matrix @ posterior.cov_factor
+    prior_factor = matrix * variables.prior_sd
+    labels = [label for name in reported for label in _state_labels(trace, name)]
+    names = [name for name, item in zip(reported, maps) for _ in range(item.offset.size)]
+    elements = [index for item in maps for index in range(item.offset.size)]
+    coords = {
+        "state": np.arange(offset.size), "state_cov": np.arange(offset.size),
+        "state_variable": ("state", names), "state_element": ("state", elements),
+        "state_label": ("state", labels),
+    }
+    return xr.Dataset(
+        {
+            "posterior_mean": ("state", offset + matrix @ posterior.mean),
+            "posterior_covariance": (("state", "state_cov"), posterior_factor @ posterior_factor.T),
+            "prior_mean": ("state", offset + matrix @ variables.prior_mean),
+            "prior_covariance": (("state", "state_cov"), prior_factor @ prior_factor.T),
+        },
+        coords=coords,
+        attrs=dict(attrs),
+    )
+
+
+def sample_co2_gaussian(
+    prepared: Co2PreparedInputs, model: Mapping[str, Any], sampler: RhimeSampler,
+) -> tuple[xr.DataTree, dict[str, Any]]:
+    """Solve the exact fixed-noise Gaussian posterior and return a NUTS-layout trace.
+
+    Args:
+        prepared: CO2 preparation.
+        model: Resolved model arguments; see :func:`check_co2_gaussian_model`.
+        sampler: Supplies ``draws`` (independent posterior draws in one
+            chain), the ``random_seed`` in ``sample_kwargs``, and the prior and
+            posterior predictive choices. A fresh seed is drawn and recorded
+            when none is configured.
+
+    Returns:
+        The annotated trace, including a ``gaussian_posterior`` group, and the
+        recorded inference description.
+
+    Raises:
+        ValueError: If the model is not linear-Gaussian with fixed noise.
+    """
+    require_gaussian_precision()
+    check_co2_gaussian_model(model)
+    inputs, priors, boundary = materialize_co2_inputs(
+        prepared_inputs=prepared,
+        fixed_model_mismatch=model.get("fixed_model_mismatch"),
+        no_model_error=True,
+        boundary=model.get("boundary"),
+        offset_prior=model.get("offset_prior"),
+        offset_args=model.get("offset_args"),
+    )
+    biosphere = model.get("biosphere_prior")
+    gaussian_prior, prior_record = _gaussian_state_prior(inputs, biosphere)
+    built = build_co2_from_materialized(
+        inputs, prepared_inputs=prepared, priors=priors, boundary=boundary,
+        fixed_model_mismatch=model.get("fixed_model_mismatch"), no_model_error=True,
+        offset_prior=model.get("offset_prior"), offset_args=model.get("offset_args"),
+        gaussian_prior=gaussian_prior,
+    )
+    noise_factor, noise_record = _co2_noise_factor(inputs, prepared, model.get("fixed_model_mismatch"))
+    _check_noise_against_graph(built, noise_factor)
+    y = built.model["y"]
+    likelihood_mean = y.owner.op.dist_params(y.owner)[0]
+    observations = np.asarray(built.model.rvs_to_values[y].data, dtype=np.float64)
+
+    configured = (sampler.sample_kwargs or {}).get("random_seed")
+    seed = int(configured) if configured is not None else secrets.randbits(63)
+    check_rng, trace_rng, report_rng = np.random.default_rng(seed).spawn(3)
+    variables, posterior = solve_linear_gaussian_model(
+        built.model, likelihood_mean=likelihood_mean, observations=observations,
+        noise_factor=noise_factor, rng=check_rng,
+    )
+    del noise_factor
+    trace = exact_gaussian_trace(
+        built.model, variables, posterior, sampler=sampler, rng=trace_rng,
+        variable_roles=built.output_contract.variable_roles,
+    )
+    trace = annotate_co2_trace(
+        trace, built, concentration_units=prepared.inv_inputs["mf"].attrs.get("units"),
+        biosphere_prior=biosphere,
+    )
+    diagnostics = posterior.diagnostics.to_dict()
+    prior_draws = (
+        0 if not sampler.sample_prior_predictive
+        else sampler.draws if sampler.sample_prior_predictive is True else int(sampler.sample_prior_predictive)
+    )
+    actual: dict[str, Any] = {
+        "algorithm": GAUSSIAN_ALGORITHM, "draws": sampler.draws, "chains": 1, "seed": seed,
+        "prior_draws": prior_draws, "noise_rank": diagnostics["noise_rank"],
+        "prior_rank": diagnostics["prior_rank"], "constraint_rank": diagnostics["constraint_rank"],
+    }
+    trace[GAUSSIAN_POSTERIOR_GROUP] = _gaussian_posterior_group(
+        built, variables, posterior, trace, rng=report_rng, attrs={
+            "algorithm": GAUSSIAN_ALGORITHM, "draws": sampler.draws, "seed": seed,
+            "state_prior": "gaussian with the prepared arithmetic moments" if biosphere is None
+            else "gaussian calibrated biosphere prior",
+            "gls_diagnostics": json.dumps(diagnostics, sort_keys=True),
+            "flux_prior_psd_factor": json.dumps(prior_record, sort_keys=True),
+            "noise_factor": json.dumps(noise_record, sort_keys=True),
+            "sampled_variables": json.dumps(list(variables.names)),
+        },
+    )
+    trace.attrs["rhime_actual_inference"] = json.dumps(actual)
+    return trace, actual
+
+
+__all__ = [
+    "GAUSSIAN_ALGORITHM", "GAUSSIAN_POSTERIOR_GROUP", "check_co2_gaussian_likelihood", "check_co2_gaussian_model",
+    "require_gaussian_precision", "sample_co2_gaussian",
+]
