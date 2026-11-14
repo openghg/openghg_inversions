@@ -242,9 +242,9 @@ moments ``alpha_prior_mean`` and ``alpha_prior_covariance`` (the moments the
 default correlated LogNormal prior matches), and the likelihood covariance is
 the fixed ``mf_error**2 + fixed_model_mismatch**2`` on the diagonal plus the
 prepared aggregation covariance. The posterior is solved by Paige's generalised
-least squares (:func:`~openghg_inversions.inference.gls.paige_gls`), which never
-inverts, whitens or forms that covariance, so a very small mismatch on a
-rank-deficient aggregation covariance stays accurate. ``draws`` independent
+least squares (:func:`~openghg_inversions.inference.gls.paige_gls`) from a
+factor of that covariance, which it never inverts or whitens, so a very small
+mismatch on a nearly singular aggregation covariance stays accurate. ``draws`` independent
 exact draws fill one posterior chain with the usual variables and roles, so
 replay and products are unchanged, and a ``gaussian_posterior`` trace group
 holds the exact moments, numerical ranks and condition estimates. The seed is

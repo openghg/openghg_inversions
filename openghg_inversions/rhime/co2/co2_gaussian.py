@@ -17,9 +17,11 @@ The graph is built by the same CO2 builder as for NUTS. Its likelihood mean
 is read as an affine map of the free Normal variables and checked to be
 affine, so the intercept, boundary representation and offsets enter exactly
 as in the sampled model. :func:`~openghg_inversions.inference.gls.paige_gls`
-solves the posterior with the noise factor
-:math:`F_W = [L_A \mid \mathrm{diag}(\sqrt{R})]`, never forming or whitening
-:math:`W`. Independent exact draws then pass through the same graph, so the
+solves the posterior from a factor :math:`F_W` of :math:`W` without inverting
+or whitening it: :math:`[L_A \mid \mathrm{diag}(\sqrt{R + D})]` for a low-rank
+plus diagonal :math:`A`, and the Cholesky factor of :math:`A + R` for a dense
+:math:`A` (clipped eigenvalues of :math:`A` only when that fails; no positive
+mode is dropped). Independent exact draws then pass through the same graph, so the
 trace has the NUTS layout, roles and units, and existing replay and products
 run unchanged. A ``gaussian_posterior`` group records the exact moments.
 """
