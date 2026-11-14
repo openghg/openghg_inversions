@@ -379,11 +379,12 @@ def _empirical_bayes(
     if choice.aggregation == "exact":
         if aggregation.mode == "dense":
             assert aggregation.covariance is not None
-            dense = np.asarray(aggregation.covariance.values, dtype=np.float64)
+            # An owned Fortran-ordered copy: the marginal likelihood consumes it in place.
+            dense = np.array(aggregation.covariance.values, dtype=np.float64, order="F")
             representation = "exact dense aggregation covariance"
         else:
             factor, diagonal = aggregation_error_as_low_rank(aggregation)
-            dense = factor @ factor.T + np.diag(diagonal)
+            dense = np.asfortranarray(factor @ factor.T + np.diag(diagonal))
             representation = f"exact dense form of the prepared {aggregation.mode} aggregation covariance"
     elif aggregation.mode == "dense":
         assert aggregation.covariance is not None
@@ -503,6 +504,12 @@ def sample_co2_gaussian(
         mismatch_record["sigma_by_site"] = by_site
     mismatch_record["units"] = prepared.inv_inputs["mf"].attrs.get("units")
     if isinstance(mismatch, EmpiricalBayesMismatch):
+        upper = mismatch_record["empirical_bayes"].get("sites_at_upper_bound")
+        if upper:
+            logger.warning(
+                "EMPIRICAL BAYES TYPE-II ML HIT THE UPPER SIGMA BOUND at site(s) %s; their sigma is a bound, not "
+                "an estimate.", ", ".join(upper),
+            )
         if mismatch_record["empirical_bayes"].get("converged") is False:
             logger.warning(
                 "EMPIRICAL BAYES TYPE-II ML DID NOT CONVERGE after %d iterations (%s); the per-site sigma below is "

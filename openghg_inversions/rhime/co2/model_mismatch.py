@@ -41,7 +41,14 @@ Empirical Bayes uses the prior residual :math:`r = y - \bar y`, where
   correlated, shared-mode prior spread. ``aggregation = "low_rank"`` (default)
   uses Woodbury with the prepared low-rank aggregation factor (or a
   rank-``rank`` approximation of a dense one); ``aggregation = "exact"`` factors
-  the dense covariance at every evaluation. A non-converged optimisation is
+  the dense covariance at every evaluation. With a dense prepared covariance
+  the default therefore fits sigma under the low-rank approximation (its
+  relative Frobenius error is recorded) while the Paige posterior uses the
+  exact covariance. The two likelihoods differ most at small sigma, where the
+  approximation's diagonal tail dominates: on E-r07 the log marginal
+  likelihood at the floor was -1.6e6 with the rank-512 approximation and
+  -1.05e7 exactly. Choose ``aggregation = "exact"`` when sigma is small
+  relative to the aggregation error. A non-converged optimisation is
   kept and logged with a loud warning; its flag is recorded. It is still
   empirical Bayes: the observations are used twice and the posterior excludes
   sigma uncertainty, and under a prior equal to the truth it measures only
@@ -189,6 +196,8 @@ def parse_fixed_model_mismatch(value: object, path: str) -> float | Mapping[str,
         type2 = {name: table.pop(name) for name in ("aggregation", "rank", "max_iterations") if name in table}
         if type2 and mode != "type2_ml":
             raise ValueError(f"{', '.join(f'{path}.{name}' for name in type2)} require empirical_bayes = \"type2_ml\".")
+        if "rank" in type2 and type2.get("aggregation") == "exact":
+            raise ValueError(f"{path}.rank applies only to aggregation = \"low_rank\".")
         if table:
             raise ValueError(f"Unknown empirical-Bayes option(s): {', '.join(f'{path}.{name}' for name in table)}.")
         return EmpiricalBayesMismatch(mode=mode, floor=floor, allow_zero=allow_zero, **type2)  # type: ignore[arg-type]
@@ -292,8 +301,19 @@ def empirical_bayes_mismatch(
         by_site[site] = {**terms, "raw_variance": float(raw_variance), "raw_sigma": raw, "sigma": value,
                          "floor_applied": bool(choice.floor > raw), "at_floor": bool(raw <= choice.floor)}
     independent = _check_not_negligible(choice, by_site, sigma, error_variance, aggregation_variance)
-    return sigma, {"label": "empirical Bayes", **asdict(choice), "by_site": by_site,
+    return sigma, {"label": "empirical Bayes", **_choice_record(choice), "by_site": by_site,
                    "mean_independent_variance": independent}
+
+
+def _choice_record(choice: EmpiricalBayesMismatch) -> dict[str, Any]:
+    """Return the choice fields that apply to its mode."""
+    record = asdict(choice)
+    if choice.mode != "type2_ml":
+        for name in ("aggregation", "rank", "max_iterations"):
+            record.pop(name)
+    elif choice.aggregation == "exact":
+        record.pop("rank")
+    return record
 
 
 def _check_not_negligible(
@@ -330,6 +350,8 @@ class GaussianMarginal:
         factor: ``U``.
         diagonal: ``d``.
         dense: Optional dense matrix added to ``S``; selects the exact route.
+            It is consumed: the factor product is added to it in place, so
+            pass an owned (preferably Fortran-ordered) copy.
     """
 
     def __init__(
@@ -341,7 +363,10 @@ class GaussianMarginal:
         self.n_sites = int(codes.max()) + 1 if codes.size else 0
         self.factor = np.asfortranarray(factor)
         self.diagonal = diagonal
-        self.base = None if dense is None else dense + factor @ factor.T
+        self.base: NDArray[np.float64] | None = None
+        if dense is not None:
+            self.base = np.asfortranarray(dense)
+            self.base += factor @ factor.T
         self.evaluations = 0
         self.seconds = 0.0
 
@@ -365,7 +390,7 @@ class GaussianMarginal:
             projected = solve_triangular(lower, weighted.T, lower=True, check_finite=False)
             diagonal_inverse = inverse - inverse * np.einsum("ij,ij->j", projected, projected)
         else:
-            matrix = self.base.copy()
+            matrix = np.array(self.base, order="F")
             matrix[np.diag_indices_from(matrix)] += total
             lower, info = lapack.dpotrf(matrix, lower=1, overwrite_a=1)
             if info != 0:
@@ -403,8 +428,12 @@ def type2_ml_mismatch(
     Maximises :math:`\log N(r; 0, U_x U_x^T + A + \mathrm{diag}(e^2 + \sigma_{s(i)}^2))`
     jointly over :math:`\log\sigma_s`, with L-BFGS-B and the analytic gradient
     :math:`\partial/\partial\log\sigma_s = \sigma_s^2 \sum_{i\in s}(\alpha_i^2 - (S^{-1})_{ii})`,
-    :math:`\alpha = S^{-1} r`. ``sigma >= floor``; a zero floor uses a lower
-    bound of ``1e-6`` times the root mean aggregation-plus-error variance.
+    :math:`\alpha = S^{-1} r`. The lower bound is
+    ``max(floor, 1e-6 * sqrt(mean diag(K + A + e^2)))`` and each site's upper
+    bound ``max(10 * rms_site, 10 * lower, sqrt(mean diag(K + A + e^2)))``; a
+    site at its upper bound is flagged ``at_upper``. A failed likelihood
+    evaluation at the start or the lower bound is recorded as ``nan`` with
+    its reason.
 
     Args:
         choice: Mode ``type2_ml`` with its floor and options.
@@ -435,14 +464,23 @@ def type2_ml_mismatch(
     factor = state_factor if exact else np.hstack([state_factor, aggregation_factor])
     diagonal = error_variance + (0.0 if exact else aggregation_diagonal)
     marginal = GaussianMarginal(residual, codes, factor, diagonal, aggregation_dense)
-    scale = float(np.sqrt(np.mean(aggregation_variance + error_variance))) or 1.0
-    lower_sigma = choice.floor if choice.floor > 0 else 1e-6 * scale
-    upper_sigma = max(10.0 * float(np.sqrt(np.mean(residual**2))), 10.0 * lower_sigma, scale)
+    # Bounds relative to the problem scale: sqrt(mean diag(K + A + e^2)).
+    scale = float(np.sqrt(np.mean(np.einsum("ij,ij->i", state_factor, state_factor)
+                                  + aggregation_variance + error_variance))) or 1.0
+    lower_sigma = max(choice.floor, 1e-6 * scale)
     rms = np.array([np.sqrt(np.mean(residual[codes == index] ** 2)) for index in range(len(labels))])
+    upper_sigma = np.maximum(np.maximum(10.0 * rms, 10.0 * lower_sigma), scale)
     start = np.clip(0.1 * rms, lower_sigma, upper_sigma)
-    bounds = [(float(np.log(lower_sigma)), float(np.log(upper_sigma)))] * len(labels)
-    start_value, _ = marginal(np.log(start))
-    floor_value, _ = marginal(np.full(len(labels), np.log(lower_sigma)))
+    bounds = [(float(np.log(lower_sigma)), float(np.log(upper))) for upper in upper_sigma]
+
+    def guarded(log_sigma: NDArray[np.float64]) -> tuple[float, str | None]:
+        try:
+            return marginal(log_sigma)[0], None
+        except (np.linalg.LinAlgError, FloatingPointError, ValueError) as error:
+            return float("nan"), f"{type(error).__name__}: {error}"
+
+    start_value, start_failure = guarded(np.log(start))
+    floor_value, floor_failure = guarded(np.full(len(labels), np.log(lower_sigma)))
 
     def objective(log_sigma: NDArray[np.float64]) -> tuple[float, NDArray[np.float64]]:
         value, gradient = marginal(log_sigma)
@@ -455,23 +493,29 @@ def type2_ml_mismatch(
     site_sigma = np.maximum(np.exp(result.x), choice.floor)
     sigma = site_sigma[codes]
     at_bound = result.x <= np.log(lower_sigma) + 1e-6
+    at_upper = result.x >= np.log(upper_sigma) - 1e-6
     by_site = {
         label: {"n_observations": int(np.sum(codes == index)), "start_sigma": float(start[index]),
                 "sigma": float(site_sigma[index]), "floor_applied": bool(at_bound[index] and choice.floor > 0),
-                "at_floor": bool(at_bound[index]),
-                "rms_residual": float(rms[index])}
+                "at_floor": bool(at_bound[index]), "at_upper": bool(at_upper[index]),
+                "upper_bound": float(upper_sigma[index]), "rms_residual": float(rms[index])}
         for index, label in enumerate(labels)
     }
     independent = _check_not_negligible(choice, by_site, sigma, error_variance, aggregation_variance)
     record = {
-        "label": "empirical Bayes", **asdict(choice), "by_site": by_site, "mean_independent_variance": independent,
+        "label": "empirical Bayes", **_choice_record(choice), "by_site": by_site,
+        "mean_independent_variance": independent,
         "optimiser": "scipy L-BFGS-B in log sigma with the analytic gradient",
         "aggregation_representation": aggregation_representation,
         "converged": bool(result.success), "message": str(result.message),
         "iterations": int(result.nit), "function_evaluations": int(result.nfev),
         "log_marginal_likelihood": float(-result.fun), "log_marginal_likelihood_start": float(start_value),
         "log_marginal_likelihood_floor": float(floor_value),
-        "sigma_lower_bound": float(lower_sigma), "sigma_upper_bound": float(upper_sigma),
+        "log_marginal_likelihood_start_failure": start_failure, "log_marginal_likelihood_floor_failure": floor_failure,
+        "sigma_lower_bound": float(lower_sigma),
+        "sigma_lower_bound_rule": "max(floor, 1e-6 * sqrt(mean diag(K + A + mf_error^2)))",
+        "sigma_upper_bound_rule": "per site max(10 * rms_site, 10 * lower bound, sqrt(mean diag(K + A + mf_error^2)))",
+        "problem_scale": scale, "sites_at_upper_bound": [label for label, item in by_site.items() if item["at_upper"]],
         "seconds_total": elapsed, "seconds_per_evaluation": marginal.seconds / max(marginal.evaluations, 1),
         "evaluations_total": marginal.evaluations,
     }

@@ -299,7 +299,14 @@ spread from the same affine map, plus aggregation error), jointly over
 floor. Options: ``aggregation = "low_rank"`` (default; Woodbury with the
 prepared low-rank aggregation factor, or a rank-``rank`` approximation of a
 dense covariance, default rank 512) or ``"exact"`` (one dense Cholesky per
-evaluation), and ``max_iterations`` (default 200):
+evaluation), and ``max_iterations`` (default 200). With a dense prepared
+aggregation covariance the default fits sigma under the rank-``rank``
+approximation (its relative Frobenius error is recorded) while the posterior
+itself uses the exact covariance; the two likelihoods differ most at small
+sigma (on E-r07 the log marginal likelihood at the floor was -1.6e6 with the
+approximation and -1.05e7 exactly), so choose ``aggregation = "exact"`` when
+sigma is small relative to the aggregation error. Sites that end at the
+per-site upper bound (ten times their residual RMS) are flagged and warned.
 
 .. code-block:: toml
 

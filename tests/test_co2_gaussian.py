@@ -603,3 +603,112 @@ def test_type2_ml_through_the_configured_estimator(case, caplog, double_precisio
     )
     eb = [message for message in caplog.messages if "Empirical Bayes model mismatch" in message]
     assert len(eb) == 1 and "type2_ml" in eb[0] and "used twice" in eb[0]
+
+
+def test_type2_ml_upper_bound_is_per_site():
+    """A small high-mismatch site beside a large quiet one is not capped by the overall residual RMS."""
+    rng = np.random.default_rng(5)
+    sites = np.array(["A"] * 2000 + ["B"] * 15)
+    truth = np.where(sites == "A", 0.5, 40.0)
+    state = 0.1 * rng.normal(size=(sites.size, 2))
+    residual = state @ rng.standard_normal(2) + np.sqrt(0.01 + truth**2) * rng.standard_normal(sites.size)
+    _, record = type2_ml_mismatch(
+        EmpiricalBayesMismatch(mode="type2_ml", floor=0.01), sites=sites, residual=residual, state_factor=state,
+        aggregation_factor=np.zeros((sites.size, 0)), aggregation_diagonal=np.zeros(sites.size),
+        aggregation_dense=None, aggregation_variance=np.full(sites.size, 0.01), error_variance=np.zeros(sites.size),
+        aggregation_representation="test",
+    )
+    site = record["by_site"]["B"]
+    assert not site["at_upper"] and site["upper_bound"] > 10 * 30 and record["sites_at_upper_bound"] == []
+    assert site["sigma"] == pytest.approx(40.0, rel=0.4)
+    assert record["by_site"]["A"]["sigma"] == pytest.approx(0.5, rel=0.1)
+
+
+def test_type2_ml_records_a_failed_floor_evaluation(monkeypatch):
+    from openghg_inversions.rhime.co2 import model_mismatch
+
+    original = model_mismatch.GaussianMarginal.__call__
+
+    def fragile(self, log_sigma):
+        if np.all(np.exp(log_sigma) < 1e-3):
+            raise np.linalg.LinAlgError("not positive definite")
+        return original(self, log_sigma)
+
+    monkeypatch.setattr(model_mismatch.GaussianMarginal, "__call__", fragile)
+    rng = np.random.default_rng(6)
+    sites = np.repeat(["A", "B"], 50)
+    _, record = type2_ml_mismatch(
+        EmpiricalBayesMismatch(mode="type2_ml", floor=0.0), sites=sites, residual=rng.normal(size=100),
+        state_factor=np.zeros((100, 1)), aggregation_factor=np.zeros((100, 0)), aggregation_diagonal=np.zeros(100),
+        aggregation_dense=None, aggregation_variance=np.full(100, 0.1), error_variance=np.full(100, 0.01),
+        aggregation_representation="test",
+    )
+    assert np.isnan(record["log_marginal_likelihood_floor"])
+    assert "LinAlgError" in record["log_marginal_likelihood_floor_failure"]
+    assert record["converged"] and record["sigma_lower_bound"] == pytest.approx(1e-6 * np.sqrt(0.11))
+
+
+def test_records_carry_only_the_options_of_their_mode():
+    sites = np.repeat(["A"], 4)
+    _, moment = empirical_bayes_mismatch(
+        EmpiricalBayesMismatch(floor=0.1), sites=sites, residual=np.ones(4), prior_state_variance=np.zeros(4),
+        aggregation_variance=np.zeros(4), error_variance=np.zeros(4),
+    )
+    assert not {"aggregation", "rank", "max_iterations"} & moment.keys()
+    with pytest.raises(ValueError, match="rank applies only"):
+        parse_fixed_model_mismatch(
+            {"empirical_bayes": "type2_ml", "floor": 0.1, "aggregation": "exact", "rank": 8},
+            "likelihood.fixed_model_mismatch",
+        )
+
+
+@pytest.mark.parametrize("aggregation", ["low_rank", "exact"])
+def test_type2_ml_with_a_dense_prepared_aggregation(tmp_path, double_precision, aggregation):
+    from openghg_inversions.rhime.co2 import prepare_co2_inputs
+
+    canonical, reduction, _, _, countries = synthetic_inputs(tmp_path)
+    prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=None)
+    assert prepared.aggregation_error_mode == "dense"
+    params = configuration(tmp_path / "products", countries)
+    params["sampling"] = dict(GAUSSIAN_SAMPLING)
+    options = {"empirical_bayes": "type2_ml", "floor": 0.05, "aggregation": aggregation}
+    if aggregation == "low_rank":
+        options["rank"] = 2
+    params["likelihood"]["fixed_model_mismatch"] = options
+    trace, _ = _run_gaussian(prepared, params)
+    record = json.loads(trace["gaussian_posterior"].dataset.attrs["model_mismatch"])["empirical_bayes"]
+    expected = "rank-2 low-rank-plus-diagonal approximation" if aggregation == "low_rank" else "exact dense aggregation"
+    assert expected in record["aggregation_representation"]
+    assert ("rank" in record) == (aggregation == "low_rank")
+    noise = json.loads(trace["gaussian_posterior"].dataset.attrs["noise_factor"])
+    assert noise["noise_factor_method"] == "cholesky(A + R)"
+
+
+def test_type2_ml_non_convergence_and_upper_bound_warnings(case, caplog, monkeypatch, double_precision):
+    prepared, _, params = case
+    prepared = _two_site(prepared)
+    # Residuals of several ppm give the optimiser real work, so one iteration cannot converge.
+    inputs = prepared.inv_inputs
+    shifted = inputs.assign(mf=inputs.mf + xr.DataArray([4.0, -3.0, 5.0], dims="nmeasure"))
+    shifted.mf.attrs = dict(inputs.mf.attrs)
+    prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=shifted))
+    params["likelihood"]["fixed_model_mismatch"] = {"empirical_bayes": "type2_ml", "floor": 0.05, "max_iterations": 1}
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        _, actual = _run_gaussian(prepared, params)
+    assert actual["model_mismatch"]["type2_ml_converged"] is False
+    assert sum("Empirical Bayes model mismatch" in message for message in caplog.messages) == 1
+    assert sum("DID NOT CONVERGE" in message for message in caplog.messages) == 1
+
+    real = co2_gaussian.type2_ml_mismatch
+
+    def at_upper(*args, **kwargs):
+        sigma, record = real(*args, **kwargs)
+        record["sites_at_upper_bound"] = ["TAC"]
+        return sigma, record
+
+    monkeypatch.setattr(co2_gaussian, "type2_ml_mismatch", at_upper)
+    caplog.clear()
+    params["likelihood"]["fixed_model_mismatch"] = {"empirical_bayes": "type2_ml", "floor": 0.05}
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        _run_gaussian(prepared, params)
+    assert sum("UPPER SIGMA BOUND at site(s) TAC" in message for message in caplog.messages) == 1
