@@ -228,3 +228,6 @@ fluxes or identify the physical source of a baseline discrepancy.
 The atmospheric level is the only level: its width is the explicitly
 supplied ``delta_sd``, and boundary choices with their own mean prior are
 rejected rather than silently replaced.
+
+The separate :doc:`linked_shared_baseline` Python recipe supplies one joint
+flux state and independent atmospheric levels per tracer.

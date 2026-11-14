@@ -72,8 +72,9 @@ def build_co2_o2_cached_sigma_model(
     """Build one joint fixed-OU target and its matched cached affine graph.
 
     Inputs have the same coherent-reduction, optional channel-baseline, and
-    embedded O2-ratio contract as :func:`build_co2_o2_model`. Both channels must
-    use the same concentration unit. OU blocks are independent by
+    embedded O2-ratio contract as
+    :func:`~openghg_inversions.rhime.co2.co2_o2_model.build_co2_o2_model`.
+    Both channels must use the same concentration unit. OU blocks are independent by
     ``(species, site)`` while the prepared aggregation covariance retains all
     cross-channel entries. ``tau_hours`` is fixed, in hours; mappings use
     ``co2:SITE``/``o2:SITE`` keys. Amplitudes have independent positive priors
