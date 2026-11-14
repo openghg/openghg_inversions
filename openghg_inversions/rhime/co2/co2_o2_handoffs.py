@@ -172,7 +172,7 @@ def save_samples(
 
 def sample(
     preparation_manifest: str | Path, *, model: Co2O2ModelConfig | Mapping[str, Any], output_dir: str | Path,
-    sampler: RhimeSampler | Literal["default"] = "default",
+    sampler: RhimeSampler | Literal["default"] = "default", referenced: tuple[str | Path, ...] = (),
 ) -> Path:
     """Sample one joint model using current scientific choices and saved inputs.
 
@@ -180,6 +180,8 @@ def sample(
     retained priors, operators and cross-channel covariance remain prepared facts.
     The full prepared-input runner and this route use the same construction,
     sampling and scientific annotation operations.
+    ``referenced`` names consumed request files, such as the CLI configuration,
+    that this stage's outputs must not overwrite or enclose.
     """
     options = load_co2_o2_params(params=model) if isinstance(model, Mapping) else {}
     model_config = model if isinstance(model, Co2O2ModelConfig) else Co2O2ModelConfig.from_params(options)
@@ -188,13 +190,14 @@ def sample(
     else:
         active_sampler = resolve_sampler(sampler)
     preparation = load_preparation(preparation_manifest)
-    model_options = model_config.bind(preparation.prepared)
-    if model_options.get("tau_hours") is not None and active_sampler.nuts_sampler != "pymc":
+    if model_config.tau_hours is not None and active_sampler.nuts_sampler != "pymc":
         raise ValueError("Linked fixed-OU requires nuts_sampler='pymc'.")
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
-        referenced=(Path(preparation_manifest).resolve(), preparation.payload),
+        referenced=(Path(preparation_manifest).resolve(), preparation.payload) + model_config.artifact_paths()
+        + tuple(Path(path).resolve() for path in referenced),
     )
+    model_options = model_config.bind(preparation.prepared)
     built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
     trace = sample_rhime_model(built, active_sampler)
     trace = annotate_co2_o2_trace(trace, built=built, biosphere_prior=model_options.get("biosphere_prior"))
@@ -231,12 +234,16 @@ def load_samples(sample_manifest: str | Path) -> Co2O2Output:
     )
 
 
-def postprocess(sample_manifest: str | Path, *, output: Co2O2OutputOptions) -> Co2O2Output:
+def postprocess(
+    sample_manifest: str | Path, *, output: Co2O2OutputOptions, referenced: tuple[str | Path, ...] = (),
+) -> Co2O2Output:
     """Calculate and export requested products from saved linked scientific meaning.
 
     Products are validated and calculated before any output destination opens.
     The posterior and preparation stay borrowed. Prior/predictive outputs are
     available only when the corresponding draws were saved.
+    ``referenced`` names consumed request files, such as the CLI configuration,
+    that this stage's outputs must not overwrite or enclose.
     """
     result = load_samples(sample_manifest)
     calculate_co2_o2_products(result=result, output=output)
@@ -246,34 +253,37 @@ def postprocess(sample_manifest: str | Path, *, output: Co2O2OutputOptions) -> C
     save_co2_o2_products(result, output=output, referenced=(
         path, preparation_path, reference(preparation_path, preparation["prepared_inputs"]),
         reference(path, record["posterior"]),
-    ))
+    ) + tuple(Path(path).resolve() for path in referenced))
     return result
 
 
 def prior_predictive(
     preparation_manifest: str | Path, *, model: Co2O2ModelConfig | Mapping[str, Any], output_dir: str | Path,
     draws: int = 100, check_output: str | Path | None = None, stage: str = "prior-predictive",
-    random_seed: int | None = None,
+    random_seed: int | None = None, referenced: tuple[str | Path, ...] = (),
 ) -> dict[str, Any]:
     """Generate native joint prior predictions and report finite-draw readiness.
 
     This builds the configured joint model without creating an MCMC step.
     Construction errors propagate; evaluated missing, empty or nonfinite
     predictive evidence produces a failed readiness report.
+    ``referenced`` names consumed request files, such as the CLI configuration,
+    that this stage's outputs must not overwrite or enclose.
     """
     _check_draws(draws)
     stage = _check_stage(stage)
     options = load_co2_o2_params(params=model) if isinstance(model, Mapping) else {}
     model_config = model if isinstance(model, Co2O2ModelConfig) else Co2O2ModelConfig.from_params(options)
     preparation = load_preparation(preparation_manifest)
-    model_options = model_config.bind(preparation.prepared)
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
     check_checkpoint_targets(
         destination, stage=None, payloads=("prior-predictive.nc", str(report.relative_to(destination))),
-        referenced=(Path(preparation_manifest).resolve(), preparation.payload),
+        referenced=(Path(preparation_manifest).resolve(), preparation.payload) + model_config.artifact_paths()
+        + tuple(Path(path).resolve() for path in referenced),
     )
     report.unlink(missing_ok=True)
+    model_options = model_config.bind(preparation.prepared)
     built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
     with built.model:
         prior = pm.sample_prior_predictive(draws, random_seed=random_seed)

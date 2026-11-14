@@ -234,7 +234,7 @@ def save_samples(
 
 def sample(
     preparation_manifest: str | Path, *, model: Co2ModelConfig | Mapping[str, Any], output_dir: str | Path,
-    sampling: Mapping[str, Any] | None = None,
+    sampling: Mapping[str, Any] | None = None, referenced: tuple[str | Path, ...] = (),
 ) -> Path:
     """Build and sample CO2 using current science and its resolved sampler.
 
@@ -242,17 +242,21 @@ def sample(
     reuse preparation; the defining coherent native reduction stays unchanged.
     Full execution and saved sampling share the explicit build and sample owners.
     Current sampling choices select fresh model-matched defaults and tuning.
+    ``referenced`` names consumed request files, such as the CLI configuration,
+    that this stage's outputs must not overwrite or enclose.
     """
     model_config = model if isinstance(model, Co2ModelConfig) else Co2ModelConfig.from_params(load_co2_params(params=model))
-    model_options = model_config.model_arguments()
-    choices = _resolve_co2_sampling({"sampling": sampling if sampling is not None else {}}, model=model_options)
+    choices = _resolve_co2_sampling(
+        {"sampling": sampling if sampling is not None else {}}, model=model_config.sampler_arguments(),
+    )
     preparation = load_preparation(preparation_manifest)
-    model_options = model_config.model_arguments()
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
         referenced=(Path(preparation_manifest).resolve(), preparation.payload)
-        + ((preparation.affine_payload,) if preparation.affine_payload else ()),
+        + ((preparation.affine_payload,) if preparation.affine_payload else ()) + model_config.artifact_paths()
+        + tuple(Path(path).resolve() for path in referenced),
     )
+    model_options = model_config.model_arguments()
     trace, actual = sample_co2_inference(
         preparation.prepared, model_options, choices.sampler,
         sigma_target_accept=choices.sigma_target_accept, state_target_accept=choices.state_target_accept,
@@ -263,7 +267,7 @@ def sample(
     )
 
 
-def load_samples(sample_manifest: str | Path) -> Co2Output:
+def _load_samples(sample_manifest: str | Path) -> tuple[Co2Output, tuple[Path, ...]]:
     """Load saved scientific meaning without acquisition, construction or inference.
 
     Replayed results retain plain recorded inference and
@@ -296,19 +300,38 @@ def load_samples(sample_manifest: str | Path) -> Co2Output:
             "provenance": record.get("provenance") if isinstance(record.get("provenance"), Mapping) else {},
         },
     )
+    consumed: tuple[Path, ...] = (
+        path, reference(path, record["preparation"]), preparation.payload,
+        reference(path, record["posterior"]),
+    )
+    if preparation.affine_payload is not None:
+        consumed += (preparation.affine_payload,)
+    return result, consumed
+
+
+def load_samples(sample_manifest: str | Path) -> Co2Output:
+    """Load saved scientific meaning without acquisition, construction or inference.
+
+    Replayed results retain recorded inference and installed-version provenance.
+    Requested dates come from the preparation, independently of observation
+    extrema or current model settings.
+    """
+    result, _ = _load_samples(sample_manifest)
     return result
 
 
 def postprocess(
     sample_manifest: str | Path, *, output: Co2OutputOptions,
-    source_to_sector: Mapping[str, str] | None = None,
+    source_to_sector: Mapping[str, str] | None = None, referenced: tuple[str | Path, ...] = (),
 ) -> Co2Output:
     """Reopen one sample manifest, calculate requested products and export them.
 
     Products use saved coherent/affine scientific meaning and current reporting
     choices. All product validation/calculation precedes opening output paths.
+    ``referenced`` names consumed request files, such as the CLI configuration,
+    that this stage's outputs must not overwrite or enclose.
     """
-    loaded = load_samples(sample_manifest)
+    loaded, consumed = _load_samples(sample_manifest)
     countries = validate_co2_product_request(
         output, prepared=loaded.prepared, bound=loaded.bound, source_to_sector=source_to_sector,
     )
@@ -316,33 +339,36 @@ def postprocess(
         result=loaded, prepared=loaded.prepared, bound=loaded.bound,
         output=output, source_to_sector=source_to_sector, countries=countries,
     )
-    save_co2_products(loaded, output=output)
+    save_co2_products(loaded, output=output, referenced=tuple(consumed) + tuple(Path(path).resolve() for path in referenced))
     return loaded
 
 
 def prior_predictive(
     preparation_manifest: str | Path, *, model: Co2ModelConfig | Mapping[str, Any], output_dir: str | Path,
     draws: int = 100, check_output: str | Path | None = None, stage: str = "prior-predictive",
-    random_seed: int | None = None,
+    random_seed: int | None = None, referenced: tuple[str | Path, ...] = (),
 ) -> dict[str, Any]:
     """Check exact graph prior predictions without posterior inference.
 
     Construction/inference errors propagate before creating a destination. Only
     evaluated missing, empty or non-finite predictive evidence becomes a failed
     report. The check never repairs absent posterior/replay evidence.
+    ``referenced`` names consumed request files, such as the CLI configuration,
+    that this stage's outputs must not overwrite or enclose.
     """
     _check_draws(draws)
     stage = _check_stage(stage)
     model_config = model if isinstance(model, Co2ModelConfig) else Co2ModelConfig.from_params(load_co2_params(params=model))
     preparation = load_preparation(preparation_manifest)
-    model_options = model_config.model_arguments()
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
     check_checkpoint_targets(
         destination, stage=None, payloads=("prior-predictive.nc", str(report.relative_to(destination))),
         referenced=(Path(preparation_manifest).resolve(), preparation.payload)
-        + ((preparation.affine_payload,) if preparation.affine_payload else ()),
+        + ((preparation.affine_payload,) if preparation.affine_payload else ()) + model_config.artifact_paths()
+        + tuple(Path(path).resolve() for path in referenced),
     )
+    model_options = model_config.model_arguments()
     report.unlink(missing_ok=True)
     built, cached = build_co2_inference(preparation.prepared, model_options)
     with built.model:

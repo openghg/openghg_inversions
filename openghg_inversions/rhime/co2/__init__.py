@@ -14,6 +14,9 @@ from .shared_baseline_model import (
     annotate_shared_baseline_trace, reconstruct_shared_baseline,
 )
 from .co2_model import build_co2_model
+from .prior_configuration import (
+    BiospherePriorConfig, load_biosphere_prior, shared_baseline_choice, build_shared_co2_from_config,
+)
 from .co2_affine_output import (
     BoundCo2AffineFluxMap,
     import_explicit_affine_flux_map,
@@ -63,6 +66,8 @@ __all__ = [
     "reconstruct_linked_shared_baseline",
     "build_shared_co2_model", "build_shared_co2_cached_sigma_model",
     "annotate_shared_baseline_trace", "reconstruct_shared_baseline",
+    "BiospherePriorConfig", "load_biosphere_prior", "shared_baseline_choice",
+    "build_shared_co2_from_config",
     "Co2PreparationConfig", "Co2ModelConfig", "Co2O2PreparationConfig", "Co2O2ModelConfig",
     "Co2O2PreparedInputs",
     "Co2O2Output",

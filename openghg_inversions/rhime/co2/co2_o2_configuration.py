@@ -27,7 +27,7 @@ from .configuration import (
     Co2PreparationConfig,
     _sampling,
     _string,
-    _table,
+    _table, _artifact_path,
     load_co2_family_config,
     resolve_co2_prior_seed,
 )
@@ -84,18 +84,19 @@ def load_co2_o2_params(
 
 def _validate_co2_o2_option_names(*requests: Mapping[str, object]) -> None:
     """Check request names while deferring scientific and inactive values."""
-    allowed = {"format_version", "recipe", "variant", "prepared_inputs", "channels", "likelihood", "sampling", "outputs"}
+    allowed = {"format_version", "recipe", "variant", "prepared_inputs", "channels", "biosphere", "likelihood", "sampling", "outputs"}
     from .co2_o2_outputs import Co2O2OutputOptions
 
     channel_sections = {
         "": frozenset({"units", "independent_error_sd", "boundary", "offset"}),
-        **_MODEL_SECTION_OPTION_NAMES,
+        **{name: options for name, options in _MODEL_SECTION_OPTION_NAMES.items() if name != "biosphere"},
         "boundary": _MODEL_SECTION_OPTION_NAMES["boundary"] | {"activity"},
         "boundary.activity": frozenset({"active", "fixed_value"}),
     }
     _validate_section_option_names(requests, {
         "": frozenset(allowed),
         "prepared_inputs": _PREPARATION_OPTION_NAMES,
+        "biosphere": frozenset({"path"}),
         "channels": frozenset({"co2", "o2"}),
         **{f"channels.{channel}" + (f".{path}" if path else ""): names
            for channel in ("co2", "o2") for path, names in channel_sections.items()},
@@ -203,6 +204,7 @@ class Co2O2ModelConfig:
     offset_args: Mapping[str, Any] | None = None
     tau_hours: float | Mapping[str, float] | None = None
     fixed_site_amplitudes: float | Mapping[str, float] | None = None
+    biosphere_prior_path: Path | None = None
 
     def __post_init__(self) -> None:
         for item in fields(self):
@@ -221,6 +223,10 @@ class Co2O2ModelConfig:
         units: dict[str, str] = {}
         errors: dict[str, float] = {}
         model: dict[str, Any] = {}
+        if "biosphere" in options:
+            biosphere = _table(options["biosphere"], "biosphere")
+            model["biosphere_prior_path"] = _artifact_path(_take(biosphere, "path", "biosphere"), "biosphere.path")
+            _reject_unknown(biosphere, "biosphere")
         for name in ("co2", "o2"):
             channel = _table(_take(channels, name, "channels"), f"channels.{name}")
             units[name] = _string(_take(channel, "units", f"channels.{name}"), f"channels.{name}.units")
@@ -277,9 +283,17 @@ class Co2O2ModelConfig:
             if independent is None:
                 raise ValueError("Omitted channel independent_error_sd requires errors in the prepared artifact.")
         result = {item.name: getattr(self, item.name) for item in fields(self)
-                  if item.name not in {"co2_units", "o2_units", "independent_error_sd", "boundary"}
+                  if item.name not in {"co2_units", "o2_units", "independent_error_sd", "boundary", "biosphere_prior_path"}
                   and getattr(self, item.name) is not None}
+        if self.biosphere_prior_path is not None:
+            from .prior_configuration import load_biosphere_prior
+
+            result["biosphere_prior"] = load_biosphere_prior(self.biosphere_prior_path)
         return {**result, "independent_error_sd": independent, "boundary": self._channel_boundaries(prepared)}
+
+    def artifact_paths(self) -> tuple[Path, ...]:
+        """Identify the calibrated prior file for write protection."""
+        return () if self.biosphere_prior_path is None else (Path(self.biosphere_prior_path).resolve(),)
 
     def _channel_boundaries(self, prepared: Co2O2PreparedInputs) -> dict[str, Choice | None]:
         """Resolve configured choices and default prepared channels to choices.

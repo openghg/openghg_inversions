@@ -231,3 +231,7 @@ rejected rather than silently replaced.
 
 The separate :doc:`linked_shared_baseline` Python recipe supplies one joint
 flux state and independent atmospheric levels per tracer.
+
+The :doc:`configured prior workflow <configured_co2_priors>` parses a shared
+baseline choice from configuration and supplies a CO2-only builder using the
+existing likelihood configuration syntax.

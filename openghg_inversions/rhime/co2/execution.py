@@ -18,7 +18,7 @@ from openghg_inversions.rhime._stage_artifacts import _validate_filename_compone
 from .co2_affine_output import _bind_affine_flux_map, prepared_inputs_content_id
 from .co2_outputs import (
     Co2Output, Co2OutputOptions, calculate_co2_products, save_co2_products, make_co2_output,
-    validate_co2_product_request,
+    validate_co2_product_request, _co2_product_names, _checked_co2_output_paths,
 )
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts
 from .inference import sample_co2_inference
@@ -83,7 +83,9 @@ def run_co2(
     callers use the model-selected inference steps directly. Supplied canonical
     inputs and their coherent reduction are prepared together; an existing
     preparation is reused unchanged. Imported runs must supply requested dates
-    and domain explicitly or retain them in preparation provenance.
+    and domain explicitly or retain them in preparation provenance. Selected prior
+    artifacts and consumed preparation/reconstruction files are protected from
+    trace/product output aliases before sampling.
     ``bc_centering_weights`` is stored with a new centered preparation, as in
     :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`;
     weighted additive boundaries require it.
@@ -101,8 +103,7 @@ def run_co2(
         options["outputs"] = {**options.get("outputs", {}), "output_path": Path(output_path).expanduser().resolve()}
     preparation = Co2PreparationConfig.from_params(options)
     model_config = Co2ModelConfig.from_params(options)
-    model = model_config.model_arguments()
-    sampling = _resolve_co2_sampling(options, model=model)
+    sampling = _resolve_co2_sampling(options, model=model_config.sampler_arguments())
     sampler = sampling.sampler
     output_choices = resolve_co2_output(options)
     output = output_choices["output"]
@@ -113,6 +114,12 @@ def run_co2(
         raise ValueError("Pass prepared or canonical_inputs/reduction, not both.")
     source = preparation.prepared_path
     supplied_prepared = prepared is not None
+    if affine_path is not None:
+        if affine_artifact is not None:
+            raise ValueError("Pass affine_artifact or prepared_inputs.reconstruction_path, not both.")
+        if canonical_inputs is not None or supplied_prepared or source is None:
+            raise ValueError("Supplied or new coherent preparation requires its matching affine_artifact.")
+    consumed_paths = tuple(Path(path) for path in (config_file, params_file) if path is not None)
     if bc_centering_weights is not None and canonical_inputs is None:
         raise ValueError("bc_centering_weights apply only to a new preparation from canonical_inputs.")
     if canonical_inputs is not None and reduction is not None:
@@ -124,21 +131,29 @@ def run_co2(
         if source is None:
             raise ValueError("Pass prepared inputs or configure prepared_inputs.path.")
         prepared = Co2PreparedInputs.load(source)
-    model = model_config.model_arguments()
+        consumed_paths += (source,)
     facts = requested_co2_facts(
         prepared, start_date=start_date, end_date=end_date,
         recorded_facts={name: getattr(preparation, name) for name in ("start_date", "end_date", "domain")},
     )
     for name in ("domain", "start_date"):
         _validate_filename_component(name, facts[name])
+    if affine_path is not None:
+        consumed_paths += (affine_path,)
+    has_reconstruction = affine_artifact is not None or affine_path is not None
+    product_names = _co2_product_names(
+        output, has_reconstruction=has_reconstruction,
+        has_countries=has_reconstruction and output.country_file is not None,
+    )
+    protected = model_config.artifact_paths() + consumed_paths
+    _checked_co2_output_paths(
+        output, domain=facts["domain"], start_date=facts["start_date"],
+        product_names=product_names, referenced=protected,
+    )
     bound = None
     if affine_artifact is not None:
-        if affine_path is not None:
-            raise ValueError("Pass affine_artifact or prepared_inputs.reconstruction_path, not both.")
         bound = _bind_affine_flux_map(affine_artifact, prepared, prepared_inputs_id=affine_artifact.prepared_inputs_id)
-    elif affine_path is not None:
-        if canonical_inputs is not None or supplied_prepared or source is None:
-            raise ValueError("Supplied or new coherent preparation requires its matching affine_artifact.")
+    elif affine_path is not None and source is not None:
         bound = _bind_affine_flux_map(
             load_affine(affine_path), prepared, prepared_inputs_id=prepared_inputs_content_id(source),
         )
@@ -147,6 +162,7 @@ def run_co2(
     )
     if bound is not None and output.output_format != "none" and not sampler.sample_prior_predictive:
         raise ValueError("CO2 affine products require prior draws; enable sample_prior_predictive.")
+    model = model_config.model_arguments()
     trace, actual = sample_co2_inference(
         prepared, model, sampler, sigma_target_accept=sampling.sigma_target_accept,
         state_target_accept=sampling.state_target_accept,
@@ -156,7 +172,7 @@ def run_co2(
                             "provenance": installed_ogi_provenance()}, **facts)
     calculate_co2_products(result=result, prepared=prepared, bound=bound,
                            source_to_sector=output_choices["source_to_sector"], countries=countries, output=output)
-    save_co2_products(result, output=output)
+    save_co2_products(result, output=output, referenced=protected)
     return result
 
 

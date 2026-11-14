@@ -27,3 +27,13 @@ random_seed = 12345
 output_format = "basic"
 output_path = "outputs"
 output_name = "co2-fixed-ou"
+
+# Other centred correction structures (see docs/usage/boundary_correction_structures.rst):
+#   anomalies = "period_contrasts" or "independent" (mean_shift_prior then optional),
+#   mean_by_period = true (requires frequency), or type = "anomaly_scaling" with
+#   scale_sd = 0.8 and reference = "whole_window_transport_mean".
+
+# A calibrated biosphere prior saved with BiospherePriorConfig
+# (see examples/biosphere_prior/saved_configuration.py).
+# [model.biosphere]
+# path = "biosphere-prior.nc"
