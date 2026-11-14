@@ -213,7 +213,9 @@ def _dense_b() -> np.ndarray:
     return b
 
 
-def _dense_reference(merged: MergedData, prepared, restriction: str) -> dict[str, np.ndarray]:
+def _dense_reference(
+    merged: MergedData, prepared, restriction: str, partition: xr.DataArray | None = None,
+) -> dict[str, np.ndarray]:
     """C_alpha, H_alpha, A and the intercept from the defining dense formulas."""
     inputs = prepared.inv_inputs
     states = inputs.indexes["region"]
@@ -222,7 +224,10 @@ def _dense_reference(merged: MergedData, prepared, restriction: str) -> dict[str
     h = (site.fp_x_flux_sectoral.sel(time=times, source=list(SOURCES))
          .transpose("time", "source", "lat", "lon").values.reshape(len(times), -1))
     b = _dense_b()
-    partition = _partition()
+    if partition is None:
+        partition = _partition()
+    if "source" not in partition.dims:
+        partition = partition.expand_dims(source=list(SOURCES))
     n = len(LAT) * len(LON)
     pi = np.zeros((len(states), 3 * n))
     flux = {s: merged.flux_data[s].flux.isel(time=0).values.ravel() for s in SOURCES}
@@ -496,3 +501,123 @@ def test_single_field_route_is_bit_identical_to_the_direct_reduction(tmp_path: P
         "sigma": 0.2, "mean": 1.1, "correlation_length": 1.0,
         "latitude_correlation_length": None, "longitude_correlation_length": None,
     }
+
+
+# ---------------------------------------------------------------------------
+# Review follow-ups: shared kernels, zero-flux regions, shared and generated bases
+# ---------------------------------------------------------------------------
+
+
+def _dense_action(covariance) -> np.ndarray:
+    """Materialize a multisource covariance action on the synthetic grid."""
+    n = len(LAT) * len(LON)
+    identity = xr.DataArray(
+        np.eye(3 * n).reshape(3, len(LAT), len(LON), 3 * n), dims=("native_source", "lat", "lon", "column"),
+        coords={"native_source": list(SOURCES), "lat": LAT, "lon": LON},
+    )
+    return covariance.apply(identity).transpose("native_source", "lat", "lon", "column").values.reshape(3 * n, 3 * n)
+
+
+def _correlated_geodesic_prior(files: dict[str, Path]) -> Co2MultiSourceNativePrior:
+    table = _native_prior(files)
+    for source in ("gpp", "ter"):
+        table["sources"][source]["geodesic_correlation_length_km"] = {"1": 250.0}
+    return Co2MultiSourceNativePrior.from_params(table)
+
+
+def test_correlated_geodesic_pair_shares_one_kernel(files: dict[str, Path]) -> None:
+    from openghg_inversions.rhime.co2.co2_native_preparation import _source_covariance
+
+    prior = _correlated_geodesic_prior(files)
+    classes = _classes()
+    lat, lon = classes["lat"], classes["lon"]
+    covariance = _source_covariance(prior, SOURCES, SIGMA, dict.fromkeys(SOURCES, classes), lat, lon)
+    b = _dense_action(covariance)
+    land = classes.values.ravel() == 1
+    bio = _separable(BIO_LENGTHS, classes.values)
+    bio[np.ix_(land, land)] = _geodesic(250.0)[np.ix_(land, land)]
+    n = classes.size
+    np.testing.assert_allclose(b[n:2 * n, n:2 * n], SIGMA["gpp"] ** 2 * bio, rtol=1e-12, atol=1e-15)
+    np.testing.assert_allclose(b[2 * n:, 2 * n:], SIGMA["ter"] ** 2 * bio, rtol=1e-12, atol=1e-15)
+    np.testing.assert_allclose(b[n:2 * n, 2 * n:], RHO * SIGMA["gpp"] * SIGMA["ter"] * bio, rtol=1e-12, atol=1e-15)
+    # No cross-class covariance anywhere in the GPP/TER cross block.
+    assert np.abs(b[n:2 * n, 2 * n:][np.ix_(land, ~land)]).max() == 0.0
+
+
+@pytest.mark.parametrize("geodesic", [True, False])
+def test_correlated_pair_with_different_class_labels_is_refused(files: dict[str, Path], geodesic: bool) -> None:
+    from openghg_inversions.rhime.co2.co2_native_preparation import _source_covariance
+
+    prior = _correlated_geodesic_prior(files) if geodesic else Co2MultiSourceNativePrior.from_params(
+        _native_prior(files))
+    classes = _classes()
+    other = classes.copy(deep=True)
+    other.values[0, 0] = 2  # one cell moves to the other class: a different partition
+    labels = {"ff": classes, "gpp": classes, "ter": other}
+    with pytest.raises(ValueError, match="different class labels"):
+        _source_covariance(prior, SOURCES, SIGMA, labels, classes["lat"], classes["lon"])
+    # Same partition with swapped labels: the geodesic class 1 now covers other cells, so the kernels differ
+    # and the pair is refused; the separable kernel is unchanged and accepted.
+    swapped = classes.copy(data=np.where(classes.values == 1, 2, 1))
+    labels = {"ff": classes, "gpp": classes, "ter": swapped}
+    if geodesic:
+        with pytest.raises(ValueError, match="do not share one unit kernel"):
+            _source_covariance(prior, SOURCES, SIGMA, labels, classes["lat"], classes["lon"])
+    else:
+        _source_covariance(prior, SOURCES, SIGMA, labels, classes["lat"], classes["lon"])
+
+
+def test_zero_flux_regions_are_reported_by_source_and_label(merged: MergedData) -> None:
+    from openghg_inversions.basis.basis_functions import basis_functions_from_flat_basis
+    from openghg_inversions.rhime.co2.co2_native_preparation import _flux_weighted_restriction
+
+    shared = _partition().sel(source="ff", drop=True)
+    flux = xr.concat([merged.flux_data[s].flux.isel(time=0, drop=True) for s in SOURCES],
+                     dim=xr.IndexVariable("source", list(SOURCES)))
+    flux = flux.where(~((flux.source == "ter") & (shared == 3)), 0.0)  # TER has no flux in region 3
+    basis = basis_functions_from_flat_basis(flux=flux, basis_flat=dict.fromkeys(SOURCES, shared))
+    grid = xr.Dataset(coords={"lat": flux["lat"], "lon": flux["lon"]})
+    native = flux.rename(source="native_source")
+    with pytest.raises(ValueError, match=r"\{'ter': \[3\]\}.*retained_regions_path"):
+        _flux_weighted_restriction(basis.operator, native, None, grid)
+    restriction = _flux_weighted_restriction(basis.operator, native, {"ter": (1, 2)}, grid)
+    assert [state for state in restriction.indexes["region"] if state[0] == "ter"] == [("ter", 0), ("ter", 1)]
+
+
+@pytest.mark.parametrize("restriction", ["bucket", "absolute_flux_weighted_mean"])
+def test_shared_partition_is_repeated_per_source(
+    tmp_path: Path, merged: MergedData, files: dict[str, Path], restriction: str,
+) -> None:
+    shared = _partition().sel(source="ff", drop=True)
+    path = tmp_path / "shared.nc"
+    shared.to_dataset().to_netcdf(path)
+    config = _request(files, _native_prior(files, restriction))
+    config["prepared_inputs"]["basis"] = {"partition_path": str(path)}
+    prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, "shared")).prepared
+    inputs = prepared.inv_inputs
+    assert list(inputs.indexes["region"]) == [(s, r) for s in SOURCES for r in range(3)]
+    expected = _dense_reference(merged, prepared, restriction, partition=shared)
+    np.testing.assert_allclose(inputs.alpha_prior_covariance.values, expected["C"], rtol=1e-9, atol=1e-12)
+    np.testing.assert_allclose(inputs.H.values, expected["H"], rtol=1e-8, atol=1e-10)
+    np.testing.assert_allclose(inputs.aggregation_error_covariance.values, expected["A"], rtol=1e-7, atol=1e-10)
+
+
+def test_generated_basis_is_repeated_per_source(tmp_path: Path, merged: MergedData, files: dict[str, Path]) -> None:
+    from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR
+
+    config = _request(files, _native_prior(files))
+    config["prepared_inputs"]["basis"] = {"algorithm": "quadtree", "nbasis": 4}
+    prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, "generated")).prepared
+    operator = prepared.basis_functions.operator
+    assert operator.source_labels == SOURCES
+    layers = [operator.basis_flat[s].values for s in SOURCES]
+    assert all(np.array_equal(layers[0], layer) for layer in layers[1:])
+    regions = np.unique(layers[0]).size
+    assert prepared.inv_inputs.sizes["region"] == 3 * regions
+    assert prepared.basis_functions.metadata[BASIS_ARTIFACT_SOURCE_ATTR] == "generated"
+    expected = _dense_reference(merged, prepared, "bucket", partition=operator.basis_flat[SOURCES[0]])
+    np.testing.assert_allclose(prepared.inv_inputs.H.values, expected["H"], rtol=1e-8, atol=1e-10)
+
+    config["prepared_inputs"]["basis"]["fix_outer_regions"] = True
+    with pytest.raises(ValueError, match="fix_outer_regions cannot serve per-source native priors"):
+        Co2PreparationConfig.from_params(config, require_source=True)

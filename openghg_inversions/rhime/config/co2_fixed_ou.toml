@@ -43,7 +43,10 @@ domain = "EUROPE"
 # and TER may be correlated under one shared kernel, and all sources are reduced
 # jointly to a (source, region) retained state. Name exactly the acquisition
 # flux_sources. A partition with a `source` dimension gives each source its own
-# regions; a shared partition or generated basis is repeated per source.
+# regions; a shared partition or generated basis is repeated per source. With
+# restriction = "absolute_flux_weighted_mean" every retained region needs nonzero
+# prior flux of its source, so a repeated partition usually needs
+# retained_regions_path to leave out e.g. biosphere sea regions and ocean land.
 
 # Per-source native priors (E-r07): A1 gross anchor, rho = 0.7, biosphere 3 x 6 deg, FF 1 x 2.5 deg.
 # [prepared_inputs.native_prior]

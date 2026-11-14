@@ -709,6 +709,13 @@ class Co2NativePreparationConfig:
                     "prepared_inputs.basis.path cannot serve per-source native priors; use partition_path "
                     "(optionally with a source dimension) or a basis algorithm."
                 )
+            basis = result["basis"]
+            if basis.basis_partition_path is None and basis.fix_basis_outer_regions:
+                raise ValueError(
+                    "prepared_inputs.basis.fix_outer_regions cannot serve per-source native priors: the "
+                    "fixed-outer basis groups belong to one shared operator. Save that partition and pass it "
+                    "as partition_path instead."
+                )
         observations = _table(prepared.pop("observations", {}), "prepared_inputs.observations")
         if "filters" in observations:
             filters = observations.pop("filters")

@@ -569,7 +569,19 @@ def _source_covariance(
     latitude: xr.DataArray,
     longitude: xr.DataArray,
 ) -> CorrelatedSourceCovariance:
-    """Build each source's covariance and join GPP and TER under one kernel."""
+    """Build each source's covariance and join GPP and TER under one kernel.
+
+    A correlated GPP/TER pair needs one shared kernel, including one class
+    partition: differing class labels are refused here rather than letting one
+    source silently use the other's classes.
+    """
+    if prior.gpp_ter_correlation != 0.0:
+        gpp, ter = cast(str, prior.gpp_source), cast(str, prior.ter_source)
+        if not _same_class_partition(classes[gpp], classes[ter]):
+            raise ValueError(
+                f"gpp_ter_correlation requires one shared kernel, but sources {gpp!r} and {ter!r} have "
+                "different class labels in class_labels_path; give them the same classes or set rho = 0."
+            )
     blocks: dict[str, InvertibleNativeCovarianceAction] = {}
     for source in sources:
         configured = prior.sources[source]
@@ -584,7 +596,12 @@ def _source_covariance(
             )
             continue
         partner = _shared_kernel_partner(prior, source)
-        if partner in blocks and isinstance(blocks[partner], ClassMixedExponentialCovariance):
+        if (
+            partner in blocks
+            and isinstance(blocks[partner], ClassMixedExponentialCovariance)
+            and _same_labels(classes[source], classes[cast(str, partner)])
+            and prior.sources[cast(str, partner)].kernel_key == configured.kernel_key
+        ):
             # Share the dense factors of a correlated partner's identical kernel.
             blocks[source] = cast(ClassMixedExponentialCovariance, blocks[partner]).with_sigma(sigmas[source])
             continue
@@ -600,6 +617,30 @@ def _source_covariance(
     if prior.gpp_ter_correlation != 0.0:
         correlations = {(cast(str, prior.gpp_source), cast(str, prior.ter_source)): prior.gpp_ter_correlation}
     return CorrelatedSourceCovariance(blocks, correlations, source_dim=NATIVE_SOURCE_DIM)
+
+
+def _same_labels(first: xr.DataArray | None, second: xr.DataArray | None) -> bool:
+    """Return whether two sources' class labels are the same array (or both absent)."""
+    if first is None or second is None:
+        return first is None and second is None
+    return bool(np.array_equal(first.transpose("lat", "lon").values, second.transpose("lat", "lon").values))
+
+
+def _same_class_partition(first: xr.DataArray | None, second: xr.DataArray | None) -> bool:
+    """Return whether two sources' class labels split the grid into the same classes."""
+    def partition(labels: xr.DataArray | None) -> np.ndarray | None:
+        if labels is None:
+            return None
+        _, inverse = np.unique(labels.transpose("lat", "lon").values.ravel(), return_inverse=True)
+        # Number classes by first appearance so equal partitions compare equal whatever their label values.
+        order = {value: index for index, value in enumerate(dict.fromkeys(inverse.tolist()))}
+        return np.array([order[value] for value in inverse.tolist()])
+
+    a, b = partition(first), partition(second)
+    if a is None or b is None:
+        single = [p for p in (a, b) if p is not None]
+        return all(int(p.max()) == 0 for p in single)
+    return bool(np.array_equal(a, b))
 
 
 def _shared_kernel_partner(prior: Co2MultiSourceNativePrior, source: str) -> str | None:
@@ -663,8 +704,27 @@ def _flux_weighted_restriction(
         areagrid(grid["lat"].values, grid["lon"].values), dims=("lat", "lon"),
         coords={"lat": grid["lat"], "lon": grid["lon"]},
     )
+    weights = flux * area
+    empty: dict[str, list[int]] = {}
+    for source, source_regions in regions.items():
+        labels_flat = np.asarray(source_regions.values).ravel()
+        magnitude = np.abs(np.asarray(weights.sel({NATIVE_SOURCE_DIM: source}).transpose("lat", "lon").values)).ravel()
+        active = labels_flat >= 0
+        present, inverse = np.unique(labels_flat[active], return_inverse=True)
+        totals = np.bincount(inverse, weights=magnitude[active], minlength=present.size)
+        zero = [int(label) for label, total in zip(present, totals, strict=True) if not total > 0.0]
+        if zero:
+            empty[source] = zero
+    if empty:
+        raise ValueError(
+            "The absolute-flux-weighted restriction needs prior flux in every retained region, but these "
+            f"(source: partition labels) have zero window-mean |flux|: {empty!r}. A shared or generated "
+            "partition repeated per source often has such regions (for example biosphere over sea, ocean "
+            "over land); leave them out with retained_regions_path to marginalize them, or use a "
+            "source-specific partition or restriction = 'bucket'."
+        )
     restriction = absolute_weighted_regional_mean_restriction(
-        regions, flux * area, state_dim=state_dim, native_source_dim=NATIVE_SOURCE_DIM,
+        regions, weights, state_dim=state_dim, native_source_dim=NATIVE_SOURCE_DIM,
         source_dim=operator.source_dim, region_dim=operator.region_in_source_dim,
     )
     # Active regions are numbered in ascending label order within each source,
