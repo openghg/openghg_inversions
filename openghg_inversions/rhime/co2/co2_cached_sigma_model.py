@@ -23,7 +23,7 @@ from openghg_inversions.models.biosphere import (
     add_prepared_retained_flux_state,
     prepare_retained_flux_prior,
 )
-from openghg_inversions.models.boundary import Bound
+from openghg_inversions.models.boundary import Bound, Outputs
 from openghg_inversions.models.cached_sigma import (
     FixedOuCachedSigmaTarget,
     MarginalQuadraticCache,
@@ -89,7 +89,7 @@ class Co2CachedSigmaModel:
     cached_state_logp: TensorVariable
     initial_values: dict[str, Any]
     flux_prior: RetainedFluxPrior
-    boundary: Bound | None = None
+    boundary_outputs: Outputs | None = None
 
 
 def _materialize_cached_linear_projection(
@@ -562,7 +562,7 @@ def _build_co2_cached_sigma_model(
             output_dim=output_dim,
             flux_prior=retained_prior,
         )
-        return replace(cached, boundary=boundary)
+        return replace(cached, boundary_outputs=None if boundary is None else boundary.outputs())
 
 
 

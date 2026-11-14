@@ -339,6 +339,12 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.boundary.bind_prepared
    openghg_inversions.models.boundary.Outputs
    openghg_inversions.array_ops.to_dense_tree
+   openghg_inversions.models.shared_baseline.SharedBaselineChoice
+   openghg_inversions.models.shared_baseline.SharedBaseline
+   openghg_inversions.rhime.co2.shared_baseline_model.build_shared_co2_model
+   openghg_inversions.rhime.co2.shared_baseline_model.build_shared_co2_cached_sigma_model
+   openghg_inversions.rhime.co2.shared_baseline_model.annotate_shared_baseline_trace
+   openghg_inversions.rhime.co2.shared_baseline_model.reconstruct_shared_baseline
    openghg_inversions.models.add_linked_linear_component
    openghg_inversions.models.add_correlated_lognormal_state
    openghg_inversions.models.add_offset_component
