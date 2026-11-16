@@ -58,7 +58,7 @@ DENSITY_UNITS = "mol m-2 s-1"
 
 @dataclass(frozen=True)
 class OuterFluxChoice:
-    """Data-free outer-region flux option.
+    """Outer-region flux option, chosen before any arrays are attached.
 
     Attributes:
         mode: ``"fixed"`` holds every outer state at its prior mean;

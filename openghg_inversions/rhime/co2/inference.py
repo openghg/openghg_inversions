@@ -61,6 +61,7 @@ def build_co2_inference(
     )
     return build_co2_from_materialized(
         inputs, prepared_inputs=prepared, priors=priors, boundary=boundary,
+        outer_flux=model.get("outer_flux"),
         biosphere_prior=model.get("biosphere_prior"),
         sigma_alignment=model.get("sigma_alignment"),
         sigma_prior=model.get("sigma_prior"),

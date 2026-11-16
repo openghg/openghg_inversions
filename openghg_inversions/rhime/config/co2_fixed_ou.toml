@@ -37,3 +37,11 @@ output_name = "co2-fixed-ou"
 # (see examples/biosphere_prior/saved_configuration.py).
 # [model.biosphere]
 # path = "biosphere-prior.nc"
+
+# Outer-region flux corrections whose level the boundary mean shift owns
+# (see docs/usage/atmospheric_baseline.rst). Needs a centred boundary with
+# mean_shift_prior and basis_group labels on the prepared retained states.
+# [model.outer_flux]
+# mode = "multiplicative"   # or "fixed"
+# outer_groups = ["outer"]
+# fixed_sources = ["ocean"]

@@ -1,9 +1,10 @@
 Configured CO2 priors and saved calibration
 ===========================================
 
-Use this workflow to configure :doc:`boundary_correction_structures` or a
-saved :doc:`biosphere_prior` calibration. Boundary structures are choices
-bound to the prepared inputs at model construction; only the biosphere
+Use this workflow to configure :doc:`boundary_correction_structures`, a saved
+:doc:`biosphere_prior` calibration or the outer-flux option of
+:doc:`atmospheric_baseline`. Boundary structures and the outer-flux option are
+choices bound to the prepared inputs at model construction; only the biosphere
 calibration is resolved once and saved. Existing model defaults are unchanged. These APIs require the
 package's supported Python 3.12 or 3.13 runtime.
 
@@ -100,6 +101,35 @@ For linked CO2/O2, use a shared top-level ``[biosphere] path=...``.
 ``Co2O2ModelConfig.bind`` loads it and retains one shared calibrated flux
 state; each channel keeps its own boundary choice. The shipped ``co2.toml``,
 ``co2_fixed_ou.toml`` and ``co2_o2.toml`` templates include commented examples.
+
+Configure the outer-flux option
+-------------------------------
+
+``[model.outer_flux]`` adds the outer-flux option of :doc:`atmospheric_baseline`
+to the ordinary and cached fixed-OU CO2 recipes. Linked CO2/O2 configurations
+use a top-level ``[outer_flux]`` table, because the flux state is shared by
+both channels:
+
+.. code-block:: toml
+
+   [model.boundary]
+   type = "anomaly_scaling"
+   scale_sd = 0.8
+   mean_shift_prior = { pdf = "normal", mu = 0.0, sigma = 2.0 }
+
+   [model.outer_flux]
+   mode = "multiplicative"   # or "fixed"
+   outer_groups = ["outer"]
+   fixed_sources = ["ocean"]
+
+``outer_groups`` selects outer states by the ``basis_group`` coordinate of the
+prepared retained prior, and ``fixed_sources`` holds those with a matching
+``source`` coordinate at their prior mean. Model construction rejects the
+option when the boundary has no ``mean_shift_prior`` (in each channel for
+linked runs), or when the prepared state lacks those coordinates. Additive
+outer patterns are available from Python only. A configured biosphere
+calibration is used as the flux prior as usual. Run metadata records the
+outer-flux mode and selectors beside the boundary metadata.
 
 Runnable saved-calibration example
 ----------------------------------

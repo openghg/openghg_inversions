@@ -78,6 +78,8 @@ class Co2CachedSigmaModel:
     initialization strategies, lifted from graph metadata. The matched runner
     resolves them separately for construction and each sampling chain.
     ``flux_prior`` is the retained flux prior the graph samples.
+    ``boundary_outputs`` and ``outer_flux_outputs`` declare the bound
+    boundary's and outer-flux option's roles, units and metadata.
     """
 
     model: pm.Model
@@ -91,6 +93,7 @@ class Co2CachedSigmaModel:
     initial_values: dict[str, Any]
     flux_prior: RetainedFluxPrior
     boundary_outputs: Outputs | None = None
+    outer_flux_outputs: Outputs | None = None
 
 
 def _materialize_cached_linear_projection(
@@ -579,7 +582,11 @@ def _build_co2_cached_sigma_model(
             output_dim=output_dim,
             flux_prior=retained_prior,
         )
-        return replace(cached, boundary_outputs=None if boundary is None else boundary.outputs())
+        return replace(
+            cached,
+            boundary_outputs=None if boundary is None else boundary.outputs(),
+            outer_flux_outputs=None if outer_flux is None else outer_flux.outputs(),
+        )
 
 
 

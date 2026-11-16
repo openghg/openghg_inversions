@@ -115,6 +115,7 @@ class BiospherePriorConfig:
             target_gross_sd=absolute_target if self.policy == "target_gross_sd" else None,
         )
 
-    def save(self, prepared: BiospherePrior, path: str | Path) -> None:
+    @staticmethod
+    def save(prepared: BiospherePrior, path: str | Path) -> None:
         """Save the complete original prior, selector, functionals and resolved audit."""
         _save(prepared.to_dataset(), path, "biosphere_prior")

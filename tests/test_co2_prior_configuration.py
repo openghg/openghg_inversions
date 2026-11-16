@@ -1,6 +1,7 @@
 """Configured priors retain the explicit Python target; boundary choices bind at construction."""
 
 from types import SimpleNamespace
+import json
 from dataclasses import replace
 import tomllib
 
@@ -13,6 +14,7 @@ from openghg_inversions.biosphere_prior import calibrate_biosphere_prior
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.boundary import AnomalyScalingChoice, RawCenteredSensitivity
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.co2 import (
     BiospherePriorConfig,
@@ -23,7 +25,8 @@ from openghg_inversions.rhime.co2 import (
     load_biosphere_prior,
 )
 from openghg_inversions.rhime.co2.co2_o2_configuration import load_co2_o2_params
-from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
+from openghg_inversions.rhime.co2.co2_o2_model import bind_linked_outer_flux, build_co2_o2_model
+from openghg_inversions.sigma import SigmaAlignment
 from openghg_inversions.rhime.co2.execution import load_co2_params
 from openghg_inversions.rhime.co2.inference import build_co2_inference
 from test_biosphere_prior import case as bio_case
@@ -247,6 +250,143 @@ def test_linked_config_independent_species_corrections_and_one_calibration(tmp_p
     )
     _parity(configured, expected)
     assert len([rv for rv in configured.free_RVs if rv.name.startswith("flux_scaling")]) == 1
+
+
+def _with_groups(prepared, groups):
+    """Label the prepared retained states with basis groups and sources."""
+    inv = prepared.inv_inputs
+    state = str(inv.alpha_prior_mean.dims[0])
+    labels = {"basis_group": (state, groups), "source": (state, ["GPP"] * len(groups))}
+    inv = inv.assign_coords(labels)
+    return replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inv))
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_configured_outer_flux_matches_python_option(cached):
+    prepared = _with_groups(_ordinary(), ["inner", "outer"])
+    inv = prepared.inv_inputs
+    mean_shift_prior = {"pdf": "normal", "mu": 0.0, "sigma": 0.2}
+    likelihood = (
+        {"kind": "fixed_ou", "tau_hours": 5.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75}}
+        if cached
+        else {"kind": "additive_sigma", "fixed_model_mismatch": 0.3}
+    )
+    request = {
+        "model": {
+            "boundary": {"type": "anomaly_scaling", "scale_sd": 0.3, "mean_shift_prior": mean_shift_prior},
+            "outer_flux": {"mode": "multiplicative", "outer_groups": ["outer"]},
+        },
+        "likelihood": likelihood,
+    }
+    choices = Co2ModelConfig.from_params(load_co2_params(params=request)).model_arguments()
+    assert choices["outer_flux"] == OuterFluxChoice("multiplicative", ("outer",))
+    built, _ = build_co2_inference(prepared, choices)
+    assert json.loads(json.dumps(built.output_contract.metadata))["outer_flux_mode"] == "multiplicative"
+
+    prior = CorrelatedLognormalPrior(inv.alpha_prior_mean, inv.alpha_prior_covariance, covariance_dim="region_cov")
+    expected = build_co2_model(
+        inv.H,
+        retained_prior=prior,
+        fixed_prior_contribution=inv.fixed_prior_contribution,
+        observations=inv.mf,
+        observation_error=inv.mf_error,
+        aggregation_error=resolve_aggregation_error(inv, prepared.aggregation_error_mode),
+        boundary=AnomalyScalingChoice(mean_shift_prior, 0.3).bind(inv.mf, RawCenteredSensitivity.validate(inv)),
+        outer_flux=OuterFluxChoice("multiplicative", ("outer",)).resolve_states(prior).bind_rows(inv.mf, inv.H),
+        **(
+            {"likelihood_builder": add_fixed_ou_gaussian_likelihood,
+             "likelihood_kwargs": {k: v for k, v in likelihood.items() if k != "kind"}}
+            if cached else
+            {"sigma_alignment": SigmaAlignment.from_observations(inv.mf), "fixed_model_mismatch": 0.3}
+        ),
+    )
+    _parity(built.model, expected)
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_linked_configured_outer_flux_matches_python_option(monkeypatch, cached):
+    from openghg_inversions.rhime.co2 import co2_o2_cached_sigma_runner
+
+    prepared = _prepared()
+    prepared = replace(
+        prepared,
+        boundary_operands={channel: _operands(_native(prepared, channel)) for channel in ("co2", "o2")},
+        retained_prior=CorrelatedLognormalPrior(
+            prepared.retained_prior.mean.assign_coords(
+                basis_group=(prepared.retained_prior.state_dim, ["inner", "inner", "outer", "outer", "outer"]),
+            ),
+            prepared.retained_prior.arithmetic_covariance,
+        ),
+    )
+    kwargs = _kwargs(prepared)
+    expected_boundary, channels = {}, {}
+    for channel, sd in (("co2", 0.2), ("o2", 0.003)):
+        mean_shift_prior = {"pdf": "normal", "mu": 0.0, "sigma": sd}
+        native_dim = str(kwargs[f"{channel}_sensitivity"].dims[0])
+        expected_boundary[channel] = AnomalyScalingChoice(mean_shift_prior, 0.3).bind(
+            _native(prepared, channel).rename(observation=native_dim), prepared.boundary_operands[channel],
+        )
+        channels[channel] = {
+            "units": "ppm",
+            "independent_error_sd": 0.1,
+            "boundary": {"type": "anomaly_scaling", "scale_sd": 0.3, "mean_shift_prior": mean_shift_prior},
+        }
+    outer = {"mode": "multiplicative", "outer_groups": ["outer"], "fixed_sources": ["ocean"]}
+    request = {"channels": channels, "outer_flux": outer}
+    choices = Co2O2ModelConfig.from_params(load_co2_o2_params(params=request)).bind(prepared)
+    ou = dict(tau_hours=5.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75})
+    if cached:
+        built = []
+        builder = co2_o2_cached_sigma_runner._build_co2_o2_cached_sigma_model
+
+        def capture(**model_kwargs):
+            built.append(builder(**model_kwargs).model)
+            raise _Built
+
+        monkeypatch.setattr(co2_o2_cached_sigma_runner, "_build_co2_o2_cached_sigma_model", capture)
+        with pytest.raises(_Built):
+            co2_o2_cached_sigma_runner.run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
+                prepared_inputs=prepared, **choices, **ou,
+            )
+        configured = built[0]
+    else:
+        configured = build_rhime_co2_o2(prepared_inputs=prepared, **choices).model
+    outer_flux = bind_linked_outer_flux(
+        OuterFluxChoice("multiplicative", ("outer",), ("ocean",)), prepared.retained_prior,
+        observations=kwargs["observations"],
+        co2_sensitivity=kwargs["co2_sensitivity"], o2_sensitivity=kwargs["o2_sensitivity"],
+    )
+    expected = build_co2_o2_model(**kwargs, boundary=expected_boundary, outer_flux=outer_flux, **(ou if cached else {}))
+    _parity(configured, expected)
+
+
+@pytest.mark.parametrize(
+    "outer, match",
+    [
+        ({"mode": "additive", "outer_groups": ["outer"]}, "fixed\" or \"multiplicative"),
+        ({"mode": "fixed"}, "outer_groups"),
+        ({"mode": "fixed", "outer_groups": "outer"}, "list of strings"),
+        ({"mode": "fixed", "outer_groups": ["outer"], "level_sd": 1.0}, "Unknown"),
+    ],
+)
+def test_invalid_outer_flux_options_fail(outer, match):
+    with pytest.raises(ValueError, match=match):
+        Co2ModelConfig.from_params(load_co2_params(params={
+            "model": {"outer_flux": outer}, "likelihood": {"kind": "additive_sigma"},
+        }))
+
+
+def test_toml_outer_flux_choice_is_the_python_choice():
+    request = tomllib.loads("""
+        [model.outer_flux]
+        mode = "multiplicative"
+        outer_groups = ["outer"]
+        fixed_sources = ["ocean"]
+        [likelihood]
+        kind = "additive_sigma"
+    """)
+    config = Co2ModelConfig.from_params(load_co2_params(params=request))
+    assert config.outer_flux == OuterFluxChoice("multiplicative", ("outer",), ("ocean",))
 
 
 def test_inference_options_cannot_change_saved_calibration():
