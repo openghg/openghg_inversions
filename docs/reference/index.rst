@@ -272,8 +272,16 @@ mathematical contracts and eager-computation boundaries.
    openghg_inversions.basis.SuppliedRestriction
    openghg_inversions.basis.absolute_weighted_regional_mean_restriction
    openghg_inversions.basis.project_native_covariance
+   openghg_inversions.basis.covariance_natural_prolongation
    openghg_inversions.coherent_reduction.CoherentGaussianReduction
    openghg_inversions.coherent_reduction.reduce_native_gaussian
+   openghg_inversions.covariance_artifacts.NativeCovarianceProductsArtifact
+   openghg_inversions.covariance_artifacts.CoherentReductionArtifact
+   openghg_inversions.covariance_artifacts.save_products
+   openghg_inversions.covariance_artifacts.load_products
+   openghg_inversions.covariance_artifacts.save_coherent_reduction
+   openghg_inversions.covariance_artifacts.load_coherent_reduction
+   openghg_inversions.covariance_artifacts.with_prolongation
    openghg_inversions.observation_error.AggregationError
    openghg_inversions.observation_error.prepare_low_rank_aggregation_error
    openghg_inversions.observation_error.resolve_aggregation_error

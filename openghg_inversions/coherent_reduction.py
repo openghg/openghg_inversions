@@ -32,6 +32,10 @@ class CoherentGaussianReduction:
     """One exact, labelled native-to-retained Gaussian reduction.
 
     Attributes:
+        restriction: Dimensionless ``Pi`` defining the retained state
+            ``alpha = Pi x``, with dimensions ``(state_dim, *native_dims)``.
+            A sparse payload stays sparse; its attributes record the
+            projection provenance.
         retained_mean: Dimensionless ``Pi m`` on the retained-state axis.
         retained_covariance: Positive-definite ``C_alpha`` on distinct
             retained-state row and column axes.
@@ -45,6 +49,7 @@ class CoherentGaussianReduction:
         projection_strategy: Scientific strategy that selected ``Pi``.
     """
 
+    restriction: xr.DataArray
     retained_mean: xr.DataArray
     retained_covariance: xr.DataArray
     effective_observation_operator: xr.DataArray
@@ -188,6 +193,7 @@ def _reduce_native_covariance_products(
     )
 
     return CoherentGaussianReduction(
+        restriction=restriction,
         retained_mean=retained_mean,
         retained_covariance=state_covariance.rename("retained_covariance"),
         effective_observation_operator=effective_operator,

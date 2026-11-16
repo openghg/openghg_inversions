@@ -112,6 +112,12 @@ def _reduction(canonical: PreparedInputs) -> CoherentGaussianReduction:
         attrs={"units": "(ppm)^2"},
     )
     return CoherentGaussianReduction(
+        restriction=xr.DataArray(
+            [[1.0, 0.0], [0.0, 1.0]],
+            dims=("state", "native"),
+            coords={"state": state, "native": [0, 1]},
+            attrs={"units": "1"},
+        ),
         retained_mean=xr.DataArray(
             [1.1, 0.9],
             dims="state",
