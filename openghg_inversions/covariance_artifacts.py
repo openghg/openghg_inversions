@@ -1167,7 +1167,9 @@ def _normalized_values(values: np.ndarray, name: str) -> tuple[str, bytes]:
         return "datetime", values.astype("datetime64[ns]").astype("<i8").tobytes()
     if kind == "m":
         return "timedelta", values.astype("timedelta64[ns]").astype("<i8").tobytes()
-    if kind in "USO":
+    # "T" is NumPy's variable-width StringDType, which newer Zarr and xarray
+    # versions return for string labels.
+    if kind in "USOT":
         chunks = []
         for item in np.ravel(values):
             if isinstance(item, bytes):

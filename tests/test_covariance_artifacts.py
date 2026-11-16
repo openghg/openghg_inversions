@@ -311,6 +311,16 @@ def test_zarr_round_trip_keeps_sparse_restriction_and_identity(tmp_path: Path) -
     assert source_id(loaded) == source_id(artifact)
 
 
+def test_string_labels_hash_alike_across_numpy_string_dtypes() -> None:
+    """Fixed-width, object and variable-width StringDType labels give one digest."""
+    from openghg_inversions.covariance_artifacts import _normalized_values
+
+    labels = ["MHD", "TAC", "Mace Head"]
+    expected = _normalized_values(np.array(labels), "labels")
+    assert _normalized_values(np.array(labels, dtype=object), "labels") == expected
+    assert _normalized_values(np.array(labels, dtype=np.dtypes.StringDType()), "labels") == expected
+
+
 def test_restriction_provenance_round_trips_for_both_strategies(tmp_path: Path) -> None:
     """Derived and supplied restrictions both record their source and keep typed attributes."""
     derived, _, _ = _products_artifact("single-source")
