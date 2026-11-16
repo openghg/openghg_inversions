@@ -1,11 +1,10 @@
-"""Configured priors retain the explicit Python target; boundary and shared choices bind at construction."""
+"""Configured priors retain the explicit Python target; boundary choices bind at construction."""
 
 from types import SimpleNamespace
 from dataclasses import replace
 import tomllib
 
 import numpy as np
-import pymc as pm
 import pytest
 import pytensor
 import xarray as xr
@@ -13,32 +12,24 @@ import xarray as xr
 from openghg_inversions.biosphere_prior import calibrate_biosphere_prior
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.boundary import AnomalyScalingChoice, RawCenteredSensitivity
-from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
-from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
+from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.co2 import (
     BiospherePriorConfig,
     Co2ModelConfig,
     Co2O2ModelConfig,
     build_co2_model,
     build_rhime_co2_o2,
-    build_shared_co2_from_config,
-    build_shared_co2_model,
-    annotate_shared_baseline_trace,
     load_biosphere_prior,
-    shared_baseline_choice,
 )
-from openghg_inversions.models.shared_baseline import SharedBaseline, SharedBaselineChoice
 from openghg_inversions.rhime.co2.co2_o2_configuration import load_co2_o2_params
 from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
 from openghg_inversions.rhime.co2.execution import load_co2_params
 from openghg_inversions.rhime.co2.inference import build_co2_inference
-from openghg_inversions.serialization import save_trace, load_trace
 from test_biosphere_prior import case as bio_case
 from test_co2_bound_frontends import _native, _operands
 from test_co2_o2_fixed_ou import _prepared, _kwargs
 from test_centered_handoffs import _ordinary
-from test_shared_baseline import SCALING, case as shared_case, operands as shared_operands
 
 
 @pytest.fixture(autouse=True)
@@ -51,9 +42,6 @@ def test_public_configuration_annotations_resolve_at_runtime():
     from typing import get_type_hints
 
     assert get_type_hints(Co2ModelConfig.model_arguments)
-    assert get_type_hints(build_shared_co2_from_config)["aggregation_error"] is AggregationError
-    assert get_type_hints(build_shared_co2_from_config)["baseline"] is SharedBaseline
-    assert get_type_hints(shared_baseline_choice)["return"] is SharedBaselineChoice
     for method in ("from_params", "prepare", "save"):
         assert get_type_hints(getattr(BiospherePriorConfig, method))
 
@@ -261,122 +249,19 @@ def test_linked_config_independent_species_corrections_and_one_calibration(tmp_p
     assert len([rv for rv in configured.free_RVs if rv.name.startswith("flux_scaling")]) == 1
 
 
-def _shared_inputs(obs):
-    return dict(
-        observations=obs,
-        observation_error=xr.full_like(obs, 0.2),
-        aggregation_error=resolve_aggregation_error(obs.to_dataset(name="mf"), "none"),
-    )
-
-
-@pytest.mark.parametrize("cached", [False, True])
-def test_shared_configured_graph_matches_python_and_saves_absolute_trace(tmp_path, cached):
-    obs, h, prior, expected_baseline = shared_case("multiplicative_shrunk")
-    choice = shared_baseline_choice({
-        "mode": "multiplicative_shrunk",
-        "delta_sd": 5.0,
-        "boundary": {"type": "anomaly_scaling", "scale_sd": 0.7, "frequency": "2D", "anchor_time": "2021-01-01"},
-    })
-    assert choice == SharedBaselineChoice(SCALING, 5.0, "multiplicative_shrunk")
-    weights = xr.DataArray(
-        [[0.0, -2.0, 0.0, 0.0], [0.0, 0.0, 3.0, 0.0]],
-        dims=("process", "region"),
-        coords={"process": ["GPP", "TER"], **dict(prior.mean.coords)},
-        attrs={"units": "kg/year"},
-    )
-    reference = xr.DataArray(
-        [-2.0, 3.0], dims="process", coords={"process": ["GPP", "TER"]}, attrs={"units": "kg/year"}
-    )
-    sampled = prior.mean.copy(data=[False, True, True, False])
-    baseline = choice.bind(
-        obs,
-        flux_sensitivity=h,
-        retained_prior=prior,
-        fixed_prior_contribution=xr.full_like(obs, 0.2),
-        boundary_sensitivity=shared_operands(obs),
-        outer=prior.mean.copy(data=[False, True, True, True]),
-        sampled_outer=sampled,
-        calibrated_prior=calibrate_biosphere_prior(
-            prior, biosphere=sampled, weights=weights, reference=reference, residual_sd_multiplier=0.5
-        ),
-    )
-    xr.testing.assert_identical(baseline.data, expected_baseline.data)
-    inputs = _shared_inputs(obs)
-    ou = dict(tau_hours=5.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75})
-    likelihood = {"kind": "fixed_ou", **ou}
-    if not cached:
-        likelihood.pop("site_amplitude_prior")
-        likelihood["fixed_site_amplitudes"] = 0.75
-    actual = build_shared_co2_from_config({"likelihood": likelihood}, baseline=baseline, **inputs)
-    model = actual.model if cached else actual
-    expected = build_shared_co2_model(
-        expected_baseline,
-        **inputs,
-        likelihood_builder=add_fixed_ou_gaussian_likelihood,
-        likelihood_kwargs={k: v for k, v in likelihood.items() if k != "kind"},
-    )
-    _parity(model, expected)
-    from openghg_inversions.postprocessing.boundary_outputs import restore_absolute_predictives
-
-    with model:
-        trace = pm.sample_prior_predictive(2, random_seed=57)
-    trace = restore_inferencedata_coords(trace, get_coord_registry(model))
-    trace = restore_absolute_predictives(trace)
-    trace = annotate_shared_baseline_trace(trace, baseline)
-    save_trace(trace, tmp_path / "trace.nc")
-    restored = load_trace(tmp_path / "trace.nc")
-    xr.testing.assert_identical(restored.shared_baseline.to_dataset(), baseline.data.compute())
-    xr.testing.assert_identical(restored.prior_predictive.to_dataset(), trace.prior_predictive.to_dataset())
-
-
-@pytest.mark.parametrize("no_model_error", [False, True])
-def test_shared_additive_sigma_keeps_configured_defaults_and_fixed_mismatch(no_model_error):
-    from openghg_inversions.sigma import SigmaAlignment
-
-    obs, _, _, baseline = shared_case()
-    inputs = _shared_inputs(obs)
-    actual = build_shared_co2_from_config(
-        {
-            "likelihood": {
-                "kind": "additive_sigma",
-                "no_model_error": no_model_error,
-                "fixed_model_mismatch": 0.4,
-            }
-        },
-        baseline=baseline,
-        **inputs,
-    )
-    expected = build_shared_co2_model(
-        baseline,
-        **inputs,
-        fixed_model_mismatch=0.4,
-        sigma_alignment=None if no_model_error else SigmaAlignment.from_observations(obs),
-    )
-    _parity(actual, expected)
-
-
 def test_inference_options_cannot_change_saved_calibration():
     with pytest.raises(ValueError, match="Unknown"):
         load_co2_params(params={"model": {"biosphere": {"path": "frozen.nc", "target_gross_sd": 1}}})
     with pytest.raises(ValueError, match="Unknown"):
-        load_co2_o2_params(params={"shared_baseline": {"path": "frozen.nc"}})
+        load_co2_o2_params(params={"biosphere": {"path": "frozen.nc", "target_gross_sd": 1}})
 
 
-def test_toml_component_choices_are_same_as_python():
+def test_toml_biosphere_choice_is_the_python_choice():
     request = tomllib.loads("""
-        [shared_baseline]
-        mode = "multiplicative"
-        delta_sd = 5.0
-        [shared_baseline.boundary]
-        type = "anomaly_scaling"
-        scale_sd = 0.7
-        frequency = "2D"
-        anchor_time = "2021-01-01"
         [biosphere]
         family = "lognormal"
         target_gross_sd = { value = 8, units = "kg/year" }
     """)
-    assert shared_baseline_choice(request["shared_baseline"]) == SharedBaselineChoice(SCALING, 5.0, "multiplicative")
     assert BiospherePriorConfig.from_params(request["biosphere"]).policy == "target_gross_sd"
 
 

@@ -1,9 +1,8 @@
-"""Configured CO2 prior components: biosphere calibration and shared baselines.
+"""Configured biosphere calibration of the CO2 retained flux prior.
 
 Configuration contains choices; labelled operators, selectors and reporting
 functionals remain scientific inputs. A biosphere calibration is resolved once
-and saved, because it is a scientific choice reviewed before inference. Shared
-baselines are data-free choices bound to prepared transport at construction.
+and saved, because it is a scientific choice reviewed before inference.
 """
 
 from __future__ import annotations
@@ -11,21 +10,16 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Literal
 
 from openghg.util import cf_ureg
-import pymc as pm
 import xarray as xr
 
 from openghg_inversions.biosphere_prior import BiospherePrior, calibrate_biosphere_prior
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice
-from openghg_inversions.models.shared_baseline import OuterMode, SharedBaseline, SharedBaselineChoice
-from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.serialization import load_trace, save_trace
 
-from .configuration import _boundary_choice, _number, _reject_unknown, _string, _table, _take
-from .co2_cached_sigma_model import Co2CachedSigmaModel
+from .configuration import _number, _reject_unknown, _string, _table, _take
 
 
 def _quantity(value: object, path: str) -> tuple[float, str]:
@@ -124,77 +118,3 @@ class BiospherePriorConfig:
     def save(self, prepared: BiospherePrior, path: str | Path) -> None:
         """Save the complete original prior, selector, functionals and resolved audit."""
         _save(prepared.to_dataset(), path, "biosphere_prior")
-
-
-def shared_baseline_choice(params: Mapping[str, object]) -> SharedBaselineChoice:
-    """Parse one ``[shared_baseline]`` table into a data-free choice.
-
-    ``mode`` selects the outer prior and ``delta_sd`` is the atmospheric level
-    width in observation concentration units. An optional ``boundary`` table
-    uses the ``[model.boundary]`` keys for its anomaly structure, with
-    ``type = "additive"`` or ``"anomaly_scaling"`` and without a mean shift
-    prior: the atmospheric level replaces it.
-
-    Returns:
-        The choice, to be bound to one fit's prepared transport.
-    """
-    options = _table(params, "shared_baseline")
-    mode = _string(_take(options, "mode", "shared_baseline"), "shared_baseline.mode")
-    delta_sd = _number(_take(options, "delta_sd", "shared_baseline"), "shared_baseline.delta_sd", positive=True)
-    boundary = (
-        _boundary_choice(dict(_table(options.pop("boundary"), "shared_baseline.boundary")), "shared_baseline.boundary")
-        if "boundary" in options else None
-    )
-    _reject_unknown(options, "shared_baseline")
-    if boundary is not None and not isinstance(boundary, AdditiveChoice | AnomalyScalingChoice):
-        raise ValueError('shared_baseline.boundary requires type = "additive" or "anomaly_scaling".')
-    return SharedBaselineChoice(boundary, delta_sd, cast(OuterMode, mode))
-
-
-def build_shared_co2_from_config(
-    config: Mapping[str, Any],
-    *,
-    baseline: SharedBaseline,
-    observations: xr.DataArray,
-    observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
-) -> pm.Model | Co2CachedSigmaModel:
-    """Build the ordinary/cached shared recipe from existing CO2 likelihood syntax.
-
-    ``config`` contains only a ``likelihood`` table. ``baseline`` is already bound;
-    this explicit builder does not claim generic CO2 output/affine handoff support.
-    Restore coordinates and absolute predictives before annotating/saving traces
-    with ``annotate_shared_baseline_trace`` as for the Python recipe.
-
-    Returns:
-        The ordinary PyMC model or the cached fixed-OU model and sampler state.
-    """
-    from .configuration import _co2_likelihood
-    from .inference import uses_cached_ou
-    from .shared_baseline_model import build_shared_co2_model, build_shared_co2_cached_sigma_model
-
-    options = _table(config, "shared_co2")
-    model = _co2_likelihood(_take(options, "likelihood", "shared_co2"), matched_ou=True)
-    _reject_unknown(options, "shared_co2")
-    if uses_cached_ou(model):
-        return build_shared_co2_cached_sigma_model(
-            baseline, observations=observations, observation_error=observation_error,
-            aggregation_error=aggregation_error, **model["likelihood_kwargs"],
-        )
-    no_model_error = model.pop("no_model_error", False)
-    if "likelihood_builder" not in model and not no_model_error:
-        from openghg_inversions.sigma import SigmaAlignment
-
-        model["sigma_alignment"] = SigmaAlignment.from_observations(observations)
-    if "likelihood_kwargs" in model:
-        from .co2_runner import _resolve_co2_likelihood_kwargs
-
-        model["likelihood_kwargs"] = _resolve_co2_likelihood_kwargs(
-            model["likelihood_builder"],
-            model["likelihood_kwargs"],
-            observations=observations, observation_error=observation_error, aggregation_error=aggregation_error,
-        )
-    return build_shared_co2_model(
-        baseline, observations=observations, observation_error=observation_error,
-        aggregation_error=aggregation_error, **model,
-    )

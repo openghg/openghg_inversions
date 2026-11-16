@@ -39,6 +39,7 @@ from openghg_inversions.models.components import (
     warn_constant_offset_confounding,
 )
 from openghg_inversions.models.coords import add_coords, registered_model
+from openghg_inversions.models.outer_flux import OuterFlux, check_outer_flux_boundary
 from openghg_inversions.models.fixed_ou import (
     FixedOuLowRank,
     prepare_fixed_ou_low_rank,
@@ -307,6 +308,7 @@ def build_co2_cached_sigma_model(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
+    outer_flux: OuterFlux | None = None,
     offset_prior: PriorArgs | None = None,
     offset_freq: str | None = None,
     offset_drop_first: bool = False,
@@ -357,6 +359,9 @@ def build_co2_cached_sigma_model(
         state_activity: Optional labelled active/fixed policy for retained flux
             states. Fixed values are dimensionless flux scalings.
         boundary: Resolved boundary component bound to this fit.
+        outer_flux: Optional outer-region flux option bound to these rows,
+            requiring a centered ``boundary`` with a mean shift; see
+            :func:`~openghg_inversions.rhime.co2.co2_model.build_co2_model`.
         offset_prior: Optional prior for additive offsets. Its location and
             scale parameters use the observations' concentration units. When
             omitted, no offset is added.
@@ -382,9 +387,10 @@ def build_co2_cached_sigma_model(
             offset options are supplied without ``offset_prior``. Also raised
             for incompatible global-offset options.
     """
-    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, priors = dask_compute(
+    check_outer_flux_boundary(outer_flux, boundary)
+    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, outer_flux, priors = dask_compute(
         *to_dense_tree((
-            (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary,
+            (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, outer_flux,
             {"amplitude": site_amplitude_prior, "offset": offset_prior},
         ))
     )
@@ -401,6 +407,7 @@ def build_co2_cached_sigma_model(
         initial_site_amplitudes=initial_site_amplitudes,
         state_activity=state_activity,
         boundary=boundary,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_freq=offset_freq,
         offset_drop_first=offset_drop_first,
@@ -422,6 +429,7 @@ def _build_co2_cached_sigma_model(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
+    outer_flux: OuterFlux | None = None,
     offset_prior: PriorArgs | None = None,
     offset_freq: str | None = None,
     offset_drop_first: bool = False,
@@ -437,6 +445,7 @@ def _build_co2_cached_sigma_model(
     """
     if offset_prior is None and (offset_freq is not None or offset_drop_first or not offset_per_site):
         raise ValueError("Non-default offset options require offset_prior.")
+    check_outer_flux_boundary(outer_flux, boundary)
     validate_observation_error_arrays(
         observations,
         observation_error,
@@ -457,7 +466,13 @@ def _build_co2_cached_sigma_model(
         flux_sensitivity,
         output_dim=output_dim,
     )
+    if outer_flux is not None:
+        # Centre the retained sampled outer columns; their prior-mean level joins the fixed term.
+        prepared_flux = outer_flux.centre(prepared_flux)
+        fixed_prior_contribution = outer_flux.restore_level(fixed_prior_contribution)
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
+    if outer_flux is not None:
+        activity = outer_flux.states.fix_states(activity)
     (
         prepared_flux,
         flux_active_design,
@@ -520,6 +535,8 @@ def _build_co2_cached_sigma_model(
         ]
         if boundary is not None:
             terms.append(boundary.add(output_dim=output_dim))
+        if outer_flux is not None and outer_flux.choice.mode == "additive":
+            terms.append(outer_flux.add(output_dim=output_dim))
         if offset_prior is not None:
             offset_result = _add_offset_component_result(
                 observations,

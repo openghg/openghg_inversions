@@ -1,11 +1,10 @@
 Configured CO2 priors and saved calibration
 ===========================================
 
-Use this workflow to configure :doc:`boundary_correction_structures`, a saved
-:doc:`biosphere_prior` calibration or the CO2-only :doc:`shared_baseline`.
-Boundary structures and shared baselines are choices bound to the prepared
-inputs at model construction; only the biosphere calibration is resolved once
-and saved. Existing model defaults are unchanged. These APIs require the
+Use this workflow to configure :doc:`boundary_correction_structures` or a
+saved :doc:`biosphere_prior` calibration. Boundary structures are choices
+bound to the prepared inputs at model construction; only the biosphere
+calibration is resolved once and saved. Existing model defaults are unchanged. These APIs require the
 package's supported Python 3.12 or 3.13 runtime.
 
 .. _co2-configured-boundary-structures:
@@ -101,31 +100,6 @@ For linked CO2/O2, use a shared top-level ``[biosphere] path=...``.
 ``Co2O2ModelConfig.bind`` loads it and retains one shared calibrated flux
 state; each channel keeps its own boundary choice. The shipped ``co2.toml``,
 ``co2_fixed_ou.toml`` and ``co2_o2.toml`` templates include commented examples.
-
-Configure the shared-baseline recipe
-------------------------------------
-
-``shared_baseline_choice(table)`` parses ``mode`` (``fixed``, ``additive``,
-``multiplicative`` or ``multiplicative_shrunk``), a positive ``delta_sd`` in
-observation concentration units and an optional ``boundary`` table using the
-``[model.boundary]`` keys above, without ``mean_shift_prior``. Bind the
-returned :class:`~openghg_inversions.models.shared_baseline.SharedBaselineChoice`
-to the labelled scientific inputs as in :doc:`shared_baseline`.
-
-``build_shared_co2_from_config({"likelihood": table}, baseline=baseline,
-observations=..., observation_error=..., aggregation_error=...)`` reuses the
-existing CO2 likelihood syntax. It returns the ordinary PyMC model, or the
-existing cached-model result for fixed OU with ``site_amplitude_prior``.
-It also supports additive sigma, fixed OU amplitudes, site sigma and the saved
-scalar-sigma eigenbasis. Additive sigma uses the existing CO2 site alignment
-and prior defaults; ``no_model_error=true`` disables inferred mismatch while
-preserving any explicitly supplied fixed mismatch.
-
-Restore coordinates and absolute predictive concentrations, then call
-``annotate_shared_baseline_trace`` before ``save_trace``; the bound baseline is
-recorded beside the draws. Generic CO2 preparation/sample/product manifests and
-linked shared-baseline inference are not supported by this entry point. The
-physical source of the atmospheric delta remains unidentified.
 
 Runnable saved-calibration example
 ----------------------------------

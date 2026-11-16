@@ -120,9 +120,7 @@ preparation choices and reuse of frozen scientific artifacts.
    :nosignatures:
 
    openghg_inversions.rhime.co2.BiospherePriorConfig
-   openghg_inversions.rhime.co2.shared_baseline_choice
    openghg_inversions.rhime.co2.load_biosphere_prior
-   openghg_inversions.rhime.co2.build_shared_co2_from_config
 
 Run specifications and results
 ------------------------------
@@ -353,17 +351,11 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.boundary.bind_prepared
    openghg_inversions.models.boundary.Outputs
    openghg_inversions.array_ops.to_dense_tree
-   openghg_inversions.models.shared_baseline.SharedBaselineChoice
-   openghg_inversions.models.shared_baseline.SharedBaseline
-   openghg_inversions.models.linked_shared_baseline.bind_linked_shared_baseline
-   openghg_inversions.rhime.co2.linked_shared_baseline_model.build_shared_co2_o2_model
-   openghg_inversions.rhime.co2.linked_shared_baseline_model.build_shared_co2_o2_cached_sigma_model
-   openghg_inversions.rhime.co2.linked_shared_baseline_model.annotate_linked_shared_baseline_trace
-   openghg_inversions.rhime.co2.linked_shared_baseline_model.reconstruct_linked_shared_baseline
-   openghg_inversions.rhime.co2.shared_baseline_model.build_shared_co2_model
-   openghg_inversions.rhime.co2.shared_baseline_model.build_shared_co2_cached_sigma_model
-   openghg_inversions.rhime.co2.shared_baseline_model.annotate_shared_baseline_trace
-   openghg_inversions.rhime.co2.shared_baseline_model.reconstruct_shared_baseline
+   openghg_inversions.models.outer_flux.OuterFluxChoice
+   openghg_inversions.models.outer_flux.OuterStates
+   openghg_inversions.models.outer_flux.OuterFlux
+   openghg_inversions.rhime.co2.atmospheric_baseline.reconstruct_atmospheric_baseline
+   openghg_inversions.rhime.co2.co2_o2_model.bind_linked_outer_flux
    openghg_inversions.models.add_linked_linear_component
    openghg_inversions.models.add_correlated_lognormal_state
    openghg_inversions.models.add_offset_component

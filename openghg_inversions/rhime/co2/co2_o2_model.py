@@ -15,6 +15,7 @@ import xarray as xr
 from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array, to_dense_tree
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models import (
+    PreparedLinearSensitivity,
     StateActivity,
     apply_linear_sensitivity,
     prepare_linear_sensitivity,
@@ -34,6 +35,7 @@ from openghg_inversions.models.components import (
     warn_constant_offset_confounding,
 )
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.outer_flux import OuterFlux, OuterFluxChoice, check_outer_flux_boundary
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.observation_error import AggregationError
 
@@ -202,6 +204,95 @@ def pad_linked_boundary(bound: Bound, observations: xr.DataArray, channel: str) 
     return replace(bound, data=padded)
 
 
+def _check_linked_outer_flux(
+    outer_flux: Mapping[str, OuterFlux] | None,
+    boundary: Mapping[str, Bound] | None,
+) -> None:
+    """Reject linked outer-flux options that one joint flux state cannot honour.
+
+    Each channel centres its own rows and its own boundary mean shift owns that
+    channel's level, so both channels need the option and a mean shift. They
+    must share one outer state selection, because it belongs to the one joint
+    flux prior; :func:`bind_linked_outer_flux` binds both from one
+    :class:`~openghg_inversions.models.outer_flux.OuterStates`.
+
+    Raises:
+        ValueError: If the option does not cover both channels, the channels
+            hold different state selections, a channel lacks a centered
+            boundary mean shift, additive mode is used, or an outer ocean
+            state is sampled.
+    """
+    if outer_flux is None:
+        return
+    if not isinstance(outer_flux, Mapping) or set(outer_flux) != {"co2", "o2"}:
+        raise ValueError("Linked outer_flux must be a mapping with exactly 'co2' and 'o2' entries.")
+    states, other = outer_flux["co2"].states, outer_flux["o2"].states
+    # Materialization rebuilds the records, so compare the small selections by value.
+    if other is not states and not (
+        other.choice == states.choice
+        and other.sampled.equals(states.sampled)
+        and other.fixed.equals(states.fixed)
+        and other.prior_mean.equals(states.prior_mean)
+    ):
+        raise ValueError("Linked channels must bind their outer flux from one outer state selection.")
+    for channel, option in outer_flux.items():
+        check_outer_flux_boundary(option, (boundary or {}).get(channel))
+    if states.choice.mode == "additive":
+        raise ValueError("Additive outer flux is not supported for linked CO2/O2: it needs a GPP/TER oxidative allocation.")
+    source = states.prior_mean.coords.get(states.choice.source_coord)
+    if source is not None and bool((states.sampled & (source == "ocean")).any()):
+        raise ValueError("Linked outer flux must hold ocean states at their prior mean; add 'ocean' to fixed_sources.")
+
+
+def _centre_linked_outer_flux(
+    prepared: PreparedLinearSensitivity,
+    fixed_prior_contribution: xr.DataArray,
+    observations: xr.DataArray,
+    outer_flux: Mapping[str, OuterFlux],
+) -> tuple[PreparedLinearSensitivity, xr.DataArray]:
+    """Centre each channel's rows of the pruned joint sensitivity with its own means."""
+    output_dim = str(observations.dims[0])
+    species = observations.indexes[output_dim].get_level_values("species")
+    for channel, option in outer_flux.items():
+        rows = xr.DataArray(species == channel, dims=output_dim)
+        prepared = option.centre(prepared, rows=rows)
+        fixed_prior_contribution = option.restore_level(fixed_prior_contribution, rows=rows)
+    return prepared, fixed_prior_contribution
+
+
+def bind_linked_outer_flux(
+    choice: OuterFluxChoice,
+    flux_prior: RetainedFluxPrior,
+    *,
+    observations: xr.DataArray,
+    co2_sensitivity: xr.DataArray,
+    o2_sensitivity: xr.DataArray,
+) -> dict[str, OuterFlux]:
+    """Resolve one outer state selection and bind it to each channel's native rows.
+
+    Args:
+        choice: The outer-flux choice for the joint flux state.
+        flux_prior: The joint flux prior the model samples.
+        observations: Joint linked observations with a ``species`` level and
+            row-aligned ``site`` labels.
+        co2_sensitivity: Raw CO2 sensitivity on its native rows.
+        o2_sensitivity: Raw O2 sensitivity on its native rows.
+
+    Returns:
+        The bound option for ``"co2"`` and ``"o2"``, sharing one
+        :class:`~openghg_inversions.models.outer_flux.OuterStates`.
+    """
+    states = choice.resolve_states(flux_prior)
+    output_dim = str(observations.dims[0])
+    result = {}
+    for channel, sensitivity in (("co2", co2_sensitivity), ("o2", o2_sensitivity)):
+        native = select_gathered_data_array(
+            observations, key=channel, key_dim="species", ragged_dim="channel_observation", stack_dim=output_dim,
+        ).rename({output_dim: str(sensitivity.dims[0])})
+        result[channel] = states.bind_rows(native, sensitivity)
+    return result
+
+
 def _add_co2_o2_baseline_components(
     *,
     observations: xr.DataArray,
@@ -282,6 +373,7 @@ def build_co2_o2_model(
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
+    outer_flux: Mapping[str, OuterFlux] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -345,6 +437,12 @@ def build_co2_o2_model(
         state_activity: Optional labelled policy fixing or activating retained
             states.
         boundary: Resolved boundary component, keyed by channel.
+        outer_flux: Optional outer-region flux option keyed by ``"co2"`` and
+            ``"o2"``, from :func:`bind_linked_outer_flux`. Each channel centres
+            its own rows after joint exact-zero pruning, and needs a centered
+            boundary mean shift to own its level. Additive mode and sampled
+            outer ocean states are rejected. See
+            :doc:`/usage/atmospheric_baseline`.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
             with the same meanings as the CO2 offset component. Baseline terms
@@ -365,10 +463,12 @@ def build_co2_o2_model(
         ValueError: If shared-state sensitivity preparation, activity
             resolution, or registered coordinate alignment fails.
     """
-    (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd), boundary, priors = (
+    _check_linked_outer_flux(outer_flux, boundary)
+    (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd), boundary, outer_flux, priors = (
         dask_compute(*to_dense_tree((
             (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd),
-            dict(boundary or {}), {"amplitude": site_amplitude_prior, "offset": offset_prior},
+            dict(boundary or {}), None if outer_flux is None else dict(outer_flux),
+            {"amplitude": site_amplitude_prior, "offset": offset_prior},
         )))
     )
     site_amplitude_prior, offset_prior = priors["amplitude"], priors["offset"]
@@ -382,6 +482,7 @@ def build_co2_o2_model(
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
         boundary=boundary,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
         output_dim=output_dim,
@@ -402,6 +503,7 @@ def _build_co2_o2_model(
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
+    outer_flux: Mapping[str, OuterFlux] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -426,7 +528,14 @@ def _build_co2_o2_model(
         joint_sensitivity,
         output_dim=output_dim,
     )
+    _check_linked_outer_flux(outer_flux, boundary)
+    if outer_flux is not None:
+        prepared_sensitivity, fixed_prior_contribution = _centre_linked_outer_flux(
+            prepared_sensitivity, fixed_prior_contribution, observations, outer_flux,
+        )
     activity = resolve_state_activity(prepared_sensitivity.removed, state_activity)
+    if outer_flux is not None:
+        activity = outer_flux["co2"].states.fix_states(activity)
 
     with registered_model() as model:
         state = add_retained_flux_state(activity, retained_prior, var_name="flux_scaling").state
