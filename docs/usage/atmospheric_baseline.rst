@@ -71,6 +71,12 @@ for inner states :math:`I` and held outer states :math:`F`. The bracketed
 level is what the boundary mean shift absorbs. At the prior mean it is zero,
 so the prior mean of the prediction is unchanged.
 
+The mean shift reaches each row through the row's boundary mass fractions,
+:math:`M\mathbf 1`, not through exactly 1. The absorption is therefore exact
+only when every row's boundary mass sums to one (and, for a by-period mean
+shift, within each period), as supported surface preparation guarantees.
+Otherwise it is approximate.
+
 The weights and column means come from the rows the option is bound to, so
 binding a subset of rows defines a different prior. Only the column means are
 computed; no observation-by-observation projection is formed.

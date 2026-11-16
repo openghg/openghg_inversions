@@ -209,9 +209,11 @@ class OuterStates:
             The bound option for this channel.
 
         Raises:
-            ValueError: If observations lack row-aligned site labels, or the
-                additive inputs are missing, supplied outside additive mode,
-                or invalid.
+            ValueError: If observations lack row-aligned site labels, the
+                sensitivity or additive design rows differ from the
+                observation rows, the density SDs and design patterns differ,
+                or the additive inputs are missing, supplied outside additive
+                mode, or invalid.
         """
         row = str(observations.dims[0])
         site = observations.coords.get("site")
@@ -224,6 +226,8 @@ class OuterStates:
             1 / (site_counts.size * site_counts[site_index]), dims=row, coords={row: observations[row]},
         )
 
+        # xr.dot inner-joins rows; a row mismatch must fail rather than shrink the means.
+        weights, flux_sensitivity = xr.align(weights, flux_sensitivity, join="exact", copy=False)
         column_mean = xr.dot(weights, flux_sensitivity, dim=row).where(self.sampled, 0)
         level_compensation = xr.dot(column_mean, self.prior_mean, dim=self.state_dim)
 
@@ -288,6 +292,9 @@ def _additive_patterns(
         raise ValueError("Additive outer patterns need outer_source labels of 'FF' or 'net_bio'.")
     if density_sd.dims != ("outer_pattern",) or not density_sd.attrs.get("units"):
         raise ValueError("Additive density SDs need outer_pattern labels and declared units.")
+    # Both joins below would otherwise fill missing rows or widths with NaN.
+    weights, design = xr.align(weights, design, join="exact", copy=False)
+    design, density_sd = xr.align(design, density_sd, join="exact", copy=False)
     density_sd = density_sd.pint.quantify().pint.to(DENSITY_UNITS).pint.dequantify().assign_attrs(units=DENSITY_UNITS)
     if not np.isfinite(density_sd.to_numpy()).all() or bool((density_sd <= 0).any()):
         raise ValueError("Additive density SDs must be finite and positive.")

@@ -366,3 +366,27 @@ def test_atmospheric_baseline_is_the_prediction_less_inner_fluxes(mode):
     np.testing.assert_allclose(result.atmospheric_baseline, values["modelled_concentration"] - inner, atol=1e-10)
     np.testing.assert_allclose(result.outer_flux_contribution, h.values[:, 2:] @ values["flux_scaling"][2:], atol=1e-12)
     assert result.atmospheric_baseline.attrs["units"] == "ppm"
+
+
+def test_binding_rejects_sensitivity_rows_that_differ_from_the_observations():
+    obs = observations()
+    flux_prior = prior()
+    h = sensitivity(obs, flux_prior.mean)
+    states = MULTIPLICATIVE.resolve_states(flux_prior)
+    with pytest.raises(ValueError, match="exact"):
+        states.bind_rows(obs, h.isel(nmeasure=slice(1, None)))
+
+
+@pytest.mark.parametrize("change", ["rows", "missing_width", "extra_width"])
+def test_additive_binding_needs_matching_rows_and_one_width_per_pattern(change):
+    obs = observations()
+    inputs = additive_inputs(obs)
+    if change == "rows":
+        inputs["additive_design"] = inputs["additive_design"].isel(nmeasure=slice(1, None))
+    elif change == "missing_width":
+        inputs["additive_density_sd"] = inputs["additive_density_sd"].isel(outer_pattern=[0, 1])
+    else:
+        extra = inputs["additive_density_sd"].isel(outer_pattern=[0]).assign_coords(outer_pattern=["bio_9"])
+        inputs["additive_density_sd"] = xr.concat([inputs["additive_density_sd"], extra], "outer_pattern")
+    with pytest.raises(ValueError, match="exact"):
+        bound(OuterFluxChoice("additive", ("outer",)), **inputs)

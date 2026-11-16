@@ -1,5 +1,7 @@
 """Outer-flux option on linked CO2/O2 recipes: one state selection, per-channel centring."""
 
+from dataclasses import replace
+
 import numpy as np
 import pytensor
 import pytensor.tensor as pt
@@ -48,10 +50,17 @@ def boundary(obs, reference, mean_prior=MEAN_SHIFT):
     return AnomalyScalingChoice(mean_prior, 0.3).bind(obs.rename({row: "nmeasure"}), transport)
 
 
-def case(choice=None, mean_prior=MEAN_SHIFT):
+def case(choice=None, mean_prior=MEAN_SHIFT, sources=None):
     """Bind one outer selection to both channels of a small linked preparation."""
     base = _prepared()
-    mean = base.retained_prior.mean.assign_coords(basis_group=(base.retained_prior.state_dim, GROUPS))
+    state = base.retained_prior.state_dim
+    mean = base.retained_prior.mean.assign_coords(basis_group=(state, GROUPS))
+    if sources is not None:
+        mean = mean.assign_coords(source=(state, sources))
+        base = replace(base, **{
+            f"{channel}_sensitivity": getattr(base, f"{channel}_sensitivity").assign_coords(source=(state, sources))
+            for channel in ("co2", "o2")
+        })
     prior = CorrelatedLognormalPrior(mean, base.retained_prior.arithmetic_covariance)
     choice = choice or OuterFluxChoice("multiplicative", ("outer",), ("ocean",))
     sensitivities = {
@@ -80,6 +89,14 @@ def case(choice=None, mean_prior=MEAN_SHIFT):
     return base, prior, inputs
 
 
+def expected_column_mean(base, prior, channel):
+    """Equal-site column means of one channel's raw H, zero off the sampled outer states."""
+    _, site_index, site_counts = np.unique(native(base, channel).site.values, return_inverse=True, return_counts=True)
+    weights = 1 / (site_counts.size * site_counts[site_index])
+    sampled = (np.array(GROUPS) == "outer") & (prior.mean["source"].values != "ocean")
+    return np.where(sampled, weights @ getattr(base, f"{channel}_sensitivity").values, 0.0)
+
+
 def evaluate(model, names, point):
     function = model.compile_fn(
         model.replace_rvs_by_values([model[name] for name in names]), inputs=model.value_vars, on_unused_input="ignore",
@@ -103,7 +120,9 @@ def test_each_channel_centres_only_its_own_rows():
     raw = np.zeros(species.size)
     for channel in ("co2", "o2"):
         rows = species == channel
-        mu = inputs["outer_flux"][channel].data.outer_column_mean.values
+        mu = expected_column_mean(base, prior, channel)
+        np.testing.assert_allclose(inputs["outer_flux"][channel].data.outer_column_mean.values, mu)
+        assert inputs["outer_flux"][channel].data.attrs["units"] == "ppm"
         removed[rows] = mu @ (state - prior.mean.values)
         raw[rows] = getattr(base, f"{channel}_sensitivity").values @ state
     expected = base.fixed_prior_contribution.values + raw + co2_bc + o2_bc - removed
@@ -153,3 +172,30 @@ def test_linked_option_rejects_sampled_ocean():
     with pytest.raises(ValueError, match="ocean"):
         _, _, inputs = case(OuterFluxChoice("multiplicative", ("outer",)))
         build_co2_o2_model(**inputs)
+
+
+def test_uppercase_ocean_sources_are_still_held_fixed():
+    sources = ["GPP", "TER", "FF", "OCEAN", "OCEAN"]
+    with pytest.raises(ValueError, match=r"add \['OCEAN'\] to fixed_sources"):
+        build_co2_o2_model(**case(OuterFluxChoice("multiplicative", ("outer",)), sources=sources)[2])
+    _, prior, inputs = case(OuterFluxChoice("multiplicative", ("outer",), ("OCEAN",)), sources=sources)
+    model = build_co2_o2_model(**inputs, **NOISE)
+    point = {name: np.full(value.shape, 0.3) for name, value in model.initial_point().items()}
+    (state,) = evaluate(model, ["flux_scaling"], point)
+    np.testing.assert_allclose(state[[3, 4]], prior.mean.values[[3, 4]])
+
+
+def test_each_channel_record_takes_its_own_unit():
+    base, prior, _ = case()
+    observations = base.observations
+    species = observations.indexes["observation"].get_level_values("species")
+    units = np.where(species == "o2", "per meg", observations["observation_units"].values)
+    outer = bind_linked_outer_flux(
+        OuterFluxChoice("multiplicative", ("outer",), ("ocean",)), prior,
+        observations=observations.assign_coords(observation_units=("observation", units)),
+        co2_sensitivity=base.co2_sensitivity.assign_coords(site=native(base, "co2").site),
+        o2_sensitivity=base.o2_sensitivity.assign_coords(site=native(base, "o2").site),
+    )
+    assert {channel: option.data.attrs["units"] for channel, option in outer.items()} == {
+        "co2": "ppm", "o2": "per meg",
+    }

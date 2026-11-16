@@ -240,8 +240,14 @@ def _check_linked_outer_flux(
     if states.choice.mode == "additive":
         raise ValueError("Additive outer flux is not supported for linked CO2/O2: it needs a GPP/TER oxidative allocation.")
     source = states.prior_mean.coords.get(states.choice.source_coord)
-    if source is not None and bool((states.sampled & (source == "ocean")).any()):
-        raise ValueError("Linked outer flux must hold ocean states at their prior mean; add 'ocean' to fixed_sources.")
+    if source is not None:
+        # Preparation accepts source roles case-insensitively, so this check does too.
+        sampled_ocean = states.sampled & (source.str.lower() == "ocean")
+        if bool(sampled_ocean.any()):
+            labels = sorted({str(label) for label in source.values[sampled_ocean.values]})
+            raise ValueError(
+                f"Linked outer flux must hold ocean states at their prior mean; add {labels} to fixed_sources."
+            )
 
 
 def _centre_linked_outer_flux(
@@ -273,8 +279,9 @@ def bind_linked_outer_flux(
     Args:
         choice: The outer-flux choice for the joint flux state.
         flux_prior: The joint flux prior the model samples.
-        observations: Joint linked observations with a ``species`` level and
-            row-aligned ``site`` labels.
+        observations: Joint linked observations with a ``species`` level,
+            row-aligned ``site`` labels and an ``observation_units``
+            coordinate; each channel's bound record takes its unit from it.
         co2_sensitivity: Raw CO2 sensitivity on its native rows.
         o2_sensitivity: Raw O2 sensitivity on its native rows.
 
@@ -289,7 +296,11 @@ def bind_linked_outer_flux(
         native = select_gathered_data_array(
             observations, key=channel, key_dim="species", ragged_dim="channel_observation", stack_dim=output_dim,
         ).rename({output_dim: str(sensitivity.dims[0])})
-        result[channel] = states.bind_rows(native, sensitivity)
+        # The joint attrs say "mixed"; each channel's unit is on its rows.
+        units = np.unique(native["observation_units"].values)
+        if units.size != 1:
+            raise ValueError(f"Linked {channel} observations need one unit; found {units.tolist()}.")
+        result[channel] = states.bind_rows(native.assign_attrs(units=str(units[0])), sensitivity)
     return result
 
 
