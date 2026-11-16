@@ -126,7 +126,15 @@ both channels:
 prepared retained prior, and ``fixed_sources`` holds those with a matching
 ``source`` coordinate at their prior mean. Model construction rejects the
 option when the boundary has no ``mean_shift_prior`` (in each channel for
-linked runs), or when the prepared state lacks those coordinates. Additive
+linked runs), or when the prepared state lacks those coordinates.
+
+Preparation and saved preparations keep these coordinates but do not create
+them. For ordinary CO2 they come from the retained-state labels of the
+coherent reduction's restriction; for linked CO2/O2, from the retained prior
+passed to :func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs`, which
+always carries ``source``. Configured CO2 preparation does not yet label
+inner and outer states with ``basis_group``
+(`#1094 <https://github.com/openghg/openghg_inversions/issues/1094>`_). Additive
 outer patterns are available from Python only. A configured biosphere
 calibration is used as the flux prior as usual. Run metadata records the
 outer-flux mode and selectors beside the boundary metadata.

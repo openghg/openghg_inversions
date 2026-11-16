@@ -42,8 +42,10 @@ random_seed = 12345
 
 # Outer-region flux corrections whose level the boundary mean shift owns
 # (see docs/usage/atmospheric_baseline.rst). Needs a centred boundary with
-# mean_shift_prior and basis_group labels on the prepared retained states.
+# mean_shift_prior and basis_group labels on the prepared retained states,
+# which come from the coherent reduction's restriction; configured CO2
+# preparation does not add them yet (issue #1094). fixed_sources also needs
+# source labels on those states.
 # [model.outer_flux]
 # mode = "multiplicative"   # or "fixed"
 # outer_groups = ["outer"]
-# fixed_sources = ["ocean"]

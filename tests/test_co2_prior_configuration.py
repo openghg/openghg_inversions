@@ -20,10 +20,13 @@ from openghg_inversions.rhime.co2 import (
     BiospherePriorConfig,
     Co2ModelConfig,
     Co2O2ModelConfig,
+    Co2O2PreparedInputs,
     build_co2_model,
     build_rhime_co2_o2,
     load_biosphere_prior,
+    prepare_co2_o2_inputs,
 )
+from openghg_inversions.rhime.co2.co2_preparation import Co2PreparedInputs, prepare_co2_inputs
 from openghg_inversions.rhime.co2.co2_o2_configuration import load_co2_o2_params
 from openghg_inversions.rhime.co2.co2_o2_model import bind_linked_outer_flux, build_co2_o2_model
 from openghg_inversions.sigma import SigmaAlignment
@@ -374,6 +377,50 @@ def test_invalid_outer_flux_options_fail(outer, match):
         Co2ModelConfig.from_params(load_co2_params(params={
             "model": {"outer_flux": outer}, "likelihood": {"kind": "additive_sigma"},
         }))
+
+
+@pytest.mark.parametrize("labelled", [True, False])
+def test_outer_flux_selectors_survive_co2_preparation_and_saving(tmp_path, labelled):
+    from test_co2_preparation import _canonical_inputs, _reduction
+
+    canonical = _canonical_inputs()
+    reduction = _reduction(canonical)
+    mean = reduction.retained_mean
+    state = str(mean.dims[0])
+    if labelled:
+        groups = ["inner"] * (mean.sizes[state] - 2) + ["outer", "outer"]
+        sources = ["GPP"] * (mean.sizes[state] - 1) + ["ocean"]
+        reduction = replace(reduction, retained_mean=mean.assign_coords(
+            basis_group=(state, groups), source=(state, sources),
+        ))
+    prepare_co2_inputs(canonical, reduction).save(tmp_path / "prepared.nc")
+    inv = Co2PreparedInputs.load(tmp_path / "prepared.nc").inv_inputs
+    prior = CorrelatedLognormalPrior(inv.alpha_prior_mean, inv.alpha_prior_covariance, covariance_dim="region_cov")
+    # The fixture's states are all correlated, so fixed_sources is not exercised here.
+    choice = OuterFluxChoice("multiplicative", ("outer",))
+    if not labelled:
+        with pytest.raises(ValueError, match="basis_group"):
+            choice.resolve_states(prior)
+        return
+    assert inv.alpha_prior_mean["source"].values.tolist() == sources
+    assert choice.resolve_states(prior).sampled.values.tolist() == [group == "outer" for group in groups]
+
+
+def test_outer_flux_selectors_survive_linked_preparation_and_saving():
+    from test_rhime_co2_o2_preparation import _inputs
+
+    inputs = _inputs()
+    prior = inputs["retained_prior"]
+    groups = ["inner", "inner", "outer", "outer", "outer"]
+    inputs["retained_prior"] = CorrelatedLognormalPrior(
+        prior.mean.assign_coords(basis_group=(prior.state_dim, groups)), prior.arithmetic_covariance,
+    )
+    prepared = Co2O2PreparedInputs.from_datatree(prepare_co2_o2_inputs(**inputs).to_datatree())
+    states = OuterFluxChoice("multiplicative", ("outer",), ("ocean",)).resolve_states(prepared.retained_prior)
+    ocean = np.char.lower(prepared.retained_prior.mean["source"].values.astype(str)) == "ocean"
+    outer = np.array(groups) == "outer"
+    np.testing.assert_array_equal(states.fixed.values, outer & ocean)
+    np.testing.assert_array_equal(states.sampled.values, outer & ~ocean)
 
 
 def test_toml_outer_flux_choice_is_the_python_choice():
