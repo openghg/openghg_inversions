@@ -815,8 +815,9 @@ error. Every retained region needs nonzero window-mean prior flux of its own
 source; a shared or generated partition repeated per source usually has regions
 without it (biosphere over sea, ocean over land), which preparation reports by
 source and label. Leave them out with ``retained_regions_path`` or use a
-source-specific partition. ``basis.fix_outer_regions`` with a generated basis is
-not available with per-source priors; pass the saved partition instead. The prepared provenance records every source's mean, amplitude (and
+source-specific partition. ``basis.fix_outer_regions`` with a generated basis
+gives every source the same ``outer`` and ``inner`` states, labelled with
+``basis_group`` (see :ref:`grouped-basis-label-sources`). The prepared provenance records every source's mean, amplitude (and
 whether it was calibrated), kernel, ``rho`` and the calibration diagnostics.
 
 Boundary representation

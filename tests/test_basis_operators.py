@@ -55,6 +55,30 @@ def test_multisource_basis_operator_roundtrip_datatree(basis_func, basis_func2):
         xr.testing.assert_identical(op2.basis_flat[k], op.basis_flat[k])
 
 
+
+def test_multisource_state_labels_survive_the_datatree() -> None:
+    """Per-source state labels follow each source's regions onto the gathered state axis."""
+    coords = {"lat": [50.0, 51.0], "lon": [-2.0, -1.0]}
+    shared = xr.DataArray([[1, 1], [2, 3]], dims=("lat", "lon"), coords=coords)
+    metadata = xr.Dataset(
+        {
+            "basis_group": ("basis_label", ["outer", "inner", "inner"]),
+            "basis_partition": ("basis_label", ["fixed_outer", "inner", "inner"]),
+            "region_in_partition": ("basis_label", [1, 1, 2]),
+        },
+        coords={"basis_label": [1, 2, 3]},
+    )
+    op = MultiSourceBucketBasisOperator(
+        {"ff": shared, "bio": shared.where(shared != 3, 2)},
+        state_dim="region",
+        state_metadata={"ff": metadata, "bio": metadata.isel(basis_label=[0, 1])},
+    )
+
+    assert op.basis_matrix.source.values.tolist() == ["ff", "ff", "ff", "bio", "bio"]
+    assert op.basis_matrix.basis_group.values.tolist() == ["outer", "inner", "inner", "outer", "inner"]
+    restored = BasisOperator.decode_datatree(op.to_datatree())
+    xr.testing.assert_identical(restored.basis_matrix, op.basis_matrix)
+
 def test_multisource_basis_operator_decodes_legacy_per_source_children(basis_func, basis_func2):
     """The previous per-source-child layout remains readable after write-format revision."""
     legacy = xr.DataTree()

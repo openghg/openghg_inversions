@@ -106,7 +106,9 @@ def _array_node(array: xr.DataArray, name: str) -> xr.DataTree:
     # Ancillary input attrs are not reconstruction ingredients. Keep units,
     # while provenance belongs in the explicit versioned root metadata.
     units = array.attrs["units"]
-    array = to_dense(array) if name == "prolongation" else array
+    if name == "prolongation":
+        # State labels such as basis_group are bound from the prepared inputs, not stored.
+        array = to_dense(array).drop_vars([coord for coord in array.coords if coord not in array.indexes])
     array = array.copy(deep=False)
     array.attrs = {"units": units}
     return xr.DataTree(encode_multiindexes_for_storage(array.rename(name).to_dataset()))

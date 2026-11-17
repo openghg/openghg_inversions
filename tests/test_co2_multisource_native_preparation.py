@@ -620,30 +620,45 @@ def test_generated_basis_is_repeated_per_source(tmp_path: Path, merged: MergedDa
     expected = _dense_reference(merged, prepared, "bucket", partition=operator.basis_flat[SOURCES[0]])
     np.testing.assert_allclose(prepared.inv_inputs.H.values, expected["H"], rtol=1e-8, atol=1e-10)
 
-    config["prepared_inputs"]["basis"]["fix_outer_regions"] = True
-    with pytest.raises(ValueError, match="fix_outer_regions cannot serve per-source native priors"):
-        Co2PreparationConfig.from_params(config, require_source=True)
-
 
 # ---------------------------------------------------------------------------
 # State labels that the outer-flux option selects by
 # ---------------------------------------------------------------------------
 
 
-def test_fixed_outer_basis_labels_the_prepared_prior(tmp_path: Path, merged: MergedData) -> None:
-    """A fixed-outer basis labels its states, and the labels reach the reloaded prior."""
+def _fixed_outer_basis(tmp_path: Path) -> dict:
+    """A generated basis with the east column as one fixed outer region."""
     outer_regions = tmp_path / "outer_regions.nc"
-    # The east column is one fixed outer region; label 1, the largest, is the inner region.
+    # Label 1, the largest, is the inner region.
     labels = xr.DataArray(np.where(np.array(LON)[None, :] > -0.5, 0, 1).repeat(len(LAT), axis=0),
                           dims=("lat", "lon"), coords={"lat": LAT, "lon": LON}, name="region")
     labels.to_dataset().to_netcdf(outer_regions)
+    return {"algorithm": "quadtree", "nbasis": 2, "fix_outer_regions": True, "outer_regions_path": str(outer_regions)}
+
+
+def test_fixed_outer_basis_labels_the_prepared_prior(tmp_path: Path, merged: MergedData) -> None:
+    """A fixed-outer basis labels its states, and the labels reach the reloaded prior."""
     config = _request({"partition": tmp_path / "unused.nc"}, {"sigma": 0.2, "correlation_length": 1.0})
-    config["prepared_inputs"]["basis"] = {
-        "algorithm": "quadtree", "nbasis": 2, "fix_outer_regions": True, "outer_regions_path": str(outer_regions),
-    }
+    config["prepared_inputs"]["basis"] = _fixed_outer_basis(tmp_path)
     prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, "fixed_outer")).prepared
     mean = prepared.inv_inputs.alpha_prior_mean
     inner = mean.sizes["region"] - 1
     assert mean.basis_group.dims == mean.dims
     assert mean.basis_group.values.tolist() == ["outer"] + ["inner"] * inner
     assert mean.basis_partition.values.tolist() == ["fixed_outer"] + ["inner"] * inner
+
+
+@pytest.mark.parametrize("restriction", ["bucket", "absolute_flux_weighted_mean"])
+def test_fixed_outer_basis_labels_per_source_states(
+    tmp_path: Path, merged: MergedData, files: dict[str, Path], restriction: str,
+) -> None:
+    """Per-source priors repeat the fixed-outer groups for every source through either restriction."""
+    config = _request(files, _native_prior(files, restriction))
+    config["prepared_inputs"]["basis"] = _fixed_outer_basis(tmp_path)
+    prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, restriction)).prepared
+    mean = prepared.inv_inputs.alpha_prior_mean
+    groups = prepared.basis_functions.operator.basis_matrix.basis_group.values.tolist()
+    per_source = len(groups) // len(SOURCES)
+    assert groups == (["outer"] + ["inner"] * (per_source - 1)) * len(SOURCES)
+    assert mean.basis_group.values.tolist() == groups
+    assert mean.source.values.tolist() == [source for source in SOURCES for _ in range(per_source)]

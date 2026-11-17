@@ -109,10 +109,10 @@ def test_dataset_fixed_outer_matches_label_composition(empty_inner):
         weighting_flux=sources["b"].flux, domain="TEST", start_date="2020-01-01",
         nbasis=1, basis_algorithm="region_constrained", region_classes=xr.ones_like(outer),
         fix_outer_regions=True, outer_regions=outer, allow_empty_inner_region=empty_inner)
-    expected = outer + 1
-    if not empty_inner:
-        expected = expected.where(outer != 1, 4)
+    # Outer labels 0 and 2 come first; the inner region is the last state.
+    expected = (outer + 1).where(outer != 2, 2).where(outer != 1, 3)
     xr.testing.assert_equal(actual.flat_basis(), expected.rename("basis"))
+    assert actual.operator.basis_matrix.basis_group.values.tolist() == ["outer", "outer", "inner"]
     assert isinstance(actual.flux.data, da.Array)
 
 
@@ -202,10 +202,9 @@ def test_fixed_outer_executes_shared_weight_graph_once(empty_inner, tmp_path):
     actual = fixed_outer_regions_basis_from_data(
         sites, sources["a"].flux, "2020-01-01", "region_constrained", "TEST", nbasis=1,
         region_classes=xr.ones_like(outer), outer_regions=outer, allow_empty_inner_region=True)
-    expected = outer + 1
-    if not empty_inner:
-        expected = expected.where(outer != 1, 4)
-    xr.testing.assert_equal(actual.squeeze("time", drop=True), expected.rename("basis"))
+    # Outer labels 0 and 2 come first; the unsplit inner region is the last state.
+    expected = (outer + 1).where(outer != 2, 2).where(outer != 1, 3)
+    xr.testing.assert_equal(actual.basis_flat.squeeze("time", drop=True), expected.rename("basis"))
     assert len(executions) == 1
     assert isinstance(sources["a"].flux.data, da.Array)
 

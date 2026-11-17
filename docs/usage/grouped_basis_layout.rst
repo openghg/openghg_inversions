@@ -191,8 +191,12 @@ Fixed outer regions
    ``fix_basis_outer_regions`` in a standard RHIME configuration, fits a
    generated basis inside the inner region of an outer-region map and keeps
    every other map region as one fixed region.
-   :func:`~openghg_inversions.basis.prepare_basis` labels the resulting states
-   with :func:`~openghg_inversions.basis.fixed_outer_state_metadata`:
+   :func:`~openghg_inversions.basis.fixed_outer_regions_basis_from_data`
+   builds this as a ``BasisLayout`` with two partitions, the fixed outer map
+   and the generated inner labels, and
+   :func:`~openghg_inversions.basis.prepare_basis` passes the layout's
+   metadata to the operator. Basis labels are numbered outer regions first,
+   then inner regions, so the label minus one is the state's position:
 
    .. list-table::
       :header-rows: 1
@@ -207,8 +211,8 @@ Fixed outer regions
         - ``"fixed_outer"``
         - ``"inner"``
       * - ``region_in_partition``
-        - label in the outer-region map
-        - 1, 2, … in basis order
+        - outer-region map label plus one
+        - generated inner label
 
    A basis saved with ``BasisFunctions.save`` keeps these labels, so a run
    that reuses it through ``basis.path`` gets them too.
@@ -216,7 +220,11 @@ Fixed outer regions
 Per-source bases
    With per-source native priors the retained state index has the levels
    ``source`` and ``region_in_source``. The ``source`` level is the state's
-   source label.
+   source label. A generated basis, with or without fixed outer regions, is
+   repeated for every source together with its labels, so each source has
+   its own ``outer`` and ``inner`` states.
+   ``MultiSourceBucketBasisOperator`` takes per-source ``state_metadata`` for
+   this and saves it with the basis.
 
 A generated basis without fixed outer regions, and a basis read from a
 partition file (``partition_path``), have no groups and get no
@@ -236,11 +244,16 @@ Everything derived from that axis keeps them:
    "bucket"``, the default) is ``Pi_U = (U.T B^-1 U)^-1 U.T B^-1``. Its state
    axis is ``U``'s, labels included, so the retained mean ``Pi m``, retained
    covariance and reduced ``H`` carry them. The absolute-flux-weighted
-   restriction builds its own (``source``, ``region_in_source``) index, which
-   keeps ``source``.
+   restriction (per-source priors) copies the labels of the states it
+   retains.
 3. Prepared CO2 inputs hold these as ``alpha_prior_mean``,
    ``alpha_prior_covariance`` and ``H``, and save and reload them with the
-   prepared inputs.
+   prepared inputs. The affine flux map saved beside them does not store
+   the labels; it takes them from the prepared inputs it is bound to.
+
+Output products are not affected: PARIS flux and concentration files are
+the same with and without state labels. ``basic`` and ``legacy`` outputs
+include the flat basis map, whose values follow the numbering above.
 
 What selects by the labels
 --------------------------

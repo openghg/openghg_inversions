@@ -36,7 +36,8 @@ from openghg_inversions.basis.covariance_products import (
     absolute_weighted_regional_mean_restriction,
     covariance_natural_prolongation,
 )
-from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
+from openghg_inversions.basis.layout import BASIS_LABEL_DIM
+from openghg_inversions.basis.operators import BucketBasisOperator, MultiSourceBucketBasisOperator
 from openghg_inversions.coherent_reduction import reduce_native_gaussian
 from openghg_inversions.correlated_source_covariance import CorrelatedSourceCovariance
 from openghg_inversions.inversion_data import MergedData, PreparedInputs, select_boundary_representation
@@ -413,6 +414,7 @@ def _multisource_basis(
     A partition with a ``source`` dimension supplies one layer per source; a
     shared partition, configured or generated from the first source's
     weights, is repeated for each source so that each keeps its own regions.
+    A generated fixed-outer basis also repeats its ``basis_group`` labels.
     """
     sectoral_flux = resolve_runtime_flux(merged_data.flux_data, split_by_sectors=True, explicit_surface=True)
     sources = [str(source) for source in sectoral_flux.indexes["source"]]
@@ -439,12 +441,19 @@ def _multisource_basis(
         nbasis=native.basis.nbasis, fix_outer_regions=native.basis.fix_basis_outer_regions,
         **basis_inputs,
     )
-    shared = getattr(generated.operator, "basis_flat", None)
-    if not isinstance(shared, xr.DataArray):
+    operator = generated.operator
+    if not isinstance(operator, BucketBasisOperator):
         raise ValueError("Per-source native priors need a bucket partition to repeat for each source.")
+    labels = operator.state_metadata
+    if labels is not None:
+        # The shared states follow the sorted raw labels of the repeated partition.
+        state_dim = operator.meta.state_dim
+        raw_labels = np.unique(np.asarray(operator.basis_flat.values)).astype(int)
+        labels = labels.assign_coords({state_dim: raw_labels}).rename({state_dim: BASIS_LABEL_DIM})
     return basis_functions_from_flat_basis(
-        flux=sectoral_flux, basis_flat={source: shared for source in sources},
+        flux=sectoral_flux, basis_flat=dict.fromkeys(sources, operator.basis_flat),
         metadata=getattr(generated, "metadata", None),
+        state_metadata=None if labels is None else dict.fromkeys(sources, labels),
     )
 
 
@@ -675,7 +684,8 @@ def _flux_weighted_restriction(
     """Build ``Pi`` from ``|flux| * cell area`` regional means on the basis's own state labels.
 
     Regions outside ``retained`` are inactive: they get no retained state and
-    are marginalized into the unresolved covariance.
+    are marginalized into the unresolved covariance. Retained states keep the
+    basis state labels, such as ``basis_group``.
     """
     state_dim = operator.meta.state_dim
     states = operator.basis_matrix.indexes[state_dim]
@@ -731,7 +741,14 @@ def _flux_weighted_restriction(
     # so the retained bucket-state labels replace those positions one for one.
     index = pd.MultiIndex.from_tuples(labels, names=(operator.source_dim, operator.region_in_source_dim))
     restriction = restriction.drop_vars([state_dim, operator.source_dim, operator.region_in_source_dim])
-    return restriction.assign_coords(xr.Coordinates.from_pandas_multiindex(index, state_dim)).assign_attrs(
+    positions = states.get_indexer(index)
+    state_labels = {
+        name: (state_dim, np.asarray(coordinate.values)[positions])
+        for name, coordinate in operator.basis_matrix.coords.items()
+        if coordinate.dims == (state_dim,) and name not in index.names and name != state_dim
+    }
+    restriction = restriction.assign_coords(xr.Coordinates.from_pandas_multiindex(index, state_dim))
+    return restriction.assign_coords(state_labels).assign_attrs(
         definition="|flux_si| * area_i / sum_(j in r) |flux_sj| * area_j within one source and region",
         policy="absolute-flux-weighted regional mean",
     )
