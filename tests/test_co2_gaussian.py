@@ -627,6 +627,35 @@ def test_type2_ml_upper_bound_is_per_site():
     assert record["by_site"]["A"]["sigma"] == pytest.approx(0.5, rel=0.1)
 
 
+def test_type2_ml_escapes_a_site_started_at_its_lower_bound():
+    """A zero-residual site starts at the floor, where the log-sigma gradient vanishes; another start finds the optimum.
+
+    The shared mode explains the 100 equal A residuals, so the mismatch belongs at B, whose zero residual contradicts
+    the mode. From the original start alone L-BFGS-B reports convergence at sigma (9.899, 1.0e-4), log ML -374.874.
+    """
+    n = 101
+    sites = np.array(["A"] * 100 + ["B"])
+    residual = np.r_[np.full(100, 10.0), 0.0]
+    state = np.full((n, 1), 10.0)
+    error = np.full(n, 0.01)
+    _, record = type2_ml_mismatch(
+        EmpiricalBayesMismatch(mode="type2_ml", floor=1e-4), sites=sites, residual=residual, state_factor=state,
+        aggregation_factor=np.zeros((n, 0)), aggregation_diagonal=np.zeros(n), aggregation_dense=None,
+        aggregation_variance=np.zeros(n), error_variance=error, aggregation_representation="test",
+    )
+    alternative = GaussianMarginal(residual, np.r_[np.zeros(100, dtype=np.intp), 1], state, error,
+                                   dense=np.zeros((n, n), order="F"))(np.log([1e-4, 10.0]))[0]
+    assert alternative == pytest.approx(127.235, abs=1e-3)
+    assert record["converged"] and record["log_marginal_likelihood"] >= max(127.2, alternative - 1e-9)
+    assert record["by_site"]["A"]["at_floor"] and record["by_site"]["A"]["sigma"] == pytest.approx(1e-4, rel=1e-3)
+    assert record["by_site"]["B"]["sigma"] == pytest.approx(10.0, rel=0.01) and not record["by_site"]["B"]["at_floor"]
+    starts = {start["name"]: start for start in record["starts"]}
+    assert set(starts) == {"0.1 * site rms", "problem scale", "site rms"}
+    assert starts["0.1 * site rms"]["log_marginal_likelihood"] == pytest.approx(-374.874, abs=1e-3)
+    assert record["selected_start"] != "0.1 * site rms" and record["ambiguous_starts"] == []
+    assert all(start["converged"] and start["iterations"] > 0 for start in starts.values())
+
+
 def test_type2_ml_records_a_failed_floor_evaluation(monkeypatch):
     from openghg_inversions.rhime.co2 import model_mismatch
 
@@ -715,6 +744,19 @@ def test_type2_ml_non_convergence_and_upper_bound_warnings(case, caplog, monkeyp
     with caplog.at_level(logging.WARNING, logger=LOGGER):
         _run_gaussian(prepared, params)
     assert sum("UPPER SIGMA BOUND at site(s) TAC" in message for message in caplog.messages) == 1
+
+    def ambiguous(*args, **kwargs):
+        sigma, record = real(*args, **kwargs)
+        record["ambiguous_starts"] = ["site rms"]
+        return sigma, record
+
+    monkeypatch.setattr(co2_gaussian, "type2_ml_mismatch", ambiguous)
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        _, actual = _run_gaussian(prepared, params)
+    assert sum("STARTS DISAGREE: start(s) site rms" in message for message in caplog.messages) == 1
+    assert sum("Empirical Bayes model mismatch" in message for message in caplog.messages) == 1
+    assert actual["model_mismatch"]["type2_ml_ambiguous_starts"] == ["site rms"]
 
 
 def test_gaussian_estimator_builds_with_the_configured_outer_flux(case, double_precision, monkeypatch):

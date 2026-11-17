@@ -37,7 +37,11 @@ Empirical Bayes uses the prior residual :math:`r = y - \bar y`, where
   :math:`K = J\,\mathrm{diag}(\text{prior sd}^2)J^T + A` from the same
   graph-derived affine map (retained flux, boundary and offset prior spread),
   jointly over :math:`\log\sigma_s` by L-BFGS-B with the analytic gradient,
-  bounded below by the floor. Unlike the moment mode it accounts for the
+  bounded below by the floor. The gradient in :math:`\log\sigma` carries a
+  factor :math:`\sigma^2`, so a site started near the floor can stall there;
+  the optimiser therefore runs from several deterministic starts (including
+  every site at the problem scale) and keeps the best log marginal likelihood.
+  Unlike the moment mode it accounts for the
   correlated, shared-mode prior spread. ``aggregation = "low_rank"`` (default)
   uses Woodbury with the prepared low-rank aggregation factor (or a
   rank-``rank`` approximation of a dense one); ``aggregation = "exact"`` factors
@@ -431,9 +435,16 @@ def type2_ml_mismatch(
     :math:`\alpha = S^{-1} r`. The lower bound is
     ``max(floor, 1e-6 * sqrt(mean diag(K + A + e^2)))`` and each site's upper
     bound ``max(10 * rms_site, 10 * lower, sqrt(mean diag(K + A + e^2)))``; a
-    site at its upper bound is flagged ``at_upper``. A failed likelihood
-    evaluation at the start or the lower bound is recorded as ``nan`` with
-    its reason.
+    site at its upper bound is flagged ``at_upper``. L-BFGS-B runs from each
+    distinct start among ``0.1 * rms_site``, every site at
+    ``sqrt(mean diag(K + A + e^2))`` and ``rms_site`` (clipped into the
+    bounds), because in log sigma a site started near its lower bound has a
+    vanishing gradient and can stall there. The best achieved log marginal
+    likelihood wins (near ties go to the earliest start); every start is
+    recorded, and starts within 2 log-likelihood units of the best with a
+    materially different per-site independent SD are listed in
+    ``ambiguous_starts``. A failed likelihood evaluation at a start or the
+    lower bound is recorded as ``nan`` with its reason.
 
     Args:
         choice: Mode ``type2_ml`` with its floor and options.
@@ -449,13 +460,14 @@ def type2_ml_mismatch(
 
     Returns:
         Per-observation sigma and a JSON-safe record: per-site start, final
-        sigma and floor flags; the optimiser, iterations, evaluations,
-        convergence, message, log marginal likelihoods at the start, the floor
-        and the optimum, and timing.
+        sigma and floor flags; the selected start, its iterations,
+        evaluations, convergence, message and log marginal likelihoods at the
+        start, the floor and the optimum; every start's outcome; and timing.
 
     Raises:
         ValueError: For an all-floor result with negligible independent
             variance, unless ``allow_zero``.
+        numpy.linalg.LinAlgError: If the optimisation fails from every start.
     """
     labels = list(dict.fromkeys(sites.tolist()))
     positions = {label: index for index, label in enumerate(labels)}
@@ -470,8 +482,17 @@ def type2_ml_mismatch(
     lower_sigma = max(choice.floor, 1e-6 * scale)
     rms = np.array([np.sqrt(np.mean(residual[codes == index] ** 2)) for index in range(len(labels))])
     upper_sigma = np.maximum(np.maximum(10.0 * rms, 10.0 * lower_sigma), scale)
-    start = np.clip(0.1 * rms, lower_sigma, upper_sigma)
     bounds = [(float(np.log(lower_sigma)), float(np.log(upper))) for upper in upper_sigma]
+    # In log sigma the gradient carries a factor sigma^2, so a site started at a tiny sigma can stall
+    # there. Deterministic starts: the original one, every site at the problem scale, and the site RMS.
+    candidates = {
+        "0.1 * site rms": 0.1 * rms, "problem scale": np.full(len(labels), scale), "site rms": rms,
+    }
+    starts: dict[str, NDArray[np.float64]] = {}
+    for name, candidate in candidates.items():
+        clipped = np.clip(candidate, lower_sigma, upper_sigma)
+        if not any(np.allclose(clipped, kept, rtol=1e-9, atol=0.0) for kept in starts.values()):
+            starts[name] = clipped
 
     def guarded(log_sigma: NDArray[np.float64]) -> tuple[float, str | None]:
         try:
@@ -479,7 +500,6 @@ def type2_ml_mismatch(
         except (np.linalg.LinAlgError, FloatingPointError, ValueError) as error:
             return float("nan"), f"{type(error).__name__}: {error}"
 
-    start_value, start_failure = guarded(np.log(start))
     floor_value, floor_failure = guarded(np.full(len(labels), np.log(lower_sigma)))
 
     def objective(log_sigma: NDArray[np.float64]) -> tuple[float, NDArray[np.float64]]:
@@ -487,9 +507,42 @@ def type2_ml_mismatch(
         return -value, -gradient
 
     began = perf_counter()
-    result = minimize(objective, np.log(start), jac=True, method="L-BFGS-B", bounds=bounds,
-                      options={"maxiter": choice.max_iterations})
+    runs: list[dict[str, Any]] = []
+    for name, start in starts.items():
+        run: dict[str, Any] = {"name": name, "start": start, "result": None}
+        run["initial"], run["failure"] = guarded(np.log(start))
+        if run["failure"] is None:
+            try:
+                run["result"] = minimize(objective, np.log(start), jac=True, method="L-BFGS-B", bounds=bounds,
+                                         options={"maxiter": choice.max_iterations})
+            except (np.linalg.LinAlgError, FloatingPointError, ValueError) as error:
+                run["failure"] = f"{type(error).__name__}: {error}"
+        run["value"] = float(-run["result"].fun) if run["result"] is not None else float("nan")
+        runs.append(run)
     elapsed = perf_counter() - began
+    finished = [run for run in runs if run["result"] is not None and np.isfinite(run["value"])]
+    if not finished:
+        raise np.linalg.LinAlgError(
+            "Type-II ML failed from every start: " + "; ".join(f"{run['name']}: {run['failure']}" for run in runs)
+        )
+    # The best achieved log marginal likelihood wins; near ties go to the earliest start.
+    best_value = max(run["value"] for run in finished)
+    tie = 1e-9 * max(1.0, abs(best_value))
+    selected = next(run for run in finished if run["value"] >= best_value - tie)
+    result, start = selected["result"], selected["start"]
+    # Starts within 2 log-likelihood units of the best whose per-site independent SD,
+    # sqrt(mean(mf_error^2 + A) + sigma^2), differs by more than 25 % suggest sigma is not identified.
+    independent_site = np.bincount(codes, weights=error_variance + aggregation_variance,
+                                   minlength=len(labels)) / np.bincount(codes, minlength=len(labels))
+
+    def independent_sd(log_sigma: NDArray[np.float64]) -> NDArray[np.float64]:
+        return np.sqrt(independent_site + np.exp(2.0 * log_sigma))
+
+    ambiguous = [
+        run["name"] for run in finished
+        if run is not selected and run["value"] >= best_value - 2.0
+        and np.max(np.abs(np.log(independent_sd(run["result"].x) / independent_sd(result.x)))) > np.log(1.25)
+    ]
     site_sigma = np.maximum(np.exp(result.x), choice.floor)
     sigma = site_sigma[codes]
     at_bound = result.x <= np.log(lower_sigma) + 1e-6
@@ -509,9 +562,27 @@ def type2_ml_mismatch(
         "aggregation_representation": aggregation_representation,
         "converged": bool(result.success), "message": str(result.message),
         "iterations": int(result.nit), "function_evaluations": int(result.nfev),
-        "log_marginal_likelihood": float(-result.fun), "log_marginal_likelihood_start": float(start_value),
+        "log_marginal_likelihood": float(-result.fun), "log_marginal_likelihood_start": float(selected["initial"]),
         "log_marginal_likelihood_floor": float(floor_value),
-        "log_marginal_likelihood_start_failure": start_failure, "log_marginal_likelihood_floor_failure": floor_failure,
+        "log_marginal_likelihood_start_failure": selected["failure"],
+        "log_marginal_likelihood_floor_failure": floor_failure,
+        "selected_start": selected["name"],
+        "starts": [
+            {"name": run["name"], "start_sigma": dict(zip(labels, map(float, run["start"]))),
+             "log_marginal_likelihood_initial": float(run["initial"]), "failure": run["failure"],
+             **({} if run["result"] is None else {
+                 "sigma": dict(zip(labels, map(float, np.exp(run["result"].x)))),
+                 "log_marginal_likelihood": run["value"], "converged": bool(run["result"].success),
+                 "message": str(run["result"].message), "iterations": int(run["result"].nit),
+                 "function_evaluations": int(run["result"].nfev)})}
+            for run in runs
+        ],
+        "start_rule": "L-BFGS-B from each distinct start (0.1 * site rms, every site at the problem scale, site "
+                      "rms; each clipped into the site bounds); the best log marginal likelihood wins, near ties "
+                      "to the earliest start",
+        "ambiguous_starts": ambiguous,
+        "ambiguous_starts_rule": "another start within 2 log-likelihood units of the best whose per-site "
+                                 "sqrt(mean(mf_error^2 + A) + sigma^2) differs by more than 25 %",
         "sigma_lower_bound": float(lower_sigma),
         "sigma_lower_bound_rule": "max(floor, 1e-6 * sqrt(mean diag(K + A + mf_error^2)))",
         "sigma_upper_bound_rule": "per site max(10 * rms_site, 10 * lower bound, sqrt(mean diag(K + A + mf_error^2)))",

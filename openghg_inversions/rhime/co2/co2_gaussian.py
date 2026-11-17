@@ -512,9 +512,18 @@ def sample_co2_gaussian(
             )
         if mismatch_record["empirical_bayes"].get("converged") is False:
             logger.warning(
-                "EMPIRICAL BAYES TYPE-II ML DID NOT CONVERGE after %d iterations (%s); the per-site sigma below is "
-                "the last iterate and may be unreliable.",
+                "EMPIRICAL BAYES TYPE-II ML DID NOT CONVERGE after %d iterations (%s) from the best start (%s); "
+                "the per-site sigma below is the last iterate and may be unreliable.",
                 mismatch_record["empirical_bayes"]["iterations"], mismatch_record["empirical_bayes"]["message"],
+                mismatch_record["empirical_bayes"]["selected_start"],
+            )
+        ambiguous = mismatch_record["empirical_bayes"].get("ambiguous_starts")
+        if ambiguous:
+            logger.warning(
+                "EMPIRICAL BAYES TYPE-II ML STARTS DISAGREE: start(s) %s reach a log marginal likelihood within 2 "
+                "of the best (%s) with materially different per-site sigma, so sigma may not be identified; every "
+                "start is recorded in the model_mismatch attribute.",
+                ", ".join(ambiguous), mismatch_record["empirical_bayes"]["selected_start"],
             )
         logger.warning(
             "Empirical Bayes model mismatch (%s, floor %g): sigma by site %s %s. The Gaussian posterior treats "
@@ -551,6 +560,7 @@ def sample_co2_gaussian(
             mismatch_summary.update({f"type2_ml_{name}": eb[name] for name in (
                 "aggregation", "aggregation_representation", "optimiser", "converged", "iterations",
                 "log_marginal_likelihood", "log_marginal_likelihood_start", "log_marginal_likelihood_floor",
+                "selected_start", "ambiguous_starts",
             )})
     actual: dict[str, Any] = {
         "algorithm": GAUSSIAN_ALGORITHM, "draws": sampler.draws, "chains": 1, "seed": seed,
