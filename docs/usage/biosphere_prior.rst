@@ -143,6 +143,7 @@ For example, given independently prepared labelled arrays:
 .. code-block:: python
 
    from openghg_inversions.biosphere_prior import calibrate_biosphere_prior
+   from openghg_inversions.models.biosphere import resolve_retained_flux_prior
    from openghg_inversions.rhime.co2 import build_co2_model
 
    calibrated = calibrate_biosphere_prior(
@@ -154,21 +155,23 @@ For example, given independently prepared labelled arrays:
    )
    model = build_co2_model(
        H,
-       retained_prior=baseline,
-       biosphere_prior=calibrated,
+       retained_prior=resolve_retained_flux_prior(baseline, calibrated),
        fixed_prior_contribution=affine_intercept,
        observations=observations,
        observation_error=observation_error,
        aggregation_error=aggregation_error,
    )
 
-The same ``biosphere_prior`` argument is accepted by ordinary/cached CO₂ and
-CO₂/O₂ graph builders, ``build_co2_from_materialized``,
-``build_rhime_co2_cached_sigma``, ``build_rhime_co2_o2`` and the linked prepared
-sampling runners. The :doc:`configured saved-calibration workflow
+The ordinary/cached CO₂ and CO₂/O₂ graph builders take one ``retained_prior``:
+either the baseline or its calibration. ``resolve_retained_flux_prior`` checks
+once that the calibration was made from that baseline, and rejects a different
+one; the builders then trust the calibration they are given.
+``build_co2_from_materialized``, ``build_rhime_co2_cached_sigma``,
+``build_rhime_co2_o2`` and the linked prepared sampling runners instead take a
+separate ``biosphere_prior`` argument and make that check against their
+prepared baseline. The :doc:`configured saved-calibration workflow
 <configured_co2_priors>` also loads explicitly selected artifacts through the
-CO2 and linked TOML/JSON model owners. Pass the
-original baseline alongside the calibration; a different baseline is rejected.
+CO2 and linked TOML/JSON model owners.
 The linked recipes apply it once to shared coefficients, independently of how
 many observation channels use them.
 

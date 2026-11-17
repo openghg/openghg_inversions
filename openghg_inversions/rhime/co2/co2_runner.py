@@ -19,7 +19,11 @@ from dask import compute as dask_compute
 from dask.base import unpack_collections
 
 from openghg_inversions.biosphere_prior import BiospherePrior
-from openghg_inversions.models.biosphere import annotate_biosphere_prior
+from openghg_inversions.models.biosphere import (
+    annotate_biosphere_prior,
+    resolve_retained_flux_prior,
+    retained_flux_prior_family,
+)
 from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.array_ops import to_dense_tree
@@ -27,6 +31,7 @@ from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.models.boundary import Bound, Choice, RawCenteredSensitivity, bind_prepared
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.models.scalar_sigma import (
     ScalarSigmaEigenbasis,
@@ -470,6 +475,7 @@ def build_co2_from_materialized(
     biosphere_prior: BiospherePrior | None = None,
     priors: Mapping[str, PriorArgs],
     boundary: Bound | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     sigma_alignment: SigmaAlignment | None = None,
     sigma_prior: PriorArgs | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,
@@ -494,11 +500,14 @@ def build_co2_from_materialized(
     before its likelihood is constructed.
 
     Args:
-        biosphere_prior: Optional explicit calibration of the retained state prior.
+        biosphere_prior: Optional explicit calibration of the retained state
+            prior, checked here against the materialized retained prior.
         model_inputs: Selected scientific arrays already materialized together.
         prepared_inputs: Preparation supplying aggregation mode and provenance.
         priors: Materialized prior parameters under their concrete graph names.
         boundary: Jointly materialized bound boundary, or None when disabled.
+        outer_flux: Optional outer-flux choice, resolved on the retained flux
+            prior and bound to the materialized ``mf`` rows and ``H`` here.
 
     Returns:
         Constructed PyMC model with component-declared scientific roles, units
@@ -506,7 +515,8 @@ def build_co2_from_materialized(
 
     Raises:
         ValueError: If selected inputs or numerical priors remain lazy, or
-            scientific components reject the supplied choices.
+            scientific components reject the supplied choices, or
+            ``biosphere_prior`` does not calibrate the retained prior.
     """
     prepared = prepared_inputs
     names = co2_model_input_names(
@@ -544,15 +554,21 @@ def build_co2_from_materialized(
         aggregation_error=aggregation_error,
     )
     prior_covariance = model_inputs["alpha_prior_covariance"]
-    retained_prior = CorrelatedLognormalPrior(
-        model_inputs["alpha_prior_mean"],
-        prior_covariance,
-        covariance_dim=str(prior_covariance.dims[-1]),
+    flux_prior = resolve_retained_flux_prior(
+        CorrelatedLognormalPrior(
+            model_inputs["alpha_prior_mean"],
+            prior_covariance,
+            covariance_dim=str(prior_covariance.dims[-1]),
+        ),
+        biosphere_prior,
+    )
+    outer = (
+        None if outer_flux is None
+        else outer_flux.resolve_states(flux_prior).bind_rows(model_inputs["mf"], model_inputs["H"])
     )
     model = _build_co2_model(
         model_inputs["H"],
-        retained_prior=retained_prior,
-        biosphere_prior=biosphere_prior,
+        retained_prior=flux_prior,
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
@@ -564,6 +580,7 @@ def build_co2_from_materialized(
         fixed_model_mismatch=prepared_mismatch,
         state_activity=_state_activity_from_inputs(model_inputs),
         boundary=boundary,
+        outer_flux=outer,
         offset_prior=priors["offset_latent"] if offset_prior is not None else None,
         offset_args=offset_args,
     )
@@ -582,6 +599,9 @@ def build_co2_from_materialized(
     boundary_outputs = boundary.outputs() if boundary is not None else None
     if boundary_outputs is not None:
         variable_roles.update(boundary_outputs.roles)
+    outer_outputs = outer.outputs() if outer is not None else None
+    if outer_outputs is not None:
+        variable_roles.update(outer_outputs.roles)
     if offset_prior is not None:
         variable_roles["offset_concentration"] = "offset"
     for role, name in {
@@ -601,11 +621,12 @@ def build_co2_from_materialized(
             metadata={
                 "recipe": "co2",
                 "kind": "builtin",
-                "prior": biosphere_prior.data.attrs["family"] if biosphere_prior is not None else "correlated arithmetic-moment lognormal",
+                "prior": retained_flux_prior_family(flux_prior),
                 "no_model_error": no_model_error,
                 "use_bc": boundary is not None,
                 **(boundary_outputs.metadata if boundary_outputs is not None else {"boundary_formulation": None}),
                 "boundary_units": boundary_outputs.units if boundary_outputs is not None else {},
+                **(outer_outputs.metadata if outer_outputs is not None else {}),
                 "add_offset": offset_prior is not None,
                 "offset_args": resolved_offset_args,
                 "likelihood": (

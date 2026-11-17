@@ -65,18 +65,18 @@ class Co2O2Preparation:
 
 def _preparation_record(manifest: str | Path) -> tuple[Path, dict[str, Any]]:
     path, record = read_manifest(manifest, "openghg_inversions.co2_o2.prepare", (
-        "prepared_inputs", "generation", "start_date", "end_date", "domain", "recipe", "prepared_inputs_id",
+        "prepared_inputs", "generation", "start_date", "end_date", "domain", "prepared_inputs_id",
     ), schema_version=2)
     if not isinstance(record["generation"], str) or not record["generation"]:
         raise ValueError(f"Linked preparation {path} requires a nonempty generation.")
     return path, record
 
 
-def _finish_preparation(destination: Path, *, payload: Path, facts: Mapping[str, str], recipe: str) -> Path:
+def _finish_preparation(destination: Path, *, payload: Path, facts: Mapping[str, str]) -> Path:
     return finish_checkpoint(destination, "prepare", {
         "schema": "openghg_inversions.co2_o2.prepare", "schema_version": 2,
         "producer": "openghg_inversions", "stage": "prepare", "generation": uuid4().hex,
-        "prepared_inputs": os.path.relpath(payload, destination), "recipe": recipe, **facts,
+        "prepared_inputs": os.path.relpath(payload, destination), **facts,
         "prepared_inputs_id": prepared_inputs_content_id(payload),
         "provenance": installed_ogi_provenance(),
     })
@@ -113,8 +113,7 @@ def save_preparation(
             units = stored["joint"]["observation_units"].values
         observations = prepared.observations.assign_coords(observation_units=("observation", units))
         validate_co2_o2_units(replace(prepared, observations=observations))
-    return _finish_preparation(destination, payload=payload, facts=facts,
-                               recipe="co2_o2_shared_baseline" if prepared.shared_baseline else "co2_o2")
+    return _finish_preparation(destination, payload=payload, facts=facts)
 
 
 def prepare(
@@ -134,8 +133,7 @@ def prepare(
     validate_co2_o2_units(prepared)
     facts = requested_co2_facts(prepared, start_date=start_date, end_date=end_date, domain=domain)
     destination = start_checkpoint(output_dir, "prepare", payloads=(), referenced=(payload,))
-    return _finish_preparation(destination, payload=payload, facts=facts,
-                               recipe="co2_o2_shared_baseline" if prepared.shared_baseline else "co2_o2")
+    return _finish_preparation(destination, payload=payload, facts=facts)
 
 
 def load_preparation(
@@ -158,9 +156,6 @@ def load_preparation(
         raise ValueError(f"Sampled linked preparation content does not match its saved artifact identity: {payload}")
     prepared = Co2O2PreparedInputs.load(payload)
     validate_co2_o2_units(prepared)
-    recipe = "co2_o2_shared_baseline" if prepared.shared_baseline else "co2_o2"
-    if record["recipe"] != recipe:
-        raise ValueError("Linked preparation recipe does not match its numerical payload.")
     facts = requested_co2_facts(prepared, **{name: record[name] for name in ("start_date", "end_date", "domain")})
     return Co2O2Preparation(prepared=prepared, generation=record["generation"], payload=payload,
                              inputs_id=actual_id, **facts)
@@ -183,9 +178,6 @@ def save_samples(
     if preparation["generation"] != preparation_generation:
         raise ValueError(f"Linked preparation {preparation_path} was replaced; samples require generation {preparation_generation!r}.")
     validate_co2_o2_trace(trace)
-    shared_trace = trace.attrs.get("rhime_recipe") == "co2_o2_shared_baseline"
-    if shared_trace != (preparation["recipe"] == "co2_o2_shared_baseline"):
-        raise ValueError("Linked sample recipe does not match its preparation recipe.")
     payload = reference(preparation_path, preparation["prepared_inputs"])
     prepared_id = _check_saved_payload(payload, preparation["prepared_inputs_id"], name="Linked preparation")
     if preparation_inputs_id != prepared_id:
@@ -197,7 +189,6 @@ def save_samples(
     return finish_checkpoint(destination, "sample", {
         "schema": "openghg_inversions.co2_o2.sample", "schema_version": 2,
         "producer": "openghg_inversions", "stage": "sample", "inference_kind": "mcmc",
-        "recipe": trace.attrs["rhime_recipe"],
         "preparation": os.path.relpath(preparation_path, destination),
         "preparation_generation": preparation_generation, "posterior": "posterior.nc",
         "prepared_inputs_id": prepared_id,
@@ -234,13 +225,9 @@ def sample(
         + tuple(Path(path).resolve() for path in referenced),
     )
     model_options = model_config.bind(preparation.prepared)
-    if model_config.recipe == "co2_o2_shared_baseline":
-        from .shared_workflow import sample_linked_shared_workflow
-        trace = sample_linked_shared_workflow(preparation.prepared, sampler=active_sampler, **model_options)
-    else:
-        built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
-        trace = sample_rhime_model(built, active_sampler, recompute_deterministics=True)
-        trace = annotate_co2_o2_trace(trace, built=built, biosphere_prior=model_options.get("biosphere_prior"))
+    built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
+    trace = sample_rhime_model(built, active_sampler, recompute_deterministics=True)
+    trace = annotate_co2_o2_trace(trace, built=built, biosphere_prior=model_options.get("biosphere_prior"))
     return save_samples(
         preparation_manifest, trace, actual_inference=active_sampler.describe(),
         preparation_generation=preparation.generation, output_dir=output_dir,
@@ -256,7 +243,7 @@ def load_samples(sample_manifest: str | Path) -> Co2O2Output:
     choices or generate missing predictions.
     """
     path, record = read_manifest(sample_manifest, "openghg_inversions.co2_o2.sample", (
-        "preparation", "preparation_generation", "posterior", "inference_kind", "recipe", "prepared_inputs_id", "posterior_id",
+        "preparation", "preparation_generation", "posterior", "inference_kind", "prepared_inputs_id", "posterior_id",
     ), schema_version=2)
     if record["inference_kind"] != "mcmc":
         raise ValueError(f"Linked samples {path} require inference_kind='mcmc'.")
@@ -268,8 +255,6 @@ def load_samples(sample_manifest: str | Path) -> Co2O2Output:
     posterior = reference(path, record["posterior"])
     _check_saved_payload(posterior, record["posterior_id"], name="Linked posterior")
     trace = load_trace(posterior)
-    if record["recipe"] != trace.attrs.get("rhime_recipe"):
-        raise ValueError("Linked sample recipe does not match its posterior.")
     return make_co2_o2_output(
         prepared=preparation.prepared, trace=trace, start_date=preparation.start_date,
         end_date=preparation.end_date, domain=preparation.domain,
@@ -330,21 +315,13 @@ def prior_predictive(
     )
     report.unlink(missing_ok=True)
     model_options = model_config.bind(preparation.prepared)
-    if model_config.recipe == "co2_o2_shared_baseline":
-        from .shared_workflow import build_linked_shared_workflow
-        built, _, materialized_prepared = build_linked_shared_workflow(preparation.prepared, **model_options)
-    else:
-        built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
+    built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
     with built.model:
         prior = pm.sample_prior_predictive(draws, random_seed=random_seed)
     registry = get_coord_registry(built.model)
     if registry is not None:
         prior = restore_inferencedata_coords(prior, registry)
-    if model_config.recipe == "co2_o2_shared_baseline":
-        from .shared_workflow import annotate_linked_shared_workflow
-        prior = annotate_linked_shared_workflow(prior, built=built, prepared=materialized_prepared)
-    else:
-        prior = annotate_co2_o2_trace(prior, built=built, biosphere_prior=model_options.get("biosphere_prior"))
+    prior = annotate_co2_o2_trace(prior, built=built, biosphere_prior=model_options.get("biosphere_prior"))
     concentration = built.output_contract.variable_roles.get("concentration")
     predictive = prior.children.get("prior_predictive")
     values = [np.asarray(group[name].values) for group in prior.children.values() for name in group.data_vars]

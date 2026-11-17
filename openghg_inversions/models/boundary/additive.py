@@ -149,9 +149,9 @@ class AdditiveChoice:
                 first. Its labels select and order the sensitivity rows; its
                 ``time`` values assign rows to boundary periods.
             sensitivity: Raw centered sensitivity on its ``nmeasure`` or ``time``
-                axis. Weighted anomalies also need its
+                axis. Weighted anomalies with a positive scale also need its
                 ``bc_centering_weights`` on ``(bc_curtain, bc_period)``; other
-                structures ignore them.
+                choices ignore them.
 
         Returns:
             The bound boundary. ``H_bc_anomaly`` and ``H_bc_mass`` lie on
@@ -172,7 +172,8 @@ class AdditiveChoice:
         data = BoundCenteredSensitivity.bind(
             sensitivity, observations, frequency=self.frequency, anchor_time=self.anchor_time,
         )
-        if self.anomalies != "weighted":
+        # Weights only shape sampled weighted anomalies; a level-only boundary needs none.
+        if self.anomalies != "weighted" or self.anomaly_scale == 0:
             bound = AdditiveBoundary(self, data)
             if self.mean_prior is None and not bound.has_anomalies:
                 raise ValueError(

@@ -13,6 +13,7 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.models.biosphere import resolve_retained_flux_prior
 from openghg_inversions.models.boundary import RawCenteredSensitivity
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.postprocessing.contracts import OutputContract
@@ -110,9 +111,10 @@ def main() -> None:
     """)
     model_options = Co2ModelConfig.from_params(request).model_arguments()
     boundary = model_options.pop("boundary").bind(observations, RawCenteredSensitivity.validate(operands))
+    biosphere_prior = model_options.pop("biosphere_prior")
     model = build_co2_model(
         sensitivity,
-        retained_prior=baseline,
+        retained_prior=resolve_retained_flux_prior(baseline, biosphere_prior),
         fixed_prior_contribution=xr.full_like(observations, 0.2).rename("fixed_prior_contribution"),
         observations=observations,
         observation_error=xr.full_like(observations, 0.1),
@@ -130,7 +132,7 @@ def main() -> None:
         metadata={**outputs.metadata, "boundary_units": outputs.units},
     ))
     trace = annotate_co2_trace(
-        trace, built, concentration_units="ppm", biosphere_prior=model_options["biosphere_prior"],
+        trace, built, concentration_units="ppm", biosphere_prior=biosphere_prior,
         likelihood_builder=model_options["likelihood_builder"],
         likelihood_kwargs=model_options["likelihood_kwargs"],
     )
