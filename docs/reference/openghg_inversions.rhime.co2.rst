@@ -26,6 +26,7 @@ openghg\_inversions.rhime.co2
    openghg_inversions.rhime.co2.co2_outputs
    openghg_inversions.rhime.co2.co2_preparation
    openghg_inversions.rhime.co2.co2_runner
+   openghg_inversions.rhime.co2.co2_unresolved
    openghg_inversions.rhime.co2.configuration
    openghg_inversions.rhime.co2.execution
    openghg_inversions.rhime.co2.handoffs

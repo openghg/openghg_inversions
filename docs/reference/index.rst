@@ -356,6 +356,8 @@ and samples; it does not write products. See
    openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs
    openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs
    openghg_inversions.postprocessing.co2_flux_outputs.co2_country_functionals
+   openghg_inversions.postprocessing.co2_flux_outputs.co2_flux_country_functionals
+   openghg_inversions.rhime.co2.co2_unresolved.co2_unresolved_conditioning
    openghg_inversions.postprocessing.unresolved_functionals.UnresolvedFunctionalConditioning
    openghg_inversions.postprocessing.unresolved_functionals.ObservationCovarianceSolve
    openghg_inversions.postprocessing.unresolved_functionals.complete_functional_draws

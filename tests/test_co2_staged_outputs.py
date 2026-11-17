@@ -192,6 +192,8 @@ def test_source_to_sector_sums_signed_joint_draws_before_uncertainty():
     np.testing.assert_allclose(country.country_net_posterior_stdev, country.country_total_posterior_stdev)
     with pytest.raises(ValueError, match="every native source"):
         validate_co2_outputs(spec, bound=bound, source_to_sector={"fossil": "net"})
+    with pytest.raises(ValueError, match="reserved sector name"):
+        validate_co2_outputs(spec, bound=bound, source_to_sector={"fossil": "total", "biosphere": "natural"})
     with pytest.raises(ValueError, match="inversion_grid"):
         validate_co2_outputs(
             replace(spec, output_format="paris", paris_postprocessing_kwargs={"inversion_grid": True}),

@@ -19,6 +19,7 @@ from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.rhime.co2 import Co2PreparedInputs, prepare_co2_inputs
+from openghg_inversions.rhime.co2.co2_preparation import CO2_PREPARED_INPUTS_SCHEMA_VERSION
 from openghg_inversions.rhime.co2 import (
     co2_cached_sigma_runner,
     co2_runner,
@@ -598,7 +599,7 @@ def test_centered_co2_envelope_embeds_current_generic_representation(tmp_path: P
     canonical = PreparedInputs(inputs, canonical.basis_functions, canonical.site_metadata)
     prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None)
     tree = prepared.to_datatree()
-    assert tree.attrs["schema_version"] == 3
+    assert tree.attrs["schema_version"] == CO2_PREPARED_INPUTS_SCHEMA_VERSION == 4
     assert tree["rhime_inputs"].attrs["schema_version"] == 3
     assert tree["rhime_inputs"].attrs["representation"] == "centered"
     path = tmp_path / f"centered-co2{suffix}"
@@ -714,7 +715,7 @@ def test_centered_unit_response_and_resolved_weights_keep_independent_states(tmp
     xr.testing.assert_identical(loaded.inv_inputs.bc_centering_weights, weights.rename("bc_centering_weights"))
 
 
-@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("version", [1, 2, 3])
 def test_co2_rejects_old_prepared_formats_with_repreparation_message(version):
     canonical = _canonical_inputs()
     prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None)
