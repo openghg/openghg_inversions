@@ -992,7 +992,9 @@ def _apply_independent_error_floor(
         record["source"] = "floor only"
         return floor_array, record
     record["source"] = "supplied independent_error_sd with floor"
-    return independent_error_sd.where(independent_error_sd >= floor_array, floor_array), record
+    # Keep missing values missing so deferred validation of lazy errors still rejects them.
+    keep = independent_error_sd.isnull() | (independent_error_sd >= floor_array)
+    return independent_error_sd.where(keep, floor_array), record
 
 
 def _aggregation_error_kl_record(

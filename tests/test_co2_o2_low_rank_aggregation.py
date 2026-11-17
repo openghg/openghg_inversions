@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
+from dask import array as da
 
 from openghg_inversions.observation_error import (
     AggregationError,
@@ -323,6 +324,23 @@ def test_independent_error_floor_is_explicit_and_recorded() -> None:
         "floor": None,
         "source": "supplied independent_error_sd",
     }
+
+
+@pytest.mark.parametrize("values", [[np.nan] * 5, [0.5, np.nan, 2.0, np.nan, 0.05]])
+def test_independent_error_floor_preserves_missing_lazy_errors(values: list[float]) -> None:
+    """A floor must not turn missing lazy uncertainty into a declared finite error."""
+    inputs = _dense_small_inputs()
+    floor = {"co2": 0.1, "o2": 1.0}
+    observations = prepare_co2_o2_inputs(**inputs).observations
+    supplied = observations.copy(data=da.from_array(np.array(values), chunks=2)).rename("independent_error_sd")
+    prepared = prepare_co2_o2_inputs(**inputs, independent_error_sd=supplied, independent_error_floor=floor)
+    assert isinstance(prepared.independent_error_sd.data, da.Array)
+    expected = np.where(np.isnan(values), np.nan, np.maximum(values, [0.1, 0.1, 1.0, 1.0, 1.0]))
+    np.testing.assert_array_equal(prepared.independent_error_sd.values, expected)
+    with pytest.raises(ValueError, match="finite positive real numeric values"):
+        Co2O2PreparedInputs.from_datatree(prepared.to_datatree())
+    with pytest.raises(ValueError, match="finite positive real numeric values"):
+        prepare_co2_o2_inputs(**inputs, independent_error_sd=supplied.compute(), independent_error_floor=floor)
 
 
 @pytest.mark.parametrize(
