@@ -18,7 +18,9 @@ from pymc.initial_point import convert_str_to_rv_dict, make_initial_point_fn  # 
 from openghg_inversions.biosphere_prior import BiospherePrior
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
+from openghg_inversions.models.biosphere import resolve_retained_flux_prior, retained_flux_prior_family
 from openghg_inversions.models.boundary import Choice
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
@@ -225,14 +227,16 @@ def build_rhime_co2_cached_sigma(
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     boundary: Choice | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> Co2CachedSigmaModel:
     """Materialize and build the matched cached fixed-OU graph without sampling.
 
     Args:
-        biosphere_prior: Optional explicit calibration against the existing retained prior;
-            omission preserves existing behavior.
+        biosphere_prior: Optional explicit calibration of the retained prior,
+            checked here against the materialized retained prior; omission
+            preserves existing behavior.
         prepared_inputs: Validated CO2 inputs with observation-aligned site and
             time coordinates and the selected aggregation-error representation.
         tau_hours: Fixed OU decorrelation time in hours, as a scalar or a
@@ -243,6 +247,8 @@ def build_rhime_co2_cached_sigma(
             units; defaults to the prior support point.
         boundary: Optional boundary choice, bound once to the prepared
             ``H_bc`` or centered operands. ``None`` omits the boundary.
+        outer_flux: Optional outer-flux choice, resolved on the retained flux
+            prior and bound to the materialized rows here.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added.
         offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
@@ -253,7 +259,8 @@ def build_rhime_co2_cached_sigma(
 
     Raises:
         ValueError: If component options contradict one another, prepared
-            arrays are invalid, or fixed OU mappings or parameters are invalid.
+            arrays are invalid, fixed OU mappings or parameters are invalid, or
+            ``biosphere_prior`` does not calibrate the retained prior.
     """
     if offset_prior is None and offset_args:
         raise ValueError("offset_args require offset_prior.")
@@ -272,15 +279,21 @@ def build_rhime_co2_cached_sigma(
         prepared.aggregation_error_mode,
     )
     prior_covariance = model_inputs["alpha_prior_covariance"]
-    retained_prior = CorrelatedLognormalPrior(
-        model_inputs["alpha_prior_mean"],
-        prior_covariance,
-        covariance_dim=str(prior_covariance.dims[-1]),
+    flux_prior = resolve_retained_flux_prior(
+        CorrelatedLognormalPrior(
+            model_inputs["alpha_prior_mean"],
+            prior_covariance,
+            covariance_dim=str(prior_covariance.dims[-1]),
+        ),
+        biosphere_prior,
+    )
+    outer = (
+        None if outer_flux is None
+        else outer_flux.resolve_states(flux_prior).bind_rows(model_inputs["mf"], model_inputs["H"])
     )
     cached_model = _build_co2_cached_sigma_model(
         model_inputs["H"],
-        retained_prior=retained_prior,
-        biosphere_prior=biosphere_prior,
+        retained_prior=flux_prior,
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
@@ -290,6 +303,7 @@ def build_rhime_co2_cached_sigma(
         initial_site_amplitudes=initial_site_amplitudes,
         state_activity=cast(StateActivity | None, _state_activity_from_inputs(model_inputs)),
         boundary=bound,
+        outer_flux=outer,
         offset_prior=offset_prior,
         offset_freq=offset_freq,
         offset_drop_first=offset_drop_first,
@@ -301,13 +315,10 @@ def build_rhime_co2_cached_sigma(
 def co2_cached_sigma_build_result(
     cached_model: Co2CachedSigmaModel,
     prepared_inputs: Co2PreparedInputs,
-    *,
-    biosphere_prior: BiospherePrior | None = None,
 ) -> RhimeModelBuildResult:
     """Describe a built cached graph for sampling and stored output metadata.
 
     Args:
-        biosphere_prior: Optional resolved calibration used for this graph.
         cached_model: Graph returned by :func:`build_rhime_co2_cached_sigma`.
         prepared_inputs: Prepared inputs used to build the graph, providing
             basis provenance.
@@ -318,7 +329,7 @@ def co2_cached_sigma_build_result(
     metadata = {
         "recipe": "co2",
         "kind": "builtin",
-        "prior": biosphere_prior.data.attrs["family"] if biosphere_prior is not None else "correlated arithmetic-moment lognormal",
+        "prior": retained_flux_prior_family(cached_model.flux_prior),
         "mismatch_component": "fixed_within_site_ou",
         "basis_artifact_source": getattr(
             prepared_inputs,
@@ -347,6 +358,9 @@ def co2_cached_sigma_build_result(
         metadata.update(outputs.metadata, boundary_units=outputs.units)
     else:
         metadata["boundary_units"] = {}
+    if cached_model.outer_flux_outputs is not None:
+        variable_roles.update(cached_model.outer_flux_outputs.roles)
+        metadata.update(cached_model.outer_flux_outputs.metadata)
     if metadata.get("boundary_representation") == "centered-v1":
         variable_roles["observation"] = "y"
     if "offset" in cached_model.model.named_vars:

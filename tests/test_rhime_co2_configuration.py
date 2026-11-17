@@ -537,7 +537,7 @@ def test_boundary_structure_keys_select_choices(boundary, expected) -> None:
     ({"mean_shift_prior": _SHIFT}, r"Missing required option model\.boundary\.anomaly_scale"),
     ({"anomaly_scale": 0.3}, "may omit the mean shift prior"),
     ({"anomaly_scale": 0.0, "anomalies": "independent"}, "may omit the mean shift prior"),
-    ({"anomaly_scale": 0.3, "anomalies": "curtains"}, "Unknown boundary anomaly structure"),
+    ({"anomaly_scale": 0.3, "anomalies": "curtains"}, "boundary.anomalies must be one of"),
     ({"anomaly_scale": 0.3, "reference": 400.0}, r"Unknown configuration option\(s\): model\.boundary\.reference"),
     ({"anomaly_scale": 0.3, "scale_sd": 0.3}, r"Unknown configuration option\(s\): model\.boundary\.scale_sd"),
     ({"anomaly_scale": -0.1, "mean_shift_prior": _SHIFT}, "non-negative"),
@@ -559,7 +559,7 @@ def test_additive_boundary_configuration_rejects_incomplete_or_foreign_options(b
     ({"mean_shift_prior": _SHIFT}, r"Missing required option model\.boundary\.scale_sd"),
     ({"scale_sd": 0.3, "anomaly_scale": 0.3}, r"Unknown configuration option\(s\): model\.boundary\.anomaly_scale"),
     ({"scale_sd": 0.3, "mean_by_period": True}, "requires a mean shift prior and a boundary frequency"),
-    ({"scale_sd": 0.3, "reference": "rolling"}, "bc_reference must be"),
+    ({"scale_sd": 0.3, "reference": "rolling"}, "boundary.reference must be a number or one of"),
 ])
 def test_anomaly_scaling_boundary_configuration_rejects_incomplete_or_foreign_options(boundary, message) -> None:
     config = _ordinary()
