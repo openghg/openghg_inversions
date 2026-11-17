@@ -10,10 +10,12 @@ from dask import compute as dask_compute
 import pymc as pm
 import xarray as xr
 
-from openghg_inversions.biosphere_prior import BiospherePrior
-from openghg_inversions.models.biosphere import add_biosphere_state
+from openghg_inversions.models.biosphere import (
+    RetainedFluxPrior,
+    add_prepared_retained_flux_state,
+    prepare_retained_flux_prior,
+)
 from openghg_inversions.array_ops import to_dense_tree
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models import (
     StateActivity,
     add_coherent_affine_component,
@@ -26,9 +28,7 @@ from openghg_inversions.models.boundary import Bound
 from openghg_inversions.models.components import (
     AffineBlock,
     AffineConcentrationTerm,
-    _add_prepared_correlated_lognormal_state_with_activity,
     likelihood_representation,
-    prepare_active_correlated_lognormal_prior,
 )
 from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
 from openghg_inversions.models.priors import PriorArgs
@@ -45,8 +45,11 @@ from .co2_cached_sigma_model import (
     _site_values,
 )
 from .co2_o2_fixed_ou import linked_fixed_ou_alignment
+from openghg_inversions.models.outer_flux import OuterFlux
 from .co2_o2_model import (
     _add_co2_o2_baseline_components,
+    _centre_linked_outer_flux,
+    _check_linked_outer_flux,
     _gather_co2_o2_sensitivity,
 )
 
@@ -58,14 +61,14 @@ def build_co2_o2_cached_sigma_model(
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
     aggregation_error: AggregationError,
-    retained_prior: CorrelatedLognormalPrior,
-    biosphere_prior: BiospherePrior | None = None,
+    retained_prior: RetainedFluxPrior,
     independent_error_sd: xr.DataArray,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
+    outer_flux: Mapping[str, OuterFlux] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -103,15 +106,17 @@ def build_co2_o2_cached_sigma_model(
             embed the fixed oxidation ratios.
         aggregation_error: Joint fixed aggregation covariance, including its
             cross-channel block.
-        biosphere_prior: Optional explicit calibration of the retained state prior;
-            omission preserves the original correlated lognormal prior.
         retained_prior: Correlated arithmetic-moment prior for the one state
-            vector shared by both channels.
+            vector shared by both channels, or a biosphere calibration of it
+            already checked by
+            :func:`~openghg_inversions.models.biosphere.resolve_retained_flux_prior`.
         independent_error_sd: Joint per-row independent standard deviations in
             each observation row's native units.
         state_activity: Optional labelled policy fixing or activating retained
             states.
         boundary: Resolved boundary component, keyed by channel.
+        outer_flux: Optional outer-region flux option keyed by channel; see
+            :func:`~openghg_inversions.rhime.co2.co2_o2_model.build_co2_o2_model`.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
             with the same meanings as the CO2 offset component. Baseline terms
@@ -134,10 +139,12 @@ def build_co2_o2_cached_sigma_model(
         ValueError: If channel options, labels, units, activity, covariance,
             positive amplitudes or explicit double precision are invalid.
     """
-    (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd), boundary, priors = (
+    _check_linked_outer_flux(outer_flux, boundary)
+    (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd), boundary, outer_flux, priors = (
         dask_compute(*to_dense_tree((
             (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd),
-            dict(boundary or {}), {"amplitude": site_amplitude_prior, "offset": offset_prior},
+            dict(boundary or {}), None if outer_flux is None else dict(outer_flux),
+            {"amplitude": site_amplitude_prior, "offset": offset_prior},
         )))
     )
     site_amplitude_prior, offset_prior = priors["amplitude"], priors["offset"]
@@ -154,10 +161,10 @@ def build_co2_o2_cached_sigma_model(
         initial_site_amplitudes=initial_site_amplitudes,
         state_activity=state_activity,
         boundary=boundary,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
         output_dim=output_dim,
-        biosphere_prior=biosphere_prior,
     )
 
 
@@ -168,17 +175,17 @@ def _build_co2_o2_cached_sigma_model(
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
     aggregation_error: AggregationError,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: RetainedFluxPrior,
     independent_error_sd: xr.DataArray,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
+    outer_flux: Mapping[str, OuterFlux] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
-    biosphere_prior: BiospherePrior | None = None,
 ) -> Co2CachedSigmaModel:
     """Construct the linked cached fixed-OU graph from eager inputs.
 
@@ -204,17 +211,20 @@ def _build_co2_o2_cached_sigma_model(
     joint = _gather_co2_o2_sensitivity(co2_sensitivity, o2_sensitivity, output_dim=output_dim)
     joint = joint.sel({output_dim: observations[output_dim]})
     prepared_flux = prepare_linear_sensitivity(joint, output_dim=output_dim)
+    _check_linked_outer_flux(outer_flux, boundary)
+    if outer_flux is not None:
+        prepared_flux, fixed_prior_contribution = _centre_linked_outer_flux(
+            prepared_flux, fixed_prior_contribution, observations, outer_flux,
+        )
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
+    if outer_flux is not None:
+        activity = outer_flux["co2"].states.fix_states(activity)
     prepared_flux, active_design, fixed_flux = _materialize_cached_linear_projection(
         prepared_flux,
         activity,
         output_dim=output_dim,
     )
-    active_prior = (
-        prepare_active_correlated_lognormal_prior(activity, retained_prior, var_name="flux_scaling")
-        if biosphere_prior is None
-        else None
-    )
+    active_prior = prepare_retained_flux_prior(activity, retained_prior, var_name="flux_scaling")
     factor, diagonal = aggregation_error_as_low_rank(aggregation_error)
     covariance = prepare_fixed_ou_low_rank(
         factor,
@@ -225,13 +235,7 @@ def _build_co2_o2_cached_sigma_model(
         site_labels=tuple(str(label) for label in site_coord.values),
     )
     with registered_model():
-        state = (
-            _add_prepared_correlated_lognormal_state_with_activity(
-                activity, active_prior, var_name="flux_scaling",
-            )
-            if biosphere_prior is None
-            else add_biosphere_state(activity, retained_prior, biosphere_prior)
-        )
+        state = add_prepared_retained_flux_state(activity, active_prior, var_name="flux_scaling")
         flux = apply_linear_sensitivity(
             prepared_flux,
             state.state,
@@ -282,5 +286,6 @@ def _build_co2_o2_cached_sigma_model(
             initial_amplitudes=initial_amplitudes,
             site_amplitude_prior=site_amplitude_prior,
             output_dim=output_dim,
+            flux_prior=retained_prior,
         )
         return cached

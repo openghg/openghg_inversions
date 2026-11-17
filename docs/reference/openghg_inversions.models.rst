@@ -23,10 +23,9 @@ openghg\_inversions.models
    openghg_inversions.models.coords
    openghg_inversions.models.fixed_error
    openghg_inversions.models.fixed_ou
-   openghg_inversions.models.linked_shared_baseline
+   openghg_inversions.models.outer_flux
    openghg_inversions.models.pollution_event
    openghg_inversions.models.priors
    openghg_inversions.models.scalar_sigma
-   openghg_inversions.models.shared_baseline
    openghg_inversions.models.site_sigma
    openghg_inversions.models.state_activity

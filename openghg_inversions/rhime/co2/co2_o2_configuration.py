@@ -13,6 +13,7 @@ import pandas as pd
 
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.boundary import Choice, MultiplicativeChoice
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.inversion_inputs import normalise_frequency
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.rhime.sampling import RhimeSampler
@@ -27,7 +28,7 @@ from .configuration import (
     Co2PreparationConfig,
     _sampling,
     _string,
-    _table, _artifact_path,
+    _table, _artifact_path, _outer_flux_choice,
     load_co2_family_config,
     resolve_co2_prior_seed,
 )
@@ -84,12 +85,15 @@ def load_co2_o2_params(
 
 def _validate_co2_o2_option_names(*requests: Mapping[str, object]) -> None:
     """Check request names while deferring scientific and inactive values."""
-    allowed = {"format_version", "recipe", "variant", "prepared_inputs", "channels", "biosphere", "likelihood", "sampling", "outputs"}
+    allowed = {
+        "format_version", "recipe", "variant", "prepared_inputs", "channels", "biosphere", "outer_flux", "likelihood",
+        "sampling", "outputs",
+    }
     from .co2_o2_outputs import Co2O2OutputOptions
 
     channel_sections = {
         "": frozenset({"units", "independent_error_sd", "boundary", "offset"}),
-        **{name: options for name, options in _MODEL_SECTION_OPTION_NAMES.items() if name != "biosphere"},
+        **{name: options for name, options in _MODEL_SECTION_OPTION_NAMES.items() if name not in {"biosphere", "outer_flux"}},
         "boundary": _MODEL_SECTION_OPTION_NAMES["boundary"] | {"activity"},
         "boundary.activity": frozenset({"active", "fixed_value"}),
     }
@@ -97,6 +101,7 @@ def _validate_co2_o2_option_names(*requests: Mapping[str, object]) -> None:
         "": frozenset(allowed),
         "prepared_inputs": _PREPARATION_OPTION_NAMES,
         "biosphere": frozenset({"path"}),
+        "outer_flux": _MODEL_SECTION_OPTION_NAMES["outer_flux"],
         "channels": frozenset({"co2", "o2"}),
         **{f"channels.{channel}" + (f".{path}" if path else ""): names
            for channel in ("co2", "o2") for path, names in channel_sections.items()},
@@ -205,6 +210,7 @@ class Co2O2ModelConfig:
     tau_hours: float | Mapping[str, float] | None = None
     fixed_site_amplitudes: float | Mapping[str, float] | None = None
     biosphere_prior_path: Path | None = None
+    outer_flux: OuterFluxChoice | None = None
 
     def __post_init__(self) -> None:
         for item in fields(self):
@@ -227,6 +233,8 @@ class Co2O2ModelConfig:
             biosphere = _table(options["biosphere"], "biosphere")
             model["biosphere_prior_path"] = _artifact_path(_take(biosphere, "path", "biosphere"), "biosphere.path")
             _reject_unknown(biosphere, "biosphere")
+        if "outer_flux" in options:
+            model["outer_flux"] = _outer_flux_choice(options["outer_flux"], "outer_flux")
         for name in ("co2", "o2"):
             channel = _table(_take(channels, name, "channels"), f"channels.{name}")
             units[name] = _string(_take(channel, "units", f"channels.{name}"), f"channels.{name}.units")
