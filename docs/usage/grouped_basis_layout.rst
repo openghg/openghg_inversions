@@ -264,7 +264,9 @@ What selects by the labels
   (``outer_groups``) and the outer states held at their prior by ``source``
   (``fixed_sources``). It reads both from the prepared ``alpha_prior_mean``,
   so a preparation built with fixed outer regions can use
-  ``outer_groups = ["outer"]`` directly.
+  ``outer_groups = ["outer"]`` directly. :doc:`atmospheric_baseline` explains
+  the option, and the outer-flux section of :doc:`configured_co2_priors`
+  configures it.
 
 Stability boundary
 ------------------

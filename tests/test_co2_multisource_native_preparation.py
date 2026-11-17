@@ -23,6 +23,7 @@ from openghg_inversions.native_covariance import DEFAULT_EARTH_RADIUS_KM
 from openghg_inversions.rhime.co2 import handoffs
 from openghg_inversions.rhime.co2.co2_affine_output import load_and_bind_affine_flux_map
 from openghg_inversions.rhime.co2.configuration import (
+    Co2ModelConfig,
     Co2MultiSourceNativePrior,
     Co2NativePrior,
     Co2PreparationConfig,
@@ -662,3 +663,36 @@ def test_fixed_outer_basis_labels_per_source_states(
     assert groups == (["outer"] + ["inner"] * (per_source - 1)) * len(SOURCES)
     assert mean.basis_group.values.tolist() == groups
     assert mean.source.values.tolist() == [source for source in SOURCES for _ in range(per_source)]
+
+
+@pytest.mark.usefixtures("double_precision")
+@pytest.mark.parametrize("per_source", [False, True])
+def test_configured_outer_flux_selects_fixed_outer_basis_states(
+    tmp_path: Path, merged: MergedData, files: dict[str, Path], per_source: bool,
+) -> None:
+    """``[model.outer_flux]`` builds on a configured fixed-outer preparation without hand-added labels."""
+    from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+    from openghg_inversions.models.outer_flux import OuterFluxChoice
+    from openghg_inversions.rhime.co2.inference import build_co2_inference
+
+    native_prior = (_native_prior(files, "bucket") if per_source
+                    else {"sigma": 0.2, "correlation_length": 1.0})
+    config = _request({"partition": tmp_path / "unused.nc"} if not per_source else files, native_prior)
+    config["prepared_inputs"]["basis"] = _fixed_outer_basis(tmp_path)
+    # The boundary choice also selects the centred representation at preparation.
+    config["model"] = {
+        "boundary": {"type": "anomaly_scaling", "scale_sd": 0.3,
+                     "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 1.0}},
+        "outer_flux": {"mode": "multiplicative", "outer_groups": ["outer"]},
+    }
+    prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, "outer_flux")).prepared
+    choices = Co2ModelConfig.from_params(load_co2_params(params=config)).model_arguments()
+    built, _ = build_co2_inference(prepared, choices)
+    assert built.output_contract.metadata["outer_flux_mode"] == "multiplicative"
+
+    inputs = prepared.inv_inputs
+    prior = CorrelatedLognormalPrior(inputs.alpha_prior_mean, inputs.alpha_prior_covariance,
+                                     covariance_dim=str(inputs.alpha_prior_covariance.dims[-1]))
+    states = OuterFluxChoice("multiplicative", ("outer",)).resolve_states(prior)
+    np.testing.assert_array_equal(states.sampled.values, inputs.alpha_prior_mean.basis_group.values == "outer")
+    assert int(states.sampled.sum()) == (len(SOURCES) if per_source else 1)
