@@ -15,6 +15,11 @@ from openghg_inversions.postprocessing.co2_flux_outputs import (
     co2_country_flux_outputs,
     co2_native_flux_outputs,
 )
+from openghg_inversions.postprocessing.border_countries import (
+    REGION_SUM_COORDS,
+    co2_border_check,
+    co2_region_sum_country_outputs,
+)
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import trace_group
 from openghg_inversions.postprocessing.stats import calculate_stats
@@ -28,6 +33,7 @@ from openghg_inversions.serialization import reset_serialisation_multiindexes, s
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
 from openghg_inversions.postprocessing.boundary_outputs import decode_saved_boundaries, reconstruct_boundary
+from openghg_inversions.basis.operators import BucketBasisOperator, MultiSourceBucketBasisOperator
 from .co2_affine_output import BoundCo2AffineFluxMap
 from .co2_preparation import Co2PreparedInputs, _require_equivalent_units
 
@@ -129,6 +135,10 @@ class Co2OutputOptions:
     output directory products remain in memory. ``save_trace`` exports the full
     annotated DataTree to an explicit path or the default trace filename.
     Paths resolve from the invocation directory, without loading resources.
+    ``country_outputs="border_preserving_only"`` writes only countries whose
+    border no source's basis regions cross, as sums of whole-region totals
+    labelled by ``country_total_method`` (``basic`` output with a
+    ``country_file`` only); the default ``"all"`` keeps every country.
     """
 
     output_format: str = "basic"
@@ -137,10 +147,17 @@ class Co2OutputOptions:
     save_trace: str | Path | bool = False
     country_file: str | Path | None = None
     paris_postprocessing_kwargs: Mapping | None = None
+    country_outputs: str = "all"
 
     def __post_init__(self) -> None:
         if not isinstance(self.output_format, str) or self.output_format not in {"none", "basic", "paris"}:
             raise ValueError("CO2 outputs support only 'none', 'basic', or 'paris'.")
+        if self.country_outputs not in {"all", "border_preserving_only"}:
+            raise ValueError("CO2 country_outputs supports only 'all' or 'border_preserving_only'.")
+        if self.country_outputs == "border_preserving_only" and (
+            self.output_format != "basic" or self.country_file is None
+        ):
+            raise ValueError("CO2 country_outputs='border_preserving_only' requires basic output and a country_file.")
         _validate_filename_component("output_name", self.output_name)
         for name in ("output_path", "country_file", "save_trace"):
             value = getattr(self, name)
@@ -367,15 +384,52 @@ def _basic_product(components: xr.Dataset) -> xr.Dataset:
     return result
 
 
+def _border_labels(prepared: Co2PreparedInputs, bound: BoundCo2AffineFluxMap) -> dict[str, xr.DataArray] | None:
+    """Return per-source region labels for border checks; bucket maps supply their own.
+
+    For explicit maps the prepared bucket labels are assumed to be the regions
+    the coherent restriction averages over; they are not checked against ``Pi``,
+    which the saved reconstruction does not carry. Rows are then never labelled
+    ``exact_region_sum``.
+    """
+    if not isinstance(bound.affine_map.prolongation, xr.DataArray):
+        return None
+    operator = prepared.basis_functions.operator
+    if isinstance(operator, MultiSourceBucketBasisOperator):
+        return {str(source): labels for source, labels in operator.basis_flat.items()}
+    if isinstance(operator, BucketBasisOperator):
+        native_dims = bound.affine_map.native_dims
+        if len(native_dims) == 2:
+            return {"total": operator.basis_flat}
+        return {str(source): operator.basis_flat for source in bound.affine_map.native_mean[native_dims[0]].values}
+    raise ValueError("CO2 border-preserving country outputs require a bucket prepared basis.")
+
+
 def _affine_products(
     trace: xr.DataTree,
     bound: BoundCo2AffineFluxMap,
     countries: Countries | None,
     source_to_sector: Mapping[str, str] | None,
+    *,
+    country_outputs: str = "all",
+    labels: Mapping[str, xr.DataArray] | None = None,
 ) -> tuple[xr.Dataset, xr.Dataset | None]:
-    """Apply reporting source combinations before statistics, using signed draws."""
+    """Apply reporting source combinations before statistics, using signed draws.
+
+    With ``country_outputs="border_preserving_only"``, country products hold
+    only countries whose border no source's regions cross, as region sums.
+    Sector products reuse the full map's border check, so they report the
+    same countries.
+    """
     native = co2_native_flux_outputs(trace, bound)
-    country = co2_country_flux_outputs(trace, bound, countries) if countries is not None else None
+    border_check = None
+    if countries is None:
+        country = None
+    elif country_outputs == "border_preserving_only":
+        labels, border_check = co2_border_check(bound, countries, labels)
+        country = co2_region_sum_country_outputs(trace, bound, countries, labels, check=border_check)
+    else:
+        country = co2_country_flux_outputs(trace, bound, countries)
     if source_to_sector:
         source_dim = bound.affine_map.native_dims[0]
         for sector in sorted(set(source_to_sector.values())):
@@ -396,7 +450,12 @@ def _affine_products(
                 )
             )
             if countries is not None and country is not None:
-                sector_country = co2_country_flux_outputs(trace, mapped, countries)
+                if border_check is None:
+                    sector_country = co2_country_flux_outputs(trace, mapped, countries)
+                else:
+                    sector_country = co2_region_sum_country_outputs(
+                        trace, mapped, countries, labels, check=border_check
+                    ).drop_vars(REGION_SUM_COORDS)
                 country = country.merge(
                     sector_country[
                         [name for name in sector_country if str(name).startswith("country_total_")]
@@ -568,7 +627,14 @@ def calculate_co2_products(
     components = reconstruct_co2_concentrations(result.idata, prepared)
     products = {"basic": _basic_product(components)}
     if bound is not None:
-        native, country = _affine_products(result.idata, bound, countries, source_to_sector)
+        native, country = _affine_products(
+            result.idata,
+            bound,
+            countries,
+            source_to_sector,
+            country_outputs=output.country_outputs,
+            labels=_border_labels(prepared, bound) if output.country_outputs != "all" else None,
+        )
         products["native_flux"] = native
         if country is not None:
             products["country_flux"] = country

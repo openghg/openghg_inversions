@@ -352,6 +352,11 @@ and samples; it does not write products. See
    openghg_inversions.postprocessing.output_views.make_inversion_output
    openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs
    openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs
+   openghg_inversions.postprocessing.border_countries.check_border_preserving_countries
+   openghg_inversions.postprocessing.border_countries.co2_region_sum_country_outputs
+   openghg_inversions.postprocessing.border_countries.co2_border_check
+   openghg_inversions.postprocessing.border_countries.restriction_row_space_residual
+   openghg_inversions.postprocessing.border_countries.region_class_membership
    openghg_inversions.rhime.co2.co2_outputs.make_co2_output
    openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request
    openghg_inversions.rhime.co2.co2_outputs.calculate_co2_products

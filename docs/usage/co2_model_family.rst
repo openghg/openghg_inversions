@@ -305,8 +305,11 @@ flatten the original trace.
 Pass :class:`openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions` to
 calculation and export operations. Its CO₂ fields are
 ``output_format`` (``none``, ``basic`` or ``paris``), ``output_path``,
-``output_name``, ``save_trace``, ``country_file`` and
-``paris_postprocessing_kwargs``. Naming uses the RHIME convention. Reporting
+``output_name``, ``save_trace``, ``country_file``,
+``paris_postprocessing_kwargs`` and ``country_outputs`` (``all``, or
+``border_preserving_only`` for basic country products restricted to countries
+whose borders the basis preserves; see :ref:`co2-affine-flux-summaries`).
+Naming uses the RHIME convention. Reporting
 ``source_to_sector`` mappings are current product choices, separate from saved
 inference. Standard inversion-output flags and naming options are not accepted.
 Direct product callers first use
