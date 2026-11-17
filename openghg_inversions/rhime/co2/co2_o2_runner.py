@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import warnings
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Any, Literal
 
 import numpy as np
@@ -13,18 +13,23 @@ import xarray as xr
 from dask import compute as dask_compute
 
 from openghg_inversions.biosphere_prior import BiospherePrior
-from openghg_inversions.models.biosphere import annotate_biosphere_prior
+from openghg_inversions.models.biosphere import (
+    annotate_biosphere_prior,
+    resolve_retained_flux_prior,
+    retained_flux_prior_family,
+)
 from openghg_inversions.array_ops import select_gathered_data_array, to_dense_tree
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.boundary import Bound, Choice, bind_prepared
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
-from .co2_o2_model import _build_co2_o2_model, _validate_channel_offset_options
+from .co2_o2_model import _build_co2_o2_model, _validate_channel_offset_options, bind_linked_outer_flux
 from .co2_o2_preparation import Co2O2PreparedInputs
 
 _CO2_O2_VARIABLE_ROLES = {
@@ -74,49 +79,6 @@ def _validate_independent_error_values(array: xr.DataArray) -> None:
         raise ValueError("independent_error_sd must contain only finite positive real numeric values.")
 
 
-def _independent_error_candidates(
-    prepared: Co2O2PreparedInputs, independent_error_sd: xr.DataArray | None,
-) -> list[xr.DataArray]:
-    """Return the selected error vector, then any distinct saved vector, with checked labels.
-
-    Args:
-        prepared: Handoff whose observations and saved errors are borrowed.
-        independent_error_sd: Explicit error vector, or None to use saved errors.
-
-    Returns:
-        list[xarray.DataArray]: The selected vector, followed by the saved vector
-            when both exist and are different objects. Payloads stay lazy.
-
-    Raises:
-        ValueError: If no error vector is available or labels do not match the
-            prepared observations.
-    """
-    saved = prepared.independent_error_sd
-    selected = saved if independent_error_sd is None else independent_error_sd
-    if selected is None:
-        raise ValueError("Supply independent_error_sd explicitly or in the prepared artifact.")
-    errors = [selected] if saved is None or saved is selected else [selected, saved]
-    for error in errors:
-        _validate_independent_error_labels(prepared.observations, error)
-    return errors
-
-
-def _agreed_independent_error(observations: xr.DataArray, dense_errors: Sequence[xr.DataArray]) -> xr.DataArray:
-    """Check materialized error candidates against dense observations and return the selected one.
-
-    Raises:
-        ValueError: If row units or values are invalid, or explicit and saved
-            values disagree.
-    """
-    for error in dense_errors:
-        if not np.array_equal(error["observation_units"].data, observations["observation_units"].data):
-            raise ValueError("independent_error_sd observation_units must match the prepared observations.")
-        _validate_independent_error_values(error)
-    if len(dense_errors) == 2 and not np.array_equal(dense_errors[0].data, dense_errors[1].data):
-        raise ValueError("Explicit independent_error_sd must match the prepared artifact values.")
-    return dense_errors[0]
-
-
 def _materialize_co2_o2_replay_inputs(
     prepared: Co2O2PreparedInputs, independent_error_sd: xr.DataArray | None,
     boundary: Mapping[str, Bound], *, prior_parameters: Mapping[str, Any],
@@ -144,7 +106,16 @@ def _materialize_co2_o2_replay_inputs(
             values are not finite positive real numbers, or saved and explicit
             errors disagree.
     """
-    errors = _independent_error_candidates(prepared, independent_error_sd)
+    saved_error = getattr(prepared, "independent_error_sd", None)
+    if independent_error_sd is None:
+        independent_error_sd = saved_error
+    if independent_error_sd is None:
+        raise ValueError("Supply independent_error_sd explicitly or in the prepared artifact.")
+    errors = [independent_error_sd]
+    if saved_error is not None and saved_error is not independent_error_sd:
+        errors.append(saved_error)
+    for error in errors:
+        _validate_independent_error_labels(prepared.observations, error)
     materialized: tuple[xr.DataArray, ...]
     bound: dict[str, Bound]
     priors: dict[str, Any]
@@ -153,8 +124,15 @@ def _materialize_co2_o2_replay_inputs(
          prepared.co2_sensitivity, prepared.o2_sensitivity, *errors),
         dict(boundary), dict(prior_parameters),
     )))
-    error = _agreed_independent_error(materialized[0], materialized[4:])
-    return (*materialized[:4], error), bound, priors
+    observations = materialized[0]
+    dense_errors = materialized[4:]
+    for error in dense_errors:
+        if not np.array_equal(error["observation_units"].data, observations["observation_units"].data):
+            raise ValueError("independent_error_sd observation_units must match the prepared observations.")
+        _validate_independent_error_values(error)
+    if len(dense_errors) == 2 and not np.array_equal(dense_errors[0].data, dense_errors[1].data):
+        raise ValueError("Explicit independent_error_sd must match the prepared artifact values.")
+    return (*materialized[:4], dense_errors[0]), bound, priors
 
 
 def _co2_o2_metadata(
@@ -314,6 +292,7 @@ def build_rhime_co2_o2(
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Choice | None] | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     tau_hours: float | Mapping[str, float] | None = None,
@@ -333,10 +312,9 @@ def build_rhime_co2_o2(
 
     Raises:
         ValueError: If input labels, errors, channel baseline choices, state
-            activity or covariance are inconsistent with the linked model.
+            activity or covariance are inconsistent with the linked model, or
+            ``biosphere_prior`` does not calibrate the prepared retained prior.
     """
-    if prepared_inputs.shared_baseline:
-        raise ValueError("Shared baseline preparations require sample_linked_shared_workflow.")
     prepared = prepared_inputs
     _validate_channel_offset_options(offset_prior, offset_args)
     materialized, bound, eager_priors = _materialize_co2_o2_replay_inputs(
@@ -348,20 +326,25 @@ def build_rhime_co2_o2(
     observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = (
         materialized
     )
+    flux_prior = resolve_retained_flux_prior(prepared.retained_prior, biosphere_prior)
+    outer = None if outer_flux is None else bind_linked_outer_flux(
+        outer_flux, flux_prior,
+        observations=observations, co2_sensitivity=co2_sensitivity, o2_sensitivity=o2_sensitivity,
+    )
     model = _build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
         co2_sensitivity=co2_sensitivity,
         o2_sensitivity=o2_sensitivity,
         aggregation_error=prepared.aggregation_error,
-        retained_prior=prepared.retained_prior,
-        biosphere_prior=biosphere_prior,
+        retained_prior=flux_prior,
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
         tau_hours=tau_hours,
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
         boundary=bound,
+        outer_flux=outer,
         offset_prior=offset_prior,
         offset_args=offset_args,
     )
@@ -373,9 +356,13 @@ def build_rhime_co2_o2(
         variable_roles["offset_concentration"] = "offset_concentration"
     if bound or offset_prior:
         variable_roles["baseline_concentration"] = "baseline_concentration"
-    metadata = {**_co2_o2_metadata(prepared, observations=observations), **boundary_metadata}
-    if biosphere_prior is not None:
-        metadata["prior"] = biosphere_prior.data.attrs["family"]
+    metadata = {
+        **_co2_o2_metadata(prepared, observations=observations),
+        **boundary_metadata,
+        "prior": retained_flux_prior_family(flux_prior),
+    }
+    if outer is not None:
+        metadata.update(outer["co2"].outputs().metadata)
     if tau_hours is not None:
         variable_roles.update(
             {
@@ -402,6 +389,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Choice | None] | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     sampler: RhimeSampler | Literal["default"] = "default",
@@ -422,8 +410,9 @@ def run_rhime_co2_o2_from_prepared_inputs(
     to the caller rather than the model API.
 
     Args:
-        biosphere_prior: Optional explicit calibration against the existing retained prior;
-            omission preserves existing behavior.
+        biosphere_prior: Optional explicit calibration of the prepared retained
+            prior, checked once before graph construction; omission preserves
+            existing behavior.
         prepared_inputs: Validated preparation handoff containing joint
             observations and affine intercept on ``("observation",)``, separate
             channel sensitivities on their native observation axes and the retained
@@ -443,6 +432,9 @@ def run_rhime_co2_o2_from_prepared_inputs(
             centered operands (with any prepared centering weights). ``None``
             disables a channel's boundary; omitted channels have no boundary
             term, with a warning when the preparation has their transport.
+        outer_flux: Optional outer-flux choice for the joint flux state,
+            resolved on the flux prior and bound to each channel's rows with
+            :func:`~openghg_inversions.rhime.co2.co2_o2_model.bind_linked_outer_flux`.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
             with the same meanings as the CO2 offset component. Baseline terms
@@ -484,6 +476,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
         boundary=boundary,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
         tau_hours=tau_hours,

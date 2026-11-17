@@ -16,11 +16,13 @@ from pymc.pytensorf import floatX
 from pytensor.graph.traversal import graph_inputs
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.biosphere_prior import BiospherePrior
-from openghg_inversions.models.biosphere import add_biosphere_state
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inference.cached_sigma import PytensorMarginalQuadraticCache
 from openghg_inversions.array_ops import to_dense_tree
+from openghg_inversions.models.biosphere import (
+    RetainedFluxPrior,
+    add_prepared_retained_flux_state,
+    prepare_retained_flux_prior,
+)
 from openghg_inversions.models.boundary import Bound, Outputs
 from openghg_inversions.models.cached_sigma import (
     FixedOuCachedSigmaTarget,
@@ -30,15 +32,14 @@ from openghg_inversions.models.components import (
     AffineBlock,
     AffineConcentrationTerm,
     _add_offset_component_result,
-    _add_prepared_correlated_lognormal_state_with_activity,
     add_coherent_affine_component,
     add_model_data,
     apply_linear_sensitivity,
     likelihood_representation,
     warn_constant_offset_confounding,
-    prepare_active_correlated_lognormal_prior,
 )
 from openghg_inversions.models.coords import add_coords, registered_model
+from openghg_inversions.models.outer_flux import OuterFlux, check_outer_flux_boundary
 from openghg_inversions.models.fixed_ou import (
     FixedOuLowRank,
     prepare_fixed_ou_low_rank,
@@ -76,6 +77,9 @@ class Co2CachedSigmaModel:
     ``initial_values`` contains untransformed sampling overrides or PyMC
     initialization strategies, lifted from graph metadata. The matched runner
     resolves them separately for construction and each sampling chain.
+    ``flux_prior`` is the retained flux prior the graph samples.
+    ``boundary_outputs`` and ``outer_flux_outputs`` declare the bound
+    boundary's and outer-flux option's roles, units and metadata.
     """
 
     model: pm.Model
@@ -87,7 +91,9 @@ class Co2CachedSigmaModel:
     modelled_mean: TensorVariable
     cached_state_logp: TensorVariable
     initial_values: dict[str, Any]
+    flux_prior: RetainedFluxPrior
     boundary_outputs: Outputs | None = None
+    outer_flux_outputs: Outputs | None = None
 
 
 def _materialize_cached_linear_projection(
@@ -163,6 +169,7 @@ def _add_cached_likelihood(
     initial_amplitudes: np.ndarray | None,
     site_amplitude_prior: PriorArgs,
     output_dim: str,
+    flux_prior: RetainedFluxPrior,
 ) -> Co2CachedSigmaModel:
     """Lower ordered scientific terms once at the cached-likelihood boundary."""
     blocks = tuple(block for term in terms for block in term.blocks)
@@ -287,14 +294,14 @@ def _add_cached_likelihood(
         modelled_mean=modelled_mean,
         cached_state_logp=cached_state_logp,
         initial_values=initial_values,
+        flux_prior=flux_prior,
     )
 
 
 def build_co2_cached_sigma_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedLognormalPrior,
-    biosphere_prior: BiospherePrior | None = None,
+    retained_prior: RetainedFluxPrior,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -304,6 +311,7 @@ def build_co2_cached_sigma_model(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
+    outer_flux: OuterFlux | None = None,
     offset_prior: PriorArgs | None = None,
     offset_freq: str | None = None,
     offset_drop_first: bool = False,
@@ -332,9 +340,10 @@ def build_co2_cached_sigma_model(
         flux_sensitivity: Reduced sensitivity with the output dimension and
             one labelled retained-state dimension, in concentration units per
             unit dimensionless flux scaling.
-        biosphere_prior: Optional explicit retained-state calibration; omission preserves the existing prior.
         retained_prior: Complete labelled arithmetic-moment prior for the
-            positive, dimensionless retained flux-scaling state.
+            positive, dimensionless retained flux-scaling state, or a biosphere
+            calibration of it already checked by
+            :func:`~openghg_inversions.models.biosphere.resolve_retained_flux_prior`.
         fixed_prior_contribution: Fixed coherent-reduction affine contribution
             on the output dimension, in the observations' concentration units.
         observations: Observed CO2 concentrations on the output dimension,
@@ -353,6 +362,9 @@ def build_co2_cached_sigma_model(
         state_activity: Optional labelled active/fixed policy for retained flux
             states. Fixed values are dimensionless flux scalings.
         boundary: Resolved boundary component bound to this fit.
+        outer_flux: Optional outer-region flux option bound to these rows,
+            requiring a centered ``boundary`` with a mean shift; see
+            :func:`~openghg_inversions.rhime.co2.co2_model.build_co2_model`.
         offset_prior: Optional prior for additive offsets. Its location and
             scale parameters use the observations' concentration units. When
             omitted, no offset is added.
@@ -378,9 +390,10 @@ def build_co2_cached_sigma_model(
             offset options are supplied without ``offset_prior``. Also raised
             for incompatible global-offset options.
     """
-    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, priors = dask_compute(
+    check_outer_flux_boundary(outer_flux, boundary)
+    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, outer_flux, priors = dask_compute(
         *to_dense_tree((
-            (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary,
+            (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, outer_flux,
             {"amplitude": site_amplitude_prior, "offset": offset_prior},
         ))
     )
@@ -397,19 +410,19 @@ def build_co2_cached_sigma_model(
         initial_site_amplitudes=initial_site_amplitudes,
         state_activity=state_activity,
         boundary=boundary,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_freq=offset_freq,
         offset_drop_first=offset_drop_first,
         offset_per_site=offset_per_site,
         output_dim=output_dim,
-        biosphere_prior=biosphere_prior,
     )
 
 
 def _build_co2_cached_sigma_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: RetainedFluxPrior,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -419,12 +432,12 @@ def _build_co2_cached_sigma_model(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
+    outer_flux: OuterFlux | None = None,
     offset_prior: PriorArgs | None = None,
     offset_freq: str | None = None,
     offset_drop_first: bool = False,
     offset_per_site: bool = True,
     output_dim: str = "nmeasure",
-    biosphere_prior: BiospherePrior | None = None,
 ) -> Co2CachedSigmaModel:
     """Construct the cached fixed-OU CO2 graph from eager inputs.
 
@@ -435,6 +448,7 @@ def _build_co2_cached_sigma_model(
     """
     if offset_prior is None and (offset_freq is not None or offset_drop_first or not offset_per_site):
         raise ValueError("Non-default offset options require offset_prior.")
+    check_outer_flux_boundary(outer_flux, boundary)
     validate_observation_error_arrays(
         observations,
         observation_error,
@@ -455,7 +469,13 @@ def _build_co2_cached_sigma_model(
         flux_sensitivity,
         output_dim=output_dim,
     )
+    if outer_flux is not None:
+        # Centre the retained sampled outer columns; their prior-mean level joins the fixed term.
+        prepared_flux = outer_flux.centre(prepared_flux)
+        fixed_prior_contribution = outer_flux.restore_level(fixed_prior_contribution)
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
+    if outer_flux is not None:
+        activity = outer_flux.states.fix_states(activity)
     (
         prepared_flux,
         flux_active_design,
@@ -465,11 +485,7 @@ def _build_co2_cached_sigma_model(
         activity,
         output_dim=output_dim,
     )
-    active_state_prior = (
-        prepare_active_correlated_lognormal_prior(activity, retained_prior, var_name="flux_scaling")
-        if biosphere_prior is None
-        else None
-    )
+    active_state_prior = prepare_retained_flux_prior(activity, retained_prior, var_name="flux_scaling")
 
     fixed_prior_data = fixed_prior_contribution.transpose(output_dim).compute()
     factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
@@ -494,12 +510,8 @@ def _build_co2_cached_sigma_model(
         site_labels=site_labels,
     )
     with registered_model():
-        state_result = (
-            _add_prepared_correlated_lognormal_state_with_activity(
-                activity, active_state_prior, var_name="flux_scaling",
-            )
-            if biosphere_prior is None
-            else add_biosphere_state(activity, retained_prior, biosphere_prior)
+        state_result = add_prepared_retained_flux_state(
+            activity, active_state_prior, var_name="flux_scaling",
         )
         contribution = apply_linear_sensitivity(
             prepared_flux,
@@ -526,6 +538,8 @@ def _build_co2_cached_sigma_model(
         ]
         if boundary is not None:
             terms.append(boundary.add(output_dim=output_dim))
+        if outer_flux is not None and outer_flux.choice.mode == "additive":
+            terms.append(outer_flux.add(output_dim=output_dim))
         if offset_prior is not None:
             offset_result = _add_offset_component_result(
                 observations,
@@ -566,8 +580,13 @@ def _build_co2_cached_sigma_model(
             initial_amplitudes=initial_amplitudes,
             site_amplitude_prior=site_amplitude_prior,
             output_dim=output_dim,
+            flux_prior=retained_prior,
         )
-        return replace(cached, boundary_outputs=None if boundary is None else boundary.outputs())
+        return replace(
+            cached,
+            boundary_outputs=None if boundary is None else boundary.outputs(),
+            outer_flux_outputs=None if outer_flux is None else outer_flux.outputs(),
+        )
 
 
 

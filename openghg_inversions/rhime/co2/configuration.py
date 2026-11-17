@@ -21,7 +21,10 @@ from openghg_inversions.models.boundary import (
     AdditiveChoice, AnomalyScalingChoice, Choice, MultiplicativeChoice, boundary_preparation,
 )
 from openghg_inversions.models.boundary.preparation import check_representation
+from openghg_inversions.models.boundary.additive_anomalies import AnomalyStructure
+from openghg_inversions.models.boundary.anomaly_scaling import ReferencePolicy
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.outer_flux import OuterFluxChoice, OuterMode
 from openghg_inversions.models.priors import positive_prior_args
 from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likelihood
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
@@ -120,6 +123,7 @@ _MODEL_SECTION_OPTION_NAMES = {
     "offset": frozenset({"prior", "frequency", "per_site", "drop_first"}),
     "offset.prior": _PRIOR_OPTION_NAMES,
     "biosphere": frozenset({"path"}),
+    "outer_flux": frozenset({"mode", "outer_groups", "fixed_sources"}),
 }
 
 
@@ -261,7 +265,7 @@ def _validate_co2_option_names(*requests: Mapping[str, object]) -> None:
         "prepared_inputs.basis": _BASIS_OPTION_NAMES,
         "prepared_inputs.native_prior": _NATIVE_PRIOR_OPTION_NAMES | _MULTISOURCE_NATIVE_PRIOR_OPTION_NAMES,
         "prepared_inputs.native_prior.calibration": _NATIVE_CALIBRATION_OPTION_NAMES,
-        "model": frozenset({"boundary", "offset", "biosphere"}),
+        "model": frozenset({"boundary", "offset", "biosphere", "outer_flux"}),
         **{f"model.{path}": names for path, names in _MODEL_SECTION_OPTION_NAMES.items()},
         "likelihood": _LIKELIHOOD_OPTION_NAMES,
         "likelihood.sigma_prior": _PRIOR_OPTION_NAMES,
@@ -965,14 +969,24 @@ def _mean_shift_options(options: dict[str, object], path: str) -> dict[str, Any]
     return {"mean_prior": mean_shift_prior, "mean_by_period": mean_by_period}
 
 
+_ANOMALY_STRUCTURES: dict[str, AnomalyStructure] = {
+    "weighted": "weighted", "period_contrasts": "period_contrasts", "independent": "independent",
+}
+_REFERENCE_POLICIES: dict[str, ReferencePolicy] = {
+    "stored": "stored", "whole_window_transport_mean": "whole_window_transport_mean",
+}
+
+
 def _additive_boundary(options: dict[str, object], periods: dict[str, Any], path: str) -> AdditiveChoice:
     """Resolve the options of centred additive boundary corrections."""
     mean = _mean_shift_options(options, path)
     anomaly_scale = _number(_take(options, "anomaly_scale", path), f"{path}.anomaly_scale")
-    anomalies = _string(options.pop("anomalies"), f"{path}.anomalies") if "anomalies" in options else "weighted"
+    anomalies = _string(options.pop("anomalies", "weighted"), f"{path}.anomalies")
+    if anomalies not in _ANOMALY_STRUCTURES:
+        raise ValueError(f"{path}.anomalies must be one of {sorted(_ANOMALY_STRUCTURES)!r}, not {anomalies!r}.")
     _reject_unknown(options, path)
     return AdditiveChoice(
-        mean["mean_prior"], anomaly_scale, anomalies=anomalies,  # type: ignore[arg-type]
+        mean["mean_prior"], anomaly_scale, anomalies=_ANOMALY_STRUCTURES[anomalies],
         mean_by_period=mean["mean_by_period"], **periods,
     )
 
@@ -983,12 +997,17 @@ def _anomaly_scaling_boundary(
     """Resolve the options of a boundary that scales the prescribed anomaly about a reference."""
     mean = _mean_shift_options(options, path)
     scale_sd = _number(_take(options, "scale_sd", path), f"{path}.scale_sd", positive=True)
-    reference: object = options.pop("reference", "stored")
-    if not isinstance(reference, str):
-        reference = _number(reference, f"{path}.reference")
+    value = options.pop("reference", "stored")
+    reference: ReferencePolicy
+    if isinstance(value, str):
+        if value not in _REFERENCE_POLICIES:
+            raise ValueError(f"{path}.reference must be a number or one of {sorted(_REFERENCE_POLICIES)!r}, not {value!r}.")
+        reference = _REFERENCE_POLICIES[value]
+    else:
+        reference = _number(value, f"{path}.reference")
     _reject_unknown(options, path)
     return AnomalyScalingChoice(
-        mean["mean_prior"], scale_sd, reference=reference,  # type: ignore[arg-type]
+        mean["mean_prior"], scale_sd, reference=reference,
         mean_by_period=mean["mean_by_period"], **periods,
     )
 
@@ -1038,10 +1057,36 @@ def _model(value: object, path: str = "model") -> dict[str, Any]:
         _reject_unknown(biosphere, biosphere_path)
     if "boundary" in options:
         result["boundary"] = _boundary_choice(_table(options.pop("boundary"), f"{path}.boundary"), f"{path}.boundary")
+    if "outer_flux" in options:
+        result["outer_flux"] = _outer_flux_choice(options.pop("outer_flux"), f"{path}.outer_flux")
     if "offset" in options:
         result.update(_offset_model(options.pop("offset"), f"{path}.offset"))
     _reject_unknown(options, path)
     return result
+
+
+def _strings(value: object, path: str) -> tuple[str, ...]:
+    """Read a list of strings at ``path``."""
+    if not isinstance(value, list | tuple) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"{path} must be a list of strings.")
+    return tuple(value)
+
+
+def _outer_flux_choice(value: object, path: str) -> OuterFluxChoice:
+    """Resolve one ``outer_flux`` table into an outer-flux choice.
+
+    Additive outer patterns need a design that preparation does not produce,
+    so configuration supports only the fixed and multiplicative modes.
+    """
+    options = _table(value, path)
+    modes: dict[str, OuterMode] = {"fixed": "fixed", "multiplicative": "multiplicative"}
+    mode = _string(_take(options, "mode", path), f"{path}.mode")
+    if mode not in modes:
+        raise ValueError(f'{path}.mode must be "fixed" or "multiplicative", not {mode!r}.')
+    outer_groups = _strings(_take(options, "outer_groups", path), f"{path}.outer_groups")
+    fixed_sources = _strings(options.pop("fixed_sources", []), f"{path}.fixed_sources")
+    _reject_unknown(options, path)
+    return OuterFluxChoice(modes[mode], outer_groups, fixed_sources)
 
 
 def _offset_model(value: object, path: str) -> dict[str, Any]:
@@ -1207,6 +1252,7 @@ class Co2ModelConfig:
     likelihood_builder: Callable[..., Any] | None = None
     likelihood_kwargs: Mapping[str, Any] | None = None
     biosphere_prior_path: Path | None = None
+    outer_flux: OuterFluxChoice | None = None
 
     def __post_init__(self) -> None:
         for item in fields(self):

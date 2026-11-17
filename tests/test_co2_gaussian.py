@@ -15,6 +15,7 @@ import scipy.linalg as sl
 import xarray as xr
 
 from examples.co2_handoffs import configuration, synthetic_inputs
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.rhime.co2 import execution, handoffs
 from openghg_inversions.rhime.co2 import inference as co2_inference
 from openghg_inversions.inference.gls import paige_gls, psd_factor
@@ -182,7 +183,9 @@ def test_calibrated_gaussian_biosphere_prior_is_used_and_recorded(case, double_p
          "covariance": covariance, "biosphere": xr.ones_like(inputs.alpha_prior_mean, dtype=bool)},
         attrs={"family": "gaussian", "calibration_report": "{}"},
     )
-    biosphere = SimpleNamespace(data=calibration, to_dataset=lambda: calibration)
+    baseline = CorrelatedLognormalPrior(inputs.alpha_prior_mean, inputs.alpha_prior_covariance,
+                                        covariance_dim=str(inputs.alpha_prior_covariance.dims[-1]))
+    biosphere = SimpleNamespace(data=calibration, to_dataset=lambda: calibration, baseline=baseline)
     model = {**Co2ModelConfig.from_params(params).model_arguments(), "biosphere_prior": biosphere}
     sampling = _resolve_co2_sampling(params, model=model)
     trace, actual = co2_inference.sample_co2_inference(prepared, model, sampling.sampler, method="gaussian")
@@ -192,7 +195,7 @@ def test_calibrated_gaussian_biosphere_prior_is_used_and_recorded(case, double_p
     assert json.loads(trace.attrs["rhime_model_metadata"])["prior"] == "gaussian"
     assert "biosphere_prior" in trace.children
     altered = calibration.assign(baseline_covariance=covariance)
-    biosphere = SimpleNamespace(data=altered, to_dataset=lambda: altered)
+    biosphere = SimpleNamespace(data=altered, to_dataset=lambda: altered, baseline=baseline)
     with pytest.raises(ValueError, match="baseline arithmetic moments"):
         co2_inference.sample_co2_inference(prepared, {**model, "biosphere_prior": biosphere}, sampling.sampler,
                                            method="gaussian")
@@ -712,3 +715,24 @@ def test_type2_ml_non_convergence_and_upper_bound_warnings(case, caplog, monkeyp
     with caplog.at_level(logging.WARNING, logger=LOGGER):
         _run_gaussian(prepared, params)
     assert sum("UPPER SIGMA BOUND at site(s) TAC" in message for message in caplog.messages) == 1
+
+
+def test_gaussian_estimator_builds_with_the_configured_outer_flux(case, double_precision, monkeypatch):
+    """The estimator solves the graph the runner builds, so it must forward the outer-flux option."""
+    prepared, _, params = case
+    outer_flux = object()
+    captured = {}
+
+    class Built(Exception):
+        pass
+
+    def capture(*args, **kwargs):
+        captured.update(kwargs)
+        raise Built
+
+    monkeypatch.setattr(co2_gaussian, "build_co2_from_materialized", capture)
+    model = {**Co2ModelConfig.from_params(params).model_arguments(), "outer_flux": outer_flux}
+    sampling = _resolve_co2_sampling(params, model=model)
+    with pytest.raises(Built):
+        co2_inference.sample_co2_inference(prepared, model, sampling.sampler, method="gaussian")
+    assert captured["outer_flux"] is outer_flux

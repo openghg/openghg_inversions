@@ -462,7 +462,7 @@ def sample_co2_gaussian(
             model_inputs, prepared_inputs=prepared, priors=priors, boundary=boundary,
             fixed_model_mismatch=fixed, no_model_error=True,
             offset_prior=model.get("offset_prior"), offset_args=model.get("offset_args"),
-            gaussian_prior=gaussian_prior,
+            biosphere_prior=biosphere, outer_flux=model.get("outer_flux"), gaussian_prior=gaussian_prior,
         )
 
     configured = (sampler.sample_kwargs or {}).get("random_seed")

@@ -17,21 +17,18 @@ import pytensor.tensor as pt
 import xarray as xr
 from dask import compute as dask_compute
 
-from openghg_inversions.biosphere_prior import BiospherePrior
-from openghg_inversions.models.biosphere import add_biosphere_state
 from openghg_inversions.array_ops import to_dense_tree
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.additive_sigma import (
     DEFAULT_ADDITIVE_SIGMA_PRIOR,
     add_additive_sigma_likelihood,
 )
+from openghg_inversions.models.biosphere import RetainedFluxPrior, add_retained_flux_state
 from openghg_inversions.models.boundary import Bound
 from openghg_inversions.models.boundary.centered import CenteredBoundary
 from openghg_inversions.models.components import (
     ConcentrationTerm,
     add_coherent_affine_component,
     add_correlated_gaussian_state_with_activity,
-    add_correlated_lognormal_state_with_activity,
     add_offset_component,
     apply_linear_sensitivity,
     likelihood_representation,
@@ -39,6 +36,7 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.outer_flux import OuterFlux, check_outer_flux_boundary
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import (
     StateActivity,
@@ -113,6 +111,7 @@ def _normalise_offset_args(
 def _check_co2_model_options(
     *,
     boundary: Bound | None,
+    outer_flux: OuterFlux | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None,
     likelihood_kwargs: Mapping[str, Any] | None,
     sigma_alignment: SigmaAlignment | None,
@@ -128,9 +127,11 @@ def _check_co2_model_options(
     Raises:
         ValueError: If a centered boundary is combined with a custom
             likelihood callback, ``likelihood_kwargs`` or ``sigma_prior`` lack
-            the option they configure, or a selected ``likelihood_builder`` is
-            combined with default additive-sigma or fixed-mismatch options.
+            the option they configure, a selected ``likelihood_builder`` is
+            combined with default additive-sigma or fixed-mismatch options, or
+            ``outer_flux`` lacks a centered boundary mean shift.
     """
+    check_outer_flux_boundary(outer_flux, boundary)
     if (isinstance(boundary, CenteredBoundary)
             and likelihood_builder is not None
             and likelihood_builder is not add_fixed_ou_gaussian_likelihood):
@@ -154,8 +155,7 @@ def _check_co2_model_options(
 def build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedLognormalPrior,
-    biosphere_prior: BiospherePrior | None = None,
+    retained_prior: RetainedFluxPrior,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -167,6 +167,7 @@ def build_co2_model(
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
+    outer_flux: OuterFlux | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> pm.Model:
@@ -216,9 +217,10 @@ def build_co2_model(
     Args:
         flux_sensitivity: Reduced CO2 sensitivity with observation dimension
             ``nmeasure`` and one labelled retained-state dimension.
-        biosphere_prior: Optional explicit retained-state calibration; omission preserves the existing prior.
         retained_prior: Complete labelled arithmetic-moment prior for the
-            retained positive state.
+            retained positive state, or a biosphere calibration of it already
+            checked by
+            :func:`~openghg_inversions.models.biosphere.resolve_retained_flux_prior`.
         fixed_prior_contribution: Fixed coherent-reduction affine intercept
             named ``fixed_prior_contribution`` on ``nmeasure``.
         observations: Observed CO2 concentrations on ``nmeasure``.
@@ -238,6 +240,12 @@ def build_co2_model(
         state_activity: Optional labelled activity policy for retained flux
             states.
         boundary: Resolved boundary component bound to this fit.
+        outer_flux: Optional outer-region flux option bound to these rows. It
+            centres the sampled outer columns after exact-zero pruning, holds
+            fixed outer states at their prior mean and requires a centered
+            additive or anomaly-scaling ``boundary`` with a mean shift, which
+            is then the model's only atmospheric level. See
+            :mod:`openghg_inversions.models.outer_flux`.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added. Site codes are derived from the ``site`` coordinate
             on ``observations``.
@@ -259,15 +267,16 @@ def build_co2_model(
     # Cheap option conflicts fail before any lazy input is executed.
     _check_co2_model_options(
         boundary=boundary,
+        outer_flux=outer_flux,
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
         sigma_alignment=sigma_alignment,
         sigma_prior=sigma_prior,
         fixed_model_mismatch=fixed_model_mismatch,
     )
-    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, priors = dask_compute(
+    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, outer_flux, priors = dask_compute(
         *to_dense_tree((
-            (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary,
+            (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, outer_flux,
             {"sigma": sigma_prior, "offset": offset_prior, "fixed_mismatch": fixed_model_mismatch},
         ))
     )
@@ -287,16 +296,16 @@ def build_co2_model(
         fixed_model_mismatch=fixed_model_mismatch,
         state_activity=state_activity,
         boundary=boundary,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
-        biosphere_prior=biosphere_prior,
     )
 
 
 def _build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedLognormalPrior | None,
+    retained_prior: RetainedFluxPrior | None,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -308,9 +317,9 @@ def _build_co2_model(
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
+    outer_flux: OuterFlux | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
-    biosphere_prior: BiospherePrior | None = None,
     gaussian_prior: GaussianStatePrior | None = None,
 ) -> pm.Model:
     """Validate choices and construct the CO2 graph from eager inputs.
@@ -319,17 +328,16 @@ def _build_co2_model(
     its arguments together, and the CO2 runner calls this after its own joint
     materialization so already-eager arrays are not handled twice. Arguments
     and errors are those of :func:`build_co2_model`, except that
-    ``gaussian_prior`` replaces ``retained_prior`` and ``biosphere_prior`` with
-    a whitened correlated Gaussian state. That graph is linear-Gaussian when
+    ``gaussian_prior`` replaces ``retained_prior`` with a whitened correlated
+    Gaussian state. That graph is linear-Gaussian when
     every other prior is Normal and the likelihood has fixed error; the
     Gaussian estimator solves it exactly instead of sampling it.
     """
-    if (gaussian_prior is None) == (retained_prior is None) or (
-        gaussian_prior is not None and biosphere_prior is not None
-    ):
-        raise ValueError("Pass exactly one of retained_prior (with optional biosphere_prior) or gaussian_prior.")
+    if (gaussian_prior is None) == (retained_prior is None):
+        raise ValueError("Pass exactly one of retained_prior or gaussian_prior.")
     _check_co2_model_options(
         boundary=boundary,
+        outer_flux=outer_flux,
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
         sigma_alignment=sigma_alignment,
@@ -343,7 +351,13 @@ def _build_co2_model(
     offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
+    if outer_flux is not None:
+        # Centre the retained sampled outer columns; their prior-mean level joins the fixed term.
+        prepared_flux = outer_flux.centre(prepared_flux)
+        fixed_prior_contribution = outer_flux.restore_level(fixed_prior_contribution)
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
+    if outer_flux is not None:
+        activity = outer_flux.states.fix_states(activity)
 
     with registered_model() as model:
         if gaussian_prior is not None:
@@ -352,13 +366,7 @@ def _build_co2_model(
             ).state
         else:
             assert retained_prior is not None
-            flux_scaling = (
-                add_correlated_lognormal_state_with_activity(
-                    activity, retained_prior, var_name="flux_scaling",
-                )
-                if biosphere_prior is None
-                else add_biosphere_state(activity, retained_prior, biosphere_prior)
-            ).state
+            flux_scaling = add_retained_flux_state(activity, retained_prior, var_name="flux_scaling").state
         scaled_flux_contribution = apply_linear_sensitivity(
             prepared_flux,
             flux_scaling,
@@ -374,6 +382,8 @@ def _build_co2_model(
         terms: list[ConcentrationTerm] = [ConcentrationTerm.absolute(co2_flux_contribution)]
         if boundary is not None:
             terms.append(boundary.add())
+        if outer_flux is not None and outer_flux.choice.mode == "additive":
+            terms.append(outer_flux.add(output_dim="nmeasure"))
         if offset_prior is not None:
             offset = add_offset_component(
                 observations,

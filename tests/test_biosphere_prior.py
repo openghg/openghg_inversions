@@ -11,7 +11,11 @@ import xarray as xr
 
 from openghg_inversions.biosphere_prior import BiospherePrior, calibrate_biosphere_prior
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.biosphere import add_biosphere_state, annotate_biosphere_prior
+from openghg_inversions.models.biosphere import (
+    add_retained_flux_state,
+    annotate_biosphere_prior,
+    resolve_retained_flux_prior,
+)
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.state_activity import resolve_state_activity
 from openghg_inversions.serialization import save_trace, load_trace
@@ -233,7 +237,7 @@ def test_prior_draws_match_joint_moments_and_report_negative_gaussian(family):
     result = calibrate(family=family)
     activity = resolve_state_activity(xr.zeros_like(result.baseline.mean, dtype=bool), None)
     with registered_model() as model:
-        add_biosphere_state(activity, result.baseline, result)
+        add_retained_flux_state(activity, result, var_name="flux_scaling")
     # Vectorized compiled draws are secondary to the analytic checks above.
     state_fn = model.compile_fn(model.flux_scaling, inputs=[model.flux_scaling_latent], point_fn=False)
     with model:
@@ -360,16 +364,16 @@ def test_loader_accepts_frozen_calibration_with_exactly_zero_net_functional():
     xr.testing.assert_identical(restored.data, calibrated.data)
 
 
-def test_model_rejects_different_baseline_arithmetic_moments():
+def test_resolution_rejects_different_baseline_arithmetic_moments():
     result = calibrate()
-    activity = resolve_state_activity(xr.zeros_like(result.baseline.mean, dtype=bool), None)
+    assert resolve_retained_flux_prior(result.baseline, result) is result
+    assert resolve_retained_flux_prior(result.baseline, None) is result.baseline
     for baseline in (
         CorrelatedLognormalPrior(result.baseline.mean * 1.01, result.baseline.arithmetic_covariance),
         CorrelatedLognormalPrior(result.baseline.mean, result.baseline.arithmetic_covariance * 1.01),
     ):
-        with registered_model() as model, pytest.raises(ValueError, match="baseline arithmetic moments"):
-            add_biosphere_state(activity, baseline, result)
-        assert not model.free_RVs
+        with pytest.raises(ValueError, match="baseline arithmetic moments"):
+            resolve_retained_flux_prior(baseline, result)
 
 
 @pytest.mark.parametrize("family", ["lognormal", "gaussian"])
@@ -381,7 +385,7 @@ def test_all_fixed_calibration_has_no_sampled_state(family):
         xr.zeros_like(result.baseline.mean, dtype=bool), StateActivity(active=False, fixed_value=1.7)
     )
     with registered_model() as model:
-        state = add_biosphere_state(activity, result.baseline, result)
+        state = add_retained_flux_state(activity, result, var_name="flux_scaling")
     assert state.latent is None
     assert not model.free_RVs
     np.testing.assert_array_equal(model.compile_fn(state.state)({}), np.full(5, 1.7))
@@ -397,7 +401,7 @@ def test_partial_activity_samples_exact_positive_and_gaussian_joint_marginals():
     )
     z = np.array([0.3, -0.2, 0.4])
     with registered_model() as model:
-        state = add_biosphere_state(activity, result.baseline, result)
+        state = add_retained_flux_state(activity, result, var_name="flux_scaling")
     m = result.data.baseline_mean.to_numpy()[active]
     b = result.data.covariance.to_numpy()[np.ix_(active, active)]
     latent_covariance = np.log1p(b / np.outer(m, m))
@@ -410,7 +414,7 @@ def test_partial_activity_samples_exact_positive_and_gaussian_joint_marginals():
     assert [rv.name for rv in model.free_RVs] == ["flux_scaling_active_latent"]
     diagnostic = calibrate(family="gaussian")
     with registered_model() as model:
-        state = add_biosphere_state(activity, diagnostic.baseline, diagnostic)
+        state = add_retained_flux_state(activity, diagnostic, var_name="flux_scaling")
     z = np.array([0.3, -0.2, 0.4, 0.1, -0.1])
     m, b = diagnostic.data.baseline_mean.values, diagnostic.data.covariance.values
     bio = diagnostic.data.biosphere.values
