@@ -14,6 +14,7 @@ import xarray as xr
 from openghg_inversions.postprocessing.co2_flux_outputs import (
     co2_country_flux_outputs,
     co2_native_flux_outputs,
+    _reject_reserved_sector_names,
 )
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import trace_group
@@ -201,6 +202,7 @@ def validate_co2_source_mapping(
             for key, value in mapping.items()
         ):
             raise ValueError("CO2 source_to_sector must map native sources to identifier sector names.")
+        _reject_reserved_sector_names(mapping)
         if bound is None or len(bound.affine_map.native_dims) != 3:
             raise ValueError("CO2 source_to_sector requires a source-resolved affine reconstruction.")
         labels = set(map(str, bound.affine_map.native_mean[bound.affine_map.native_dims[0]].values))

@@ -341,6 +341,15 @@ def test_staged_country_outputs_are_complete_native_from_prepare_to_replay(tmp_p
     assert np.abs(retained_sd - native_sd).max() > 0.1 * native_sd.max()
 
 
+def test_staged_replay_rejects_a_sector_named_total(tmp_path) -> None:
+    """The reserved ``total`` sector is refused before replayed products are built."""
+    _, _, prepared, affine = _case()
+    trace = _fit_fixture(prepared)
+    with pytest.raises(ValueError, match="reserved sector name"):
+        _staged(tmp_path, prepared, affine, trace, source_to_sector={"fossil": "total", "biosphere": "natural"})
+    assert not (tmp_path / "products").exists()
+
+
 def test_prepared_country_functionals_round_trip(tmp_path) -> None:
     """Products survive NetCDF with their MultiIndex labels and the artifact's axes."""
     _, reduction, prepared, _ = _case()

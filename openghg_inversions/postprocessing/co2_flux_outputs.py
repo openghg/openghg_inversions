@@ -38,6 +38,19 @@ COUNTRY_FUNCTIONAL_DIM = "country_functional"
 FUNCTIONAL_SOURCE = "functional_source"
 COMPLETE_NATIVE = "complete_native"
 ANNUALIZATION = "365-day year; grams of CO2, not grams of carbon"
+# Sector outputs are named ``<prefix>_<sector>_<group>``; ``total`` would
+# overwrite the grand total ``<prefix>_total_<group>``.
+_RESERVED_SECTOR_NAMES = frozenset({"total"})
+
+
+def _reject_reserved_sector_names(source_to_sector: Mapping[str, str] | None) -> None:
+    """Reject reporting sector names that would overwrite the grand-total outputs."""
+    reserved = sorted(_RESERVED_SECTOR_NAMES.intersection((source_to_sector or {}).values()))
+    if reserved:
+        raise ValueError(
+            f"CO2 source_to_sector cannot use the reserved sector name(s) {reserved}; "
+            "the total over all sources is always reported."
+        )
 
 
 def _output_inputs(
@@ -362,7 +375,8 @@ def co2_country_flux_outputs(
             trace's ``<flux_scale>_is_active`` constant data or, when it is
             absent, from posterior draws that are all identical.
         source_to_sector: Optional mapping from every native source of a
-            multisource map to a reporting sector. Each sector's country
+            multisource map to a reporting sector. ``total`` is reserved for
+            the sum over all sources and is rejected. Each sector's country
             totals are summed from the same draws as the source and total
             values, so complete sector totals keep the unresolved
             contribution and the cross-source covariance.
@@ -385,7 +399,8 @@ def co2_country_flux_outputs(
 
     Raises:
         ValueError: If input requirements or exact country-grid alignment
-            fail, or if ``unresolved`` was prepared for a different country
+            fail, if ``source_to_sector`` uses the reserved sector name
+            ``total``, or if ``unresolved`` was prepared for a different country
             functional, native mean, partition or covariance, or does not
             account for the fit's inactive states.
 
@@ -399,6 +414,7 @@ def co2_country_flux_outputs(
         the products' ``D``; this is an eager per-draw boundary. Source
         totals are summed per draw.
     """
+    _reject_reserved_sector_names(source_to_sector)
     samples, source_dim, attrs = _output_inputs(trace, bound)
     attrs["annualization"] = ANNUALIZATION
     if source_to_sector:
