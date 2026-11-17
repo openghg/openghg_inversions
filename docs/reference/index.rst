@@ -269,6 +269,7 @@ executed layout example and :doc:`affine native-flux reconstruction
    openghg_inversions.basis.bucket_basis_from_weights
    openghg_inversions.basis.quadtree_basis_from_weights
    openghg_inversions.basis.region_constrained_basis_from_weights
+   openghg_inversions.basis.fixed_outer_state_metadata
    openghg_inversions.basis.project_basis_prior_stdev
    openghg_inversions.basis.calibrate_basis_prior_stdev
    openghg_inversions.basis.operators.BasisOperator

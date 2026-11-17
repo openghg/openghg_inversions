@@ -26,6 +26,12 @@ from .algorithms import (
 from .algorithms import quadtree_algorithm, weighted_algorithm
 
 from openghg_inversions.array_ops import to_dense
+from openghg_inversions.basis.layout import (
+    BASIS_GROUP_COORD,
+    BASIS_LABEL_DIM,
+    BASIS_PARTITION_COORD,
+    REGION_IN_PARTITION_COORD,
+)
 from openghg_inversions.config.paths import Paths
 
 logger = logging.getLogger(__name__)
@@ -1009,3 +1015,43 @@ def fixed_outer_regions_basis_from_data(
     basis = basis.expand_dims({"time": [pd.to_datetime(start_date)]})
 
     return basis
+
+
+def fixed_outer_state_metadata(basis: xr.DataArray, outer_regions: xr.DataArray) -> xr.Dataset:
+    """Label the states of a fixed-outer basis as ``outer`` or ``inner``.
+
+    :func:`fixed_outer_regions_basis_from_data` keeps every label of the
+    outer-region map outside its inner label, shifted up by one, and places
+    the generated inner labels above them. A basis label ``L`` is therefore an
+    outer state exactly when ``L - 1`` is one of those map labels; every other
+    label is an inner state, including an inner label kept unsplit.
+
+    Args:
+        basis: Flat basis returned by :func:`fixed_outer_regions_basis_from_data`.
+        outer_regions: The outer-region map that built ``basis``.
+
+    Returns:
+        State metadata indexed by ``basis_label`` for
+        :class:`~openghg_inversions.basis.operators.BucketBasisOperator`.
+        Outer states belong to partition ``"fixed_outer"`` and keep their
+        outer-region map label as ``region_in_partition``; inner states belong
+        to partition ``"inner"`` and are numbered from 1.
+    """
+    # Label discovery needs concrete values; the caller's map stays borrowed.
+    dense_regions = to_dense(outer_regions).compute()
+    regions = np.asarray(dense_regions.values)
+    inner_label = _fixed_outer_inner_region_label(dense_regions)
+    outer_labels = set(np.unique(regions[np.isfinite(regions) & (regions != inner_label)]).tolist())
+
+    basis_values = np.asarray(to_dense(basis).values)
+    labels = np.unique(basis_values[np.isfinite(basis_values)]).astype(int)
+    is_outer = np.array([label - 1 in outer_labels for label in labels], dtype=bool)
+    region_in_partition = np.where(is_outer, labels - 1, np.cumsum(~is_outer))
+    return xr.Dataset(
+        {
+            BASIS_GROUP_COORD: (BASIS_LABEL_DIM, np.where(is_outer, "outer", "inner").astype(object)),
+            BASIS_PARTITION_COORD: (BASIS_LABEL_DIM, np.where(is_outer, "fixed_outer", "inner").astype(object)),
+            REGION_IN_PARTITION_COORD: (BASIS_LABEL_DIM, region_in_partition.astype(int)),
+        },
+        coords={BASIS_LABEL_DIM: labels},
+    )

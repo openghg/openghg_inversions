@@ -614,6 +614,7 @@ def basis_functions_from_flat_basis(
     flux: xr.DataArray,
     basis_flat: xr.DataArray | Mapping[str, xr.DataArray],
     metadata: Mapping[str, Any] | None = None,
+    state_metadata: xr.Dataset | None = None,
 ) -> FluxWeightedBasis:
     """Attach resolved native flux to shared or source-specific flat labels.
 
@@ -631,6 +632,10 @@ def basis_functions_from_flat_basis(
             extra partitions are omitted and runtime source order is retained.
             A flux without ``source`` is shared across all supplied partitions.
         metadata: Optional namespaced metadata retained with the basis object.
+        state_metadata: Optional ``basis_group``, ``basis_partition`` and
+            ``region_in_partition`` labels for shared labels, indexed by
+            ``basis_label`` (see :mod:`openghg_inversions.basis.layout`). They
+            become coordinates on the retained state axis.
 
     Returns:
         Operator paired with the current native prior, ready for projection
@@ -638,9 +643,12 @@ def basis_functions_from_flat_basis(
 
     Raises:
         ValueError: If source labels are invalid, a runtime source partition is
-            missing, or partition geometry cannot form a valid operator.
+            missing, partition geometry cannot form a valid operator, or
+            state metadata accompanies source-specific partitions.
     """
     if isinstance(basis_flat, Mapping):
+        if state_metadata is not None:
+            raise ValueError("State metadata is supported only for one shared flat basis.")
         selected_basis = dict(basis_flat)
         if "source" in flux.dims:
             selected_sources = _validated_flux_source_labels(flux)
@@ -658,7 +666,7 @@ def basis_functions_from_flat_basis(
     return FluxWeightedBasis.from_flat_basis(
         basis_flat=basis_flat,
         flux=flux,
-        operator_kwargs={"state_dim": "region"},
+        operator_kwargs={"state_dim": "region", "state_metadata": state_metadata},
         metadata=metadata,
     )
 

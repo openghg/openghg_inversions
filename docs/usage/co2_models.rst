@@ -93,6 +93,9 @@ component. The state axis retains ``basis_group``, ``basis_partition``, and
 ``region_in_partition`` coordinates; select ``basis_group == "outer"`` rather
 than inferring outer entries from integer ranges or positions.
 
+A basis built with ``fix_outer_regions`` writes these labels; see
+:ref:`where the labels come from <grouped-basis-label-sources>`.
+
 Fixed versus inferred outer entries use the ordinary
 :class:`~openghg_inversions.models.StateActivity` contract. To preserve the
 fixed-at-one behavior, pass

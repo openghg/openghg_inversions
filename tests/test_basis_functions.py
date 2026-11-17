@@ -1229,13 +1229,14 @@ def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, 
 
     monkeypatch.setattr(basis_module, "quadtree_basis_from_weights", fake_quadtree_basis)
 
+    loaded_outer_regions = load_intem_outer_regions("TEST", outer_regions_path=outer_path)
     result = fixed_outer_regions_basis_from_data(
         site_data=sites,
         weighting_flux=fluxes["total"].flux,
         start_date="2020-01-01",
         basis_algorithm="quadtree",
         domain="TEST",
-        outer_regions=load_intem_outer_regions("TEST", outer_regions_path=outer_path),
+        outer_regions=loaded_outer_regions,
     )
 
     assert seen["weights"].shape == (2, 2)
@@ -1245,6 +1246,12 @@ def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, 
     assert inner_labels == {4, 5}
     assert fixed_outer_labels == {1, 3}
     assert inner_labels.isdisjoint(fixed_outer_labels)
+
+    # Outer states keep their map label; inner states are numbered from 1.
+    metadata = basis_module.fixed_outer_state_metadata(result, loaded_outer_regions)
+    assert metadata.basis_label.values.tolist() == [1, 3, 4, 5]
+    assert metadata.basis_group.values.tolist() == ["outer", "outer", "inner", "inner"]
+    assert metadata.region_in_partition.values.tolist() == [0, 2, 1, 2]
 
 
 def test_packaged_euhrob_map_marks_the_6km_inner_rectangle():

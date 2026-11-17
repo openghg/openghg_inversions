@@ -223,12 +223,13 @@ def _validate_operator_node(node: xr.DataTree) -> xr.DataTree:
         set(node.children), {"state_metadata"} if "state_metadata" in node.children else set(), "bucket child"
     )
     if "state_metadata" in node.children:
-        metadata = node["state_metadata"]
+        metadata = node.children["state_metadata"]
         _require_keys(set(metadata.children), set(), "state_metadata child")
         _require_keys(set(metadata.to_dataset().data_vars), _STATE_METADATA_VARS, "state_metadata variable")
         if set(metadata.attrs) - {MULTIINDEX_DIMS_ATTR}:
             raise ValueError("Unexpected state_metadata group attribute.")
-        _validate_coordinates(metadata.to_dataset(), "state_metadata")
+        # The grid coordinates inherited from the bucket node are not metadata payload.
+        _validate_coordinates(metadata.to_dataset(inherit=False), "state_metadata")
     for path, child in node.subtree_with_keys:
         for variable in child.to_dataset().data_vars.values():
             if set(variable.attrs) - {"units"}:
