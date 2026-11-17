@@ -43,6 +43,8 @@ from pint.errors import PintError
 import xarray as xr
 from scipy import ndimage
 
+from openghg_inversions.array_ops import to_dense
+
 from ._partition import AxisParallelSplitStep, GreedySplitStrategy
 
 # Allocation modes control how an integer ``nbasis`` is distributed across
@@ -531,9 +533,7 @@ def country_border_classes(
         raise ValueError(f"Countries {unknown!r} are not in membership.")
 
     def _values(selection: xr.DataArray) -> np.ndarray:
-        data = selection.transpose("lat", "lon").data
-        data = data.todense() if hasattr(data, "todense") else np.asarray(data)
-        return np.asarray(data, dtype=float)
+        return np.asarray(to_dense(selection.transpose("lat", "lon")).to_numpy(), dtype=float)
 
     listed = np.stack([_values(membership.isel(country=known.index(c))) for c in countries])
     rest = [index for index, country in enumerate(known) if country not in countries]

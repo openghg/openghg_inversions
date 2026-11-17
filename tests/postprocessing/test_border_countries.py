@@ -5,6 +5,7 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
+import sparse
 import xarray as xr
 from openghg.util import molar_mass  # pyright: ignore[reportPrivateImportUsage]
 
@@ -22,6 +23,7 @@ from openghg_inversions.postprocessing.border_countries import (
     REGION_SUM_RETAINED_CONDITIONAL,
     RETAINED_STATE_FUNCTIONAL,
     check_border_preserving_countries,
+    co2_border_check,
     co2_region_sum_country_outputs,
     region_class_membership,
     region_sum_membership,
@@ -334,6 +336,34 @@ def test_region_classes_used_to_build_the_basis_all_qualify():
     assert len(by_class.qualifying) == 4 and not by_class.failures
     by_country = check_border_preserving_countries(labels, _membership())
     assert by_country.qualifying[:2] == ("FRANCE", "GERMANY")
+
+
+def test_country_border_classes_accept_chunked_sparse_membership():
+    membership = _membership()
+    membership = membership.copy(data=sparse.COO.from_numpy(membership.values))
+    eager = country_border_classes(membership, ["FRANCE", "GERMANY"])
+
+    chunked = country_border_classes(membership.chunk({"country": 1, "lon": 1}), ["FRANCE", "GERMANY"])
+
+    xr.testing.assert_identical(chunked, eager)
+    assert eager.values[0].tolist() == ["FRANCE"] * 2 + ["GERMANY"] * 2 + ["OTHER"] * 2
+
+
+def test_default_support_follows_the_single_source_label_key():
+    bound, trace = _affine_fixture("bucket")
+    countries = _countries()
+
+    labels, check = co2_border_check(bound, countries, {"fossil": FOSSIL})
+    result = co2_region_sum_country_outputs(trace, bound, countries, {"fossil": FOSSIL})
+
+    _, reference = co2_border_check(bound, countries, {"total": FOSSIL})
+    assert list(labels) == ["fossil"]
+    assert check.qualifying == reference.qualifying == ("FRANCE", "GERMANY", "SPAIN", "OCEAN")
+    assert result.country.values.tolist() == list(check.qualifying)
+    xr.testing.assert_allclose(
+        result.reset_coords(drop=True),
+        co2_country_flux_outputs(trace, bound, countries).reset_coords(drop=True),
+    )
 
 
 def test_inactive_cells_are_not_regions_but_count_against_a_country():

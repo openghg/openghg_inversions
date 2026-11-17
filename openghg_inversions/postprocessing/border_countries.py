@@ -682,6 +682,8 @@ def co2_border_check(
         raise ValueError("A map without a source axis takes labels for exactly one source.")
     if support is None:
         support = _flux_support(bound, countries.area_grid, source_dim)
+        if source_dim is None:  # The single source may take any label key.
+            support = dict.fromkeys(resolved, support["total"])
     matrix = countries.matrix if membership is None else membership
     check = check_border_preserving_countries(
         resolved, matrix, support, tolerance=tolerance, negligible_source_share=negligible_source_share
