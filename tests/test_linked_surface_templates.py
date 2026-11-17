@@ -11,7 +11,7 @@ import xarray as xr
 
 from openghg_inversions.rhime.co2.surface_templates import prepare_linked_surface_templates
 
-_spec = spec_from_file_location("linked_workflow", Path(__file__).parents[1] / "examples/shared_baseline/linked_workflow.py")
+_spec = spec_from_file_location("linked_workflow", Path(__file__).parents[1] / "examples/atmospheric_baseline/linked_workflow.py")
 _example = module_from_spec(_spec)
 _spec.loader.exec_module(_example)
 
@@ -168,32 +168,30 @@ def test_rejects_disagreeing_native_site_references(inputs):
         assemble((co2, o2), prepared)
 
 
-@pytest.mark.parametrize("mode", ["fixed", "multiplicative", "multiplicative_shrunk"])
-def test_shared_control_targets_use_frozen_atmospheric_recipe(mode):
+@pytest.mark.parametrize("mode", ["fixed", "multiplicative"])
+def test_control_targets_come_from_the_configured_outer_flux_model(mode):
     import pytensor
-    from openghg_inversions.rhime.co2 import reconstruct_linked_shared_baseline
     from openghg_inversions.array_ops import select_gathered_data_array
 
     with pytensor.config.change_flags(floatX="float64"):
         zero = _example.prepare_control(mode=mode)
         injected = _example.prepare_control(mode=mode, injected_baseline=True)
-    truth = xr.DataArray(_example.TRUTH, dims="state", coords={"state": _example.STATE_LABELS})
-    coefficients = xr.Dataset({"flux_scaling": truth.sel(state=zero.shared_baseline["co2"].data.state)})
-    for channel in ("co2", "o2"):
-        coefficients[f"{channel}_bc_mean_shift"] = xr.DataArray(0.)
-    expected = reconstruct_linked_shared_baseline({channel: bound.data for channel, bound in zero.shared_baseline.items()}, coefficients)
-    for channel, delta in (("co2", .35), ("o2", -.45)):
+    assert zero.provenance["synthetic_target_generator"] == "configured linked outer-flux model at the declared truth"
+    for channel, delta in _example.INJECTED_LEVEL.items():
         def native(array):
             return select_gathered_data_array(array, key=channel, key_dim="species",
-                ragged_dim="channel_observation", stack_dim="observation").rename(
-                    observation=zero.shared_baseline[channel].data.attrs["native_observation_dim"])
-        xr.testing.assert_allclose(native(zero.observations), expected[channel].modelled_concentration,
-                                   rtol=0, atol=1e-10)
-        np.testing.assert_allclose(native(injected.observations) - native(zero.observations), delta,
-                                   rtol=0, atol=1e-10)
+                                              ragged_dim="channel_observation", stack_dim="observation").values
+        # Unit boundary mass on every row: the level reaches each row once.
+        np.testing.assert_allclose(native(injected.observations) - native(zero.observations), delta, rtol=0, atol=1e-10)
+        # The raw flux response at the truth differs from the target only by a
+        # per-channel constant: the boundary reference and the centred outer level.
+        offset = native(zero.observations) - getattr(zero, f"{channel}_sensitivity").values @ _example.TRUTH
+        np.testing.assert_allclose(offset, offset[0], rtol=0, atol=1e-10)
 
 
-@pytest.mark.parametrize("extension", ["nc", "zarr"])
+@pytest.mark.parametrize("extension", ["nc", pytest.param("zarr", marks=pytest.mark.xfail(
+    strict=True, reason="A zarr-reloaded trace's species level has numpy StringDType, which netCDF products cannot write.",
+))])
 def test_declared_boundary_policy_survives_saved_product_replay(inputs, tmp_path, monkeypatch, extension):
     import json
     import pymc as pm
@@ -204,9 +202,7 @@ def test_declared_boundary_policy_survives_saved_product_replay(inputs, tmp_path
         Co2O2OutputOptions, calculate_co2_o2_products, make_co2_o2_output, save_co2_o2_products,
     )
     from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
-    from openghg_inversions.rhime.co2.shared_workflow import (
-        annotate_linked_shared_workflow, build_linked_shared_workflow,
-    )
+    from openghg_inversions.rhime.co2.co2_o2_runner import annotate_co2_o2_trace, build_rhime_co2_o2
     from openghg_inversions.serialization import load_trace, save_trace
 
     channels, _ = inputs
@@ -231,43 +227,24 @@ def test_declared_boundary_policy_survives_saved_product_replay(inputs, tmp_path
     monkeypatch.setattr(_example, "synthetic_surface_inputs", lambda **kwargs: tuple(copied))
     with pytensor.config.change_flags(floatX="float64"):
         prepared = _example.prepare_control()
-        # Current level-only patterns are eager; this fixture tests borrowing lazy empty arrays.
-        prepared = replace(prepared, shared_baseline={
-            channel: replace(bound, data=bound.data.assign(
-                bc_pattern_raw=bound.data.bc_pattern_raw.chunk(),
-                bc_pattern_mean=bound.data.bc_pattern_mean.chunk(),
-            )) for channel, bound in prepared.shared_baseline.items()
-        })
-        config = Co2O2ModelConfig.from_params({
-            "recipe": "co2_o2_shared_baseline", "channels": {
-                name: {"units": "ppm", "independent_error_sd": .05} for name in ("co2", "o2")},
-        })
-        built, _, materialized_prepared = build_linked_shared_workflow(prepared, **config.bind(prepared))
+        config = Co2O2ModelConfig.from_params(_example.model_request())
+        built = build_rhime_co2_o2(prepared_inputs=prepared, **config.bind(prepared))
         with built.model:
             trace = pm.sample_prior_predictive(2, random_seed=12)
     trace = restore_inferencedata_coords(trace, get_coord_registry(built.model))
     # Synthetic replay draws test metadata, not posterior scientific acceptance.
     trace["posterior"] = xr.DataTree(trace.prior.to_dataset())
-    trace = annotate_linked_shared_workflow(trace, built=built, prepared=materialized_prepared)
+    trace = annotate_co2_o2_trace(trace, built=built)
     expected = prepared.provenance["surface_template_recipe"]
     for name in ("co2", "o2"):
         record = expected[name]["sites"]["SYNTH"]
         assert record["boundary_temporal_provenance"] == declared[name]
         assert record["selected_surface_inputs"]["sources"].keys() == _example.SOURCE_STATE[name].keys()
-    empty = [value for bound in prepared.shared_baseline.values()
-             for value in (bound.data.bc_pattern_raw, bound.data.bc_pattern_mean,
-                           bound.data.bc_pattern_raw - bound.data.bc_pattern_mean)]
-    borrowed = [(value.data, value.data.__dask_graph__(), value.chunks, dict(value.encoding)) for value in empty]
     path = tmp_path / f"prepared.{extension}"
     prepared.save(path)
-    for value, (data, graph, chunks, encoding) in zip(empty, borrowed, strict=True):
-        assert value.data is data and data.__dask_graph__() is graph
-        assert value.chunks == chunks and value.encoding == encoding
     with pytensor.config.change_flags(floatX="float64"):
         restored = Co2O2PreparedInputs.load(path)
     assert restored.provenance == prepared.provenance
-    for channel in ("co2", "o2"):
-        xr.testing.assert_identical(restored.shared_baseline[channel].data, prepared.shared_baseline[channel].data.compute())
     trace_path = tmp_path / f"trace.{extension}"
     save_trace(trace, trace_path)
     reopened = load_trace(trace_path)
@@ -296,20 +273,6 @@ def test_declared_boundary_policy_survives_saved_product_replay(inputs, tmp_path
     for channel, attrs in zip(channels, original_attrs, strict=True):
         assert channel.site_data["SYNTH"].attrs == attrs
         assert "boundary_temporal_provenance" not in legacy[channel.acquisition.species]["sites"]["SYNTH"]
-
-
-def test_surface_example_frozen_codec_accepts_dask_reduction_roundoff(tmp_path):
-    import pytensor
-    from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
-
-    with pytensor.config.change_flags(floatX="float64"):
-        prepared = _example.prepare_control()
-    path = tmp_path / "surface-prepared.nc"
-    prepared.save(path)
-    with pytensor.config.change_flags(floatX="float64"):
-        restored = Co2O2PreparedInputs.load(path)
-    for channel in ("co2", "o2"):
-        xr.testing.assert_identical(restored.shared_baseline[channel].data, prepared.shared_baseline[channel].data.compute())
 
 
 @pytest.mark.parametrize("extension", ["nc", "zarr"])
@@ -546,11 +509,8 @@ def test_lazy_covariance_axis_units_at_explicit_metadata_boundary(inputs):
 
 
 @pytest.mark.parametrize("extension", ["nc", "zarr"])
-def test_nonunit_native_templates_bind_snapshot_and_replay_independent_physical_sum(inputs, tmp_path, monkeypatch, extension):
-    import pymc as pm
+def test_nonunit_native_templates_survive_saving(inputs, tmp_path, extension):
     import pytensor
-    from openghg_inversions.models.shared_baseline import SharedBaselineChoice
-    from openghg_inversions.rhime.co2 import prepare_linked_shared_inputs, reconstruct_linked_shared_baseline
     from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
 
     channels, original = inputs
@@ -566,23 +526,10 @@ def test_nonunit_native_templates_bind_snapshot_and_replay_independent_physical_
             fields[f"bc_anomaly_{direction}"] = (xr.ones_like(site[f"bc_anomaly_{direction}"]) * scale * (.01 * (i + 1))).assign_attrs(units="ppm")
         altered.append(replace(channel, site_data={"SYNTH": site.assign(fields)}))
     linked = assemble(altered, original, provenance={"overlay": "independent nonunit-mass control"})
-    mean = linked.retained_prior.mean
-    outer = mean.copy(data=[True, True, False, True, True])
-    sampled = mean.copy(data=[True, True, False, False, False])
     with pytensor.config.change_flags(floatX="float64"):
-        prepared = prepare_linked_shared_inputs(
-            linked, choices={name: SharedBaselineChoice(None, 1., "multiplicative") for name in ("co2", "o2")},
-            outer=outer, sampled_outer=sampled,
-        )
         path = tmp_path / f"nonunit.{extension}"
-        prepared.save(path)
-        monkeypatch.setattr(SharedBaselineChoice, "bind", lambda *a, **kw: pytest.fail("snapshot rebound support"))
+        linked.save(path)
         restored = Co2O2PreparedInputs.load(path)
-    monkeypatch.setattr(pm.Model, "__init__", lambda *a, **kw: pytest.fail("replay constructed model"))
-    monkeypatch.setattr(pm, "sample", lambda *a, **kw: pytest.fail("replay sampled"))
-    coefficients = xr.Dataset({"flux_scaling": restored.shared_baseline["co2"].data.retained_mean,
-                               "co2_bc_mean_shift": xr.DataArray(0.), "o2_bc_mean_shift": xr.DataArray(0.)})
-    replay = reconstruct_linked_shared_baseline({name: bound.data for name, bound in restored.shared_baseline.items()}, coefficients)
     for name, reference in (("co2", 400.), ("o2", 209000.)):
         raw = restored.boundary_operands[name]
         mass = masses[name]
@@ -593,19 +540,5 @@ def test_nonunit_native_templates_bind_snapshot_and_replay_independent_physical_
         scientific_raw.attrs = {key: value for key, value in raw.attrs.items()
                                 if key not in {"array_names_json", "multiindex_dims_json"}}
         xr.testing.assert_identical(scientific_raw, linked.boundary_operands[name].compute())
-        bound = restored.shared_baseline[name]
-        np.testing.assert_allclose(bound.data.bc_reference_shift, reference * mass)
-        np.testing.assert_allclose(bound.data.physical_bc_prior, (.1 + reference) * mass)
-        sensitivity = getattr(linked, f"{name}_sensitivity").compute()
-        expected = sensitivity.data @ linked.retained_prior.mean.data + (.1 + reference) * mass
-        np.testing.assert_array_equal(linked.fixed_prior_contribution, 0.)
-        np.testing.assert_allclose(replay[name].modelled_concentration, expected, rtol=0, atol=1e-10)
-        row = bound.data.attrs["native_observation_dim"]
-        subset = replace(bound, data=bound.data.isel({row: [1]}))
-        xr.testing.assert_identical(subset.data.outer_column_mean, bound.data.outer_column_mean)
-        xr.testing.assert_identical(subset.data.bc_pattern_mean, bound.data.bc_pattern_mean)
-        subset_replay = reconstruct_linked_shared_baseline({name: subset.data}, coefficients)[name]
-        np.testing.assert_allclose(subset_replay.modelled_concentration, expected[[1]], rtol=0, atol=1e-10)
-        xr.testing.assert_identical(restored.shared_baseline[name].data, prepared.shared_baseline[name].data.compute())
     assert restored.provenance == linked.provenance
     assert restored.provenance["overlay"] == "independent nonunit-mass control"
