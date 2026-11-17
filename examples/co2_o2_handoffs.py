@@ -62,6 +62,7 @@ def synthetic_inputs() -> Co2O2PreparedInputs:
             coords={"o2_measure": o2.o2_measure, "o2_measure_cov": o2.o2_measure.values}),
         retained_prior=CorrelatedLognormalPrior(mean, np.diag([.01, .02, .03, .04, .05])),
         co2_units="ppm", o2_units="ppm", provenance={**FACTS, "example": "synthetic linked inputs"},
+        aggregation_error_rank=None,  # Five rows: keep the exact dense joint covariance.
     )
     errors = xr.ones_like(prepared.observations).rename("fixed_independent_error_sd")
     return replace(prepared, independent_error_sd=errors)

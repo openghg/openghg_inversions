@@ -213,6 +213,10 @@ def _annotate_co2_o2_trace(
             group["co2_o2_sensitivity"].attrs["units"] = "observation_units per dimensionless flux scale"
         if "aggregation_error_covariance" in group:
             group["aggregation_error_covariance"].attrs["units"] = "observation_units * observation_units_cov"
+        if "low_rank_factor" in group:
+            group["low_rank_factor"].attrs["units"] = "observation_units"
+        if "diagonal_residual_variance" in group:
+            group["diagonal_residual_variance"].attrs["units"] = "observation_units * observation_units"
         for name, unit in built.output_contract.metadata.get("boundary_units", {}).items():
             if name in group:
                 group[name].attrs["units"] = unit
@@ -389,7 +393,8 @@ def run_rhime_co2_o2_from_prepared_inputs(
         prepared_inputs: Validated preparation handoff containing joint
             observations and affine intercept on ``("observation",)``, separate
             channel sensitivities on their native observation axes and the retained
-            state axis, a dense joint aggregation covariance, retained prior,
+            state axis, a dense or low-rank-plus-diagonal joint aggregation
+            covariance, retained prior,
             ratio provenance, units, labels, and scientific provenance.
         independent_error_sd: Optional positive finite fixed standard deviations on
             ``("observation",)``. Labels and ``observation_units`` must match
