@@ -57,3 +57,13 @@ output_format = "basic"
 # One calibrated prior belongs to the joint flux state, outside channels.
 # [biosphere]
 # path = "biosphere-prior.nc"
+
+# Outer-region flux corrections for the joint flux state, outside channels
+# (see docs/usage/atmospheric_baseline.rst). Each channel boundary then needs
+# a mean_shift_prior, and outer ocean states must be held fixed. The retained
+# prior given to preparation must carry basis_group labels; preparation keeps
+# them but does not add them (issue #1094).
+# [outer_flux]
+# mode = "multiplicative"   # or "fixed"
+# outer_groups = ["outer"]
+# fixed_sources = ["ocean"]
