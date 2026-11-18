@@ -80,6 +80,7 @@ def prepare(tmp_path: Path, config: dict, merged: MergedData, name: str) -> Co2P
     (MultiplicativeChoice({"pdf": "normal", "mu": 1.0, "sigma": 0.1}), None, ("ordinary", False)),
     (MultiplicativeChoice({"pdf": "normal", "mu": 1.0, "sigma": 0.1}), "centered", ("centered", False)),
     (AdditiveChoice({"pdf": "normal", "mu": 0.0, "sigma": 1.0}, 0.1), None, ("centered", True)),
+    (AdditiveChoice({"pdf": "normal", "mu": 0.0, "sigma": 1.0}, 0.0), None, ("centered", False)),
     (AdditiveChoice(None, 0.1, anomalies="independent"), "centered", ("centered", False)),
 ])
 def test_choices_declare_their_preparation(choice, requested, expected) -> None:
@@ -100,6 +101,9 @@ def test_configuration_resolves_representation_from_boundary_type(partition: Pat
     assert resolved.native is not None and resolved.boundary is None
     assert resolved.native.acquisition["site_options"].sites == ("TOY",)
     assert resolved.native.aggregation_error_rank is None
+    config["model"] = {"boundary": {**ADDITIVE, "anomaly_scale": 0.0}}
+    level_only = Co2PreparationConfig.from_params(config)
+    assert level_only.native is not None and level_only.native.bc_centering_weights_path is None
     config["model"] = {"boundary": ADDITIVE}
     with pytest.raises(ValueError, match="requires prepared_inputs.bc_centering_weights_path"):
         Co2PreparationConfig.from_params(config)
