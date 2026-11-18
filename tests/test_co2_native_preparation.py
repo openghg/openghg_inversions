@@ -283,6 +283,25 @@ def test_full_runner_builds_from_configuration(tmp_path: Path, merged: MergedDat
         run_co2(params={**config, "prepared_inputs": {"path": "prepared.nc", **WINDOW}}, merged_data=merged)
 
 
+def test_native_outputs_cannot_overwrite_a_consumed_resource(tmp_path: Path, merged: MergedData) -> None:
+    """Native preparation reads its resources before writing, so targets must not alias them."""
+    output_dir = tmp_path / "prepared"
+    output_dir.mkdir()
+    resource = output_dir / "prepared-inputs.nc"
+    flux = merged.flux_data["fossil"].flux.isel(time=0, drop=True)
+    xr.ones_like(flux, dtype=int).rename("basis").to_dataset().to_netcdf(resource)
+    original = resource.read_bytes()
+    config = request(resource)
+    arguments = Co2PreparationConfig.from_params(load_co2_params(params=config), require_source=True)
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+        handoffs.prepare(**arguments.preparation_arguments(), merged_data=merged, output_dir=output_dir)
+    config["outputs"] = {"output_format": "basic", "output_path": str(tmp_path / "products"), "save_trace": str(resource)}
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+        run_co2(params=config, merged_data=merged)
+    assert resource.read_bytes() == original
+    assert not (output_dir / "prepare-manifest.json").exists()
+
+
 @pytest.mark.parametrize("template", ["co2.toml", "co2_fixed_ou.toml"])
 def test_template_build_block_is_a_valid_preparation(template: str) -> None:
     import tomllib
