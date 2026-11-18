@@ -133,6 +133,8 @@ class BiospherePriorConfig:
         Raises:
             ValueError: If calibration rejects the labels, selector, missing
                 units or moments, or the configured target is infeasible.
+                Incompatible target or reference units raise Pint's
+                ``DimensionalityError`` instead.
         """
         residual_multiplier: float | None = None
         absolute_target: xr.DataArray | None = None
