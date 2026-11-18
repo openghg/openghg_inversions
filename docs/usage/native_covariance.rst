@@ -3,11 +3,19 @@ Native Covariance Projection
 
 The native covariance projection API prepares labelled covariance and
 observation product blocks for reducing a gridded scaling state. It keeps basis
-geometry, native covariance, and retained-state semantics separate, and never
-constructs a dense native-grid covariance matrix. This low-level operation is
-not connected to RHIME input preparation or likelihoods, and
-its product blocks are inputs to the separate :doc:`coherent_reduction`
-operation rather than a complete coherent-reduction result by themselves.
+geometry, native covariance, and retained-state semantics separate. Covariance
+actions apply :math:`B` and solve with it. Separable kernels and source
+combinations, including correlated sources, form no dense native-grid
+covariance matrix. Each dense geodesic class, however, holds an
+:math:`n \times n` block for its :math:`n` cells; when one class covers the
+grid, that block spans the whole native grid (see
+:ref:`geodesic-class-blocks`). The product blocks are inputs to the separate
+:doc:`coherent_reduction` operation rather than a complete coherent-reduction
+result by themselves. Configured CO2 preparation
+(:ref:`co2-configured-preparation`) uses the covariance actions and product
+blocks to reduce its native prior; with per-source priors it reduces every
+source jointly, with a configured GPP/TER correlation, through
+:class:`~openghg_inversions.correlated_source_covariance.CorrelatedSourceCovariance`.
 
 Component overview
 ------------------
@@ -48,6 +56,12 @@ The classes have the following distinct roles.
        ``ClassMixedExponentialCovariance`` instances. Covariance application
        and solves use the common action interface; only multisource basis
        expansion needs a separate source-aware path.
+   * - ``CorrelatedSourceCovariance``
+     - Multisource covariance that adds cross-source blocks
+       :math:`\rho\,\sigma_s\sigma_t K` for sources sharing one unit kernel
+       :math:`K`, such as GPP and TER; other sources stay independent. Apply
+       and solve use one operation per source and form no dense cross-source
+       matrix. Configured CO2 per-source preparation uses it for every source.
    * - ``RetainedProjectionStrategy``
      - Pi-first policy interface that chooses the authoritative labelled
        restriction :math:`\Pi`. Each strategy owns the inputs that define
@@ -327,8 +341,9 @@ classes stay uncorrelated:
    )
    ff = gpp.with_sigma(0.6)  # same kernel, shared dense factor
 
-Per-source configuration goes through ``IndependentSourceCovariance``, whose
-blocks may mix separable and class-mixed sources with their own lengths.
+Per-source covariances compose through ``IndependentSourceCovariance`` or,
+with a GPP/TER correlation, ``CorrelatedSourceCovariance``; either may mix
+separable and class-mixed sources with their own lengths.
 
 Each dense class of :math:`n` cells is built once and stored as one
 Fortran-ordered :math:`n \times n` float64 array, :math:`8n^2` bytes (1.1 GB
@@ -461,8 +476,17 @@ This is the native counterpart of
 independent retained basis-state widths instead. Native amplitudes fix
 :math:`B` before coherent reduction, so the reduced prior they induce is
 already calibrated; do not also apply a retained-prior recalibration to the
-same sources, or their uncertainty is calibrated twice. Sources are
-independent, so a GPP/TER native cross-correlation is not modelled.
+same sources, or their uncertainty is calibrated twice.
+
+The calibration is marginal: each source's amplitude is fitted from that
+source's own :math:`B_s`, as in ``IndependentSourceCovariance``, so
+cross-source terms do not enter the fit and targets on totals across sources,
+such as net biosphere, are not supported. A GPP/TER correlation added
+afterwards with ``CorrelatedSourceCovariance`` leaves each source's own block
+:math:`B_s`, and so its calibrated targets, unchanged, but changes the SD of
+any total across sources. Configured CO2 preparation calibrates sources without
+``sigma`` this way and then reduces all sources jointly with the configured
+correlation.
 
 Correspondence with ``verification-games``
 -------------------------------------------
@@ -514,8 +538,16 @@ strategy.
      - ``calibrate_native_b_amplitudes`` with one target per source reproduces
        the prototype amplitudes. Its net-biosphere and net-land targets with a
        GPP/TER cross-correlation, and the robust regularised fit, are not
-       ported because OGI sources are independent.
-   * - Cross-source covariance, arbitrary reporting functionals :math:`Q`,
+       ported: calibration stays marginal per source even when a GPP/TER
+       correlation is configured.
+   * - GPP/TER cross-source covariance
+     - Ported for a shared kernel
+     - ``CorrelatedSourceCovariance`` correlates sources that share one unit
+       kernel; sources with different kernels cannot be correlated. Configured
+       CO2 preparation (:ref:`co2-configured-preparation`) reduces it jointly,
+       so the cross blocks enter :math:`C_\alpha`, :math:`HB\Pi^\mathsf{T}`
+       and the unresolved observation covariance.
+   * - Arbitrary reporting functionals :math:`Q`,
        :math:`B_\perp` products, coherent likelihood reduction, reconstruction,
        and covariance approximation
      - Not ported
@@ -527,5 +559,6 @@ API reference
 
 See :mod:`openghg_inversions.native_covariance`,
 :mod:`openghg_inversions.source_covariance`,
+:mod:`openghg_inversions.correlated_source_covariance`,
 :mod:`openghg_inversions.native_b_calibration`, and
 :mod:`openghg_inversions.basis.covariance_products` for the public interfaces.

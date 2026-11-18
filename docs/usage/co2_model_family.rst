@@ -8,8 +8,10 @@ responses onto explicit retained coefficients using a supplied joint covariance;
 :doc:`linked_surface_templates` explains its zero-intercept assumption and
 offline example.
 
-Both recipes begin from scientific arrays that have already been prepared; they
-are not alternative species settings for the complete standard runner.
+The linked recipe begins from scientific arrays that have already been
+prepared. The CO₂-only recipe accepts such arrays or builds its preparation from
+configured OpenGHG acquisition (see :ref:`co2-configured-preparation`). Neither
+recipe is an alternative species setting for the complete standard runner.
 
 The experimental :doc:`surface preparation pilot <surface_preparation>` adds
 explicit source transport and centered stable-BC operands for additive-Gaussian
@@ -45,6 +47,9 @@ Current support
        canonical RHIME observations and metadata with one coherent reduction
        in a dedicated
        :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact.
+       Configured ``[prepared_inputs.acquisition]`` instead acquires
+       continuous-surface data from OpenGHG and builds the preparation with its
+       affine companion; see :ref:`co2-configured-preparation`.
      - :func:`openghg_inversions.rhime.co2.prepare_co2_o2_inputs` gathers
        caller-supplied, channel-native prepared arrays; it does not acquire
        OpenGHG data. :ref:`Save and replay linked prepared inputs
@@ -133,12 +138,17 @@ configure multiplicative or additive boundary corrections for them, follow
 Staged CO₂ commands
 -------------------
 
-CO₂ starts from canonical scientific inputs and a coherent reduction,
-or an existing :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact.
-It does not acquire OpenGHG data or infer a coherent reduction from a gas name.
+CO₂ starts from one of three inputs: configured acquisition
+(``[prepared_inputs.acquisition]``; see :ref:`co2-configured-preparation`);
+canonical scientific inputs with a coherent reduction; or an existing
+:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact. Configured
+acquisition retrieves OpenGHG data and reduces the configured native prior; CO₂
+never infers a coherent reduction from a gas name.
 ``run_co2`` prepares or loads inputs, explicitly materializes the
 selected scientific arrays, constructs the model, samples, then
-calculates and writes requested products. Full execution uses no manifests.
+calculates and writes requested products. Full execution uses no manifests and
+keeps a new preparation and its affine companion in memory; only staged
+``prepare`` saves a reusable pair.
 Direct scientific callers can compose materialization, model construction,
 sampling and trace annotation explicitly; see :doc:`co2_models`.
 
