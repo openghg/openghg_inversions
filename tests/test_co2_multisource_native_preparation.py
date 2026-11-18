@@ -383,9 +383,37 @@ def test_multisource_prepare_matches_dense_reference(
     np.testing.assert_allclose(native, m + expected["lift"] @ (1.3 - expected["mean"]), rtol=1e-8, atol=1e-10)
 
 
+def test_multisource_resources_are_protected_from_outputs(files: dict[str, Path], tmp_path: Path) -> None:
+    """Class, region and calibration files join the consumed paths the output guards protect."""
+    targets = tmp_path / "targets.nc"
+    table = _native_prior(files, "absolute_flux_weighted_mean", retained_regions_path=str(files["retained"]),
+                          calibration={"targets_path": str(targets)})
+    del table["sources"]["gpp"]["sigma"]
+    native = Co2PreparationConfig.from_params(load_co2_params(params=_request(files, table))).native
+    assert native is not None
+    assert set(native.resource_paths()) == {
+        files[name].resolve() for name in ("partition", "classes", "retained")
+    } | {targets.resolve()}
+
+
+@pytest.mark.parametrize("reversed_selection", [False, True])
 def test_retained_regions_marginalize_the_others(
-    tmp_path: Path, merged: MergedData, files: dict[str, Path],
+    tmp_path: Path, merged: MergedData, files: dict[str, Path], monkeypatch: pytest.MonkeyPatch,
+    reversed_selection: bool,
 ) -> None:
+    """Retained states keep their regions' identities, whatever order a caller selects them in."""
+    if reversed_selection:
+        from openghg_inversions.rhime.co2.co2_native_preparation import MultiSourceNativeResources
+
+        load = MultiSourceNativeResources.load
+
+        def reversed_load(prior):
+            """Pass the loaded selections to the public constructor in reverse order."""
+            loaded = load(prior)
+            selection = {source: tuple(reversed(labels)) for source, labels in loaded.retained_regions.items()}
+            return MultiSourceNativeResources(loaded.class_labels, selection, loaded.calibration_targets)
+
+        monkeypatch.setattr(MultiSourceNativeResources, "load", staticmethod(reversed_load))
     table = _native_prior(files, "absolute_flux_weighted_mean", retained_regions_path=str(files["retained"]))
     prepared = handoffs.load_preparation(_prepare(tmp_path, _request(files, table), merged, "retained")).prepared
     inputs = prepared.inv_inputs
