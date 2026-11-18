@@ -442,6 +442,16 @@ class Co2NativePreparationConfig:
             )
         return cls(**result)
 
+    def resource_paths(self) -> tuple[Path, ...]:
+        """Identify the configured files native preparation reads, for output alias guards."""
+        basis = self.basis
+        paths = (
+            basis.basis_path, basis.basis_partition_path, *(basis.basis_partition_paths or ()),
+            basis.landsea_path, basis.outer_regions_path, *(basis.bc_basis_paths or ()),
+            self.bc_centering_weights_path,
+        )
+        return tuple(Path(path).resolve() for path in paths if path is not None)
+
 
 def _acquisition(value: object) -> dict[str, Any]:
     """Parse ``[prepared_inputs.acquisition]`` into acquisition keywords."""
