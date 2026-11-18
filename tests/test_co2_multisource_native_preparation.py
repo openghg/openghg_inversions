@@ -679,9 +679,10 @@ def test_configured_outer_flux_selects_fixed_outer_basis_states(
                     else {"sigma": 0.2, "correlation_length": 1.0})
     config = _request({"partition": tmp_path / "unused.nc"} if not per_source else files, native_prior)
     config["prepared_inputs"]["basis"] = _fixed_outer_basis(tmp_path)
-    # The boundary choice also selects the centred representation at preparation.
+    # The boundary choice also selects the centred representation at preparation;
+    # a level-only additive boundary needs no centring weights.
     config["model"] = {
-        "boundary": {"type": "anomaly_scaling", "scale_sd": 0.3,
+        "boundary": {"type": "additive", "anomaly_scale": 0.0,
                      "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 1.0}},
         "outer_flux": {"mode": "multiplicative", "outer_groups": ["outer"]},
     }
