@@ -615,7 +615,8 @@ _DEVEL_V1_DATASET = {
         },
     },
 }
-# Devel's apply and solve of np.arange(8.0) on (native_source, lat, lon) for that covariance.
+# Devel's apply and solve of np.arange(8.0) on (native_source, lat, lon) for that covariance;
+# compared to a few ulp because BLAS summation order differs between platforms.
 _DEVEL_V1_APPLY = [
     [[0.6006741304025641, 3.461011195603847], [5.120000000000001, 7.980337065201284]],
     [[4.947280816406728, 5.2734183088643585], [5.884809649929843, 6.210947142387475]],
@@ -639,7 +640,7 @@ def test_devel_version_1_dataset_still_loads_and_is_still_written() -> None:
     xr.testing.assert_identical(restored.to_dataset(), golden)
     assert restored.to_dataset().attrs["schema_version"] == 1
     assert IndependentSourceCovariance.schema_version == 2
-    np.testing.assert_array_equal(restored.apply(rhs).values, _DEVEL_V1_APPLY)
+    np.testing.assert_allclose(restored.apply(rhs).values, _DEVEL_V1_APPLY, rtol=1e-13)
     np.testing.assert_allclose(restored.solve(rhs).values, _DEVEL_V1_SOLVE, rtol=1e-13)
 
 
