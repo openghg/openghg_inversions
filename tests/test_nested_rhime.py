@@ -560,6 +560,19 @@ def test_inner_data_config_is_reusable_independently_of_reporting(tmp_path, outp
     assert explicit.basis_output_path == tmp_path / "export.nc"
 
 
+def test_inner_data_config_inherits_basis_seed_only_for_a_generated_quadtree(tmp_path):
+    from tests.test_staged_workflow import _params
+
+    config = RhimeConfig.from_params(_params(basis_algorithm="quadtree", basis_seed=5), multisector=False)
+    assert nested_module.inner_data_config(config.data, inner_domain="6km").basis_seed == 5
+    saved = nested_module.inner_data_config(
+        config.data, inner_domain="6km", inner_basis_algorithm="weighted", inner_basis_path=tmp_path / "inner.nc",
+    )
+    assert saved.basis_seed == 5
+    with pytest.raises(ValueError, match="basis_seed.*inner_basis_algorithm"):
+        nested_module.inner_data_config(config.data, inner_domain="6km", inner_basis_algorithm="weighted")
+
+
 def test_nested_automatic_basis_budget_uses_bounded_sensitivity_share() -> None:
     time = pd.date_range("2019-01-01", periods=2)
     lat = [0.0, 1.0]

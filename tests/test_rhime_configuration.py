@@ -156,6 +156,30 @@ def test_builtin_basis_algorithms_resolve(algorithm):
     assert config.data.basis_algorithm == algorithm
 
 
+def test_basis_seed_resolves_for_generated_quadtree_and_is_inactive_for_saved_bases():
+    generated = rhime_params.RhimeConfig.from_params(
+        _request(basis_algorithm="quadtree", basis_seed=42), multisector=False
+    )
+    saved = rhime_params.RhimeConfig.from_params(
+        _request(basis_path="saved.nc", basis_algorithm="weighted", basis_seed=42), multisector=False
+    )
+    assert generated.data.basis_seed == saved.data.basis_seed == 42
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"basis_algorithm": "quadtree", "basis_seed": -1}, "integer in"),
+        ({"basis_algorithm": "quadtree", "basis_seed": True}, "integer in"),
+        ({"basis_algorithm": "quadtree", "basis_seed": 1.5}, "integer in"),
+        ({"basis_algorithm": "weighted", "basis_seed": 1}, "applies only to"),
+    ],
+)
+def test_invalid_basis_seed_is_rejected(overrides, message):
+    with pytest.raises(ValueError, match=f"basis_seed.*{message}"):
+        rhime_params.RhimeConfig.from_params(_request(**overrides), multisector=False)
+
+
 def test_unknown_basis_algorithm_is_rejected():
     with pytest.raises(ValueError, match="basis_algorithm.*project_algorithm"):
         rhime_params.RhimeConfig.from_params(_request(basis_algorithm="project_algorithm"), multisector=False)
