@@ -122,14 +122,17 @@ class AdditiveChoice:
         return MeanShift(self.mean_prior, self.mean_by_period)
 
     def preparation(self, representation: BoundaryRepresentation | None = None) -> Preparation:
-        """Additive corrections need centered sensitivity, and weights when weighted.
+        """Additive corrections need centered sensitivity, and weights for sampled weighted anomalies.
+
+        A level-only boundary (``anomaly_scale = 0``) samples no anomalies, so
+        :meth:`bind` ignores any weights and preparation need not store them.
 
         Args:
             representation: Requested representation, or ``None``.
 
         Returns:
             Centered preparation, with ``bc_centering_weights`` for weighted
-            anomalies.
+            anomalies with a positive scale.
 
         Raises:
             ValueError: If ordinary sensitivity is requested.
@@ -139,7 +142,7 @@ class AdditiveChoice:
                 "The additive boundary requires boundary_representation='centered'; "
                 "it cannot use ordinary H_bc."
             )
-        return Preparation("centered", centering_weights=self.anomalies == "weighted")
+        return Preparation("centered", centering_weights=self.anomalies == "weighted" and self.anomaly_scale > 0)
 
     def bind(self, observations: xr.DataArray, sensitivity: RawCenteredSensitivity) -> AdditiveBoundary:
         """Bind centered sensitivity, and any centering weights, to one fit.
