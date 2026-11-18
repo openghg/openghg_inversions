@@ -138,9 +138,9 @@ configure multiplicative or additive boundary corrections for them, follow
 Staged CO₂ commands
 -------------------
 
-CO₂ starts from configured acquisition (``[prepared_inputs.acquisition]``, see
-:ref:`co2-configured-preparation`), canonical scientific inputs and a coherent
-reduction, or an existing
+CO₂ starts from one of three inputs: configured acquisition
+(``[prepared_inputs.acquisition]``; see :ref:`co2-configured-preparation`);
+canonical scientific inputs with a coherent reduction; or an existing
 :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact. Configured
 acquisition retrieves OpenGHG data and reduces the configured native prior; CO₂
 never infers a coherent reduction from a gas name.
