@@ -447,9 +447,10 @@ def test_burn_and_relabel_share_one_group_boundary(burn, independent_draws):
         coords={"chain": [9], "draw": np.arange(independent_draws) + 100},
         attrs={"source": "independent"},
     )
-    sampled_names = ("posterior", "sample_stats", "log_likelihood", "log_prior")
+    sampled_names = ("posterior", "unconstrained_posterior", "sample_stats", "log_likelihood", "log_prior")
     untouched_names = (
-        "warmup_posterior", "warmup_sample_stats", "warmup_log_likelihood", "warmup_log_prior",
+        "warmup_posterior", "warmup_unconstrained_posterior", "warmup_sample_stats",
+        "warmup_log_likelihood", "warmup_log_prior",
         "prior", "prior_predictive", "posterior_predictive", "predictions",
     )
     raw = xr.DataTree.from_dict({
@@ -467,6 +468,22 @@ def test_burn_and_relabel_share_one_group_boundary(burn, independent_draws):
     for name in (*untouched_names, "constant_data"):
         xr.testing.assert_identical(trace[name], original[name])
     xr.testing.assert_identical(raw, original)
+
+
+def test_burn_keeps_transformed_draws_with_their_posterior_draws():
+    """Burn retains the same draws of a recorded transformed group as of the posterior."""
+    from openghg_inversions.inference.sampling import _burn_retained_draws
+
+    x = np.array([[1.0, 2.0, 3.0, 4.0]])
+    coords = {"chain": [0], "draw": np.arange(4)}
+    raw = xr.DataTree.from_dict({
+        "posterior": xr.Dataset({"x": (("chain", "draw"), x)}, coords=coords),
+        "unconstrained_posterior": xr.Dataset({"x_log__": (("chain", "draw"), np.log(x))}, coords=coords),
+    })
+    trace = _burn_retained_draws(raw, burn=2)
+    np.testing.assert_array_equal(trace.unconstrained_posterior.draw, [0, 1])
+    np.testing.assert_allclose(np.exp(trace.unconstrained_posterior.x_log__), trace.posterior.x)
+    np.testing.assert_array_equal(trace.posterior.x, [[3.0, 4.0]])
 
 
 @pytest.mark.parametrize("compact", [False, True])
