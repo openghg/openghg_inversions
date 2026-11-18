@@ -4,16 +4,17 @@ Native Covariance Projection
 The native covariance projection API prepares labelled covariance and
 observation product blocks for reducing a gridded scaling state. It keeps basis
 geometry, native covariance, and retained-state semantics separate. Covariance
-actions apply :math:`B` and solve with it: separable kernels and source
+actions apply :math:`B` and solve with it. Separable kernels and source
 combinations, including correlated sources, form no dense native-grid
-covariance matrix, but each dense geodesic class holds an :math:`n \times n`
-block for its :math:`n` cells, which is the whole native grid when one class
-covers it (see :ref:`geodesic-class-blocks`). The product blocks are inputs to
-the separate :doc:`coherent_reduction` operation rather than a complete
-coherent-reduction result by themselves. Configured CO2 preparation
-(:ref:`co2-configured-preparation`) uses both to reduce its native prior; with
-per-source priors it reduces every source jointly, with a configured GPP/TER
-correlation, through
+covariance matrix. Each dense geodesic class, however, holds an
+:math:`n \times n` block for its :math:`n` cells; when one class covers the
+grid, that block spans the whole native grid (see
+:ref:`geodesic-class-blocks`). The product blocks are inputs to the separate
+:doc:`coherent_reduction` operation rather than a complete coherent-reduction
+result by themselves. Configured CO2 preparation
+(:ref:`co2-configured-preparation`) uses the covariance actions and product
+blocks to reduce its native prior; with per-source priors it reduces every
+source jointly, with a configured GPP/TER correlation, through
 :class:`~openghg_inversions.correlated_source_covariance.CorrelatedSourceCovariance`.
 
 Component overview
