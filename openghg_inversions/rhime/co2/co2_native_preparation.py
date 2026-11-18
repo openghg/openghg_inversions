@@ -241,13 +241,22 @@ class MultiSourceNativeResources:
         class_labels: Integer class labels on ``(lat, lon)`` or
             ``(source, lat, lon)``, or ``None`` for one class per source.
         retained_regions: Retained region labels per source, as written in
-            the basis partition, or ``None`` to retain every region.
+            the basis partition, or ``None`` to retain every region. Each
+            selection is stored sorted and without duplicates, the order in
+            which the restriction numbers retained states.
         calibration_targets: Functional weights and SD targets, or ``None``.
     """
 
     class_labels: xr.DataArray | None = None
     retained_regions: Mapping[str, tuple[int, ...]] | None = None
     calibration_targets: xr.Dataset | None = None
+
+    def __post_init__(self) -> None:
+        """Normalize each retained-region selection to sorted unique labels."""
+        if self.retained_regions is not None:
+            object.__setattr__(self, "retained_regions", {
+                str(source): tuple(sorted(set(labels))) for source, labels in self.retained_regions.items()
+            })
 
     @classmethod
     def load(cls, prior: Co2MultiSourceNativePrior) -> MultiSourceNativeResources:
@@ -270,7 +279,7 @@ class MultiSourceNativeResources:
                 for labels in record.values()
             ):
                 raise ValueError("retained_regions_path must map each source to a non-empty list of integer labels.")
-            retained = {str(source): tuple(sorted(set(labels))) for source, labels in record.items()}
+            retained = {str(source): tuple(labels) for source, labels in record.items()}
         targets = None
         if prior.calibration is not None:
             targets = xr.load_dataset(prior.calibration.targets_path)
