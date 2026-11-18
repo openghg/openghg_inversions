@@ -62,8 +62,26 @@ class BiospherePriorConfig:
     def from_params(cls, params: Mapping[str, object]) -> BiospherePriorConfig:
         """Parse family and one multiplier, residual-SD or marginal-gross-SD target.
 
+        Args:
+            params: The ``biosphere`` table. ``family`` is ``"lognormal"``
+                (default) or ``"gaussian"``. Exactly one policy is required,
+                with no default: a positive ``residual_sd_multiplier``, or a
+                ``target_residual_sd`` or marginal ``target_gross_sd`` given as
+                a ``{value, units}`` table with a positive value and Pint units.
+                No other keys are accepted.
+
         Returns:
-            Calibration choices, without resolving numerical inputs.
+            Calibration choices, without resolving numerical inputs. Unit
+            compatibility and target feasibility are checked by :meth:`prepare`.
+
+        Raises:
+            TypeError: If the table, a key, ``family``, a value or ``units``
+                has the wrong type.
+            ValueError: If ``family`` is unknown, zero or several policies are
+                given, a policy value is not finite and positive, a target
+                lacks ``value`` or ``units``, or an unknown key is present.
+                Units that Pint does not recognise raise Pint's
+                ``UndefinedUnitError`` instead.
         """
         options = _table(params, "biosphere")
         family_name = _string(options.pop("family", "lognormal"), "biosphere.family")
@@ -95,8 +113,26 @@ class BiospherePriorConfig:
     ) -> BiospherePrior:
         """Calibrate labelled selector/functionals at the existing eager boundary.
 
+        Forwards the configured family and policy to
+        :func:`~openghg_inversions.biosphere_prior.calibrate_biosphere_prior`,
+        which owns the detailed label, selector, unit and feasibility contract.
+        Absolute targets carry their configured units and are converted to the
+        units of ``weights``.
+
+        Args:
+            baseline: The original retained prior to calibrate.
+            biosphere: Boolean selector on the baseline state dimension.
+            weights: ``GPP`` and ``TER`` reporting weights on ``process`` and
+                the state dimension, with declared flux units.
+            reference: ``GPP`` and ``TER`` totals at the baseline mean on
+                ``process``, with declared flux units.
+
         Returns:
             The resolved prior and audit for the exact original retained prior.
+
+        Raises:
+            ValueError: If calibration rejects the labels, selector, missing
+                units or moments, or the configured target is infeasible.
         """
         residual_multiplier: float | None = None
         absolute_target: xr.DataArray | None = None
@@ -117,5 +153,14 @@ class BiospherePriorConfig:
 
     @staticmethod
     def save(prepared: BiospherePrior, path: str | Path) -> None:
-        """Save the complete original prior, selector, functionals and resolved audit."""
+        """Save the complete original prior, selector, functionals and resolved audit.
+
+        Args:
+            prepared: A calibration returned by :meth:`prepare`.
+            path: New artifact destination, reopened by ``load_biosphere_prior``.
+
+        Raises:
+            FileExistsError: If ``path`` already exists; files are never
+                overwritten.
+        """
         _save(prepared.to_dataset(), path, "biosphere_prior")
