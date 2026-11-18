@@ -835,7 +835,7 @@ representations it can bind and which extra inputs it needs
      - ``"ordinary"``
      - ``"ordinary"`` or ``"centered"``
    * - ``"additive"``
-     - ``"centered"``, with ``bc_centering_weights_path`` for weighted anomalies
+     - ``"centered"``, with ``bc_centering_weights_path`` for weighted anomalies with a positive scale
      - ``"centered"`` only
    * - ``"anomaly_scaling"``
      - ``"centered"``

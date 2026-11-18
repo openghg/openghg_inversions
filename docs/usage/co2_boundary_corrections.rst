@@ -19,9 +19,10 @@ Prerequisites
   :doc:`surface_preparation`.
 * For centered operands, a PyTensor process configured with
   ``floatX=float64``. Binding checks this once.
-* For weighted additive corrections, the complete averaging weights
-  ``bc_centering_weights``, stored when the artifact is prepared (see
-  :ref:`co2-boundary-weights`).
+* For weighted additive corrections with a positive ``anomaly_scale``, the
+  complete averaging weights ``bc_centering_weights``, stored when the
+  artifact is prepared (see :ref:`co2-boundary-weights`). A level-only
+  boundary (``anomaly_scale = 0``) samples no anomalies and needs none.
 
 Choose a boundary
 -----------------
