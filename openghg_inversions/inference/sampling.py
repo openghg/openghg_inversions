@@ -200,8 +200,9 @@ def _burn_retained_draws(trace: xr.DataTree, *, burn: int) -> xr.DataTree:
         posterior-aligned groups.
     """
     trace.attrs["burn"] = burn
-    # PyMC computes both log-density groups from the same posterior states.
-    for group_name in ("posterior", "sample_stats", "log_likelihood", "log_prior"):
+    # PyMC computes both log-density groups from the same posterior states, and
+    # ZarrTrace(include_transformed=True) records those states' transformed values.
+    for group_name in ("posterior", "unconstrained_posterior", "sample_stats", "log_likelihood", "log_prior"):
         if group_name not in trace.children:
             continue
         group = trace[group_name].to_dataset()
