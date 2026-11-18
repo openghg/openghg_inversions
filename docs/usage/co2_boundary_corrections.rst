@@ -129,8 +129,8 @@ Configure a CO₂ fit
 ``[model.boundary]`` without a ``type`` is multiplicative and uses the
 default scaling prior unless ``prior`` is configured. ``frequency`` and
 ``anchor_time`` select its periods. For additive corrections, use an artifact
-containing native centered operands and ``bc_centering_weights`` and
-configure:
+containing native centered operands, plus ``bc_centering_weights`` when weighted
+anomalies have a positive ``anomaly_scale``, and configure:
 
 .. code-block:: toml
 

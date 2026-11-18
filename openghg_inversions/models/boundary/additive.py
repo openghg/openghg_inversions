@@ -74,7 +74,8 @@ class AdditiveChoice:
             anomaly coordinates, in concentration units. Zero keeps only the
             mean shift.
         anomalies: Anomaly structure: ``"weighted"`` (requires prepared
-            centering weights), ``"period_contrasts"`` or ``"independent"``.
+            centering weights when ``anomaly_scale`` is positive),
+            ``"period_contrasts"`` or ``"independent"``.
         mean_by_period: Fit one independent mean shift per boundary period;
             requires a mean prior and a ``frequency``.
         frequency: Boundary period frequency, with the syntax and calendar of
@@ -160,17 +161,18 @@ class AdditiveChoice:
             The bound boundary. ``H_bc_anomaly`` and ``H_bc_mass`` lie on
             ``(observation, bc_region)`` with a ``(bc_curtain, bc_period)``
             state index, beside the stored scalar ``bc_reference`` and, for
-            weighted anomalies, ``bc_centering_weights`` on ``bc_region``.
+            weighted anomalies with a positive scale, ``bc_centering_weights``
+            on ``bc_region``.
             Numerical payloads stay borrowed and lazy.
 
         Raises:
             ValueError: If PyTensor is not configured for float64, periods or
                 indexed timestamps conflict with the observations, weighted
-                anomalies have no weights, or the weights' curtain and period
-                labels differ from the bound states (for example because they
-                were prepared with another calendar), or there is no mean
-                shift prior and the bound states leave no anomaly coordinates,
-                so nothing would be sampled.
+                anomalies with a positive scale have no weights, or their
+                weights' curtain and period labels differ from the bound
+                states (for example because they were prepared with another
+                calendar), or there is no mean shift prior and the bound states
+                leave no anomaly coordinates, so nothing would be sampled.
         """
         data = BoundCenteredSensitivity.bind(
             sensitivity, observations, frequency=self.frequency, anchor_time=self.anchor_time,
@@ -199,8 +201,8 @@ class AdditiveBoundary(CenteredBoundary):
             (concentration units) and ``H_bc_mass`` (dimensionless) on
             ``(observation, bc_region)``, where ``bc_region`` indexes
             ``(bc_curtain, bc_period)`` states, and scalar ``bc_reference``
-            in the anomaly's units. Weighted anomalies hold the
-            :class:`~.contracts.BoundAdditiveSensitivity` extension, with
+            in the anomaly's units. Weighted anomalies with a positive scale
+            hold the :class:`~.contracts.BoundAdditiveSensitivity` extension, with
             positive ``bc_centering_weights`` on ``bc_region``.
             The arrays are borrowed and may be Dask-backed. Materialize them
             jointly with the other model inputs before :meth:`add`; rows may

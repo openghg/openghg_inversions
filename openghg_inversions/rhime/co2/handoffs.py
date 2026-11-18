@@ -156,7 +156,7 @@ def prepare(
     ``bc_centering_weights`` is stored with new centered preparations from
     canonical inputs, as in
     :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`;
-    weighted additive boundaries require it.
+    weighted additive boundaries with a positive ``anomaly_scale`` require it.
     """
     if (canonical_inputs is None) != (reduction is None):
         raise ValueError("Pass canonical_inputs and reduction together.")
