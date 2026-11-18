@@ -192,9 +192,11 @@ def select_boundary_representation(
     either preparation. Ordinary preparation collapses them exactly to
     ``bc_<d> = bc_anomaly_<d> + bc_reference * bc_mass_<d>`` in float64,
     in the anomaly units; the reference cancels. Centered preparation keeps
-    them unchanged. Sites without boundaries, and absolute sites requested
-    as ordinary, are returned unchanged. Datasets are borrowed: results are
-    shallow copies and lazy payloads stay lazy.
+    them unchanged. Input datasets are borrowed and never modified. Sites
+    already in the requested representation, including sites without
+    boundaries, map to the same dataset objects. Only centered sites requested
+    as ordinary map to new datasets, which share their remaining variables
+    with the input. Lazy payloads stay lazy.
 
     Args:
         site_data: Per-site merged datasets.
