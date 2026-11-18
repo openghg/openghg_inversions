@@ -369,5 +369,6 @@ saves/reopens preparation and restores absolute prior predictions:
 
 The pilot is tracked in `issue 957
 <https://github.com/openghg/openghg_inversions/issues/957>`_. Wider adoption,
-automatic coherent preparation, public provider APIs, alternative O₂ observables
+configured coherent preparation beyond the CO₂-only recipe (see
+:ref:`co2-configured-preparation`), public provider APIs, alternative O₂ observables
 and native mixed-cadence reporting remain separate work.

@@ -691,9 +691,10 @@ Instead of ``prepared_inputs.path``, an ``acquisition`` table builds a new
 preparation in the same configuration. The full runner and the staged
 ``prepare`` command then acquire continuous-surface CO₂ through explicit
 surface transport (see :doc:`surface_preparation`), select observations,
-derive observation errors, build the flux and boundary bases, reduce a native
-Gaussian prior coherently and save the prepared inputs with their affine
-companion:
+derive observation errors, build the flux and boundary bases, and reduce a native
+Gaussian prior coherently. The result is the prepared inputs with their affine
+companion. ``run_co2`` uses that pair in memory and does not save it; staged
+``prepare`` saves it for later staged phases:
 
 .. code-block:: toml
 
