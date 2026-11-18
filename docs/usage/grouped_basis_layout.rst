@@ -220,9 +220,9 @@ Fixed outer regions
 Per-source bases
    With per-source native priors the retained state index has the levels
    ``source`` and ``region_in_source``. The ``source`` level is the state's
-   source label. A generated basis, with or without fixed outer regions, is
-   repeated for every source together with its labels, so each source has
-   its own ``outer`` and ``inner`` states.
+   source label. A generated basis is repeated for every source together
+   with any labels, so a fixed-outer basis gives each source its own
+   ``outer`` and ``inner`` states.
    ``MultiSourceBucketBasisOperator`` takes per-source ``state_metadata`` for
    this and saves it with the basis.
 
