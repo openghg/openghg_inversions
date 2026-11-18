@@ -399,6 +399,17 @@ CO₂ execution errors propagate before creating the readiness destination.
 ``--strict`` exits unsuccessfully when an available convergence threshold fails.
 A short smoke test is not evidence of convergence.
 
+Neither check validates the exact estimator selected by
+``sampling.method = "gaussian"``. ``prior-predictive`` always builds the NUTS
+graph, so with the default flux prior it draws from the correlated LogNormal
+prior, not the moment-matched Normal prior the estimator uses. The estimator's
+own prior is in the sample trace: the ``prior`` and ``prior_predictive`` groups
+when ``sampling.sample_prior_predictive`` is set, and ``prior_mean`` and
+``prior_covariance`` in the ``gaussian_posterior`` group, which also holds the
+exact posterior moments and solver diagnostics. ``diagnose`` checks MCMC
+convergence. The exact draws form one chain without sampler statistics, so it
+usually reports ``unknown``, which ``--strict`` accepts with exit status zero.
+
 Conditional native-flux and country products require prior and posterior
 ``flux_scale`` draws and a companion bound to the preparation used for inference.
 Enable ``sampling.sample_prior_predictive`` to retain prior draws. Missing
