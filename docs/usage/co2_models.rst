@@ -775,12 +775,17 @@ amplitude and kernel, reduced jointly so that the retained state is
    latitude_correlation_length = 3.0
    longitude_correlation_length = 6.0
 
+   [prepared_inputs.native_prior.sources.co2_BASE_TER]
+   latitude_correlation_length = 3.0
+   longitude_correlation_length = 6.0
+
    [prepared_inputs.native_prior.sources.co2_BASE_FF]
    sigma = 0.8
    correlation_length = 3.0
    geodesic_correlation_length_km = { 1 = 200.0 }
 
-The sources must be exactly the acquisition ``flux_sources``. A basis partition
+The sources must be exactly the acquisition ``flux_sources`` (here
+``["co2_BASE_GPP", "co2_BASE_TER", "co2_BASE_FF"]``). A basis partition
 with a ``source`` dimension gives each source its own regions; a shared
 partition or generated basis is repeated per source (``basis.path`` is not
 supported). Each source accepts ``mean``, ``sigma``, ``correlation_length``,
