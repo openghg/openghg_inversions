@@ -745,6 +745,19 @@ class Co2NativePreparationConfig:
             )
         return cls(**result)
 
+    def resource_paths(self) -> tuple[Path, ...]:
+        """Identify the configured files native preparation reads, for output alias guards."""
+        basis, prior = self.basis, self.native_prior
+        paths = (
+            basis.basis_path, basis.basis_partition_path, *(basis.basis_partition_paths or ()),
+            basis.landsea_path, basis.outer_regions_path, *(basis.bc_basis_paths or ()),
+            self.bc_centering_weights_path,
+        )
+        if isinstance(prior, Co2MultiSourceNativePrior):
+            calibration = prior.calibration.targets_path if prior.calibration is not None else None
+            paths += (prior.class_labels_path, prior.retained_regions_path, calibration)
+        return tuple(Path(path).resolve() for path in paths if path is not None)
+
 
 def _acquisition(value: object) -> dict[str, Any]:
     """Parse ``[prepared_inputs.acquisition]`` into acquisition keywords."""

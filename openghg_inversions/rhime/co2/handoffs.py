@@ -102,7 +102,7 @@ def _finish_preparation(
 def save_preparation(
     prepared: Co2PreparedInputs, *, output_dir: str | Path,
     start_date: str | None = None, end_date: str | None = None, domain: str | None = None,
-    affine_artifact: AffineFluxMapArtifact | None = None,
+    affine_artifact: AffineFluxMapArtifact | None = None, referenced: tuple[Path, ...] = (),
 ) -> Path:
     """Serialize coherent inputs and an optional new affine companion, manifest last.
 
@@ -111,10 +111,11 @@ def save_preparation(
     is rebound to the saved numerical bytes and checked by the existing loader,
     including prepared projection, source/grid labels, signed flux and operator.
     A successful replacement assigns a new generation and invalidates old samples.
+    ``referenced`` names input files the preparation read; no target may alias them.
     """
     facts = requested_co2_facts(prepared, start_date=start_date, end_date=end_date, domain=domain)
     payloads = ("prepared-inputs.nc",) + (("affine-flux-map.nc",) if affine_artifact is not None else ())
-    destination = start_checkpoint(output_dir, "prepare", payloads=payloads)
+    destination = start_checkpoint(output_dir, "prepare", payloads=payloads, referenced=referenced)
     prepared_path = destination / "prepared-inputs.nc"
     prepared.save(prepared_path)
     companion = None
@@ -181,7 +182,7 @@ def prepare(
         check_prepared_boundary(prepared.inv_inputs, boundary, boundary_representation)
         return save_preparation(
             prepared, output_dir=output_dir, start_date=start_date, end_date=end_date, domain=domain,
-            affine_artifact=affine,
+            affine_artifact=affine, referenced=native.resource_paths(),
         )
     if (prepared_path is None) == (canonical_inputs is None):
         raise ValueError("Pass either prepared_path or canonical_inputs with reduction.")

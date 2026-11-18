@@ -144,6 +144,7 @@ def run_co2(
             boundary=boundary_preparation(preparation.boundary, preparation.boundary_representation),
             merged_data=merged_data,
         )
+        consumed_paths += preparation.native.resource_paths()
     elif canonical_inputs is not None and reduction is not None:
         prepared = prepare_co2_inputs(
             canonical_inputs, reduction, aggregation_error_rank=aggregation_error_rank,
