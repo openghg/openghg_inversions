@@ -547,12 +547,25 @@ strategy.
        CO2 preparation (:ref:`co2-configured-preparation`) reduces it jointly,
        so the cross blocks enter :math:`C_\alpha`, :math:`HB\Pi^\mathsf{T}`
        and the unresolved observation covariance.
-   * - Arbitrary reporting functionals :math:`Q`,
-       :math:`B_\perp` products, coherent likelihood reduction, reconstruction,
-       and covariance approximation
+   * - Coherent likelihood reduction, native flux reconstruction from
+       :math:`\alpha`, and the low-rank-plus-diagonal approximation of the
+       aggregation-error covariance in the model-data mismatch
+     - Ported outside this API
+     - :func:`~openghg_inversions.coherent_reduction.reduce_native_gaussian`
+       uses these product blocks to form :math:`C_\alpha`, :math:`HU_*` and
+       :math:`A = HB_\perp H^\mathsf{T}`. Configured CO2 preparation
+       (:ref:`co2-configured-preparation`) stores :math:`A` exactly or as a
+       low-rank-plus-diagonal approximation (``aggregation_error_rank``), and
+       its affine companion maps :math:`\alpha` back to native flux. With a
+       supplied restriction, that map is the conditional mean
+       :math:`m + U_*(\alpha - \Pi m)`.
+   * - Reporting functionals :math:`Q` with their :math:`B_\perp` blocks, and
+       observation-conditioned reconstruction of the unresolved native part
      - Not ported
-     - These remain prototype or downstream work and must not be inferred from
-       the presence of covariance product blocks.
+     - Nothing forms :math:`QB_\perp Q^\mathsf{T}` or
+       :math:`QB_\perp H^\mathsf{T}`, so reported totals omit the unresolved
+       native uncertainty. The product blocks are only inputs to a reduction;
+       their presence does not imply either capability.
 
 API reference
 -------------
