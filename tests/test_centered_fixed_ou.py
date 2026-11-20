@@ -8,7 +8,7 @@ import pytensor.tensor as pt
 import pytest
 import xarray as xr
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
@@ -80,7 +80,7 @@ def test_single_centered_fixed_ou_preserves_full_density_and_gradient(reference,
     operands = _operands(inputs.mf, reference)
     bound = BoundCenteredSensitivity.bind(raw_transport(operands), inputs.mf)
     options = dict(
-        retained_prior=CorrelatedLognormalPrior(
+        retained_prior=CorrelatedPrior(
             inputs.alpha_prior_mean, inputs.alpha_prior_covariance, covariance_dim="region_cov"
         ),
         fixed_prior_contribution=inputs.fixed_prior_contribution,
@@ -176,7 +176,7 @@ def test_direct_centered_custom_likelihood_is_rejected_before_construction(monke
     with pytest.raises(ValueError, match="Centered.*built-in fixed-OU.*custom"):
         build_co2_model(
             inputs.H,
-            retained_prior=CorrelatedLognormalPrior(
+            retained_prior=CorrelatedPrior(
                 inputs.alpha_prior_mean, inputs.alpha_prior_covariance, covariance_dim="region_cov"
             ),
             fixed_prior_contribution=inputs.fixed_prior_contribution,
@@ -196,7 +196,7 @@ def test_fixed_amplitude_absolute_and_centered_density_full_gradient(reference):
     operands = _operands(inputs.mf, reference)
     bound = BoundCenteredSensitivity.bind(raw_transport(operands), inputs.mf)
     options = dict(
-        retained_prior=CorrelatedLognormalPrior(
+        retained_prior=CorrelatedPrior(
             inputs.alpha_prior_mean, inputs.alpha_prior_covariance, covariance_dim="region_cov"
         ),
         fixed_prior_contribution=inputs.fixed_prior_contribution,

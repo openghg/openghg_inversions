@@ -14,7 +14,7 @@ import pytest
 from scipy.stats import multivariate_normal
 import xarray as xr
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
@@ -94,7 +94,7 @@ def _whole_window_weights(inputs: xr.Dataset) -> xr.DataArray:
 
 def _kwargs(inputs: xr.Dataset) -> dict[str, Any]:
     return dict(
-        retained_prior=CorrelatedLognormalPrior(
+        retained_prior=CorrelatedPrior(
             inputs.alpha_prior_mean, inputs.alpha_prior_covariance, covariance_dim="region_cov"
         ),
         fixed_prior_contribution=inputs.fixed_prior_contribution,
