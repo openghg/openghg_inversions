@@ -614,6 +614,7 @@ def basis_functions_from_flat_basis(
     flux: xr.DataArray,
     basis_flat: xr.DataArray | Mapping[str, xr.DataArray],
     metadata: Mapping[str, Any] | None = None,
+    state_metadata: xr.Dataset | Mapping[str, xr.Dataset] | None = None,
 ) -> FluxWeightedBasis:
     """Attach resolved native flux to shared or source-specific flat labels.
 
@@ -631,6 +632,11 @@ def basis_functions_from_flat_basis(
             extra partitions are omitted and runtime source order is retained.
             A flux without ``source`` is shared across all supplied partitions.
         metadata: Optional namespaced metadata retained with the basis object.
+        state_metadata: Optional ``basis_group``, ``basis_partition`` and
+            ``region_in_partition`` labels, indexed by ``basis_label`` (see
+            ``openghg_inversions.basis.layout``): one dataset for shared
+            labels, or a source-keyed mapping for source-specific partitions.
+            They become coordinates on the retained state axis.
 
     Returns:
         Operator paired with the current native prior, ready for projection
@@ -638,8 +644,11 @@ def basis_functions_from_flat_basis(
 
     Raises:
         ValueError: If source labels are invalid, a runtime source partition is
-            missing, or partition geometry cannot form a valid operator.
+            missing, partition geometry cannot form a valid operator, or
+            state metadata does not match the partitions.
     """
+    if state_metadata is not None and isinstance(basis_flat, Mapping) == isinstance(state_metadata, xr.Dataset):
+        raise ValueError("Source-specific partitions need source-keyed state metadata, and shared ones one dataset.")
     if isinstance(basis_flat, Mapping):
         selected_basis = dict(basis_flat)
         if "source" in flux.dims:
@@ -648,17 +657,20 @@ def basis_functions_from_flat_basis(
             if missing_sources:
                 raise ValueError(f"Multi-source basis is missing runtime flux sources: {missing_sources!r}.")
             selected_basis = {source: selected_basis[source] for source in selected_sources}
+        source_metadata = None
+        if state_metadata is not None:
+            source_metadata = {source: cast(Mapping, state_metadata)[source] for source in selected_basis}
         return FluxWeightedBasis.from_multi_source_flat_basis(
             basis_flat=selected_basis,
             flux=flux,
-            operator_kwargs={"state_dim": "region"},
+            operator_kwargs={"state_dim": "region", "state_metadata": source_metadata},
             metadata=metadata,
         )
 
     return FluxWeightedBasis.from_flat_basis(
         basis_flat=basis_flat,
         flux=flux,
-        operator_kwargs={"state_dim": "region"},
+        operator_kwargs={"state_dim": "region", "state_metadata": state_metadata},
         metadata=metadata,
     )
 

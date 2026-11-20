@@ -92,6 +92,9 @@ component. The state axis retains ``basis_group``, ``basis_partition``, and
 ``region_in_partition`` coordinates; select ``basis_group == "outer"`` rather
 than inferring outer entries from integer ranges or positions.
 
+A basis built with ``fix_outer_regions`` writes these labels; see
+:ref:`where the labels come from <grouped-basis-label-sources>`.
+
 Fixed versus inferred outer entries use the ordinary
 :class:`~openghg_inversions.models.StateActivity` contract. To preserve the
 fixed-at-one behavior, pass
@@ -817,8 +820,9 @@ error. Every retained region needs nonzero window-mean prior flux of its own
 source; a shared or generated partition repeated per source usually has regions
 without it (biosphere over sea, ocean over land), which preparation reports by
 source and label. Leave them out with ``retained_regions_path`` or use a
-source-specific partition. ``basis.fix_outer_regions`` with a generated basis is
-not available with per-source priors; pass the saved partition instead. The prepared provenance records every source's mean, amplitude (and
+source-specific partition. ``basis.fix_outer_regions`` with a generated basis
+gives every source the same ``outer`` and ``inner`` states, labelled with
+``basis_group`` (see :ref:`grouped-basis-label-sources`). The prepared provenance records every source's mean, amplitude (and
 whether it was calibrated), kernel, ``rho`` and the calibration diagnostics.
 
 Boundary representation
@@ -840,7 +844,7 @@ representations it can bind and which extra inputs it needs
      - ``"ordinary"``
      - ``"ordinary"`` or ``"centered"``
    * - ``"additive"``
-     - ``"centered"``, with ``bc_centering_weights_path`` for weighted anomalies
+     - ``"centered"``, with ``bc_centering_weights_path`` for weighted anomalies with a positive scale
      - ``"centered"`` only
    * - ``"anomaly_scaling"``
      - ``"centered"``

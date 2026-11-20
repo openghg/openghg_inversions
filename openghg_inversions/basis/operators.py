@@ -67,6 +67,7 @@ from openghg_inversions.array_ops import (
     same_index,
 )
 from openghg_inversions.basis.layout import (
+    STATE_METADATA_COORDS,
     BasisStateMetadata,
 )
 
@@ -877,12 +878,18 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         source_dim: Name of the source MultiIndex level.
         region_in_source_dim: Name of the per-source region MultiIndex level.
         state_dim: Optional override for ``meta.state_dim``.
+        state_metadata: Optional per-source state metadata
+            (``basis_group``, ``basis_partition`` and ``region_in_partition``)
+            for every source, each indexed by that source's raw
+            ``basis_label`` values or by position on ``region_in_source_dim``.
+            It becomes coordinates on the gathered state axis.
         chunks: Optional chunk sizes for the gathered basis matrix.
 
     Raises:
         ValueError: If ``basis_flat`` is empty, a source label is not a string,
-            or source arrays have incompatible dimensions, non-unique grid
-            labels, or different grid labels.
+            source arrays have incompatible dimensions, non-unique grid
+            labels, or different grid labels, or state metadata does not name
+            exactly the basis sources or match their regions.
 
     Example:
         Gather source bases with two and one regions, respectively::
@@ -913,6 +920,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         source_dim: str = "source",
         region_in_source_dim: str = "region_in_source",
         state_dim: str | None = None,
+        state_metadata: Mapping[str, xr.Dataset | BasisStateMetadata] | None = None,
         chunks: dict[str, int] | None = None,
     ) -> None:
         meta = meta or BasisMeta()
@@ -938,11 +946,22 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             grid_dims=self.meta.grid_dims,
         )
 
+        if state_metadata is not None and set(state_metadata) != set(self.basis_flat):
+            raise ValueError("Multi-source state metadata must name exactly the basis sources.")
+
         # Build per-source dummy matrices with ragged region_in_source dim
         mats: dict[str, xr.DataArray] = {}
         for src, bf in self.basis_flat.items():
             # use region_in_source_dim so we can gather it
-            mats[src] = get_xr_dummies(bf, cat_dim=self.region_in_source_dim)
+            mat = get_xr_dummies(bf, cat_dim=self.region_in_source_dim)
+            if state_metadata is not None:
+                # Dummy columns follow the sorted raw labels of this source's basis.
+                mat = BasisStateMetadata.from_dataset(state_metadata[src]).on_state_dim(
+                    state_dim=self.region_in_source_dim,
+                    state_coord=mat[self.region_in_source_dim],
+                    basis_value_labels=np.unique(np.asarray(bf.values)).astype(int),
+                ).assign_to_matrix(mat, state_dim=self.region_in_source_dim)
+            mats[src] = mat
         self._unchunked_source_matrices = mats
         self._source_matrices = {
             src: mat.chunk({dim: size for dim, size in (chunks or {}).items() if dim in mat.dims})
@@ -1357,6 +1376,16 @@ class MultiSourceBucketBasisOperator(BasisOperator):
                 "region_in_source_dim": self.region_in_source_dim,
             }
         )
+        if all(name in self._basis_matrix.coords for name in STATE_METADATA_COORDS):
+            # Stored by position in canonical state order; the source bases restore the index.
+            dt["state_metadata"] = xr.DataTree(
+                xr.Dataset(
+                    {
+                        name: (self.meta.state_dim, np.asarray(self._basis_matrix.coords[name].values))
+                        for name in STATE_METADATA_COORDS
+                    }
+                )
+            )
         return dt
 
     @classmethod
@@ -1400,11 +1429,23 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             basis_flat = {
                 source: stacked_basis.sel({source_dim: source}, drop=True) for source in source_values
             }
+            state_metadata = None
+            if "state_metadata" in dt.children:
+                stored = dt.children["state_metadata"].to_dataset(inherit=False)
+                sizes = [np.unique(np.asarray(basis.values)).size for basis in basis_flat.values()]
+                bounds = np.cumsum([0, *sizes])
+                state_metadata = {
+                    source: stored.isel({meta.state_dim: slice(start, stop)}).rename(
+                        {meta.state_dim: region_in_source_dim}
+                    )
+                    for source, start, stop in zip(basis_flat, bounds[:-1], bounds[1:], strict=True)
+                }
             return cls(
                 basis_flat=basis_flat,
                 meta=meta,
                 source_dim=source_dim,
                 region_in_source_dim=region_in_source_dim,
+                state_metadata=state_metadata,
             )
 
         if "basis_flat" not in dt.children:

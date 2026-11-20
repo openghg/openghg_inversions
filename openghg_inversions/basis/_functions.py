@@ -26,6 +26,7 @@ from .algorithms import (
 from .algorithms import quadtree_algorithm, weighted_algorithm
 
 from openghg_inversions.array_ops import to_dense
+from openghg_inversions.basis.layout import BasisLayout, BasisLayoutResult, BasisPartition
 from openghg_inversions.config.paths import Paths
 
 logger = logging.getLogger(__name__)
@@ -857,7 +858,7 @@ def fixed_outer_regions_basis_from_data(
     contrast_sigma_design: float | None = None,
     contrast_s_diag: xr.DataArray | None = None,
     allow_empty_inner_region: bool = False,
-) -> xr.DataArray:
+) -> BasisLayoutResult:
     """Use fixed InTEM outer regions and fit inner regions with an algorithm.
 
     The InTEM outer-region file defines known outer labels. Its optional
@@ -909,9 +910,15 @@ def fixed_outer_regions_basis_from_data(
             for nested outer-domain preparation.
 
     Returns:
-        Basis field with fixed outer labels and generated inner labels. When
-        ``allow_empty_inner_region`` is true and finite inner weights are all
-        zero, its label is kept unsplit.
+        A :class:`~openghg_inversions.basis.layout.BasisLayout` result. Its
+        flat basis, with a singleton ``time`` dimension, numbers the fixed
+        outer regions first, in outer-region map order, and then the generated
+        inner regions. Its state metadata labels them ``basis_group``
+        ``"outer"`` (partition ``"fixed_outer"``, ``region_in_partition`` the
+        map label plus one) and ``"inner"`` (partition ``"inner"``, the
+        generated label). When ``allow_empty_inner_region`` is true and finite
+        inner weights are all zero, the inner region is kept unsplit as one
+        inner state.
     """
     _validate_basis_algorithm(basis_algorithm)
     intem_regions = outer_regions
@@ -948,10 +955,7 @@ def fixed_outer_regions_basis_from_data(
                 "response; keeping it as a single fixed region instead of subdividing it further "
                 "(allow_empty_inner_region=True)."
             )
-            basis = intem_regions.copy().rename("basis")
-            basis += 1  # intem_region_definitions.nc regions start at 0, not 1
-            basis = basis.expand_dims({"time": [pd.to_datetime(start_date)]})
-            return basis
+            return _fixed_outer_layout(intem_regions, mask.astype(int), start_date)
 
     algorithm_kwargs: dict[str, Any] = {}
     if basis_algorithm == "weighted":
@@ -985,27 +989,45 @@ def fixed_outer_regions_basis_from_data(
         weights, start_date, domain, basis_algorithm, nbasis, **algorithm_kwargs,
     )
 
-    basis = intem_regions.copy().rename("basis")
-
     fixed_outer_values = intem_regions.where(~mask).to_numpy()
-    finite_outer_values = fixed_outer_values[np.isfinite(fixed_outer_values)]
-    if finite_outer_values.size == 0:
+    if not np.isfinite(fixed_outer_values).any():
         raise ValueError("Fixed outer-region map must retain at least one label outside the inner region.")
-    max_fixed_outer_label = int(finite_outer_values.max())
 
+    # Generated algorithms label every cell of the inner region's bounding box
+    # with positive labels starting at one; those cells form the inner partition.
     loc_dict = {
         "lat": slice(inner_region.lat.min(), inner_region.lat.max() + 0.1),
         "lon": slice(inner_region.lon.min(), inner_region.lon.max() + 0.1),
     }
-    # Generated algorithms use positive labels starting at one. Place those
-    # labels above every retained fixed-outer label before converting the
-    # complete field from zero-based to one-based labels below. Offsetting
-    # from ``inner_index`` is only safe for legacy maps whose inner label is
-    # already the maximum; EUHROB deliberately marks a non-maximum label.
-    basis.loc[loc_dict] = (inner_region + max_fixed_outer_label).squeeze().values
+    inner_labels = xr.zeros_like(intem_regions, dtype=int)
+    inner_labels.loc[loc_dict] = inner_region.squeeze().values
+    return _fixed_outer_layout(intem_regions, inner_labels, start_date)
 
-    basis += 1  # intem_region_definitions.nc regions start at 0, not 1
 
-    basis = basis.expand_dims({"time": [pd.to_datetime(start_date)]})
+def _fixed_outer_layout(
+    outer_regions: xr.DataArray, inner_labels: xr.DataArray, start_date: str
+) -> BasisLayoutResult:
+    """Combine fixed outer regions and inner labels into one labelled layout.
 
-    return basis
+    Args:
+        outer_regions: Dense zero-based outer-region map.
+        inner_labels: Positive inner labels on the same grid, zero outside the
+            inner partition.
+        start_date: Date of the flat basis's singleton ``time`` axis.
+
+    Returns:
+        Layout whose fixed outer partition covers every cell outside
+        ``inner_labels``, with local labels shifted to start at one.
+    """
+    outer_labels = xr.where(inner_labels > 0, 0, outer_regions + 1)
+    result = BasisLayout(
+        partitions=(
+            BasisPartition(name="fixed_outer", labels=outer_labels, group="outer"),
+            BasisPartition(name="inner", labels=inner_labels, group="inner"),
+        ),
+        state_dim="region",
+    ).to_flat_basis()
+    return BasisLayoutResult(
+        basis_flat=result.basis_flat.expand_dims({"time": [pd.to_datetime(start_date)]}),
+        state_metadata=result.state_metadata,
+    )

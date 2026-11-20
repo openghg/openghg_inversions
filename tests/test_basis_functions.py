@@ -800,7 +800,7 @@ def test_fixed_outer_region_basis_function(tac_basis_data):
         landsea_classes=load_country_region_classes("EUROPE", None),
     )
 
-    labels = basis_func.squeeze("time", drop=True)
+    labels = basis_func.basis_flat.squeeze("time", drop=True)
     outer_regions = load_intem_outer_regions("EUROPE")
     _, outer_regions = xr.align(labels, outer_regions, join="override")
     inner_mask = outer_regions == outer_regions.max()
@@ -993,7 +993,7 @@ def test_fixed_outer_regions_can_use_region_constrained_algorithm(tmp_path):
         ),
     )
 
-    labels = basis_func.squeeze("time", drop=True)
+    labels = basis_func.basis_flat.squeeze("time", drop=True)
     inner_mask = outer_values == np.nanmax(outer_values)
     inner_labels = np.unique(labels.values[inner_mask])
     assert len(inner_labels) == 4
@@ -1033,8 +1033,8 @@ def test_fixed_outer_regions_accepts_direct_outer_map_path(tmp_path):
         outer_regions=load_intem_outer_regions("TEST", outer_regions_path=outer_path),
     )
 
-    assert basis_func.sizes["time"] == 1
-    assert bool((basis_func > 0).all())
+    assert basis_func.basis_flat.sizes["time"] == 1
+    assert bool((basis_func.basis_flat > 0).all())
 
     retained = make_basis_functions(
         site_data=sites,
@@ -1174,9 +1174,10 @@ def test_fixed_outer_regions_keeps_empty_inner_region_fixed_when_allowed(tmp_pat
         outer_regions=load_intem_outer_regions("TEST", outer_regions_path=outer_path),
     )
 
-    labels = basis_func.squeeze("time", drop=True)
+    labels = basis_func.basis_flat.squeeze("time", drop=True)
     inner_labels = set(np.unique(labels.values[outer_values == 2]))
     assert len(inner_labels) == 1
+    assert basis_func.state_metadata.basis_group.values.tolist() == ["outer", "outer", "inner"]
 
     retained = make_basis_functions(
         site_data=zeroed_sites,
@@ -1239,12 +1240,17 @@ def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, 
     )
 
     assert seen["weights"].shape == (2, 2)
-    labels = result.squeeze("time", drop=True)
+    labels = result.basis_flat.squeeze("time", drop=True)
     inner_labels = set(np.unique(labels.values[outer_values == 1]))
     fixed_outer_labels = set(np.unique(labels.values[outer_values != 1]))
-    assert inner_labels == {4, 5}
-    assert fixed_outer_labels == {1, 3}
-    assert inner_labels.isdisjoint(fixed_outer_labels)
+    assert inner_labels == {3, 4}
+    assert fixed_outer_labels == {1, 2}
+
+    # Outer states keep their one-based map label; inner states their generated label.
+    metadata = result.state_metadata
+    assert metadata.basis_label.values.tolist() == [1, 2, 3, 4]
+    assert metadata.basis_group.values.tolist() == ["outer", "outer", "inner", "inner"]
+    assert metadata.region_in_partition.values.tolist() == [1, 3, 1, 2]
 
 
 def test_packaged_euhrob_map_marks_the_6km_inner_rectangle():
@@ -1341,7 +1347,7 @@ def test_fixed_outer_weighted_basis_crops_landsea_mask_to_inner_region(monkeypat
     )
 
     np.testing.assert_array_equal(seen["landsea"], landsea_values[1:3, 1:3])
-    assert result.shape == (1, 4, 4)
+    assert result.basis_flat.shape == (1, 4, 4)
 
 
 def test_region_constrained_fixed_outer_basis_from_weights_allocates_inner_only():

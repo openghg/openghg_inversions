@@ -23,6 +23,7 @@ from openghg_inversions.native_covariance import DEFAULT_EARTH_RADIUS_KM
 from openghg_inversions.rhime.co2 import handoffs
 from openghg_inversions.rhime.co2.co2_affine_output import load_and_bind_affine_flux_map
 from openghg_inversions.rhime.co2.configuration import (
+    Co2ModelConfig,
     Co2MultiSourceNativePrior,
     Co2NativePrior,
     Co2PreparationConfig,
@@ -354,6 +355,8 @@ def test_multisource_prepare_matches_dense_reference(
     # Bucket states number each source's partition labels from zero.
     assert list(inputs.indexes["region"]) == [("ff", 0), ("ff", 1), ("ff", 2), ("gpp", 0), ("gpp", 1),
                                               ("ter", 0), ("ter", 1)]
+    # Outer-flux fixed_sources selects by this state label of the prepared prior.
+    assert inputs.alpha_prior_mean.source.dims == ("region",)
     expected = _dense_reference(merged, prepared, restriction)
     covariance = inputs.alpha_prior_covariance.values
     np.testing.assert_allclose(covariance, expected["C"], rtol=1e-9, atol=1e-12)
@@ -646,6 +649,79 @@ def test_generated_basis_is_repeated_per_source(tmp_path: Path, merged: MergedDa
     expected = _dense_reference(merged, prepared, "bucket", partition=operator.basis_flat[SOURCES[0]])
     np.testing.assert_allclose(prepared.inv_inputs.H.values, expected["H"], rtol=1e-8, atol=1e-10)
 
-    config["prepared_inputs"]["basis"]["fix_outer_regions"] = True
-    with pytest.raises(ValueError, match="fix_outer_regions cannot serve per-source native priors"):
-        Co2PreparationConfig.from_params(config, require_source=True)
+
+# ---------------------------------------------------------------------------
+# State labels that the outer-flux option selects by
+# ---------------------------------------------------------------------------
+
+
+def _fixed_outer_basis(tmp_path: Path) -> dict:
+    """A generated basis with the east column as one fixed outer region."""
+    outer_regions = tmp_path / "outer_regions.nc"
+    # Label 1, the largest, is the inner region.
+    labels = xr.DataArray(np.where(np.array(LON)[None, :] > -0.5, 0, 1).repeat(len(LAT), axis=0),
+                          dims=("lat", "lon"), coords={"lat": LAT, "lon": LON}, name="region")
+    labels.to_dataset().to_netcdf(outer_regions)
+    return {"algorithm": "quadtree", "nbasis": 2, "fix_outer_regions": True, "outer_regions_path": str(outer_regions)}
+
+
+def test_fixed_outer_basis_labels_the_prepared_prior(tmp_path: Path, merged: MergedData) -> None:
+    """A fixed-outer basis labels its states, and the labels reach the reloaded prior."""
+    config = _request({"partition": tmp_path / "unused.nc"}, {"sigma": 0.2, "correlation_length": 1.0})
+    config["prepared_inputs"]["basis"] = _fixed_outer_basis(tmp_path)
+    prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, "fixed_outer")).prepared
+    mean = prepared.inv_inputs.alpha_prior_mean
+    inner = mean.sizes["region"] - 1
+    assert mean.basis_group.dims == mean.dims
+    assert mean.basis_group.values.tolist() == ["outer"] + ["inner"] * inner
+    assert mean.basis_partition.values.tolist() == ["fixed_outer"] + ["inner"] * inner
+
+
+@pytest.mark.parametrize("restriction", ["bucket", "absolute_flux_weighted_mean"])
+def test_fixed_outer_basis_labels_per_source_states(
+    tmp_path: Path, merged: MergedData, files: dict[str, Path], restriction: str,
+) -> None:
+    """Per-source priors repeat the fixed-outer groups for every source through either restriction."""
+    config = _request(files, _native_prior(files, restriction))
+    config["prepared_inputs"]["basis"] = _fixed_outer_basis(tmp_path)
+    prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, restriction)).prepared
+    mean = prepared.inv_inputs.alpha_prior_mean
+    groups = prepared.basis_functions.operator.basis_matrix.basis_group.values.tolist()
+    per_source = len(groups) // len(SOURCES)
+    assert groups == (["outer"] + ["inner"] * (per_source - 1)) * len(SOURCES)
+    assert mean.basis_group.values.tolist() == groups
+    assert mean.source.values.tolist() == [source for source in SOURCES for _ in range(per_source)]
+
+
+@pytest.mark.usefixtures("double_precision")
+@pytest.mark.parametrize("per_source", [False, True])
+def test_configured_outer_flux_selects_fixed_outer_basis_states(
+    tmp_path: Path, merged: MergedData, files: dict[str, Path], per_source: bool,
+) -> None:
+    """``[model.outer_flux]`` builds on a configured fixed-outer preparation without hand-added labels."""
+    from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+    from openghg_inversions.models.outer_flux import OuterFluxChoice
+    from openghg_inversions.rhime.co2.inference import build_co2_inference
+
+    native_prior = (_native_prior(files, "bucket") if per_source
+                    else {"sigma": 0.2, "correlation_length": 1.0})
+    config = _request({"partition": tmp_path / "unused.nc"} if not per_source else files, native_prior)
+    config["prepared_inputs"]["basis"] = _fixed_outer_basis(tmp_path)
+    # The boundary choice also selects the centred representation at preparation;
+    # a level-only additive boundary needs no centring weights.
+    config["model"] = {
+        "boundary": {"type": "additive", "anomaly_scale": 0.0,
+                     "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 1.0}},
+        "outer_flux": {"mode": "multiplicative", "outer_groups": ["outer"]},
+    }
+    prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, "outer_flux")).prepared
+    choices = Co2ModelConfig.from_params(load_co2_params(params=config)).model_arguments()
+    built, _ = build_co2_inference(prepared, choices)
+    assert built.output_contract.metadata["outer_flux_mode"] == "multiplicative"
+
+    inputs = prepared.inv_inputs
+    prior = CorrelatedLognormalPrior(inputs.alpha_prior_mean, inputs.alpha_prior_covariance,
+                                     covariance_dim=str(inputs.alpha_prior_covariance.dims[-1]))
+    states = OuterFluxChoice("multiplicative", ("outer",)).resolve_states(prior)
+    np.testing.assert_array_equal(states.sampled.values, inputs.alpha_prior_mean.basis_group.values == "outer")
+    assert int(states.sampled.sum()) == (len(SOURCES) if per_source else 1)

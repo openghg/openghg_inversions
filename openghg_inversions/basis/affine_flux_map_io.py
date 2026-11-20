@@ -106,7 +106,9 @@ def _array_node(array: xr.DataArray, name: str) -> xr.DataTree:
     # Ancillary input attrs are not reconstruction ingredients. Keep units,
     # while provenance belongs in the explicit versioned root metadata.
     units = array.attrs["units"]
-    array = to_dense(array) if name == "prolongation" else array
+    if name == "prolongation":
+        # State labels such as basis_group are bound from the prepared inputs, not stored.
+        array = to_dense(array).drop_vars([coord for coord in array.coords if coord not in array.indexes])
     array = array.copy(deep=False)
     array.attrs = {"units": units}
     return xr.DataTree(encode_multiindexes_for_storage(array.rename(name).to_dataset()))
@@ -223,12 +225,13 @@ def _validate_operator_node(node: xr.DataTree) -> xr.DataTree:
         set(node.children), {"state_metadata"} if "state_metadata" in node.children else set(), "bucket child"
     )
     if "state_metadata" in node.children:
-        metadata = node["state_metadata"]
+        metadata = node.children["state_metadata"]
         _require_keys(set(metadata.children), set(), "state_metadata child")
         _require_keys(set(metadata.to_dataset().data_vars), _STATE_METADATA_VARS, "state_metadata variable")
         if set(metadata.attrs) - {MULTIINDEX_DIMS_ATTR}:
             raise ValueError("Unexpected state_metadata group attribute.")
-        _validate_coordinates(metadata.to_dataset(), "state_metadata")
+        # The grid coordinates inherited from the bucket node are not metadata payload.
+        _validate_coordinates(metadata.to_dataset(inherit=False), "state_metadata")
     for path, child in node.subtree_with_keys:
         for variable in child.to_dataset().data_vars.values():
             if set(variable.attrs) - {"units"}:

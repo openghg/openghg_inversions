@@ -118,9 +118,10 @@ target_accept = 0.95
 random_seed = 12345
 
 # Optional centred additive boundary corrections (observation concentration units).
-# Requires centered operands and bc_centering_weights; replaces BC scaling. A built
-# preparation produces centered operands for this type and reads the weights from
-# prepared_inputs.bc_centering_weights_path. Python callers preparing from canonical
+# Requires centered operands, and bc_centering_weights when anomaly_scale > 0;
+# replaces BC scaling. A built preparation produces centered operands for this type
+# and reads any weights from prepared_inputs.bc_centering_weights_path. A level-only
+# boundary (anomaly_scale = 0) needs no weights. Python callers preparing from canonical
 # inputs pass bc_centering_weights to prepare_co2_inputs, handoffs.prepare or run_co2.
 # [model.boundary]
 # type = "additive"
@@ -139,10 +140,10 @@ random_seed = 12345
 
 # Outer-region flux corrections whose level the boundary mean shift owns
 # (see docs/usage/atmospheric_baseline.rst). Needs a centred boundary with
-# mean_shift_prior and basis_group labels on the prepared retained states,
-# which come from the coherent reduction's restriction; configured CO2
-# preparation does not add them yet (issue #1094). fixed_sources also needs
-# source labels on those states.
+# mean_shift_prior and basis_group labels on the prepared retained states.
+# A basis prepared with fix_outer_regions labels its states "outer" and
+# "inner"; per-source native priors also label each state's source, which
+# fixed_sources selects by.
 # [model.outer_flux]
 # mode = "multiplicative"   # or "fixed"
 # outer_groups = ["outer"]
