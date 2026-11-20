@@ -10,12 +10,8 @@ from dask import compute as dask_compute
 import pymc as pm
 import xarray as xr
 
-from openghg_inversions.models.biosphere import (
-    RetainedFluxPrior,
-    add_prepared_retained_flux_state,
-    prepare_retained_flux_prior,
-)
 from openghg_inversions.array_ops import to_dense_tree
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models import (
     StateActivity,
     add_coherent_affine_component,
@@ -28,7 +24,9 @@ from openghg_inversions.models.boundary import Bound
 from openghg_inversions.models.components import (
     AffineBlock,
     AffineConcentrationTerm,
+    _add_prepared_correlated_lognormal_state_with_activity,
     likelihood_representation,
+    prepare_active_correlated_prior,
 )
 from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
 from openghg_inversions.models.priors import PriorArgs
@@ -61,7 +59,7 @@ def build_co2_o2_cached_sigma_model(
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
     aggregation_error: AggregationError,
-    retained_prior: RetainedFluxPrior,
+    retained_prior: CorrelatedPrior,
     independent_error_sd: xr.DataArray,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior: PriorArgs,
@@ -106,10 +104,8 @@ def build_co2_o2_cached_sigma_model(
             embed the fixed oxidation ratios.
         aggregation_error: Joint fixed aggregation covariance, including its
             cross-channel block.
-        retained_prior: Correlated arithmetic-moment prior for the one state
-            vector shared by both channels, or a biosphere calibration of it
-            already checked by
-            :func:`~openghg_inversions.models.biosphere.resolve_retained_flux_prior`.
+        retained_prior: Correlated arithmetic moments and marginals for the
+            one state vector shared by both channels.
         independent_error_sd: Joint per-row independent standard deviations in
             each observation row's native units.
         state_activity: Optional labelled policy fixing or activating retained
@@ -175,7 +171,7 @@ def _build_co2_o2_cached_sigma_model(
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
     aggregation_error: AggregationError,
-    retained_prior: RetainedFluxPrior,
+    retained_prior: CorrelatedPrior,
     independent_error_sd: xr.DataArray,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior: PriorArgs,
@@ -224,7 +220,11 @@ def _build_co2_o2_cached_sigma_model(
         activity,
         output_dim=output_dim,
     )
-    active_prior = prepare_retained_flux_prior(activity, retained_prior, var_name="flux_scaling")
+    active_prior = prepare_active_correlated_prior(
+        activity,
+        retained_prior,
+        var_name="flux_scaling",
+    )
     factor, diagonal = aggregation_error_as_low_rank(aggregation_error)
     covariance = prepare_fixed_ou_low_rank(
         factor,
@@ -235,7 +235,11 @@ def _build_co2_o2_cached_sigma_model(
         site_labels=tuple(str(label) for label in site_coord.values),
     )
     with registered_model():
-        state = add_prepared_retained_flux_state(activity, active_prior, var_name="flux_scaling")
+        state = _add_prepared_correlated_lognormal_state_with_activity(
+            activity,
+            active_prior,
+            var_name="flux_scaling",
+        )
         flux = apply_linear_sensitivity(
             prepared_flux,
             state.state,
@@ -286,6 +290,5 @@ def _build_co2_o2_cached_sigma_model(
             initial_amplitudes=initial_amplitudes,
             site_amplitude_prior=site_amplitude_prior,
             output_dim=output_dim,
-            flux_prior=retained_prior,
         )
         return cached

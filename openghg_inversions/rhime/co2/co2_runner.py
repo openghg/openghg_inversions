@@ -19,15 +19,11 @@ from dask import compute as dask_compute
 from dask.base import unpack_collections
 
 from openghg_inversions.biosphere_prior import BiospherePrior
-from openghg_inversions.models.biosphere import (
-    annotate_biosphere_prior,
-    resolve_retained_flux_prior,
-    retained_flux_prior_family,
-)
+from openghg_inversions.models.biosphere import annotate_biosphere_prior, resolve_retained_flux_prior
 from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.array_ops import to_dense_tree
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.models.boundary import Bound, Choice, RawCenteredSensitivity, bind_prepared
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
@@ -555,7 +551,7 @@ def build_co2_from_materialized(
     )
     prior_covariance = model_inputs["alpha_prior_covariance"]
     flux_prior = resolve_retained_flux_prior(
-        CorrelatedLognormalPrior(
+        CorrelatedPrior(
             model_inputs["alpha_prior_mean"],
             prior_covariance,
             covariance_dim=str(prior_covariance.dims[-1]),
@@ -621,7 +617,7 @@ def build_co2_from_materialized(
             metadata={
                 "recipe": "co2",
                 "kind": "builtin",
-                "prior": retained_flux_prior_family(flux_prior),
+                "prior": "correlated arithmetic-moment lognormal",
                 "no_model_error": no_model_error,
                 "use_bc": boundary is not None,
                 **(boundary_outputs.metadata if boundary_outputs is not None else {"boundary_formulation": None}),

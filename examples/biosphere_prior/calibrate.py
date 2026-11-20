@@ -1,4 +1,4 @@
-"""Calibrate a labelled retained prior and write a replayable analytic report.
+"""Calibrate a labelled retained prior and print its functional moments.
 
 Run ``python -m examples.biosphere_prior.calibrate INPUT.nc OUTPUT.nc``.
 The input contains baseline_mean, baseline_covariance, biosphere, weights and
@@ -11,7 +11,7 @@ from pathlib import Path
 import xarray as xr
 
 from openghg_inversions.biosphere_prior import calibrate_biosphere_prior
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.serialization import load_trace, save_trace
 
 
@@ -23,13 +23,12 @@ def main():
     target.add_argument("--multiplier", type=float)
     target.add_argument("--residual-sd", type=float)
     parser.add_argument("--sd-units")
-    parser.add_argument("--family", choices=("lognormal", "gaussian"), default="lognormal")
     args = parser.parse_args()
     if args.output.exists():
         parser.error("Output already exists; use a new destination.")
     data = load_trace(args.input)["biosphere_prior"].dataset
     covariance = data.baseline_covariance
-    baseline = CorrelatedLognormalPrior(data.baseline_mean, covariance, covariance_dim=covariance.dims[-1])
+    baseline = CorrelatedPrior(data.baseline_mean, covariance, covariance_dim=covariance.dims[-1])
     target_sd = None
     if args.residual_sd is not None:
         if args.sd_units is None:
@@ -42,10 +41,9 @@ def main():
         reference=data.reference,
         residual_sd_multiplier=args.multiplier,
         target_residual_sd=target_sd,
-        family=args.family,
     )
     save_trace(xr.DataTree.from_dict({"biosphere_prior": result.to_dataset()}), args.output)
-    print(result.data.attrs["calibration_report"])
+    print(result.functionals())
 
 
 if __name__ == "__main__":
