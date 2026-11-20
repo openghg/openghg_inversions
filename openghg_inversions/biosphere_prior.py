@@ -16,7 +16,7 @@ import xarray as xr
 from scipy.linalg import qr
 
 from openghg_inversions.array_ops import to_dense
-from openghg_inversions.correlated_state import CorrelatedPrior, _matrix_tolerance
+from openghg_inversions.correlated_state import CorrelatedPrior, _covariance_array, _matrix_tolerance
 
 
 BIOSPHERE_PRIOR_SCHEMA = "openghg_inversions.biosphere_prior/v1"
@@ -41,7 +41,7 @@ class BiospherePrior:
     ``residual_sd_multiplier``.
 
     A calibration fixes arithmetic moments only. The model samples them with
-    the marginals of the retained prior it calibrates; see
+    the marginal families of the retained prior it calibrates; see
     :func:`~openghg_inversions.models.biosphere.resolve_retained_flux_prior`.
     """
 
@@ -72,7 +72,8 @@ class BiospherePrior:
 
         Raises:
             ValueError: If the schema or policy is unsupported, an array has
-                the wrong dimensions or non-finite values, the GPP/TER labels,
+                the wrong dimensions or non-finite values, the covariance
+                column identity differs from the state labels, the GPP/TER labels,
                 weight signs, selector or units are invalid, the multiplier is
                 inconsistent with the policy, or the saved covariance is not the
                 residual-direction change of the baseline that preserves the
@@ -92,6 +93,10 @@ class BiospherePrior:
                 raise ValueError(f"Stored {name} requires dimensions {expected}.")
             if not np.isfinite(data[name].values).all():
                 raise ValueError(f"Stored {name} must be finite.")
+        if f"{cov_dim}_label" not in data.coords:
+            raise ValueError(f"Stored covariances require the {cov_dim}_label column identity.")
+        for name in ("baseline_covariance", "covariance"):
+            _covariance_array(data[name], mean=data.baseline_mean, state_dim=dim, covariance_dim=cov_dim)
         if set(data.get_index("process")) != {"GPP", "TER"} or data.sizes["process"] != 2:
             raise ValueError("Stored reporting weights require exactly GPP and TER labels.")
         selector = data.biosphere.values
@@ -184,7 +189,7 @@ def calibrate_biosphere_prior(
 
     Args:
         baseline: Existing labelled retained-state prior. The calibrated
-            moments must be valid for its marginals.
+            moments must be valid for its marginal families.
         biosphere: Boolean selector on the baseline state dimension. All other
             states are protected; no source names or positional pairing inferred.
         weights: Signed affine reporting weights on ``(process, state_dim)``
@@ -208,7 +213,7 @@ def calibrate_biosphere_prior(
         ValueError: For ambiguous policies, invalid selectors/units/moments,
             infeasible targets, or absent residual uncertainty. Singular changed
             arithmetic covariance, or moments invalid for the baseline's
-            marginals, are rejected without adding jitter.
+            marginal families, are rejected without adding jitter.
     """
     if (
         sum(
@@ -347,7 +352,7 @@ def calibrate_biosphere_prior(
         try:
             CorrelatedPrior(mean, changed_array, marginal=baseline.marginal, covariance_dim=cov_dim)
         except ValueError as exc:
-            raise ValueError(f"Requested biosphere calibration is invalid for the prior's marginals: {exc}") from exc
+            raise ValueError(f"Requested biosphere calibration is invalid for the prior's marginal families: {exc}") from exc
     residual_weights = mean.copy(data=residual)
     residual_weights.attrs = {"units": units}
     data = xr.Dataset(
