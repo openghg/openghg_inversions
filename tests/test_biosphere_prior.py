@@ -356,9 +356,9 @@ def test_resolution_keeps_marginals_and_rejects_different_baseline_moments():
             resolve_retained_flux_prior(other, result)
 
 
-def test_correlated_prior_accepts_only_the_lognormal_marginal():
+def test_correlated_prior_rejects_unknown_or_misaligned_marginals():
     baseline, _ = case()
-    marginal = baseline.marginal.copy(data=["lognormal", "lognormal", "weibull", "lognormal", "lognormal"])
+    marginal = baseline.marginal.copy(data=["lognormal", "lognormal", "beta", "lognormal", "lognormal"])
     with pytest.raises(ValueError, match="Unsupported state marginal"):
         CorrelatedPrior(baseline.mean, baseline.arithmetic_covariance, marginal=marginal)
     with pytest.raises(ValueError, match="same order"):

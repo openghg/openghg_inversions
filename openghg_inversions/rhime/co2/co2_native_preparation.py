@@ -388,6 +388,7 @@ def prepare_multisource_native_co2_inputs(
     prepared = prepare_co2_inputs(
         canonical, reduction, aggregation_error_rank=aggregation_error_rank,
         bc_centering_weights=bc_centering_weights, provenance=metadata,
+        prior_marginal=_retained_marginal(prior, reduction.retained_mean),
     )
     source_provenance = {"native_prior": record}
     if restriction is None:
@@ -626,6 +627,21 @@ def _source_covariance(
     if prior.gpp_ter_correlation != 0.0:
         correlations = {(cast(str, prior.gpp_source), cast(str, prior.ter_source)): prior.gpp_ter_correlation}
     return CorrelatedSourceCovariance(blocks, correlations, source_dim=NATIVE_SOURCE_DIM)
+
+
+def _retained_marginal(prior: Co2MultiSourceNativePrior, retained_mean: xr.DataArray) -> xr.DataArray | None:
+    """Each retained state's configured marginal, or ``None`` when no source sets one.
+
+    Leaving the variable out when no source sets ``marginal`` keeps existing
+    preparations unchanged.
+    """
+    if all(source.marginal is None for source in prior.sources.values()):
+        return None
+    sources = np.asarray(retained_mean["source"].values).astype(str)
+    names = [prior.sources[source].marginal or "lognormal" for source in sources]
+    return xr.DataArray(
+        np.asarray(names, dtype=str), dims=retained_mean.dims, coords=retained_mean.coords, name="alpha_prior_marginal",
+    )
 
 
 def _same_labels(first: xr.DataArray | None, second: xr.DataArray | None) -> bool:
