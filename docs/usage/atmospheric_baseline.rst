@@ -124,6 +124,31 @@ columns are concentration responses to one density standard deviation, in
 the observations' units, with an ``outer_source`` label of ``net_bio`` or
 ``FF`` per column; the widths are converted to ``mol m-2 s-1``.
 
+Linked CO2/O2
+-------------
+
+The linked recipes share one flux state and prior between the CO2 and O2
+channels, so the outer state selection is made once, and each channel's rows
+are centred with its own weights and column means:
+
+.. code-block:: python
+
+   from openghg_inversions.rhime.co2.co2_o2_model import bind_linked_outer_flux, build_co2_o2_model
+
+   outer_flux = bind_linked_outer_flux(
+       OuterFluxChoice("multiplicative", ("outer",), ("ocean",)), flux_prior,
+       observations=observations, co2_sensitivity=co2_sensitivity, o2_sensitivity=o2_sensitivity,
+   )
+   model = build_co2_o2_model(..., boundary={"co2": co2_boundary, "o2": o2_boundary}, outer_flux=outer_flux)
+
+Exact-zero columns are pruned on the joint ``H`` first, so a column is pruned
+only when it is zero for both channels. Each channel's boundary needs its own
+mean shift, which absorbs that channel's outer level; the padded mean-shift
+response is zero on the other channel's rows. Outer ocean states must be held
+at their prior mean (``fixed_sources=("ocean",)``), and additive mode is not
+available, because it would need an oxidative allocation of the net biosphere
+correction between GPP and TER.
+
 Atmospheric baseline outputs
 ----------------------------
 
@@ -131,7 +156,10 @@ With this option ``mu_bc`` is no longer the whole atmospheric baseline, because
 it also carries the outer level. Use
 :func:`~openghg_inversions.rhime.co2.atmospheric_baseline.reconstruct_atmospheric_baseline`
 with the bound ``outer_flux.data``, the raw ``H``, fixed term and prior mean,
-and posterior draws of ``flux_scaling`` and ``mu_bc`` to report:
+and posterior draws of ``flux_scaling`` and ``mu_bc`` to report the
+following. For a linked channel, pass ``prefix="co2_"`` or ``"o2_"``, that
+channel's bound ``outer_flux`` record, native ``H`` and fixed term, and its
+rows of ``{prefix}mu_bc`` on the native row dimension:
 
 ``atmospheric_baseline``
    :math:`f+\mu_{bc}+H_Ox_O-\mu_S(x_S-m_S)`, which equals
