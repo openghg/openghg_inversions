@@ -398,6 +398,11 @@ class Co2NativeSourcePrior:
     geodesic. Without ``sigma`` the amplitude is calibrated against the
     configured functional SD targets.
 
+    ``marginal`` sets the distribution of this source's retained states in the
+    sampled model: a Gaussian copula with these arithmetic moments and the
+    named marginal (see :class:`~openghg_inversions.correlated_state.CorrelatedPrior`).
+    Unset means lognormal, and the preparation is then unchanged.
+
     Attributes:
         sigma: Native grid-cell standard deviation, or ``None`` to calibrate.
         mean: Constant native scaling mean.
@@ -406,6 +411,8 @@ class Co2NativeSourcePrior:
         longitude_correlation_length: Optional separable longitude length.
         geodesic_correlation_length_km: Geodesic length for every class, or a
             mapping from class label (as written in TOML) to length.
+        marginal: Retained-state marginal: ``"lognormal"``, ``"normal"``,
+            ``"weibull"`` or ``"gamma"``; ``None`` means lognormal.
     """
 
     sigma: float | None = None
@@ -414,6 +421,7 @@ class Co2NativeSourcePrior:
     latitude_correlation_length: float | None = None
     longitude_correlation_length: float | None = None
     geodesic_correlation_length_km: float | Mapping[str, float] | None = None
+    marginal: str | None = None
 
     @classmethod
     def from_params(cls, value: object, path: str) -> Co2NativeSourcePrior:
@@ -432,6 +440,13 @@ class Co2NativeSourcePrior:
                 options.pop("geodesic_correlation_length_km"), f"{path}.geodesic_correlation_length_km",
                 positive=True,
             )
+        if "marginal" in options:
+            from openghg_inversions.correlated_state import STATE_MARGINALS
+
+            marginal = _string(options.pop("marginal"), f"{path}.marginal")
+            if marginal not in STATE_MARGINALS:
+                raise ValueError(f"{path}.marginal must be one of {list(STATE_MARGINALS)!r}; got {marginal!r}.")
+            result["marginal"] = marginal
         _reject_unknown(options, path)
         return cls(**result)
 

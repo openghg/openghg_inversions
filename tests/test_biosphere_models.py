@@ -237,6 +237,9 @@ def test_calibrated_prior_rejects_reordered_or_renamed_state_axis(state_dim):
 
 def physical_state(prior, z):
     """Independent NumPy arithmetic-moment map, with no model/cache expressions."""
+    if getattr(prior, "lognormal", True) is None:
+        # Copula marginals: SciPy quantiles of the correlated latent normal.
+        return prior.transform_latent(prior.latent_correlation_cholesky.to_numpy() @ z)
     m = prior.mean.to_numpy()
     b = prior.arithmetic_covariance.to_numpy()
     v = np.log1p(b / np.outer(m, m))

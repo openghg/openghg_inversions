@@ -56,7 +56,7 @@ from openghg_inversions.sigma import SigmaAlignment
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
 from .co2_model import _build_co2_model, _normalise_offset_args
-from .co2_preparation import Co2PreparedInputs
+from .co2_preparation import ALPHA_PRIOR_MARGINAL, Co2PreparedInputs
 
 _CO2_SCIENTIFIC_INPUT_NAMES = (
     "H",
@@ -209,6 +209,8 @@ def co2_model_input_names(
         names.append("state_is_active")
         if "state_fixed_value" in inputs:
             names.append("state_fixed_value")
+    if ALPHA_PRIOR_MARGINAL in inputs:
+        names.append(ALPHA_PRIOR_MARGINAL)
     if preserve_prepared_fixed_mismatch and "fixed_model_mismatch" in inputs:
         names.append("fixed_model_mismatch")
     missing = [name for name in names if name not in inputs]
@@ -554,6 +556,9 @@ def build_co2_from_materialized(
         CorrelatedPrior(
             model_inputs["alpha_prior_mean"],
             prior_covariance,
+            marginal=(
+                model_inputs[ALPHA_PRIOR_MARGINAL] if ALPHA_PRIOR_MARGINAL in model_inputs else "lognormal"
+            ),
             covariance_dim=str(prior_covariance.dims[-1]),
         ),
         biosphere_prior,

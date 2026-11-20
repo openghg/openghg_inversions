@@ -91,6 +91,7 @@ domain = "EUROPE"
 # sigma = 0.6
 # correlation_length = 3.0
 # geodesic_correlation_length_km = { 1 = 500.0 }
+# marginal = "weibull"  # retained-state marginal; lognormal when unset
 #
 # [prepared_inputs.native_prior.sources.co2_BASE_TER]
 # sigma = 0.7

@@ -290,6 +290,7 @@ def test_multisource_configuration_round_trips(files: dict[str, Path]) -> None:
     ({"ff": {"sigma": 0.3, "colour": "red"}}, "Unknown configuration option"),
     ({"calibration": {"targets_path": "t.nc"}}, "no source to calibrate"),
     ({"class_labels_path": None}, "requires prepared_inputs.native_prior.class_labels_path"),
+    ({"ff": {"sigma": 0.3, "marginal": "beta"}}, r"sources.ff.marginal must be one of"),
 ])
 def test_multisource_configuration_rejects_inconsistent_options(
     files: dict[str, Path], change: dict, message: str,
@@ -649,3 +650,63 @@ def test_generated_basis_is_repeated_per_source(tmp_path: Path, merged: MergedDa
     config["prepared_inputs"]["basis"]["fix_outer_regions"] = True
     with pytest.raises(ValueError, match="fix_outer_regions cannot serve per-source native priors"):
         Co2PreparationConfig.from_params(config, require_source=True)
+
+
+# ---------------------------------------------------------------------------
+# Per-source marginals (#1098)
+# ---------------------------------------------------------------------------
+
+
+def _with_marginals(table: dict, **marginals: str) -> dict:
+    for source, marginal in marginals.items():
+        table["sources"][source]["marginal"] = marginal
+    return table
+
+
+def test_source_marginal_round_trips_and_defaults_to_unset(files: dict[str, Path]) -> None:
+    table = _with_marginals(_native_prior(files), gpp="weibull", ter="gamma")
+    prior = Co2PreparationConfig.from_params(_request(files, table), require_source=True).native.native_prior
+    assert isinstance(prior, Co2MultiSourceNativePrior)
+    assert (prior.sources["gpp"].marginal, prior.sources["ter"].marginal, prior.sources["ff"].marginal) == (
+        "weibull", "gamma", None,
+    )
+    assert Co2MultiSourceNativePrior.from_params(prior.to_params()) == prior
+    assert "marginal" not in Co2MultiSourceNativePrior.from_params(_native_prior(files)).to_params()["sources"]["ff"]
+
+
+@pytest.mark.parametrize("restriction", ["bucket", "absolute_flux_weighted_mean"])
+def test_preparation_records_each_retained_state_marginal(
+    tmp_path: Path, merged: MergedData, files: dict[str, Path], restriction: str,
+) -> None:
+    from openghg_inversions.rhime.co2.co2_cached_sigma_runner import co2_cached_sigma_input_names
+    from openghg_inversions.rhime.co2.co2_runner import co2_model_input_names
+
+    plain = handoffs.load_preparation(
+        _prepare(tmp_path, _request(files, _native_prior(files, restriction)), merged, "plain")
+    ).prepared
+    assert "alpha_prior_marginal" not in plain.inv_inputs
+    table = _with_marginals(_native_prior(files, restriction), gpp="weibull", ter="normal")
+    prepared = handoffs.load_preparation(_prepare(tmp_path, _request(files, table), merged, "marginal")).prepared
+    inputs = prepared.inv_inputs
+    expected = {"ff": "lognormal", "gpp": "weibull", "ter": "normal"}
+    assert list(inputs.alpha_prior_marginal.values) == [expected[str(s)] for s in inputs.source.values]
+    assert inputs.alpha_prior_marginal.indexes["region"].equals(inputs.indexes["region"])
+    # The marginal changes only the sampled prior, not the reduced moments.
+    xr.testing.assert_identical(inputs.alpha_prior_mean, plain.inv_inputs.alpha_prior_mean)
+    xr.testing.assert_identical(inputs.alpha_prior_covariance, plain.inv_inputs.alpha_prior_covariance)
+    assert "alpha_prior_marginal" in co2_model_input_names(prepared, preserve_prepared_fixed_mismatch=False)
+    assert "alpha_prior_marginal" in co2_cached_sigma_input_names(prepared)
+    assert prepared.provenance["native_preparation"]["native_prior"]["sources"]["gpp"]["marginal"] == "weibull"
+
+
+@pytest.mark.usefixtures("double_precision")
+def test_source_marginals_sample_through_the_runner(merged: MergedData, files: dict[str, Path]) -> None:
+    # This likelihood samples with numpyro (JAX); gamma uses TensorFlow Probability there.
+    config = _request(files, _with_marginals(_native_prior(files), gpp="weibull", ter="gamma"))
+    config["sampling"] = {"draws": 20, "tune": 20, "chains": 1, "progressbar": False, "random_seed": 3}
+    config["outputs"] = {"output_format": "none"}
+    result = run_co2(params=config, merged_data=merged)
+    posterior = result.idata["posterior"]
+    assert posterior["flux_scaling"].sizes["region"] == 7
+    biosphere = posterior["flux_scaling"].where(posterior["source"] != "ff", drop=True)
+    assert biosphere.sizes["region"] == 4 and float(biosphere.min()) > 0

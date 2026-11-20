@@ -774,10 +774,12 @@ amplitude and kernel, reduced jointly so that the retained state is
    [prepared_inputs.native_prior.sources.co2_BASE_GPP]
    latitude_correlation_length = 3.0
    longitude_correlation_length = 6.0
+   marginal = "weibull"                          # optional; lognormal when unset
 
    [prepared_inputs.native_prior.sources.co2_BASE_TER]
    latitude_correlation_length = 3.0
    longitude_correlation_length = 6.0
+   marginal = "weibull"
 
    [prepared_inputs.native_prior.sources.co2_BASE_FF]
    sigma = 0.8
@@ -794,6 +796,18 @@ supported). Each source accepts ``mean``, ``sigma``, ``correlation_length``,
 great-circle kernel, a table ``{class = km}`` only those classes (a dense class
 of ``n`` cells holds ``8 n**2`` bytes, so name classes of up to about 10\ :sup:`4`
 cells). Classes come from ``class_labels_path`` and are uncorrelated.
+
+``marginal`` chooses the distribution of the source's retained states in the
+sampled model: ``"lognormal"`` (the default), ``"normal"``, ``"weibull"`` or
+``"gamma"``. The reduction, and so the retained mean and covariance, does not
+change; the states are joined by a Gaussian copula that reproduces those
+moments exactly (see :ref:`sampled-marginals`). A mean-one lognormal pulls a
+posterior constrained only in a sum of states, such as net biosphere flux,
+towards small gross terms; Weibull and gamma shrink less, and normal not at
+all but allows negative scalings. Preparation stores the choice as
+``alpha_prior_marginal`` only when a source sets ``marginal``, so other
+preparations are unchanged. Every marginal works with both PyMC's sampler
+and numpyro; under numpyro, gamma uses TensorFlow Probability.
 
 ``gpp_ter_correlation`` is the correlation ``rho`` (``|rho| < 1``) of the GPP and
 TER *scaling* anomalies; positive ``rho`` makes their signed flux anomalies
