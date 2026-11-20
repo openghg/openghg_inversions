@@ -6,12 +6,18 @@ openghg\_inversions.models
    :show-inheritance:
 
 
+.. toctree::
+   :maxdepth: 4
+
+   openghg_inversions.models.boundary
+
+
 
 .. toctree::
    :maxdepth: 4
 
    openghg_inversions.models.additive_sigma
-   openghg_inversions.models.boundary
+   openghg_inversions.models.biosphere
    openghg_inversions.models.cached_sigma
    openghg_inversions.models.components
    openghg_inversions.models.coords

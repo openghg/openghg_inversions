@@ -95,6 +95,21 @@ manifest lifetime, compatible model changes and graph-free product replay.
    openghg_inversions.rhime.outputs.postprocess_multisector_outputs
    openghg_inversions.rhime.outputs.save_inversion_output
 
+Calibrate retained biosphere priors
+-----------------------------------
+
+See :doc:`the calibration equations and Python workflow </usage/biosphere_prior>`
+for the explicit retained-state intervention and its fixed-reduction scope.
+
+.. autosummary::
+   :nosignatures:
+
+   openghg_inversions.biosphere_prior.BiospherePrior
+   openghg_inversions.biosphere_prior.calibrate_biosphere_prior
+   openghg_inversions.models.biosphere.resolve_retained_flux_prior
+   openghg_inversions.correlated_state.CorrelatedPrior
+   openghg_inversions.models.biosphere.annotate_biosphere_prior
+
 Run specifications and results
 ------------------------------
 
@@ -293,6 +308,7 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.PreparedLinearSensitivity
    openghg_inversions.models.prepare_linear_sensitivity
    openghg_inversions.models.CorrelatedLognormalPrior
+   openghg_inversions.models.CorrelatedPrior
    openghg_inversions.models.parse_prior
    openghg_inversions.models.add_model_data
    openghg_inversions.models.add_linear_component
@@ -326,6 +342,7 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.array_ops.to_dense_tree
    openghg_inversions.models.add_linked_linear_component
    openghg_inversions.models.add_correlated_lognormal_state
+   openghg_inversions.models.add_correlated_state_with_activity
    openghg_inversions.models.add_offset_component
    openghg_inversions.models.add_sigma_component
    openghg_inversions.models.add_site_sigma_gaussian_likelihood

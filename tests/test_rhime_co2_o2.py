@@ -11,7 +11,7 @@ import pymc as pm
 import pytest
 import xarray as xr
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.models import (
     StateActivity,
     get_coord_registry,
@@ -142,7 +142,7 @@ def _build(prepared, *, state_activity: StateActivity | None = None):
         co2_sensitivity=prepared.co2_sensitivity,
         o2_sensitivity=prepared.o2_sensitivity,
         aggregation_error=prepared.aggregation_error,
-        retained_prior=prepared.retained_prior,
+        retained_prior=CorrelatedPrior.from_lognormal(prepared.retained_prior),
         independent_error_sd=_independent_error(prepared),
         state_activity=state_activity,
     )
@@ -235,7 +235,7 @@ def test_shared_state_sensitivity_removes_only_joint_zero_columns(
         fixed_prior_contribution=prepared.fixed_prior_contribution,
         co2_sensitivity=prepared.co2_sensitivity,
         o2_sensitivity=prepared.o2_sensitivity,
-        retained_prior=prepared.retained_prior,
+        retained_prior=CorrelatedPrior.from_lognormal(prepared.retained_prior),
     )
     expected_contribution = np.concatenate(
         (
@@ -311,7 +311,7 @@ def test_fixed_state_changes_prior_closure_and_is_not_sampled() -> None:
             fixed_prior_contribution=prepared.fixed_prior_contribution,
             co2_sensitivity=prepared.co2_sensitivity,
             o2_sensitivity=prepared.o2_sensitivity,
-            retained_prior=prepared.retained_prior,
+            retained_prior=CorrelatedPrior.from_lognormal(prepared.retained_prior),
             state_activity=activity,
         ),
         expected_prior.rename("prior_forward_concentration"),

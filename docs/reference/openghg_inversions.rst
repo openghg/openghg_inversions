@@ -24,6 +24,7 @@ openghg\_inversions
    :maxdepth: 4
 
    openghg_inversions.array_ops
+   openghg_inversions.biosphere_prior
    openghg_inversions.borrowed
    openghg_inversions.boundary_sensitivity
    openghg_inversions.cli
@@ -41,3 +42,4 @@ openghg\_inversions
    openghg_inversions.sigma
    openghg_inversions.source_covariance
    openghg_inversions.utils
+   openghg_inversions.xr_contracts
