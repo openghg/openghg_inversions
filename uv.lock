@@ -2241,7 +2241,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-xdist", marker = "extra == 'dev'" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.16.0" },
-    { name = "scipy" },
+    { name = "scipy", specifier = ">=1.15" },
     { name = "scipy-stubs", marker = "extra == 'dev'", specifier = "==1.15.3.*" },
     { name = "sparse" },
     { name = "towncrier", marker = "extra == 'dev'", specifier = ">=24.8" },

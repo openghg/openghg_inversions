@@ -55,8 +55,9 @@ and ``anchor_time`` follow ``bc_freq``: ``None`` gives one period,
 anchored at ``anchor_time`` or, when it is ``None``, at the fit's earliest
 observation (the RHIME parameter adapter defaults ``bc_freq_anchor`` to the
 configured start date). Weighted
-centering requires the prepared ``bc_centering_weights``; the other
-structures ignore them.
+centering with a positive ``anomaly_scale`` requires the prepared
+``bc_centering_weights``; a level-only boundary (``anomaly_scale = 0``) and
+the other structures ignore them.
 
 The mean shift responds through :math:`M`, contributing :math:`\delta
 M\mathbf1` to the observations. Under supported surface preparation

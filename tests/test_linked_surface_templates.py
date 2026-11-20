@@ -189,9 +189,7 @@ def test_control_targets_come_from_the_configured_outer_flux_model(mode):
         np.testing.assert_allclose(offset, offset[0], rtol=0, atol=1e-10)
 
 
-@pytest.mark.parametrize("extension", ["nc", pytest.param("zarr", marks=pytest.mark.xfail(
-    strict=True, reason="A zarr-reloaded trace's species level has numpy StringDType, which netCDF products cannot write.",
-))])
+@pytest.mark.parametrize("extension", ["nc", "zarr"])
 def test_declared_boundary_policy_survives_saved_product_replay(inputs, tmp_path, monkeypatch, extension):
     import json
     import pymc as pm

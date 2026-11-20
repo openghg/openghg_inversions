@@ -283,7 +283,7 @@ def test_co2_execution_adapters_forward_inference_and_preserve_trace(tmp_path, m
         assert sampler.draws == 3 and sampler.tune == 2 and sampler.chains == 2
         assert sampler.sample_kwargs == sample_kwargs
         assert sampler.nuts_sampler == ("pymc" if likelihood_kind == "fixed_ou" else "numpyro")
-        assert kwargs == targets
+        assert kwargs == {**targets, "method": "nuts"}
         return trace, actual
 
     def forbidden(*args, **kwargs):

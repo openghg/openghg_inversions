@@ -37,7 +37,7 @@ dependencies = [
     "xarray>=2025.08.0",
     "pandas<3.0",
     "matplotlib",
-    "scipy",
+    "scipy>=1.15",  # scipy.linalg.lapack.dtrcon (GLS condition estimates)
     # Temporary until a release includes the Numba fp_x_flux algorithm.
     "openghg @ git+https://github.com/openghg/openghg.git@b9a9d1f21f22d2f8dcca714283eb936c22338c57",
     "openghg-defs!=0.0.13",
@@ -116,7 +116,7 @@ arviz = ">=1.1,<2"
 xarray = ">=2025.08.0"
 pandas = "<3.0"
 matplotlib = "*"
-scipy = "*"
+scipy = ">=1.15"
 sparse = "*"
 flox = "*"
 opt_einsum = "*"

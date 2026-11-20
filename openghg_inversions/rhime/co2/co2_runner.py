@@ -55,7 +55,7 @@ from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.sigma import SigmaAlignment
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
-from .co2_model import _build_co2_model, _normalise_offset_args
+from .co2_model import GaussianStatePrior, _build_co2_model, _normalise_offset_args
 from .co2_preparation import Co2PreparedInputs
 
 _CO2_SCIENTIFIC_INPUT_NAMES = (
@@ -480,6 +480,7 @@ def build_co2_from_materialized(
     no_model_error: bool = False,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
+    gaussian_prior: GaussianStatePrior | None = None,
 ) -> RhimeModelBuildResult:
     """Construct the CO2 model from explicitly materialized scientific inputs.
 
@@ -504,6 +505,10 @@ def build_co2_from_materialized(
         boundary: Jointly materialized bound boundary, or None when disabled.
         outer_flux: Optional outer-flux choice, resolved on the retained flux
             prior and bound to the materialized ``mf`` rows and ``H`` here.
+        gaussian_prior: Optional Gaussian retained-state prior replacing the
+            resolved flux prior in the graph, for the Gaussian estimator. Outer
+            states are still selected on the resolved flux prior, whose
+            covariance the Gaussian prior shares.
 
     Returns:
         Constructed PyMC model with component-declared scientific roles, units
@@ -564,7 +569,7 @@ def build_co2_from_materialized(
     )
     model = _build_co2_model(
         model_inputs["H"],
-        retained_prior=flux_prior,
+        retained_prior=None if gaussian_prior is not None else flux_prior,
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
@@ -579,6 +584,7 @@ def build_co2_from_materialized(
         outer_flux=outer,
         offset_prior=priors["offset_latent"] if offset_prior is not None else None,
         offset_args=offset_args,
+        gaussian_prior=gaussian_prior,
     )
     variable_roles = {
         "observation": "y",
@@ -617,7 +623,10 @@ def build_co2_from_materialized(
             metadata={
                 "recipe": "co2",
                 "kind": "builtin",
-                "prior": "correlated arithmetic-moment lognormal",
+                "prior": (
+                    gaussian_prior.description if gaussian_prior is not None
+                    else "correlated arithmetic-moment lognormal"
+                ),
                 "no_model_error": no_model_error,
                 "use_bc": boundary is not None,
                 **(boundary_outputs.metadata if boundary_outputs is not None else {"boundary_formulation": None}),
