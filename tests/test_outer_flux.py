@@ -7,7 +7,7 @@ import pytest
 import xarray as xr
 
 from boundary_test_utils import centered_transport
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.outer_flux import OuterFluxChoice
@@ -60,7 +60,7 @@ def prior(cross=0.0):
     covariance = np.diag([0.08, 0.07, 0.06, 0.05, 0.04])
     covariance[0, 1] = covariance[1, 0] = 0.01
     covariance[0, 4] = covariance[4, 0] = cross
-    return CorrelatedLognormalPrior(mean, covariance, covariance_dim="region_cov")
+    return CorrelatedPrior(mean, covariance, covariance_dim="region_cov")
 
 
 def sensitivity(obs, mean):
@@ -133,7 +133,7 @@ def test_states_are_selected_by_basis_group_and_source():
 
 
 def test_selectors_need_their_coordinates_and_at_least_one_outer_state():
-    unlabelled = CorrelatedLognormalPrior(
+    unlabelled = CorrelatedPrior(
         prior().mean.drop_vars("source"), prior().arithmetic_covariance, covariance_dim="region_cov",
     )
     with pytest.raises(ValueError, match="'source' coordinate"):
