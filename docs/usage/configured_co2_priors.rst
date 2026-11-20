@@ -71,7 +71,7 @@ reopens it. The saved calibration includes original moments, exact state
 labels, selector, reporting functionals, resulting covariance, residual weights
 and the resolved policy. Reload validates them and does not resolve the policy
 again or use current inputs or selected subsets. The model samples the
-calibrated covariance with the retained prior's marginals.
+calibrated covariance with the retained prior's marginal families.
 
 Select a saved calibration for ordinary or linked inference
 -----------------------------------------------------------

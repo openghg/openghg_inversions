@@ -178,7 +178,7 @@ def test_invalid_lognormal_is_rejected_without_covariance_projection():
         try:
             calibrate_biosphere_prior(baseline, **inputs, residual_sd_multiplier=factor)
         except ValueError as exc:
-            if "invalid for the prior's marginals" in str(exc):
+            if "invalid for the prior's marginal families" in str(exc):
                 invalid = factor
                 break
     assert invalid is not None
@@ -202,6 +202,20 @@ def test_serialization_with_gathered_labels_reproduces_the_sampled_prior(tmp_pat
     after = resolve_retained_flux_prior(base, reloaded).lognormal
     for name in ("latent_mean", "latent_cholesky"):
         np.testing.assert_array_equal(getattr(before, name), getattr(after, name))
+
+
+def test_saved_covariance_column_identity_is_checked_at_load_and_binding(tmp_path):
+    data = calibrate().data
+    labels = data.state_covariance_label
+    reversed_columns = data.assign_coords(state_covariance_label=labels.copy(data=labels.values[::-1]))
+    path = tmp_path / "calibration.nc"
+    save_trace(xr.DataTree.from_dict({"biosphere_prior": reversed_columns}), path)
+    with pytest.raises(ValueError, match="column identity"):
+        BiospherePrior.from_dataset(load_trace(path)["biosphere_prior"].dataset)
+    with pytest.raises(ValueError, match="state_covariance_label column identity"):
+        BiospherePrior.from_dataset(data.drop_vars("state_covariance_label"))
+    with pytest.raises(ValueError, match="column identity"):
+        sampled(BiospherePrior(reversed_columns))
 
 
 def test_prior_draws_match_joint_moments_and_annotation_records_scope():
