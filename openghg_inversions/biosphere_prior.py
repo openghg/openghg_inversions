@@ -8,87 +8,84 @@ Arrays in the returned scientific value are borrowed: do not mutate them.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
-from typing import Literal
 
 from dask import compute
 import numpy as np
-import pandas as pd
 from openghg.util import cf_ureg
 import xarray as xr
 from scipy.linalg import qr
 
 from openghg_inversions.array_ops import to_dense
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior, _matrix_tolerance
+from openghg_inversions.correlated_state import CorrelatedPrior, _matrix_tolerance
+
+
+BIOSPHERE_PRIOR_SCHEMA = "openghg_inversions.biosphere_prior/v1"
+"""Provisional schema of the saved calibration payload."""
+
+BIOSPHERE_PRIOR_SCOPE = "retained_state_prior_with_fixed_reduction_reconstruction_and_aggregation"
+"""What a calibration changes, recorded in ``rhime_model_metadata``."""
+
+_POLICIES = ("residual_sd_multiplier", "target_residual_sd", "target_gross_sd")
+_FUNCTIONALS = ("GPP", "TER", "net", "gross", "residual_gross")
 
 
 @dataclass(frozen=True, eq=False)
 class BiospherePrior:
-    """Baseline, calibrated moments and analytic audit for a retained prior.
+    """Calibrated retained-prior covariance and the inputs that produced it.
 
-    ``data`` is eagerly materialized by :func:`calibrate_biosphere_prior`.
-    ``positive_prior`` is present only for the positive lognormal family. The
-    Gaussian option is a signed-template diagnostic, conditionally Gaussian
-    given the protected lognormal states, generally a mixture marginally.
+    ``data`` is eager and borrowed: do not mutate it. It holds the inputs
+    ``baseline_mean``, ``baseline_covariance``, ``biosphere``, ``weights`` and
+    ``reference``, and the results ``covariance`` and ``residual_weights``.
+    Its scalar attributes are the schema, ``covariance_dim``, the resolved
+    ``policy``, the ``requested`` value, the reporting ``units`` and the
+    ``residual_sd_multiplier``.
+
+    A calibration fixes arithmetic moments only. The model samples them with
+    the marginals of the retained prior it calibrates; see
+    :func:`~openghg_inversions.models.biosphere.resolve_retained_flux_prior`.
     """
 
-    baseline: CorrelatedLognormalPrior
     data: xr.Dataset
-    positive_prior: CorrelatedLognormalPrior | None
 
     def to_dataset(self) -> xr.Dataset:
-        """Return the labelled serialization payload, including baseline moments.
+        """Return the labelled serialization payload.
 
         Returns:
-            The stored Dataset itself, not a copy: baseline and calibrated
-            moments, selectors, functionals and policy metadata, in the layout
+            The stored Dataset itself, not a copy, in the layout
             :meth:`from_dataset` reads.
         """
         return self.data
 
     @classmethod
     def from_dataset(cls, data: xr.Dataset) -> BiospherePrior:
-        """Validate frozen moments, support and metadata without recalibrating a policy.
+        """Check a saved calibration without repeating it.
 
-        Loading is an eager boundary for this small prior payload. The saved
-        moments are checked for protected covariance rows and the net functional;
-        no control selection or target resolution is repeated on load.
+        Loading is an eager boundary for this small payload. Control selection
+        and target resolution are not repeated.
 
         Args:
-            data: Saved labelled baseline/calibrated moments, selectors, functionals
-                and resolved scalar policy metadata. Small arrays are computed here.
+            data: Saved inputs, results and scalar attributes in the layout
+                :func:`calibrate_biosphere_prior` returns.
 
         Returns:
-            Validated frozen prior with the saved covariance as its sampling target;
-            no regression, calibration target, or transport preparation is repeated.
+            The calibration, with the saved covariance as its sampling target.
 
         Raises:
-            ValueError: If the schema, family or policy is unsupported, a stored
-                array has the wrong dimensions or non-finite values, the GPP/TER
-                weights, selector or units are invalid, the stored metadata is
-                inconsistent, or the saved moments do not preserve the protected
-                covariance rows or the net-functional covariance.
+            ValueError: If the schema or policy is unsupported, an array has
+                the wrong dimensions or non-finite values, the GPP/TER labels,
+                weight signs, selector or units are invalid, the multiplier is
+                inconsistent with the policy, or the saved covariance is not the
+                residual-direction change of the baseline that preserves the
+                protected rows and the net-functional covariance.
         """
-        if data.attrs.get("biosphere_prior_schema") != "openghg_inversions.biosphere_prior/v1":
+        if data.attrs.get("biosphere_prior_schema") != BIOSPHERE_PRIOR_SCHEMA:
             raise ValueError("Unsupported biosphere-prior schema; prepare again.")
         data = compute(data.map(to_dense, keep_attrs=True))[0]
-        baseline = CorrelatedLognormalPrior(
-            data.baseline_mean, data.baseline_covariance,
-            covariance_dim=data.attrs["covariance_dim"],
-        )
-        family = data.attrs["family"]
-        if family not in {"lognormal", "gaussian"}:
-            raise ValueError("Unsupported stored biosphere-prior family.")
-        report = json.loads(data.attrs["calibration_report"])
-        policy = report["policy"]
-        if policy not in {"residual_sd_multiplier", "target_residual_sd", "target_gross_sd"}:
-            raise ValueError("Unsupported stored calibration policy.")
-        dim, cov_dim = baseline.state_dim, baseline.covariance_dim
+        dim, cov_dim = str(data.baseline_mean.dims[0]), data.attrs["covariance_dim"]
         dimensions = {
-            "covariance": (dim, cov_dim), "biosphere": (dim,), "residual_weights": (dim,),
-            "weights": ("process", dim), "reference": ("process",),
-            "functional_mean": ("prior", "functional"), "functional_sd": ("prior", "functional"),
-            "functional_correlation": ("prior", "functional", "functional_cov"),
+            "baseline_mean": (dim,), "baseline_covariance": (dim, cov_dim), "covariance": (dim, cov_dim),
+            "biosphere": (dim,), "residual_weights": (dim,), "weights": ("process", dim),
+            "reference": ("process",),
         }
         for name, expected in dimensions.items():
             if data[name].dims != expected:
@@ -97,92 +94,84 @@ class BiospherePrior:
                 raise ValueError(f"Stored {name} must be finite.")
         if set(data.get_index("process")) != {"GPP", "TER"} or data.sizes["process"] != 2:
             raise ValueError("Stored reporting weights require exactly GPP and TER labels.")
-        selector = data.biosphere
-        if selector.dtype != bool or not bool(selector.any()):
+        selector = data.biosphere.values
+        if selector.dtype != bool or not selector.any():
             raise ValueError("Stored biosphere selector must select labelled states.")
-        units = data.weights.attrs.get("units")
-        if not units or not data.reference.attrs.get("units"):
+        units = data.attrs.get("units")
+        if not units or data.weights.attrs.get("units") != units or not data.reference.attrs.get("units"):
             raise ValueError("Stored calibration requires declared flux units.")
         cf_ureg.Quantity(1, data.reference.attrs["units"]).to(units)
-        cf_ureg.Quantity(1, report["units"]).to(units)
         weights = data.weights.sel(process=["GPP", "TER"]).values
         if (weights[0] > 0).any() or (weights[1] < 0).any():
             raise ValueError("Stored GPP/TER weights have invalid signs.")
+        policy, requested = data.attrs.get("policy"), float(data.attrs["requested"])
         factor = float(data.attrs["residual_sd_multiplier"])
-        requested = report["requested"]
-        if (not np.isfinite(factor) or factor <= 0 or not np.isfinite(requested) or requested < 0
-                or not np.isclose(factor, report["residual_sd_multiplier"], rtol=1e-13, atol=0)
+        if (policy not in _POLICIES or not np.isfinite(factor) or factor <= 0
+                or not np.isfinite(requested) or requested < 0
                 or (policy == "residual_sd_multiplier" and factor != requested)):
-            raise ValueError("Stored multiplier is inconsistent with the resolved calibration metadata.")
-        if bool((data.functional_sd < 0).any()) or bool((abs(data.functional_correlation) > 1 + 1e-12).any()):
-            raise ValueError("Stored functional SDs/correlations are outside their support.")
-        if factor == 1 and not np.array_equal(data.covariance.values, data.baseline_covariance.values):
-            raise ValueError("Stored identity calibration must retain baseline covariance.")
-        positive = (CorrelatedLognormalPrior(baseline.mean, data.covariance, covariance_dim=cov_dim)
-                    if family == "lognormal" else None)
-        if family == "gaussian":
-            covariance = data.covariance.values
-            if not np.allclose(covariance, covariance.T, rtol=1e-10, atol=_matrix_tolerance(covariance)):
-                raise ValueError("Stored calibrated covariance must be symmetric.")
-            covariance = (covariance + covariance.T) / 2
-            try:
-                np.linalg.cholesky(covariance)
-            except np.linalg.LinAlgError as exc:
-                raise ValueError("Stored calibrated covariance must be positive definite.") from exc
-            positions = np.flatnonzero(~selector.values)
-            if positions.size:
-                CorrelatedLognormalPrior(baseline.mean.isel({dim: positions}),
-                    covariance[np.ix_(positions, positions)])
-        baseline_covariance = data.baseline_covariance.values
-        covariance_change = data.covariance.values - baseline_covariance
-        tolerance = _matrix_tolerance(baseline_covariance)
-        if not np.allclose(covariance_change[~selector.values], 0, rtol=0, atol=tolerance):
+            raise ValueError("Stored multiplier is inconsistent with the resolved calibration policy.")
+        b, changed = data.baseline_covariance.values, data.covariance.values
+        if factor == 1:
+            if not np.array_equal(changed, b):
+                raise ValueError("Stored identity calibration must retain baseline covariance.")
+            return cls(data)
+        residual = data.residual_weights.values
+        direction = b @ residual
+        residual_variance = float(residual @ direction)
+        if residual_variance <= 0:
+            raise ValueError("Stored residual weights have no residual variance to calibrate.")
+        expected_change = (np.square(factor) - 1) * np.outer(direction, direction) / residual_variance
+        tolerance = _matrix_tolerance(b)
+        if not np.allclose(changed - b, expected_change, rtol=1e-10, atol=tolerance):
+            raise ValueError("Stored covariance must be the residual-direction change of the baseline.")
+        if not np.allclose((changed - b)[~selector], 0, rtol=0, atol=tolerance):
             raise ValueError("Stored calibration must preserve protected covariance rows.")
         net = weights.sum(axis=0)
         net_scale = np.max(np.abs(net))
-        if net_scale > 0:
-            net = net / net_scale
-            if not np.allclose(net @ covariance_change, 0, rtol=0,
-                               atol=tolerance * np.abs(net).sum()):
-                raise ValueError("Stored calibration must preserve net-functional covariance.")
-        return cls(baseline, data, positive)
+        if net_scale > 0 and not np.allclose(
+            (net / net_scale) @ (changed - b), 0, rtol=0, atol=tolerance * np.abs(net / net_scale).sum(),
+        ):
+            raise ValueError("Stored calibration must preserve net-functional covariance.")
+        return cls(data)
 
-    def lognormal_marginal(self, labels: xr.DataArray | list) -> CorrelatedLognormalPrior:
-        """Select exact lognormal marginal moments, never a Schur complement.
+    def functionals(self) -> xr.Dataset:
+        """Derive reporting-functional moments before and after calibration.
 
-        Calibrate the full prior first. This supports enhancement-only inputs
-        whose retained operators and aggregation covariance were prepared
-        separately. It does not regenerate a transport reduction.
-
-        Args:
-            labels: State labels to select, in the order wanted.
+        The functionals are GPP, TER, net, gross and the residual gross
+        exchange the calibration rescales. For any other linear functional
+        ``l``, the variance is ``l.T @ covariance @ l``.
 
         Returns:
-            Lognormal prior with the calibrated arithmetic mean and covariance
-            restricted to ``labels``.
-
-        Raises:
-            ValueError: If the prior is Gaussian, or the labels are duplicated
-                or not in the full state.
+            ``functional_mean`` on ``functional``, and ``functional_sd`` and
+            ``functional_correlation`` on ``prior`` (``baseline`` or
+            ``calibrated``), all in the stored reporting units.
         """
-        if self.positive_prior is None:
-            raise ValueError("This selection requires the lognormal family.")
-        dim, cov_dim = self.baseline.state_dim, self.baseline.covariance_dim
-        positions = self.data.get_index(dim).get_indexer(
-            pd.Index(labels.values if isinstance(labels, xr.DataArray) else labels)
-        )
-        if (positions < 0).any() or len(np.unique(positions)) != len(positions):
-            raise ValueError("Marginal labels must be unique and belong to the full state.")
-        selected = self.data.isel({dim: positions, cov_dim: positions})
-        return CorrelatedLognormalPrior(
-            selected.baseline_mean,
-            selected.covariance,
-            covariance_dim=cov_dim,
+        data = self.data
+        weights = data.weights.sel(process=["GPP", "TER"]).values
+        net, gross = weights[0] + weights[1], -weights[0] + weights[1]
+        rows = np.vstack([weights, net, gross, data.residual_weights.values])
+        covariance = np.stack([
+            rows @ matrix @ rows.T for matrix in (data.baseline_covariance.values, data.covariance.values)
+        ])
+        sd = np.sqrt(np.diagonal(covariance, axis1=1, axis2=2))
+        scale = sd[:, :, None] * sd[:, None, :]
+        correlation = np.divide(covariance, scale, out=np.zeros_like(covariance), where=scale > 0)
+        totals = data.reference.sel(process=["GPP", "TER"]).values
+        means = [totals[0], totals[1], totals.sum(), -totals[0] + totals[1], 0.0]
+        units = data.attrs["units"]
+        return xr.Dataset(
+            {
+                "functional_mean": ("functional", means, {"units": units}),
+                "functional_sd": (("prior", "functional"), sd, {"units": units}),
+                "functional_correlation": (("prior", "functional", "functional_cov"), correlation),
+            },
+            coords={"prior": ["baseline", "calibrated"], "functional": list(_FUNCTIONALS),
+                    "functional_cov": list(_FUNCTIONALS)},
         )
 
 
 def calibrate_biosphere_prior(
-    baseline: CorrelatedLognormalPrior,
+    baseline: CorrelatedPrior,
     *,
     biosphere: xr.DataArray,
     weights: xr.DataArray,
@@ -190,12 +179,12 @@ def calibrate_biosphere_prior(
     residual_sd_multiplier: float | None = None,
     target_residual_sd: xr.DataArray | None = None,
     target_gross_sd: xr.DataArray | None = None,
-    family: Literal["lognormal", "gaussian"] = "lognormal",
 ) -> BiospherePrior:
     """Change one residual-gross SD while preserving all control covariances.
 
     Args:
-        baseline: Existing positive labelled retained-state arithmetic moments.
+        baseline: Existing labelled retained-state prior. The calibrated
+            moments must be valid for its marginals.
         biosphere: Boolean selector on the baseline state dimension. All other
             states are protected; no source names or positional pairing inferred.
         weights: Signed affine reporting weights on ``(process, state_dim)``
@@ -209,21 +198,18 @@ def calibrate_biosphere_prior(
         target_residual_sd: Scalar SD with declared units, alternative to factor.
         target_gross_sd: Scalar *marginal* gross SD. Targets below variance
             explained by the protected controls are infeasible.
-        family: Positive correlated lognormal (primary) or signed-template
-            conditional Gaussian biosphere diagnostic. No truncation or repair.
 
     Returns:
-        Eager labelled baseline/result moments, functionals, SDs, correlations,
-        rank and validity report. Redundant standardized controls are explicitly
-        reduced by pivoted QR; zero residual variance rejects an intervention.
+        Eager labelled inputs, calibrated covariance and residual gross weights.
+        Redundant standardized controls are explicitly reduced by pivoted QR;
+        zero residual variance rejects an intervention.
 
     Raises:
         ValueError: For ambiguous policies, invalid selectors/units/moments,
             infeasible targets, or absent residual uncertainty. Singular changed
-            arithmetic or latent covariance is rejected, without adding jitter.
+            arithmetic covariance, or moments invalid for the baseline's
+            marginals, are rejected without adding jitter.
     """
-    if family not in ("lognormal", "gaussian"):
-        raise ValueError("family must be 'lognormal' or 'gaussian'.")
     if (
         sum(
             value is not None
@@ -357,57 +343,13 @@ def calibrate_biosphere_prior(
             "Changed arithmetic covariance must be positive definite; zero-SD singular targets are unsupported."
         ) from exc
     changed_array = covariance.copy(data=changed).rename("covariance")
-    positive = None
-    lognormal_valid = True
-    lognormal_error = ""
-    try:
-        positive = (
-            baseline if factor == 1 else CorrelatedLognormalPrior(mean, changed_array, covariance_dim=cov_dim)
-        )
-    except ValueError as exc:
-        lognormal_valid, lognormal_error = False, str(exc)
-        if family == "lognormal":
-            raise ValueError(f"Requested biosphere calibration has invalid lognormal moments: {exc}") from exc
-    if family == "gaussian":
-        # Validate the protected marginal and conditional arithmetic covariance.
-        other = np.flatnonzero(~bio)
-        if other.size:
-            CorrelatedLognormalPrior(
-                mean.isel({dim: other}), changed[np.ix_(other, other)], covariance_dim=cov_dim
-            )
-        positive = None
-
-    functionals = np.vstack([w, net, gross, residual])
-    names = ["GPP", "TER", "net", "gross", "residual_gross"]
-    functional_cov = np.stack([functionals @ matrix @ functionals.T for matrix in (b, changed)])
-    sd = np.sqrt(np.diagonal(functional_cov, axis1=1, axis2=2))
-    correlation = np.divide(
-        functional_cov,
-        sd[:, :, None] * sd[:, None, :],
-        out=np.zeros_like(functional_cov),
-        where=(sd[:, :, None] * sd[:, None, :]) > 0,
-    )
-    means = [totals[0], totals[1], totals.sum(), -totals[0] + totals[1], 0.0]
-    protected_change = np.abs((changed - b)[~bio])
-    report = {
-        "family": family,
-        "policy": policy,
-        "requested": float(requested),
-        "units": units,
-        "residual_sd_multiplier": float(factor),
-        "explained_gross_variance": explained,
-        "control_rows": len(controls),
-        "control_rank": rank,
-        "redundant_control_rows": len(controls) - rank,
-        "max_control_covariance_change": float(np.abs(controls @ (changed - b)).max()),
-        "max_protected_covariance_change": float(protected_change.max()) if protected_change.size else 0.0,
-        "lognormal_valid": lognormal_valid,
-        "lognormal_error": lognormal_error,
-        "functional_mean": dict(zip(names, means)),
-        "baseline_sd": dict(zip(names, sd[0].tolist())),
-        "requested_sd": dict(zip(names, sd[1].tolist())),
-        "scope": "retained_state_prior_with_fixed_reduction_reconstruction_and_aggregation",
-    }
+    if factor != 1:
+        try:
+            CorrelatedPrior(mean, changed_array, marginal=baseline.marginal, covariance_dim=cov_dim)
+        except ValueError as exc:
+            raise ValueError(f"Requested biosphere calibration is invalid for the prior's marginals: {exc}") from exc
+    residual_weights = mean.copy(data=residual)
+    residual_weights.attrs = {"units": units}
     data = xr.Dataset(
         {
             "baseline_mean": mean,
@@ -416,21 +358,15 @@ def calibrate_biosphere_prior(
             "biosphere": biosphere,
             "weights": weights,
             "reference": reference,
-            "residual_weights": mean.copy(data=residual),
-            "functional_mean": (("prior", "functional"), [means, means]),
-            "functional_sd": (("prior", "functional"), sd),
-            "functional_correlation": (("prior", "functional", "functional_cov"), correlation),
+            "residual_weights": residual_weights,
         },
-        coords={"prior": ["baseline", "requested"], "functional": names, "functional_cov": names},
         attrs={
-            "biosphere_prior_schema": "openghg_inversions.biosphere_prior/v1",
-            "state_dim": dim,
+            "biosphere_prior_schema": BIOSPHERE_PRIOR_SCHEMA,
             "covariance_dim": cov_dim,
-            "family": family,
+            "policy": policy,
+            "requested": float(requested),
+            "units": units,
             "residual_sd_multiplier": float(factor),
-            "calibration_report": json.dumps(report, allow_nan=False),
         },
     )
-    for name in ("functional_mean", "functional_sd", "residual_weights"):
-        data[name].attrs["units"] = units
-    return BiospherePrior(baseline, data, positive)
+    return BiospherePrior(data)
