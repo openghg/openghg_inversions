@@ -222,7 +222,7 @@ def test_replay_uses_recorded_inference_with_no_live_sampler(preparation, tmp_pa
         assert kwargs["likelihood_kwargs"] == likelihood_kwargs
         return built
 
-    def sample(actual_sampler, model, *, variable_roles):
+    def sample(actual_sampler, model, *, variable_roles, recompute_deterministics=False):
         assert actual_sampler.describe() == inference
         assert model is built.model and variable_roles == contract.variable_roles
         return posterior
