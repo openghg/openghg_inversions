@@ -3,6 +3,11 @@ CO₂ model family
 
 The advanced CO₂ model family contains the **CO₂-only** and **linked CO₂/O₂**
 recipes. O₂ is a tracer in the linked recipe, not a standalone supported model.
+``prepare_linked_surface_templates`` maps independently acquired native source
+responses onto explicit retained coefficients using a supplied joint covariance;
+:doc:`linked_surface_templates` explains its zero-intercept assumption and
+offline example.
+
 Both recipes begin from scientific arrays that have already been prepared; they
 are not alternative species settings for the complete standard runner.
 
