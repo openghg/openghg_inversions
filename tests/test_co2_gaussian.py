@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import mpmath
 import numpy as np
 import pandas as pd
+import pytensor
 import pytest
 import scipy.linalg as sl
 import xarray as xr
@@ -143,7 +144,8 @@ def test_non_gaussian_choices_are_refused_before_materialization(case, monkeypat
 
 def test_gaussian_requires_double_precision(case):
     prepared, affine, params = case
-    with pytest.raises(ValueError, match="floatX=float64"):
+    # Set float32 here: a caller's floatX=float64 would let the estimator run.
+    with pytensor.config.change_flags(floatX="float32"), pytest.raises(ValueError, match="floatX=float64"):
         execution.run_co2(params=params, prepared=prepared, affine_artifact=affine)
 
 
