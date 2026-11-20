@@ -94,7 +94,7 @@ def run_co2(
     aliases before sampling. ``bc_centering_weights`` is stored with a new
     centered preparation from canonical inputs, as in
     :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`;
-    weighted additive boundaries require it.
+    weighted additive boundaries with a positive ``anomaly_scale`` require it.
 
     Returns:
         Scientific result containing the trace, concentration components and
