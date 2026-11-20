@@ -10,7 +10,7 @@ import xarray as xr
 
 from boundary_test_utils import centered_transport
 from openghg_inversions.array_ops import select_gathered_data_array
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models.boundary import AnomalyScalingChoice
 from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.rhime.co2.co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
@@ -61,7 +61,7 @@ def case(choice=None, mean_prior=MEAN_SHIFT, sources=None):
             f"{channel}_sensitivity": getattr(base, f"{channel}_sensitivity").assign_coords(source=(state, sources))
             for channel in ("co2", "o2")
         })
-    prior = CorrelatedLognormalPrior(mean, base.retained_prior.arithmetic_covariance)
+    prior = CorrelatedPrior(mean, base.retained_prior.arithmetic_covariance)
     choice = choice or OuterFluxChoice("multiplicative", ("outer",), ("ocean",))
     sensitivities = {
         channel: getattr(base, f"{channel}_sensitivity").assign_coords(site=native(base, channel).site)

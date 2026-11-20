@@ -12,7 +12,7 @@ import numpy as np
 import pymc as pm
 import xarray as xr
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models.biosphere import resolve_retained_flux_prior
 from openghg_inversions.models.boundary import RawCenteredSensitivity
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
@@ -39,11 +39,10 @@ def main() -> None:
     # BEGIN EXAMPLE
     choices = tomllib.loads("""
         [biosphere]
-        family = "lognormal"
         target_gross_sd = { value = 0.8, units = "kg/year" }
     """)
     mean = xr.DataArray([1.0, 1.0], dims="state", coords={"state": ["uptake", "respiration"]})
-    baseline = CorrelatedLognormalPrior(mean, [[0.08, 0.01], [0.01, 0.06]])
+    baseline = CorrelatedPrior(mean, [[0.08, 0.01], [0.01, 0.06]])
     reporting_weights = xr.DataArray(
         [[-2.0, 0.0], [0.0, 3.0]],
         dims=("process", "state"),
@@ -141,7 +140,7 @@ def main() -> None:
     xr.testing.assert_identical(reopened.prior_predictive.to_dataset(), trace.prior_predictive.to_dataset())
     xr.testing.assert_identical(load_biosphere_prior(output / "biosphere.nc").data, calibrated.data)
     # END EXAMPLE
-    print(calibrated.data.attrs["calibration_report"])
+    print(calibrated.functionals())
     print(f"Saved calibration and absolute prior predictions in {output}")
 
 
