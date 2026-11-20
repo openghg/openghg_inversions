@@ -13,7 +13,7 @@ from dask import delayed
 from scipy.linalg import helmert
 
 from openghg_inversions.array_ops import select_gathered_data_array
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models import get_coord_registry, registered_model, restore_inferencedata_coords
 from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
@@ -341,7 +341,7 @@ def test_single_ordinary_cached_density_and_gradient(method):
     transport = _operands(inv.mf)
     bound = _choice(method, level_sd=0.2, scale=0.3).bind(inv.mf, transport)
     kwargs = dict(
-        retained_prior=CorrelatedLognormalPrior(inv.alpha_prior_mean, inv.alpha_prior_covariance,
+        retained_prior=CorrelatedPrior(inv.alpha_prior_mean, inv.alpha_prior_covariance,
                                                 covariance_dim="region_cov"),
         fixed_prior_contribution=inv.fixed_prior_contribution,
         observations=inv.mf + 400.0,

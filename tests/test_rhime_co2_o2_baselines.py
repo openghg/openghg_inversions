@@ -12,6 +12,7 @@ import pymc as pm
 import pytest
 import xarray as xr
 
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models import StateActivity, restore_inferencedata_coords, get_coord_registry
 from openghg_inversions.models.boundary import MultiplicativeChoice
 from openghg_inversions.rhime.co2 import (
@@ -61,7 +62,7 @@ def _model(prepared, **kwargs):
                 "co2_sensitivity": prepared.co2_sensitivity,
                 "o2_sensitivity": prepared.o2_sensitivity,
                 "aggregation_error": prepared.aggregation_error,
-                "retained_prior": prepared.retained_prior,
+                "retained_prior": CorrelatedPrior.from_lognormal(prepared.retained_prior),
                 "independent_error_sd": _independent_error(prepared),
                 "boundary_sensitivity": prepared.boundary_sensitivity,
                 "state_activity": StateActivity(active=False),
