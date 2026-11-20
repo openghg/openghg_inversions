@@ -39,6 +39,8 @@ from openghg_inversions.models.state_activity import StateActivity, prepare_line
 from .centered import CenteredBoundary, Correction, MeanShift
 from .contracts import BoundCenteredSensitivity, RawCenteredSensitivity
 from .outputs import Outputs
+from .preparation import Preparation, check_representation
+from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 
 def centered_boundary_expression(anomaly: Any, mass: Any, reference: Any, state: Any) -> Any:
     """Evaluate ``A b + c M (b - 1)`` without subtracting a large reference.
@@ -102,6 +104,17 @@ class MultiplicativeChoice:
     def mean_shift(self) -> MeanShift:
         """No mean shift: scaling the whole sensitivity already moves the boundary mean."""
         return MeanShift(None)
+
+    def preparation(self, representation: BoundaryRepresentation | None = None) -> Preparation:
+        """Scaling binds either representation; ordinary unless centered is requested.
+
+        Args:
+            representation: Requested representation, or ``None``.
+
+        Returns:
+            The requested representation, defaulting to ``"ordinary"``.
+        """
+        return Preparation(check_representation(representation or "ordinary"))
 
     def bind(self, observations: xr.DataArray, sensitivity: RawCenteredSensitivity) -> CenteredMultiplicativeBoundary:
         """Bind prepared centered sensitivity to one fit's rows and periods.

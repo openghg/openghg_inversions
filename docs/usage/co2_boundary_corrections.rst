@@ -117,6 +117,11 @@ state partition. Binding stacks the weights once per channel and fit; exact
 labelled alignment rejects a different calendar before evaluating numerical
 payloads.
 
+A configured CO₂ preparation produces centered operands for an additive
+choice automatically and reads the weights from
+``prepared_inputs.bc_centering_weights_path`` (a netCDF file with one
+``bc_centering_weights`` variable); see :ref:`co2-configured-preparation`.
+
 Configure a CO₂ fit
 -------------------
 

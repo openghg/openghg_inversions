@@ -89,11 +89,11 @@ def test_independent_native_acquisition_matches_supplied_surface(monkeypatch, na
             flux_sources=list(fluxes), surface_transport=transport, split_by_sectors=True,
             obs_store="offline-obs", footprint_store="offline-fp", flux_store="offline-flux",
             bc_store="offline-bc", bc_input="offline-curtains", fp_species="co2", use_bc=True,
-            boundary_representation="centered", reference=reference, reference_units="ppm", mass_tolerance=1e-6,
+            boundary_reference=reference, boundary_reference_units="ppm", boundary_mass_tolerance=1e-6,
         )
         supplied = prepare_surface_site(
             obs, footprint, fluxes, species=species, transport=transport, boundary_data=boundary,
-            boundary_representation="centered", boundary_reference=reference,
+            boundary_reference=reference,
             boundary_reference_units="ppm", boundary_mass_tolerance=1e-6, output_units="ppm",
         )
     site = merged.site_data["TEST"]
@@ -138,7 +138,7 @@ def test_o2_observations_convert_once_and_reference_is_independent(native_channe
     obs["o2"] = (obs.o2 * 1e-6).assign_attrs(units="mol/mol")
     result = prepare_surface_site(
         obs, footprint, fluxes, species="o2", transport=dict.fromkeys(fluxes, "integrated"),
-        boundary_data=boundary, boundary_representation="centered", boundary_reference=209000.,
+        boundary_data=boundary, boundary_reference=209000.,
         boundary_reference_units="ppm", boundary_mass_tolerance=1e-6, output_units="ppm",
     )
     np.testing.assert_allclose(result.mf, reference + np.array([1e-4, 2e-4]), rtol=0, atol=6e-11)
@@ -158,6 +158,6 @@ def test_native_channel_rejects_invalid_scientific_inputs(native_channel, invali
     with pytest.raises(ValueError, match=message):
         prepare_surface_site(
             obs, footprint, fluxes, species="o2", transport=dict.fromkeys(fluxes, "integrated"),
-            boundary_data=boundary, boundary_representation="centered", boundary_reference=reference,
+            boundary_data=boundary, boundary_reference=reference,
             boundary_reference_units="ppm", boundary_mass_tolerance=1e-6,
         )

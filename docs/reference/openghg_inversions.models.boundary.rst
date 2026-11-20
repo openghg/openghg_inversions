@@ -17,3 +17,4 @@ openghg\_inversions.models.boundary
    openghg_inversions.models.boundary.contracts
    openghg_inversions.models.boundary.multiplicative
    openghg_inversions.models.boundary.outputs
+   openghg_inversions.models.boundary.preparation

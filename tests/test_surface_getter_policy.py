@@ -50,7 +50,7 @@ def test_surface_native_reporting_converts_units_without_source_time_policy(monk
         resolve_runtime_flux({"a": first, "b": other.isel(time=[0])}, explicit_surface=True)
 
 
-def test_ordinary_acquisition_does_not_require_centered_arithmetic_options(monkeypatch):
+def test_surface_acquisition_checks_raw_transport_before_flux_retrieval(monkeypatch):
     from openghg_inversions.inversion_data import acquisition
     from openghg_inversions.inversion_data._site_options import SiteOptions
 
@@ -79,6 +79,9 @@ def test_ordinary_acquisition_does_not_require_centered_arithmetic_options(monke
             flux_sources=["a"],
             surface_transport={"a": "integrated"},
             use_bc=True,
+            boundary_reference=400.0,
+            boundary_reference_units="ppm",
+            boundary_mass_tolerance=1e-6,
         )
     retrieve.assert_called_once()
 

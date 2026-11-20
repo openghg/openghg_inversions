@@ -92,7 +92,7 @@ def test_mocked_fresh_getters_match_supplied_scientific_preparation(monkeypatch)
         species="co2", site_options=SiteOptions.from_inputs(sites=["TOY"], averaging_period="3h"),
         domain="EUROPE", start_date="2020-01-16", end_date="2020-01-17", flux_sources=list(fluxes),
         use_bc=True, surface_transport={source: "integrated" for source in fluxes},
-        boundary_representation="centered", reference=400., reference_units="ppm", mass_tolerance=1e-6,
+        boundary_reference=400., boundary_reference_units="ppm", boundary_mass_tolerance=1e-6,
     )
     assert requests[0]["allow_older_flux"] is False
     for name in ("fp_x_flux_sectoral", "mf_mod", "bc_anomaly_n", "bc_mass_n", "bc_reference", "bc_mod"):
