@@ -34,6 +34,9 @@ dependencies = [
     "pymc>=6,<7",
     "arviz>=1.1,<2",
     "numpyro[cpu]",
+    # JAX implementations of PyTensor ops such as gammaincinv (gamma copula
+    # marginals) under numpyro. Releases up to 0.25 do not import with JAX >= 0.5.
+    "tfp-nightly>=0.26.0.dev20261101",
     "xarray>=2025.08.0",
     "pandas<3.0",
     "matplotlib",
