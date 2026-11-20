@@ -200,6 +200,13 @@ def test_calibrated_gaussian_biosphere_prior_is_used_and_recorded(case, double_p
     with pytest.raises(ValueError, match="baseline arithmetic moments"):
         co2_inference.sample_co2_inference(prepared, {**model, "biosphere_prior": biosphere}, sampling.sampler,
                                            method="gaussian")
+    column_dim = str(covariance.dims[1])
+    tokens = [json.dumps(label) for label in inputs.alpha_prior_mean.indexes[covariance.dims[0]].tolist()[::-1]]
+    reversed_columns = calibration.assign_coords({f"{column_dim}_label": (column_dim, tokens)})
+    biosphere = SimpleNamespace(data=reversed_columns, to_dataset=lambda: reversed_columns, baseline=baseline)
+    with pytest.raises(ValueError, match="column identity"):
+        co2_inference.sample_co2_inference(prepared, {**model, "biosphere_prior": biosphere}, sampling.sampler,
+                                           method="gaussian")
 
 
 def _dense_inputs(aggregation, error):
