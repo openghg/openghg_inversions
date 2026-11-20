@@ -16,9 +16,9 @@ import xarray as xr
 from pymc.initial_point import convert_str_to_rv_dict, make_initial_point_fn  # type: ignore[import-untyped]
 
 from openghg_inversions.biosphere_prior import BiospherePrior
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
-from openghg_inversions.models.biosphere import resolve_retained_flux_prior, retained_flux_prior_family
+from openghg_inversions.models.biosphere import resolve_retained_flux_prior
 from openghg_inversions.models.boundary import Choice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
@@ -276,7 +276,7 @@ def build_rhime_co2_cached_sigma(
     )
     prior_covariance = model_inputs["alpha_prior_covariance"]
     flux_prior = resolve_retained_flux_prior(
-        CorrelatedLognormalPrior(
+        CorrelatedPrior(
             model_inputs["alpha_prior_mean"],
             prior_covariance,
             covariance_dim=str(prior_covariance.dims[-1]),
@@ -320,7 +320,7 @@ def co2_cached_sigma_build_result(
     metadata = {
         "recipe": "co2",
         "kind": "builtin",
-        "prior": retained_flux_prior_family(cached_model.flux_prior),
+        "prior": "correlated arithmetic-moment lognormal",
         "mismatch_component": "fixed_within_site_ou",
         "basis_artifact_source": getattr(
             prepared_inputs,

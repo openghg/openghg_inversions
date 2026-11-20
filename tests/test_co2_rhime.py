@@ -17,7 +17,7 @@ import pytest
 from scipy.stats import multivariate_normal
 import xarray as xr
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeChoice
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
@@ -188,7 +188,7 @@ def _empty_sampled_trace(inputs: xr.Dataset) -> xr.DataTree:
 
 
 def _build_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
-    retained_prior = CorrelatedLognormalPrior(
+    retained_prior = CorrelatedPrior(
         inputs["alpha_prior_mean"],
         inputs["alpha_prior_covariance"],
         covariance_dim="region_cov",
@@ -461,8 +461,8 @@ def test_co2_operations_persists_fixed_mismatch_manifest(
     assert "sigma" not in sampled_models[0].named_vars
     assert builder_kwargs["sigma_alignment"] is None
     assert builder_kwargs["sigma_prior"] is None
-    assert isinstance(builder_kwargs["retained_prior"], CorrelatedLognormalPrior)
-    expected_prior = CorrelatedLognormalPrior(
+    assert isinstance(builder_kwargs["retained_prior"], CorrelatedPrior)
+    expected_prior = CorrelatedPrior(
         inputs["alpha_prior_mean"],
         inputs["alpha_prior_covariance"],
         covariance_dim="region_cov",

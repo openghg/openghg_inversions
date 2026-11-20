@@ -10,7 +10,8 @@ import xarray as xr
 from openghg_inversions.biosphere_prior import BiospherePrior
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
-from openghg_inversions.models.biosphere import resolve_retained_flux_prior, retained_flux_prior_family
+from openghg_inversions.correlated_state import CorrelatedPrior
+from openghg_inversions.models.biosphere import resolve_retained_flux_prior
 from openghg_inversions.models.boundary import Choice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.contracts import OutputContract
@@ -142,7 +143,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     offset_prior = eager_priors["offset"]
     site_amplitude_prior = eager_priors["amplitude"]
     observations, fixed, co2, o2, error = materialized
-    flux_prior = resolve_retained_flux_prior(prepared.retained_prior, biosphere_prior)
+    flux_prior = resolve_retained_flux_prior(CorrelatedPrior.from_lognormal(prepared.retained_prior), biosphere_prior)
     cached = _build_co2_o2_cached_sigma_model(
         observations=observations,
         fixed_prior_contribution=fixed,
@@ -161,7 +162,6 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     )
     metadata = _co2_o2_metadata(prepared, observations=observations)
     metadata.update(
-        prior=retained_flux_prior_family(flux_prior),
         recipe="co2_o2_cached_sigma_fixed_ou",
         likelihood="joint Gaussian with fixed OU blocks by (species, site)",
     )
