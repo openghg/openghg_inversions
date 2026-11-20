@@ -13,11 +13,8 @@ import xarray as xr
 from dask import compute as dask_compute
 
 from openghg_inversions.biosphere_prior import BiospherePrior
-from openghg_inversions.models.biosphere import (
-    annotate_biosphere_prior,
-    resolve_retained_flux_prior,
-    retained_flux_prior_family,
-)
+from openghg_inversions.correlated_state import CorrelatedPrior
+from openghg_inversions.models.biosphere import annotate_biosphere_prior, resolve_retained_flux_prior
 from openghg_inversions.array_ops import select_gathered_data_array, to_dense_tree
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
@@ -324,7 +321,7 @@ def build_rhime_co2_o2(
     observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = (
         materialized
     )
-    flux_prior = resolve_retained_flux_prior(prepared.retained_prior, biosphere_prior)
+    flux_prior = resolve_retained_flux_prior(CorrelatedPrior.from_lognormal(prepared.retained_prior), biosphere_prior)
     model = _build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
@@ -349,11 +346,7 @@ def build_rhime_co2_o2(
         variable_roles["offset_concentration"] = "offset_concentration"
     if bound or offset_prior:
         variable_roles["baseline_concentration"] = "baseline_concentration"
-    metadata = {
-        **_co2_o2_metadata(prepared, observations=observations),
-        **boundary_metadata,
-        "prior": retained_flux_prior_family(flux_prior),
-    }
+    metadata = {**_co2_o2_metadata(prepared, observations=observations), **boundary_metadata}
     if tau_hours is not None:
         variable_roles.update(
             {

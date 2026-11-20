@@ -37,8 +37,7 @@ from typing import Literal, get_args
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.biosphere import RetainedFluxPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models.boundary import AdditiveBoundary, AnomalyScalingBoundary, Bound, Outputs
 from openghg_inversions.models.components import (
     AffineBlock,
@@ -89,15 +88,15 @@ class OuterFluxChoice:
         if self.fixed_sources and self.mode != "multiplicative":
             raise ValueError("fixed_sources applies only to multiplicative outer flux; other modes fix every outer state.")
 
-    def resolve_states(self, flux_prior: RetainedFluxPrior) -> OuterStates:
+    def resolve_states(self, flux_prior: CorrelatedPrior) -> OuterStates:
         """Select the sampled and fixed outer states on the flux prior's state axis.
 
         This is the state-axis work, done once per prior even for linked
         channels.
 
         Args:
-            flux_prior: The flux prior the model samples. Its baseline mean
-                carries the state labels and selector coordinates.
+            flux_prior: The flux prior the model samples. Its mean carries
+                the state labels and selector coordinates.
 
         Returns:
             Sampled and fixed outer selectors and the prior mean.
@@ -107,9 +106,8 @@ class OuterFluxChoice:
                 axis, no state is in ``outer_groups``, or a fixed outer state
                 has nonzero prior covariance with any other state.
         """
-        baseline = flux_prior if isinstance(flux_prior, CorrelatedLognormalPrior) else flux_prior.baseline
-        mean = baseline.mean
-        state_dim = baseline.state_dim
+        mean = flux_prior.mean
+        state_dim = flux_prior.state_dim
 
         outer = _state_labels(mean, self.group_coord).isin(self.outer_groups)
         if not bool(outer.any()):
@@ -126,7 +124,7 @@ class OuterFluxChoice:
 
         # Holding F at its prior mean while sampling the marginal prior of the
         # other states is exact only when F is uncorrelated with them.
-        covariance = _sampled_covariance(flux_prior)
+        covariance = flux_prior.arithmetic_covariance.to_numpy()
         fixed_positions = np.flatnonzero(fixed.to_numpy())
         other_positions = np.flatnonzero(~fixed.to_numpy())
         if np.any(covariance[np.ix_(fixed_positions, other_positions)] != 0):
@@ -147,15 +145,6 @@ def _state_labels(mean: xr.DataArray, name: str) -> xr.DataArray:
     if labels is None or labels.dims != mean.dims:
         raise ValueError(f"Outer-flux selection needs a {name!r} coordinate on the flux state axis.")
     return labels.reset_coords(drop=True)
-
-
-def _sampled_covariance(flux_prior: RetainedFluxPrior) -> np.ndarray:
-    """Return the arithmetic covariance the model samples, in state order."""
-    if isinstance(flux_prior, CorrelatedLognormalPrior):
-        return flux_prior.arithmetic_covariance.to_numpy()
-    if flux_prior.positive_prior is not None:
-        return flux_prior.positive_prior.arithmetic_covariance.to_numpy()
-    return flux_prior.data.covariance.to_numpy()
 
 
 @dataclass(frozen=True)
