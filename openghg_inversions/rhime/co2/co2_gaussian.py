@@ -146,8 +146,7 @@ def check_co2_gaussian_likelihood(model: Mapping[str, Any]) -> None:
 def check_co2_gaussian_model(model: Mapping[str, Any]) -> None:
     """Refuse model choices that the fixed-noise Gaussian estimator cannot solve exactly.
 
-    Configuration-only checks run before any preparation is opened; the
-    biosphere family is checked once the calibrated prior is loaded, and the
+    Configuration-only checks run before any preparation is opened, and the
     built graph is checked again for Normal priors and an affine mean.
 
     Args:
@@ -157,8 +156,8 @@ def check_co2_gaussian_model(model: Mapping[str, Any]) -> None:
 
     Raises:
         ValueError: For a fixed-OU or other non-additive likelihood, an
-            inferred model-error scale, a non-Normal boundary or offset prior,
-            or a calibrated biosphere prior that is not Gaussian on every state.
+            inferred model-error scale, or a non-Normal boundary or offset
+            prior.
     """
     check_co2_gaussian_likelihood(model)
     if not model.get("no_model_error", False):
@@ -174,14 +173,6 @@ def check_co2_gaussian_model(model: Mapping[str, Any]) -> None:
         _require_normal(boundary.prior, "boundary")
     elif isinstance(boundary, AdditiveChoice | AnomalyScalingChoice):
         _require_normal(boundary.mean_prior, "boundary mean-shift")
-    biosphere = model.get("biosphere_prior")
-    if biosphere is not None:
-        family = biosphere.data.attrs.get("family")
-        if family != "gaussian" or not bool(biosphere.data.biosphere.all()):
-            raise ValueError(
-                f'method = "gaussian" cannot use a {family} biosphere prior: its protected states are '
-                f"LogNormal. Remove model.biosphere to use the prepared Gaussian moments {_ALTERNATIVE}."
-            )
 
 
 def _gaussian_state_prior(
@@ -197,7 +188,6 @@ def _gaussian_state_prior(
                 and np.array_equal(biosphere.data.baseline_covariance.values, covariance.values)):
             raise ValueError("Biosphere calibration must use this preparation's baseline arithmetic moments.")
         covariance = biosphere.data.covariance
-        description = str(biosphere.data.attrs["family"])
     state_dim = str(mean.dims[0])
     factor = psd_factor(np.asarray(covariance.values, dtype=np.float64))
     labelled = xr.DataArray(
@@ -450,12 +440,14 @@ def sample_co2_gaussian(
     )
     biosphere = model.get("biosphere_prior")
     gaussian_prior, prior_record = _gaussian_state_prior(inputs, biosphere)
-    if biosphere is None:
-        logger.warning(
-            'method = "gaussian" replaces the default correlated LogNormal flux prior with the Normal prior of '
-            "the same arithmetic moments (alpha_prior_mean, alpha_prior_covariance): %s.",
-            STATE_PRIOR_SUBSTITUTION,
-        )
+    # A biosphere calibration changes only the covariance; the marginals stay LogNormal.
+    logger.warning(
+        'method = "gaussian" replaces the correlated LogNormal flux prior with the Normal prior of '
+        "the same arithmetic moments (%s): %s.",
+        "the calibrated biosphere covariance" if biosphere is not None
+        else "alpha_prior_mean, alpha_prior_covariance",
+        STATE_PRIOR_SUBSTITUTION,
+    )
 
     def build(model_inputs: xr.Dataset, fixed: Any) -> RhimeModelBuildResult:
         return build_co2_from_materialized(
@@ -571,15 +563,14 @@ def sample_co2_gaussian(
     attrs: dict[str, Any] = {
         "algorithm": GAUSSIAN_ALGORITHM, "draws": sampler.draws, "seed": seed,
         "state_prior": "gaussian with the prepared arithmetic moments" if biosphere is None
-        else "gaussian calibrated biosphere prior",
+        else "gaussian with the calibrated biosphere arithmetic moments",
         "gls_diagnostics": json.dumps(diagnostics, sort_keys=True),
         "flux_prior_psd_factor": json.dumps(prior_record, sort_keys=True),
         "noise_factor": json.dumps(noise_record, sort_keys=True),
         "model_mismatch": json.dumps(mismatch_record, sort_keys=True),
         "sampled_variables": json.dumps(list(variables.names)),
     }
-    if biosphere is None:
-        actual["state_prior_substitution"] = attrs["state_prior_substitution"] = STATE_PRIOR_SUBSTITUTION
+    actual["state_prior_substitution"] = attrs["state_prior_substitution"] = STATE_PRIOR_SUBSTITUTION
     trace[GAUSSIAN_POSTERIOR_GROUP] = _gaussian_posterior_group(
         built, variables, posterior, trace, rng=report_rng, attrs=attrs,
     )

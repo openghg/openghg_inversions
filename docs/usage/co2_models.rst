@@ -8,9 +8,8 @@ interfaces.
 
 An explicit Python ``biosphere_prior`` option changes one calibrated retained
 biosphere uncertainty direction while keeping the reduction fixed. See
-:doc:`biosphere_prior` for the positive lognormal and signed Gaussian diagnostic
-families, calibration targets and provenance. Omission preserves the existing
-prior.
+:doc:`biosphere_prior` for calibration targets, sampled marginals and
+provenance. Omission preserves the existing prior.
 
 .. _co2-only-model:
 

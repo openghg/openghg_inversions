@@ -16,6 +16,7 @@ import pytensor
 import pytest
 import xarray as xr
 
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.postprocessing.contracts import OutputContract
 
 from openghg_inversions.models.priors import parse_prior
@@ -121,7 +122,10 @@ def _prepared_stub(array: xr.DataArray) -> SimpleNamespace:
         co2_sensitivity=array,
         o2_sensitivity=array,
         aggregation_error=None,
-        retained_prior=None,
+        # The graph builder is intercepted; the runner only wraps this prior.
+        retained_prior=CorrelatedLognormalPrior(
+            xr.DataArray([1.0], dims="state", coords={"state": ["a"]}), np.eye(1) * 0.01,
+        ),
         provenance={},
         independent_error_sd=None,
         boundary_operands={},

@@ -147,13 +147,6 @@ def test_gaussian_requires_double_precision(case):
         execution.run_co2(params=params, prepared=prepared, affine_artifact=affine)
 
 
-def test_lognormal_or_mixed_biosphere_priors_are_refused():
-    for family, selector in (("lognormal", [True, True]), ("gaussian", [True, False])):
-        biosphere = SimpleNamespace(data=xr.Dataset({"biosphere": ("region", selector)}, attrs={"family": family}))
-        with pytest.raises(ValueError, match="biosphere prior"):
-            check_co2_gaussian_model({"no_model_error": True, "biosphere_prior": biosphere})
-
-
 def test_default_sampling_stays_nuts(case, monkeypatch):
     _, _, params = case
     params["sampling"] = {"draws": 5, "tune": 5, "chains": 1, "random_seed": 3}
@@ -174,6 +167,12 @@ def test_default_sampling_stays_nuts(case, monkeypatch):
     assert actual["algorithm"] == "nuts"
 
 
+def test_a_partial_biosphere_calibration_passes_the_configuration_check():
+    # A calibration changes only moments; the estimator substitutes Normal marginals for every state.
+    biosphere = SimpleNamespace(data=xr.Dataset({"biosphere": ("region", [True, False])}))
+    check_co2_gaussian_model({"no_model_error": True, "biosphere_prior": biosphere})
+
+
 def test_calibrated_gaussian_biosphere_prior_is_used_and_recorded(case, double_precision):
     prepared, _, params = case
     inputs = prepared.inv_inputs
@@ -181,7 +180,7 @@ def test_calibrated_gaussian_biosphere_prior_is_used_and_recorded(case, double_p
     calibration = xr.Dataset(
         {"baseline_mean": inputs.alpha_prior_mean, "baseline_covariance": inputs.alpha_prior_covariance,
          "covariance": covariance, "biosphere": xr.ones_like(inputs.alpha_prior_mean, dtype=bool)},
-        attrs={"family": "gaussian", "calibration_report": "{}"},
+        attrs={"biosphere_prior_schema": "openghg_inversions.biosphere_prior/v1"},
     )
     baseline = CorrelatedLognormalPrior(inputs.alpha_prior_mean, inputs.alpha_prior_covariance,
                                         covariance_dim=str(inputs.alpha_prior_covariance.dims[-1]))
@@ -190,9 +189,9 @@ def test_calibrated_gaussian_biosphere_prior_is_used_and_recorded(case, double_p
     sampling = _resolve_co2_sampling(params, model=model)
     trace, actual = co2_inference.sample_co2_inference(prepared, model, sampling.sampler, method="gaussian")
     exact = trace["gaussian_posterior"].dataset
-    assert "state_prior_substitution" not in actual and "state_prior_substitution" not in exact.attrs
+    assert actual["state_prior_substitution"] == exact.attrs["state_prior_substitution"]
     np.testing.assert_allclose(exact.prior_covariance.values[:2, :2], covariance.values, rtol=1e-12)
-    assert json.loads(trace.attrs["rhime_model_metadata"])["prior"] == "gaussian"
+    assert json.loads(trace.attrs["rhime_model_metadata"])["prior"] == "correlated arithmetic-moment gaussian"
     assert "biosphere_prior" in trace.children
     altered = calibration.assign(baseline_covariance=covariance)
     biosphere = SimpleNamespace(data=altered, to_dataset=lambda: altered, baseline=baseline)
