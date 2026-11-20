@@ -162,15 +162,17 @@ def test_zarr_trace_rejects_containment_overlaps_before_writing(tmp_path, layout
     checkpoint_root = store if layout == "checkpoints" else tmp_path / "checkpoints"
     prep = handoffs.save_preparation(prepared, output_dir=checkpoint_root / "prepare",
                                     start_date="2024-01-01", end_date="2024-02-01", domain="EUROPE")
+    preparation = handoffs.load_preparation(prep)
     sample = handoffs.save_samples(
-        prep, trace, actual_inference={}, preparation_generation=handoffs.load_preparation(prep).generation,
+        prep, trace, actual_inference={}, preparation_generation=preparation.generation,
+        preparation_inputs_id=preparation.inputs_id,
         output_dir=checkpoint_root / "sample",
     )
     before = {path: path.read_bytes() for path in checkpoint_root.rglob("*") if path.is_file()}
     destination = store if layout == "products" else store / "products"
     target = checkpoint_root / "trace.zarr" if layout == "protected_store" else store
     output = Co2O2OutputOptions(output_path=destination, save_trace=target)
-    with pytest.raises(ValueError, match="overlap|overwrite"):
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         if layout == "protected_store":
             result = _result(prepared, trace)
             calculate_co2_o2_products(result=result, output=output)
