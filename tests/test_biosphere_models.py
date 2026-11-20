@@ -307,3 +307,46 @@ def assert_normalized_density_and_gradient(model, point, prior, kwargs, *, linke
         f"density error={abs(model.compile_logp()(point) - density(point)):.3g}, "
         f"gradient max error={np.max(np.abs(actual_gradient - gradient)):.3g}"
     )
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_single_inference_forwards_calibration_and_serializes_it(cached):
+    import json
+    import pymc as pm
+    from openghg_inversions.models import get_coord_registry, restore_inferencedata_coords
+    from openghg_inversions.rhime.co2.inference import build_co2_inference, annotate_co2_inference
+    from test_co2_affine_output import _prepared as single_prepared
+
+    prepared, _ = single_prepared()
+    inputs = prepared.inv_inputs
+    baseline = CorrelatedPrior(
+        inputs.alpha_prior_mean, inputs.alpha_prior_covariance,
+        covariance_dim=str(inputs.alpha_prior_covariance.dims[1]),
+    )
+    dim = baseline.state_dim
+    weights = xr.DataArray(
+        [[-2., 0.], [0., 3.]], dims=("process", dim),
+        coords={"process": ["GPP", "TER"], dim: baseline.mean[dim]}, attrs={"units": "kg/year"},
+    )
+    calibration = calibrate_biosphere_prior(
+        baseline, biosphere=xr.ones_like(baseline.mean, dtype=bool), weights=weights,
+        reference=(weights * baseline.mean).sum(dim).assign_attrs(units="kg/year"),
+        residual_sd_multiplier=.8,
+    )
+    choices = {"biosphere_prior": calibration, "no_model_error": True}
+    if cached:
+        choices.update(
+            likelihood_builder=add_fixed_ou_gaussian_likelihood,
+            likelihood_kwargs={"tau_hours": 5., "site_amplitude_prior": {"pdf": "halfnormal", "sigma": .75}},
+        )
+        choices.pop("no_model_error")
+    built, cached_graph = build_co2_inference(prepared, choices)
+    with built.model:
+        trace = pm.sample_prior_predictive(draws=2, random_seed=37)
+    trace = restore_inferencedata_coords(trace, get_coord_registry(built.model))
+    trace = annotate_co2_inference(trace, built, prepared, choices, cached_graph)
+    xr.testing.assert_equal(trace["biosphere_prior"].to_dataset(), calibration.to_dataset())
+    assert json.loads(trace.attrs["rhime_model_metadata"])["biosphere_prior_scope"] == BIOSPHERE_PRIOR_SCOPE
+    assert built.output_contract.metadata["prior"] == "correlated arithmetic-moment lognormal"
+    assert not hasattr(built.model, "biosphere_prior")
+    assert not np.array_equal(calibration.data.covariance, baseline.arithmetic_covariance)

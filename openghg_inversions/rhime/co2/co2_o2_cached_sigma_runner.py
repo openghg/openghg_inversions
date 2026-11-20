@@ -13,6 +13,7 @@ from openghg_inversions.models import StateActivity
 from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models.biosphere import resolve_retained_flux_prior
 from openghg_inversions.models.boundary import Choice
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
@@ -22,7 +23,7 @@ from .co2_cached_sigma_runner import (
     _sampler_for_cached_graph,
 )
 from .co2_o2_cached_sigma_model import _build_co2_o2_cached_sigma_model
-from .co2_o2_model import _validate_channel_offset_options
+from .co2_o2_model import _validate_channel_offset_options, bind_linked_outer_flux
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .co2_o2_runner import (
     _CO2_O2_VARIABLE_ROLES,
@@ -44,6 +45,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Choice | None] | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     sampler: RhimeSampler | Literal["default"] = "default",
@@ -94,6 +96,9 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             operands. ``None`` disables a channel's boundary; omitted channels
             have no boundary term, with a warning when the preparation has
             their transport.
+        outer_flux: Optional outer-flux choice for the joint flux state,
+            resolved on the flux prior and bound to each channel's rows with
+            :func:`~openghg_inversions.rhime.co2.co2_o2_model.bind_linked_outer_flux`.
         offset_prior: Channel-keyed offset priors in concentration units.
             Channels omitted from this mapping have no offset.
         offset_args: Per-channel per_site, offset_freq, and drop_first options
@@ -144,6 +149,9 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     site_amplitude_prior = eager_priors["amplitude"]
     observations, fixed, co2, o2, error = materialized
     flux_prior = resolve_retained_flux_prior(CorrelatedPrior.from_lognormal(prepared.retained_prior), biosphere_prior)
+    outer = None if outer_flux is None else bind_linked_outer_flux(
+        outer_flux, flux_prior, observations=observations, co2_sensitivity=co2, o2_sensitivity=o2,
+    )
     cached = _build_co2_o2_cached_sigma_model(
         observations=observations,
         fixed_prior_contribution=fixed,
@@ -157,6 +165,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         initial_site_amplitudes=initial_site_amplitudes,
         state_activity=state_activity,
         boundary=bound,
+        outer_flux=outer,
         offset_prior=offset_prior,
         offset_args=offset_args,
     )
@@ -165,6 +174,8 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         recipe="co2_o2_cached_sigma_fixed_ou",
         likelihood="joint Gaussian with fixed OU blocks by (species, site)",
     )
+    if outer is not None:
+        metadata.update(outer["co2"].outputs().metadata)
     roles = dict(_CO2_O2_VARIABLE_ROLES)
     roles.update(
         independent_error="error",

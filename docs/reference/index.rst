@@ -110,6 +110,18 @@ for the explicit retained-state intervention and its fixed-reduction scope.
    openghg_inversions.correlated_state.CorrelatedPrior
    openghg_inversions.models.biosphere.annotate_biosphere_prior
 
+Configure and persist CO2 priors
+--------------------------------
+
+See :doc:`configured CO2 priors </usage/configured_co2_priors>` for explicit
+preparation choices and reuse of frozen scientific artifacts.
+
+.. autosummary::
+   :nosignatures:
+
+   openghg_inversions.rhime.co2.BiospherePriorConfig
+   openghg_inversions.rhime.co2.load_biosphere_prior
+
 Run specifications and results
 ------------------------------
 

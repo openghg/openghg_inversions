@@ -160,8 +160,9 @@ the baseline's mean and marginal families with the calibrated covariance.
 ``build_co2_from_materialized``, ``build_rhime_co2_cached_sigma``,
 ``build_rhime_co2_o2`` and the linked prepared sampling runners instead take a
 separate ``biosphere_prior`` argument and make that check against their
-prepared baseline. These are explicit Python inputs; TOML/INI configuration and
-saved model-choice schemas do not load a calibration automatically.
+prepared baseline. The :doc:`configured saved-calibration workflow
+<configured_co2_priors>` also loads explicitly selected artifacts through the
+CO2 and linked TOML/JSON model owners.
 The linked recipes apply it once to shared coefficients, independently of how
 many observation channels use them.
 

@@ -20,6 +20,7 @@ from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
 from openghg_inversions.models.biosphere import resolve_retained_flux_prior
 from openghg_inversions.models.boundary import Choice
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
@@ -226,6 +227,7 @@ def build_rhime_co2_cached_sigma(
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     boundary: Choice | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> Co2CachedSigmaModel:
@@ -245,6 +247,8 @@ def build_rhime_co2_cached_sigma(
             units; defaults to the prior support point.
         boundary: Optional boundary choice, bound once to the prepared
             ``H_bc`` or centered operands. ``None`` omits the boundary.
+        outer_flux: Optional outer-flux choice, resolved on the retained flux
+            prior and bound to the materialized rows here.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added.
         offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
@@ -283,6 +287,10 @@ def build_rhime_co2_cached_sigma(
         ),
         biosphere_prior,
     )
+    outer = (
+        None if outer_flux is None
+        else outer_flux.resolve_states(flux_prior).bind_rows(model_inputs["mf"], model_inputs["H"])
+    )
     cached_model = _build_co2_cached_sigma_model(
         model_inputs["H"],
         retained_prior=flux_prior,
@@ -295,6 +303,7 @@ def build_rhime_co2_cached_sigma(
         initial_site_amplitudes=initial_site_amplitudes,
         state_activity=cast(StateActivity | None, _state_activity_from_inputs(model_inputs)),
         boundary=bound,
+        outer_flux=outer,
         offset_prior=offset_prior,
         offset_freq=offset_freq,
         offset_drop_first=offset_drop_first,
@@ -349,6 +358,9 @@ def co2_cached_sigma_build_result(
         metadata.update(outputs.metadata, boundary_units=outputs.units)
     else:
         metadata["boundary_units"] = {}
+    if cached_model.outer_flux_outputs is not None:
+        variable_roles.update(cached_model.outer_flux_outputs.roles)
+        metadata.update(cached_model.outer_flux_outputs.metadata)
     if metadata.get("boundary_representation") == "centered-v1":
         variable_roles["observation"] = "y"
     if "offset" in cached_model.model.named_vars:
