@@ -3,8 +3,9 @@ Calibrating retained biosphere uncertainty
 
 The Python components in :mod:`openghg_inversions.biosphere_prior` change one
 aggregate uncertainty direction in an existing retained flux-state prior.
-Calibration changes only the arithmetic covariance; the model keeps the
-retained prior's marginals. Omitting ``biosphere_prior`` from the CO₂ or linked
+Calibration changes only the arithmetic covariance. The model keeps the
+retained prior's marginal family for each state, but the calibrated variances
+can change the biosphere states' marginal distributions. Omitting ``biosphere_prior`` from the CO₂ or linked
 CO₂/O₂ runners preserves their existing prior. A calibration is a sensitivity
 intervention, not a configured production shrinkage factor.
 
@@ -97,7 +98,8 @@ Sampled marginals
 The model samples a
 :class:`~openghg_inversions.correlated_state.CorrelatedPrior`: arithmetic
 moments joined by a Gaussian copula, with a marginal family per state. A
-calibration keeps the retained prior's marginals. Lognormal is the only
+calibration keeps each state's marginal family; a state whose variance changes
+gets that family's distribution at the new variance. Lognormal is the only
 marginal available, built by
 :class:`~openghg_inversions.correlated_state.CorrelatedLognormalPrior`:
 
@@ -154,7 +156,7 @@ For example, given independently prepared labelled arrays:
 The ordinary/cached CO₂ and CO₂/O₂ graph builders take one ``retained_prior``,
 a ``CorrelatedPrior``. ``resolve_retained_flux_prior`` checks once that the
 calibration was made from that baseline, rejects a different one, and returns
-the baseline's mean and marginals with the calibrated covariance.
+the baseline's mean and marginal families with the calibrated covariance.
 ``build_co2_from_materialized``, ``build_rhime_co2_cached_sigma``,
 ``build_rhime_co2_o2`` and the linked prepared sampling runners instead take a
 separate ``biosphere_prior`` argument and make that check against their
