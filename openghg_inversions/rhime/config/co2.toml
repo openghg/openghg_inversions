@@ -38,6 +38,74 @@ domain = "EUROPE"
 # sigma = 0.5
 # correlation_length = 1.5
 
+# Per-source native priors replace the single shared field: with a `sources`
+# table each flux source has its own scaling field, amplitude and kernel, GPP
+# and TER may be correlated under one shared kernel, and all sources are reduced
+# jointly to a (source, region) retained state. Name exactly the acquisition
+# flux_sources. A partition with a `source` dimension gives each source its own
+# regions; a shared partition or generated basis is repeated per source. With
+# restriction = "absolute_flux_weighted_mean" every retained region needs nonzero
+# prior flux of its source, so a repeated partition usually needs
+# retained_regions_path to leave out e.g. biosphere sea regions and ocean land.
+
+# Per-source native priors (E-r07): A1 gross anchor, rho = 0.7, biosphere 3 x 6 deg, FF 1 x 2.5 deg.
+# [prepared_inputs.native_prior]
+# restriction = "absolute_flux_weighted_mean"  # or "bucket" (default)
+# class_labels_path = "native-classes.nc"      # integer class_labels on (source, lat, lon)
+# retained_regions_path = "retained.json"      # optional {source = [partition labels]}; others go into A
+# gpp_ter_correlation = 0.7                    # Corr of the GPP and TER scaling anomalies
+# gpp_source = "co2_BASE_GPP"
+# ter_source = "co2_BASE_TER"
+#
+# # Sources without sigma get one amplitude matching country-total SD targets.
+# [prepared_inputs.native_prior.calibration]
+# targets_path = "country-sd-targets.nc"       # functional_weights and target_sd
+# statistic = "geometric-mean"
+#
+# [prepared_inputs.native_prior.sources.co2_BASE_GPP]
+# latitude_correlation_length = 3.0
+# longitude_correlation_length = 6.0
+#
+# [prepared_inputs.native_prior.sources.co2_BASE_TER]
+# latitude_correlation_length = 3.0
+# longitude_correlation_length = 6.0
+#
+# [prepared_inputs.native_prior.sources.co2_BASE_FF]
+# latitude_correlation_length = 1.0
+# longitude_correlation_length = 2.5
+#
+# [prepared_inputs.native_prior.sources.co2_BASE_ocean]
+# sigma = 2.6
+# correlation_length = 3.0
+
+# Per-source native priors (geodesic): great-circle kernels of 500 km (biosphere) and 200 km (FF), rho = 0.7.
+# [prepared_inputs.native_prior]
+# class_labels_path = "native-classes.nc"
+# gpp_ter_correlation = 0.7
+# gpp_source = "co2_BASE_GPP"
+# ter_source = "co2_BASE_TER"
+#
+# # A geodesic class is a dense block of 8 n**2 bytes for n cells, so name only
+# # classes up to about 1e4 cells (here class 1); other classes stay separable.
+# [prepared_inputs.native_prior.sources.co2_BASE_GPP]
+# sigma = 0.6
+# correlation_length = 3.0
+# geodesic_correlation_length_km = { 1 = 500.0 }
+#
+# [prepared_inputs.native_prior.sources.co2_BASE_TER]
+# sigma = 0.7
+# correlation_length = 3.0
+# geodesic_correlation_length_km = { 1 = 500.0 }
+#
+# [prepared_inputs.native_prior.sources.co2_BASE_FF]
+# sigma = 0.8
+# correlation_length = 3.0
+# geodesic_correlation_length_km = { 1 = 200.0 }
+#
+# [prepared_inputs.native_prior.sources.co2_BASE_ocean]
+# sigma = 2.6
+# correlation_length = 3.0
+
 [likelihood]
 kind = "additive_sigma"
 sigma_prior = { pdf = "halfnormal", sigma = 1.0 }

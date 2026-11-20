@@ -710,6 +710,55 @@ def project_native_covariance(
     )
 
 
+def covariance_natural_prolongation(
+    *,
+    covariance: InvertibleNativeCovarianceAction,
+    restriction: xr.DataArray,
+    state_dim: str,
+    rhs_block_size: int = 64,
+) -> xr.DataArray:
+    """Derive the covariance-natural lift ``U_* = B Pi.T C_alpha^-1`` of ``Pi``.
+
+    This is the conditional-mean map ``E[x | Pi x] - m = U_* (alpha - Pi m)``
+    for a supplied restriction, computed with the same blocked arithmetic as
+    :func:`project_native_covariance`, so ``H U_*`` equals that kernel's
+    effective observation operator. It needs no observation products.
+
+    Args:
+        covariance: Native covariance action ``B``.
+        restriction: Labelled ``Pi`` with dimensions ``(state_dim, *native_dims)``
+            in any order; it may be sparse or Dask-backed.
+        state_dim: Retained-state dimension.
+        rhs_block_size: Retained states per covariance application.
+
+    Returns:
+        Dense dimensionless ``U_*`` with dimensions ``(*native_dims, state_dim)``.
+
+    Raises:
+        ValueError: If the block size is not positive, labels do not align, or
+            ``C_alpha`` is not positive definite and well conditioned.
+    """
+    if rhs_block_size <= 0:
+        raise ValueError("rhs_block_size must be positive")
+    native_dims = tuple(covariance.native_dims)
+    restriction = _materialize_restriction(restriction.transpose(state_dim, *native_dims))
+    state_column_dim = matrix_column_dim(
+        state_dim, {str(name) for name in (*restriction.dims, *restriction.coords)},
+    )
+    b_pi_t = _apply_restriction_blocks(
+        covariance, restriction, native_dims=native_dims, state_dim=state_dim,
+        column_dim=state_column_dim, rhs_block_size=rhs_block_size,
+    )
+    state_covariance = xr.dot(restriction, b_pi_t, dim=list(native_dims)).transpose(state_dim, state_column_dim)
+    values = np.asarray(state_covariance.values, dtype=np.float64)
+    state_covariance = state_covariance.copy(data=(values + values.T) * 0.5)
+    prolongation, _ = _derive_covariance_natural_prolongation(
+        restriction, state_covariance, b_pi_t,
+        native_dims=native_dims, state_dim=state_dim, state_column_dim=state_column_dim,
+    )
+    return prolongation
+
+
 def _apply_restriction_blocks(
     covariance: InvertibleNativeCovarianceAction,
     restriction: xr.DataArray,
