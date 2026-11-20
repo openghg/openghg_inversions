@@ -52,9 +52,9 @@ arrays the model used.
 Calibrate a biosphere prior once
 --------------------------------
 
-``BiospherePriorConfig.from_params(table)`` accepts ``family="lognormal"``
-(default) or the signed ``gaussian`` diagnostic. Exactly one policy is
-required: positive ``residual_sd_multiplier``, ``target_residual_sd`` or
+A biosphere calibration is a sensitivity intervention, prepared and saved once
+and then loaded by path. ``BiospherePriorConfig.from_params(table)`` requires
+exactly one policy: positive ``residual_sd_multiplier``, ``target_residual_sd`` or
 ``target_gross_sd``. Absolute targets are value/units tables in compatible
 flux units. The gross target is marginal, including explained variance;
 infeasible targets fail at calibration. There is no default shrinkage.
@@ -68,9 +68,10 @@ covariance.
 ``save(prepared, new_path)`` refuses an existing destination and uses the
 trace MultiIndex codec with a ``biosphere_prior`` group; ``load_biosphere_prior``
 reopens it. The saved calibration includes original moments, exact state
-labels, selector, reporting functionals, resulting covariance and the resolved
-calibration report. Reload validates them and does not resolve the policy
-again or use current inputs or selected subsets.
+labels, selector, reporting functionals, resulting covariance, residual weights
+and the resolved policy. Reload validates them and does not resolve the policy
+again or use current inputs or selected subsets. The model samples the
+calibrated covariance with the retained prior's marginals.
 
 Select a saved calibration for ordinary or linked inference
 -----------------------------------------------------------

@@ -11,7 +11,8 @@ import pytensor
 import xarray as xr
 
 from openghg_inversions.biosphere_prior import calibrate_biosphere_prior
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.models.biosphere import resolve_retained_flux_prior
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.models.boundary import AnomalyScalingChoice, RawCenteredSensitivity
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.outer_flux import OuterFluxChoice
@@ -57,34 +58,31 @@ def width(value, units="ppm"):
 
 
 @pytest.mark.parametrize("policy", ["residual_sd_multiplier", "target_residual_sd", "target_gross_sd"])
-@pytest.mark.parametrize("family", ["lognormal", "gaussian"])
-def test_biosphere_configuration_policies_functionals_and_saved_identity(tmp_path, policy, family):
+def test_biosphere_configuration_policies_functionals_and_saved_identity(tmp_path, policy):
     prior, inputs = bio_case()
-    expected = calibrate_biosphere_prior(prior, **inputs, residual_sd_multiplier=0.5, family=family)
+    expected = calibrate_biosphere_prior(prior, **inputs, residual_sd_multiplier=0.5)
     target = (
         0.5
         if policy == "residual_sd_multiplier"
         else width(
             float(
-                expected.data.functional_sd.sel(
-                    prior="requested", functional="gross" if policy == "target_gross_sd" else "residual_gross"
+                expected.functionals().functional_sd.sel(
+                    prior="calibrated", functional="gross" if policy == "target_gross_sd" else "residual_gross"
                 )
             )
             * 1000,
             "g/year",
         )
     )
-    config = BiospherePriorConfig.from_params({"family": family, policy: target})
+    config = BiospherePriorConfig.from_params({policy: target})
     actual = config.prepare(prior, **inputs)
     xr.testing.assert_allclose(actual.data.covariance, expected.data.covariance)
     path = tmp_path / "bio.nc"
     config.save(actual, path)
     reopened = load_biosphere_prior(path)
     xr.testing.assert_identical(reopened.data, actual.data)
-    xr.testing.assert_identical(reopened.baseline.mean, prior.mean)
-    xr.testing.assert_identical(reopened.baseline.arithmetic_covariance, prior.arithmetic_covariance)
-    if reopened.positive_prior is not None:
-        np.testing.assert_array_equal(reopened.positive_prior.arithmetic_covariance, actual.data.covariance)
+    xr.testing.assert_equal(reopened.data.baseline_mean, prior.mean)
+    xr.testing.assert_equal(reopened.data.baseline_covariance, prior.arithmetic_covariance)
 
 
 @pytest.mark.parametrize(
@@ -92,7 +90,7 @@ def test_biosphere_configuration_policies_functionals_and_saved_identity(tmp_pat
     [
         {},
         {"residual_sd_multiplier": 0.5, "target_gross_sd": width(1, "kg/year")},
-        {"residual_sd_multiplier": 0.5, "family": "truncated"},
+        {"residual_sd_multiplier": 0.5, "family": "gaussian"},
         {"target_gross_sd": {"value": 1}},
         {"residual_sd_multiplier": 0.5, "recalibrate": True},
     ],
@@ -131,7 +129,7 @@ def test_configured_co2_inference_uses_same_bc_calibration_and_nonzero_target(tm
         alpha_prior_covariance=inv.alpha_prior_covariance.copy(data=np.array([[0.08, 0.01], [0.01, 0.06]])),
     )
     prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inv))
-    prior = CorrelatedLognormalPrior(
+    prior = CorrelatedPrior(
         inv.alpha_prior_mean, inv.alpha_prior_covariance, covariance_dim="region_cov"
     )
     mean = prior.mean
@@ -169,7 +167,7 @@ def test_configured_co2_inference_uses_same_bc_calibration_and_nonzero_target(tm
     if cached:
         expected = build_co2_model(
             inv.H,
-            retained_prior=bio,
+            retained_prior=resolve_retained_flux_prior(prior, bio),
             fixed_prior_contribution=inv.fixed_prior_contribution,
             observations=inv.mf,
             observation_error=inv.mf_error,
@@ -197,7 +195,7 @@ def test_linked_config_independent_species_corrections_and_one_calibration(tmp_p
         prepared, boundary_operands={channel: _operands(_native(prepared, channel)) for channel in ("co2", "o2")},
     )
     kwargs = _kwargs(prepared)
-    prior = prepared.retained_prior
+    prior = CorrelatedPrior.from_lognormal(prepared.retained_prior)
     mean = prior.mean
     weights = xr.DataArray(
         [[-10, 0, 0, 0, 0], [0, 8, 0, 0, 0]],
@@ -249,7 +247,8 @@ def test_linked_config_independent_species_corrections_and_one_calibration(tmp_p
     else:
         configured = build_rhime_co2_o2(prepared_inputs=prepared, **choices).model
     expected = build_co2_o2_model(
-        **{**kwargs, "retained_prior": bio}, boundary=expected_boundary, **(ou if cached else {})
+        **{**kwargs, "retained_prior": resolve_retained_flux_prior(prior, bio)},
+        boundary=expected_boundary, **(ou if cached else {})
     )
     _parity(configured, expected)
     assert len([rv for rv in configured.free_RVs if rv.name.startswith("flux_scaling")]) == 1
@@ -286,7 +285,7 @@ def test_configured_outer_flux_matches_python_option(cached):
     built, _ = build_co2_inference(prepared, choices)
     assert json.loads(json.dumps(built.output_contract.metadata))["outer_flux_mode"] == "multiplicative"
 
-    prior = CorrelatedLognormalPrior(inv.alpha_prior_mean, inv.alpha_prior_covariance, covariance_dim="region_cov")
+    prior = CorrelatedPrior(inv.alpha_prior_mean, inv.alpha_prior_covariance, covariance_dim="region_cov")
     expected = build_co2_model(
         inv.H,
         retained_prior=prior,
@@ -395,7 +394,7 @@ def test_outer_flux_selectors_survive_co2_preparation_and_saving(tmp_path, label
         ))
     prepare_co2_inputs(canonical, reduction).save(tmp_path / "prepared.nc")
     inv = Co2PreparedInputs.load(tmp_path / "prepared.nc").inv_inputs
-    prior = CorrelatedLognormalPrior(inv.alpha_prior_mean, inv.alpha_prior_covariance, covariance_dim="region_cov")
+    prior = CorrelatedPrior(inv.alpha_prior_mean, inv.alpha_prior_covariance, covariance_dim="region_cov")
     # The fixture's states are all correlated, so fixed_sources is not exercised here.
     choice = OuterFluxChoice("multiplicative", ("outer",))
     if not labelled:
@@ -416,7 +415,9 @@ def test_outer_flux_selectors_survive_linked_preparation_and_saving():
         prior.mean.assign_coords(basis_group=(prior.state_dim, groups)), prior.arithmetic_covariance,
     )
     prepared = Co2O2PreparedInputs.from_datatree(prepare_co2_o2_inputs(**inputs).to_datatree())
-    states = OuterFluxChoice("multiplicative", ("outer",), ("ocean",)).resolve_states(prepared.retained_prior)
+    states = OuterFluxChoice("multiplicative", ("outer",), ("ocean",)).resolve_states(
+        CorrelatedPrior.from_lognormal(prepared.retained_prior)
+    )
     ocean = np.char.lower(prepared.retained_prior.mean["source"].values.astype(str)) == "ocean"
     outer = np.array(groups) == "outer"
     np.testing.assert_array_equal(states.fixed.values, outer & ocean)
@@ -446,7 +447,6 @@ def test_inference_options_cannot_change_saved_calibration():
 def test_toml_biosphere_choice_is_the_python_choice():
     request = tomllib.loads("""
         [biosphere]
-        family = "lognormal"
         target_gross_sd = { value = 8, units = "kg/year" }
     """)
     assert BiospherePriorConfig.from_params(request["biosphere"]).policy == "target_gross_sd"
@@ -482,7 +482,7 @@ def test_saved_workflow_protects_selected_calibration_from_output_alias(tmp_path
     monkeypatch.setattr(module, "load_preparation", lambda *a: record)
     with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         getattr(module, stage)(tmp_path / "prepare.json", model=model, output_dir=tmp_path)
-    xr.testing.assert_identical(load_biosphere_prior(tmp_path / filename).baseline.mean, prior.mean)
+    xr.testing.assert_equal(load_biosphere_prior(tmp_path / filename).data.baseline_mean, prior.mean)
 
 
 def test_saved_calibration_documented_example(tmp_path, monkeypatch):
@@ -550,7 +550,7 @@ def test_full_run_mapping_request_adds_no_file_to_protected_inputs(tmp_path, mon
 
 def _save_biosphere_prior(prepared, artifact):
     inv = prepared.inv_inputs
-    prior = CorrelatedLognormalPrior(inv.alpha_prior_mean, inv.alpha_prior_covariance, covariance_dim="region_cov")
+    prior = CorrelatedPrior(inv.alpha_prior_mean, inv.alpha_prior_covariance, covariance_dim="region_cov")
     weights = xr.DataArray([[-1., 0.], [0., 1.]], dims=("process", "region"),
                            coords={"process": ["GPP", "TER"], **prior.mean.coords}, attrs={"units": "kg/year"})
     config = BiospherePriorConfig.from_params({"residual_sd_multiplier": 1.})
@@ -587,7 +587,7 @@ def test_full_run_protects_selected_prior_before_sampling(tmp_path, monkeypatch,
     }
     # Resolve the real matching scientific artifact, rather than bypass loading.
     resolved = Co2ModelConfig.from_params(request).model_arguments()
-    xr.testing.assert_identical(resolved["biosphere_prior"].baseline.mean, prior.mean)
+    xr.testing.assert_equal(resolved["biosphere_prior"].data.baseline_mean, prior.mean)
     monkeypatch.setattr(execution, "sample_co2_inference", lambda *a, **kw: pytest.fail("sampling reached"))
     with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         execution.run_co2(params=request, prepared=prepared)
