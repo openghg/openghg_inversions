@@ -5,7 +5,9 @@ import pytest
 import pytensor
 import xarray as xr
 
-from openghg_inversions.biosphere_prior import calibrate_biosphere_prior
+from openghg_inversions.biosphere_prior import BIOSPHERE_PRIOR_SCOPE, calibrate_biosphere_prior
+from openghg_inversions.correlated_state import CorrelatedPrior
+from openghg_inversions.models.biosphere import resolve_retained_flux_prior
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.co2 import (
@@ -33,13 +35,12 @@ def state_and_mean(model, point):
     )(point)
 
 
-@pytest.mark.parametrize(("family", "active_group"), [
-    ("lognormal", None), ("gaussian", None), ("gaussian", "biosphere"), ("gaussian", "protected"),
-])
 @pytest.mark.parametrize("full", [True, False])
-def test_full_and_enhancement_ordinary_cached_prediction_density_and_no_default_change(family, active_group, full, tmp_path):
+def test_full_and_enhancement_ordinary_cached_prediction_density_and_no_default_change(full):
     baseline, inputs = case()
-    calibration = calibrate_biosphere_prior(baseline, **inputs, residual_sd_multiplier=0.5, family=family)
+    calibration = resolve_retained_flux_prior(
+        baseline, calibrate_biosphere_prior(baseline, **inputs, residual_sd_multiplier=0.5),
+    )
     observation = xr.DataArray(
         [1.2, 0.4, 0.8, -0.5],
         dims="nmeasure",
@@ -71,13 +72,13 @@ def test_full_and_enhancement_ordinary_cached_prediction_density_and_no_default_
         )
         kwargs["bc_prior"] = {"pdf": "normal", "mu": 0, "sigma": 0.2}
     kwargs = bound_model_arguments(kwargs)
-    if active_group is not None:
-        kwargs["state_activity"] = partial_activity(calibration, active_group)
     likelihood = dict(tau_hours=5, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75})
     original = build_co2_model(
         **kwargs, likelihood_builder=add_fixed_ou_gaussian_likelihood, likelihood_kwargs=likelihood
     )
-    identity = calibrate_biosphere_prior(baseline, **inputs, residual_sd_multiplier=1)
+    identity = resolve_retained_flux_prior(
+        baseline, calibrate_biosphere_prior(baseline, **inputs, residual_sd_multiplier=1),
+    )
     same = build_co2_model(
         **{**kwargs, "retained_prior": identity},
         likelihood_builder=add_fixed_ou_gaussian_likelihood,
@@ -110,36 +111,17 @@ def test_full_and_enhancement_ordinary_cached_prediction_density_and_no_default_
     )
     assert len([rv for rv in ordinary.free_RVs if rv.name == "flux_scaling_latent"]) == 1
     for model, values in ((ordinary, point), (cached.model, cached_point)):
-        assert_normalized_density_and_gradient(
-            model, values, calibration, kwargs, full=full,
-            cached=cached if model is cached.model and active_group is not None else None,
-        )
-    np.testing.assert_allclose(x, selected_physical_state(calibration, point["flux_scaling_latent"], kwargs), rtol=1e-14)
-    if active_group is not None:
-        assert_partial_state_semantics(ordinary, point, calibration, kwargs, x)
-        assert cached.target.n_state == int(kwargs["state_activity"].active.sum()) + int(full)
-        for name, model in (("ordinary", ordinary), ("cached", cached.model)):
-            assert_activity_replay(model, calibration, kwargs, tmp_path / f"{name}.nc", full=full)
+        assert_normalized_density_and_gradient(model, values, calibration, kwargs, full=full)
+    np.testing.assert_allclose(x, physical_state(calibration, point["flux_scaling_latent"]), rtol=1e-14)
     # GPP and TER are still separate columns and states.
     assert x.shape == (5,) and h.shape == (4, 5)
 
 
-@pytest.mark.parametrize(("family", "active_group"), [
-    ("lognormal", None), ("gaussian", None), ("gaussian", "biosphere"), ("gaussian", "protected"),
-])
-def test_linked_species_share_one_calibration_and_density(family, active_group, tmp_path):
-    from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-
+def test_linked_species_share_one_calibration_and_density():
     prepared = _prepared()
     kwargs = _kwargs(prepared)
-    baseline = prepared.retained_prior
+    baseline = CorrelatedPrior.from_lognormal(prepared.retained_prior)
     mean = baseline.mean
-    if active_group is not None:
-        # The original linked fixture has independent blocks; exercise cross-block uncertainty too.
-        correlated, _ = case()
-        covariance = np.outer(mean.values, mean.values) * np.expm1(correlated.latent_covariance.values)
-        baseline = CorrelatedLognormalPrior(mean, covariance, covariance_dim=baseline.covariance_dim)
-        kwargs["retained_prior"] = baseline
     weights = xr.DataArray(
         [[-10, 0, 0, 0, 0], [0, 8, 0, 0, 0]],
         dims=("process", "state"),
@@ -149,17 +131,14 @@ def test_linked_species_share_one_calibration_and_density(family, active_group, 
     reference = xr.DataArray(
         [-10.0, 8.0], dims="process", coords={"process": ["GPP", "TER"]}, attrs={"units": "kg/year"}
     )
-    calibration = calibrate_biosphere_prior(
+    calibration = resolve_retained_flux_prior(baseline, calibrate_biosphere_prior(
         baseline,
         biosphere=mean.copy(data=[True, True, False, False, False]),
         weights=weights,
         reference=reference,
         residual_sd_multiplier=0.5,
-        family=family,
-    )
+    ))
     likelihood = dict(tau_hours=5, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75})
-    if active_group is not None:
-        kwargs["state_activity"] = partial_activity(calibration, active_group)
     ordinary = build_co2_o2_model(**{**kwargs, "retained_prior": calibration}, **likelihood)
     cached = build_co2_o2_cached_sigma_model(**{**kwargs, "retained_prior": calibration}, **likelihood)
     point = ordinary.initial_point()
@@ -172,20 +151,11 @@ def test_linked_species_share_one_calibration_and_density(family, active_group, 
     assert len([rv for rv in cached.model.free_RVs if rv.name.startswith("flux_scaling")]) == 1
     assert not hasattr(cached.model, "biosphere_prior")
     for model in (ordinary, cached.model):
-        assert_normalized_density_and_gradient(
-            model, point, calibration, kwargs, linked=True,
-            cached=cached if model is cached.model and active_group is not None else None,
-        )
-    np.testing.assert_allclose(x, selected_physical_state(calibration, point["flux_scaling_latent"], kwargs), rtol=1e-14)
-    if active_group is not None:
-        assert_partial_state_semantics(ordinary, point, calibration, kwargs, x)
-        assert cached.target.n_state == int(kwargs["state_activity"].active.sum())
-        for name, model in (("ordinary", ordinary), ("cached", cached.model)):
-            assert_activity_replay(model, calibration, kwargs, tmp_path / f"{name}.nc", linked=True)
+        assert_normalized_density_and_gradient(model, point, calibration, kwargs, linked=True)
+    np.testing.assert_allclose(x, physical_state(calibration, point["flux_scaling_latent"]), rtol=1e-14)
 
 
-@pytest.mark.parametrize("family", ["lognormal", "gaussian"])
-def test_linked_runner_prior_prediction_serializes_calibration_and_reconstructs(tmp_path, family):
+def test_linked_runner_prior_prediction_serializes_calibration_and_reconstructs(tmp_path):
     import json
     import pymc as pm
     from openghg_inversions.models import get_coord_registry, restore_inferencedata_coords
@@ -205,24 +175,23 @@ def test_linked_runner_prior_prediction_serializes_calibration_and_reconstructs(
         [-10.0, 8.0], dims="process", coords={"process": ["GPP", "TER"]}, attrs={"units": "kg/year"}
     )
     calibration = calibrate_biosphere_prior(
-        prepared.retained_prior,
+        CorrelatedPrior.from_lognormal(prepared.retained_prior),
         biosphere=mean.copy(data=[True, True, False, False, False]),
         weights=weights,
         reference=reference,
         residual_sd_multiplier=0.5,
-        family=family,
     )
     built = build_rhime_co2_o2(
         prepared_inputs=prepared,
         independent_error_sd=_independent_error(prepared),
         biosphere_prior=calibration,
     )
-    assert built.output_contract.metadata["prior"] == family
+    assert built.output_contract.metadata["prior"] == "correlated arithmetic-moment lognormal"
     with built.model:
         trace = pm.sample_prior_predictive(draws=4, random_seed=817)
     trace = restore_inferencedata_coords(trace, get_coord_registry(built.model))
     annotate_co2_o2_trace(trace, built=built, biosphere_prior=calibration)
-    assert json.loads(trace.attrs["biosphere_prior"])["family"] == family
+    assert json.loads(trace.attrs["rhime_model_metadata"])["biosphere_prior_scope"] == BIOSPHERE_PRIOR_SCOPE
     save_trace(trace, tmp_path / "prior.nc")
     restored = load_trace(tmp_path / "prior.nc")
     np.testing.assert_array_equal(restored.biosphere_prior.covariance, calibration.data.covariance)
@@ -235,11 +204,13 @@ def test_linked_runner_prior_prediction_serializes_calibration_and_reconstructs(
 
 
 @pytest.mark.parametrize("state_dim", ["state", "flux_state"])
-def test_gaussian_calibration_rejects_reordered_or_renamed_state_axis(state_dim):
-    # The Gaussian factors are applied by position, so a reordered axis would
+def test_calibrated_prior_rejects_reordered_or_renamed_state_axis(state_dim):
+    # Latent factors are applied by position, so a reordered axis would
     # silently move coefficients between columns.
     baseline, inputs = case()
-    calibration = calibrate_biosphere_prior(baseline, **inputs, residual_sd_multiplier=0.5, family="gaussian")
+    calibration = resolve_retained_flux_prior(
+        baseline, calibrate_biosphere_prior(baseline, **inputs, residual_sd_multiplier=0.5),
+    )
     observation = xr.DataArray(
         [1.2, 0.4, 0.8],
         dims="nmeasure",
@@ -264,90 +235,15 @@ def test_gaussian_calibration_rejects_reordered_or_renamed_state_axis(state_dim)
         )
 
 
-def partial_activity(calibration, active_group):
-    from openghg_inversions.models.state_activity import StateActivity
-
-    bio = calibration.data.biosphere
-    return StateActivity(
-        active=bio if active_group == "biosphere" else ~bio,
-        fixed_value=calibration.baseline.mean.copy(data=[1.7, 1.4, 1.8, 0.6, 1.3]),
-    )
-
-
-def selected_physical_state(calibration, z, kwargs):
-    full = physical_state(calibration, z)
-    policy = kwargs.get("state_activity")
-    return full if policy is None else np.where(policy.active.values, full, policy.fixed_value.values)
-
-
-def assert_partial_state_semantics(model, point, calibration, kwargs, actual):
-    policy = kwargs["state_activity"]
-    active = policy.active.values
-    np.testing.assert_array_equal(actual[~active], policy.fixed_value.values[~active])
-    assert point["flux_scaling_latent"].size == calibration.baseline.mean.size
-    bio = calibration.data.biosphere.values
-    assert np.any(calibration.data.covariance.values[np.ix_(bio, ~bio)] != 0)
-    if np.array_equal(active, bio):
-        # Inactive protected outputs still supply uncertainty to the active marginal.
-        changed = {name: value.copy() for name, value in point.items()}
-        changed["flux_scaling_latent"][~bio] += 0.2
-        shifted, _ = state_and_mean(model, changed)
-        np.testing.assert_allclose(shifted, selected_physical_state(calibration, changed["flux_scaling_latent"], kwargs), rtol=1e-14)
-        assert np.max(np.abs(shifted[active] - actual[active])) > 1e-8
-        np.testing.assert_array_equal(shifted[~active], actual[~active])
-
-
-def assert_activity_replay(model, calibration, kwargs, path, *, linked=False, full=False):
-    import pymc as pm
-    from openghg_inversions.models import get_coord_registry, restore_inferencedata_coords
-    from openghg_inversions.models.biosphere import annotate_biosphere_prior
-    from openghg_inversions.serialization import save_trace, load_trace
-
-    with model:
-        trace = pm.sample_prior_predictive(draws=3, random_seed=973)
-    trace = restore_inferencedata_coords(trace, get_coord_registry(model))
-    save_trace(annotate_biosphere_prior(trace, calibration), path)
-    saved = load_trace(path)
-    z = saved.prior.flux_scaling_latent.values
-    expected = np.array([selected_physical_state(calibration, value, kwargs) for value in z.reshape(-1, z.shape[-1])]).reshape(z.shape)
-    actual = saved.prior.flux_scaling.values
-    np.testing.assert_allclose(actual, expected, rtol=1e-14, atol=1e-14)
-    policy = kwargs["state_activity"]
-    inactive = ~policy.active.values
-    np.testing.assert_array_equal(actual[..., inactive], np.broadcast_to(policy.fixed_value.values[inactive], actual[..., inactive].shape))
-    observed = kwargs["observations"]
-    expected_mean = np.broadcast_to(kwargs["fixed_prior_contribution"].values, (*z.shape[:-1], observed.size)).copy()
-    if linked:
-        for channel in ("co2", "o2"):
-            rows = observed.species.values == channel
-            expected_mean[..., rows] += expected @ kwargs[f"{channel}_sensitivity"].values.T
-    else:
-        expected_mean += expected @ kwargs["flux_sensitivity"].values.T
-    if full:
-        expected_mean += saved.prior.bc.values[..., 0, None] * (np.arange(1, 5) * 0.1)
-    np.testing.assert_allclose(saved.prior.modelled_concentration.values, expected_mean, rtol=1e-14, atol=1e-14)
-
-
-def physical_state(calibration, z):
+def physical_state(prior, z):
     """Independent NumPy arithmetic-moment map, with no model/cache expressions."""
-    m = calibration.data.baseline_mean.to_numpy()
-    b = calibration.data.covariance.to_numpy()
-    if calibration.data.attrs["family"] == "lognormal":
-        v = np.log1p(b / np.outer(m, m))
-        return np.exp(np.log(m) - np.diag(v) / 2 + np.linalg.cholesky(v) @ z)
-    bio = calibration.data.biosphere.to_numpy()
-    other = ~bio
-    v = np.log1p(b[np.ix_(other, other)] / np.outer(m[other], m[other]))
-    x = m.copy()
-    x[other] = np.exp(np.log(m[other]) - np.diag(v) / 2 + np.linalg.cholesky(v) @ z[other])
-    r = b[np.ix_(bio, other)] @ np.linalg.inv(b[np.ix_(other, other)])
-    x[bio] += r @ (x[other] - m[other]) + np.linalg.cholesky(
-        b[np.ix_(bio, bio)] - r @ b[np.ix_(other, bio)]
-    ) @ z[bio]
-    return x
+    m = prior.mean.to_numpy()
+    b = prior.arithmetic_covariance.to_numpy()
+    v = np.log1p(b / np.outer(m, m))
+    return np.exp(np.log(m) - np.diag(v) / 2 + np.linalg.cholesky(v) @ z)
 
 
-def assert_normalized_density_and_gradient(model, point, calibration, kwargs, *, linked=False, full=False, cached=None):
+def assert_normalized_density_and_gradient(model, point, prior, kwargs, *, linked=False, full=False):
     """Check the whole transformed density and gradient against dense equations."""
     from scipy.stats import halfnorm, multivariate_normal, norm
 
@@ -367,7 +263,7 @@ def assert_normalized_density_and_gradient(model, point, calibration, kwargs, *,
 
     def density(values):
         z = values["flux_scaling_latent"]
-        x = selected_physical_state(calibration, z, kwargs)
+        x = physical_state(prior, z)
         mean = kwargs["fixed_prior_contribution"].to_numpy().copy()
         if linked:
             for channel in ("co2", "o2"):
@@ -406,37 +302,24 @@ def assert_normalized_density_and_gradient(model, point, calibration, kwargs, *,
         gradient_by_name[variable.name] = component_gradient
     actual_gradient = model.compile_dlogp()(point)
     np.testing.assert_allclose(actual_gradient, gradient, rtol=2e-7, atol=2e-7)
-    if cached is not None:
-        from pymc.blocking import DictToArrayBijection
-        from test_co2_cached_sigma import _compound
-
-        cached.shared_cache.update(cached.target.refresh(np.exp(point["ou_site_amplitude_log__"])))
-        state_step = _compound(cached).methods[1]
-        state_step._logp_dlogp_func.set_extra_values(point)
-        state_point = DictToArrayBijection.map({name: point[name] for name in state_step.var_names})
-        cached_logp, cached_gradient = state_step._logp_dlogp_func(state_point)
-        expected_gradient = np.concatenate([gradient_by_name[name] for name in state_step.var_names])
-        np.testing.assert_allclose(cached_logp, density(point), rtol=1e-11, atol=1e-11)
-        np.testing.assert_allclose(cached_gradient, expected_gradient, rtol=2e-7, atol=2e-7)
-        print(f"actual cached state: density error={abs(cached_logp - density(point)):.3g}, gradient max error={np.max(np.abs(cached_gradient - expected_gradient)):.3g}")
     print(
-        f"{calibration.data.attrs['family']} linked={linked} full={full}: "
+        f"linked={linked} full={full}: "
         f"density error={abs(model.compile_logp()(point) - density(point)):.3g}, "
         f"gradient max error={np.max(np.abs(actual_gradient - gradient)):.3g}"
     )
 
 
 @pytest.mark.parametrize("cached", [False, True])
-def test_single_inference_forwards_calibration_and_serializes_report(cached):
+def test_single_inference_forwards_calibration_and_serializes_it(cached):
+    import json
     import pymc as pm
-    from openghg_inversions.correlated_state import CorrelatedLognormalPrior
     from openghg_inversions.models import get_coord_registry, restore_inferencedata_coords
     from openghg_inversions.rhime.co2.inference import build_co2_inference, annotate_co2_inference
     from test_co2_affine_output import _prepared as single_prepared
 
     prepared, _ = single_prepared()
     inputs = prepared.inv_inputs
-    baseline = CorrelatedLognormalPrior(
+    baseline = CorrelatedPrior(
         inputs.alpha_prior_mean, inputs.alpha_prior_covariance,
         covariance_dim=str(inputs.alpha_prior_covariance.dims[1]),
     )
@@ -462,9 +345,8 @@ def test_single_inference_forwards_calibration_and_serializes_report(cached):
         trace = pm.sample_prior_predictive(draws=2, random_seed=37)
     trace = restore_inferencedata_coords(trace, get_coord_registry(built.model))
     trace = annotate_co2_inference(trace, built, prepared, choices, cached_graph)
-    saved = trace["biosphere_prior"].to_dataset()
-    xr.testing.assert_equal(saved, calibration.to_dataset())
-    assert saved.attrs["calibration_report"] == calibration.data.attrs["calibration_report"]
-    assert built.output_contract.metadata["prior"] == "lognormal"
+    xr.testing.assert_equal(trace["biosphere_prior"].to_dataset(), calibration.to_dataset())
+    assert json.loads(trace.attrs["rhime_model_metadata"])["biosphere_prior_scope"] == BIOSPHERE_PRIOR_SCOPE
+    assert built.output_contract.metadata["prior"] == "correlated arithmetic-moment lognormal"
     assert not hasattr(built.model, "biosphere_prior")
     assert not np.array_equal(calibration.data.covariance, baseline.arithmetic_covariance)
