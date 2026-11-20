@@ -20,7 +20,9 @@ def resolve_retained_flux_prior(
 
     Runners call this where they first hold both the prepared retained prior
     and the requested calibration. The calibrated prior keeps the retained
-    prior's marginals; only its arithmetic covariance changes.
+    prior's mean and marginal families and takes the calibrated arithmetic
+    covariance, so a biosphere state whose variance changes has a different
+    marginal distribution in the same family.
 
     Args:
         retained_prior: The model's prepared prior.
@@ -28,12 +30,12 @@ def resolve_retained_flux_prior(
 
     Returns:
         ``retained_prior`` without a calibration, otherwise its mean and
-        marginals with the calibrated covariance.
+        marginal families with the calibrated covariance.
 
     Raises:
         ValueError: If the calibration's baseline labels or arithmetic moments
             differ from ``retained_prior``, or the calibrated moments are
-            invalid for its marginals.
+            invalid for its marginal families.
     """
     if calibration is None:
         return retained_prior
@@ -46,7 +48,7 @@ def resolve_retained_flux_prior(
         raise ValueError("Biosphere calibration must use this model's baseline arithmetic moments.")
     return CorrelatedPrior(
         retained_prior.mean,
-        data.covariance.values,
+        data.covariance,
         marginal=retained_prior.marginal,
         covariance_dim=retained_prior.covariance_dim,
     )
