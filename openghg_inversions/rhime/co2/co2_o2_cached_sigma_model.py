@@ -42,7 +42,7 @@ from .co2_cached_sigma_model import (
     _materialize_cached_linear_projection,
     _site_values,
 )
-from .co2_o2_fixed_ou import linked_fixed_ou_alignment
+from .co2_o2_fixed_ou import linked_fixed_ou_alignment, validate_linked_ou_amplitude_units
 from .co2_o2_model import (
     _add_co2_o2_baseline_components,
     _gather_co2_o2_sensitivity,
@@ -112,9 +112,9 @@ def build_co2_o2_cached_sigma_model(
             require identical channel units and are zero on the other channel.
         output_dim: Joint observation dimension used by the likelihood.
         tau_hours: Fixed OU timescale in hours, scalar or mapping keyed
-            by ``co2:SITE``/``o2:SITE``. Requires common channel units.
+            by ``co2:SITE``/``o2:SITE``.
         site_amplitude_prior: Prior for inferred species/site OU amplitudes in
-            concentration units.
+            concentration units. Requires common channel units.
 
         initial_site_amplitudes: Positive initial amplitudes, as a scalar or
             species/site mapping, returned separately for sampling.
@@ -187,6 +187,7 @@ def _build_co2_o2_cached_sigma_model(
         output_dim=output_dim,
     )
     alignment = linked_fixed_ou_alignment(observations)
+    validate_linked_ou_amplitude_units(observations, site_amplitude_prior=site_amplitude_prior)
     site_coord = xr.DataArray(alignment.site_labels).rename({"nsigma_site": "ou_site"}).rename("ou_site")
     site_index = alignment.site_index.rename("ou_site_index")
     initial_amplitudes = _site_values(
