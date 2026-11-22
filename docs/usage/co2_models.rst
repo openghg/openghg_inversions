@@ -461,7 +461,10 @@ uses NumPyro, while configured linked fixed OU defaults to and requires PyMC.
      - Chosen from the likelihood
      - ``"numpyro"`` for fixed error; ``"pymc"`` for OU
      - Configured ``run_co2`` rejects this option. Linked configuration accepts supported
-       backends, with ``"pymc"`` required for ``fixed_ou``.
+       backends, with ``"pymc"`` required for ``fixed_ou``. ``"numpyro"`` and ``"blackjax"``
+       sample at the model's precision: a float64 model (``floatX=float64`` in
+       ``PYTENSOR_FLAGS``, or ``JAX_ENABLE_X64=1``) enables JAX x64, and a float32 model
+       logs a warning. The trace attribute ``sampler_precision`` records the result.
    * - ``progressbar``
      - ``false``
      - ``false``

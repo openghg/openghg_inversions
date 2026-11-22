@@ -8,12 +8,14 @@ from __future__ import annotations
 
 # ruff: noqa: E402
 
-from openghg_inversions._pymc_config import configure_pytensor
+from openghg_inversions._pymc_config import configure_pytensor, jax_x64_requested
 
 configure_pytensor()
 
 import json
-from collections.abc import Mapping, Sequence
+import logging
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from copy import copy
 from typing import Any, ClassVar, Literal, cast
 
@@ -29,6 +31,53 @@ from openghg_inversions.postprocessing.contracts import resolve_predictive_names
 from .convergence import posterior_convergence_check
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
+_JAX_NUTS_SAMPLERS = frozenset({"numpyro", "blackjax"})
+
+logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def jax_sampling_precision(model: pm.Model, nuts_sampler: str) -> Iterator[dict[str, Any]]:
+    """Let a JAX NUTS backend sample at the model's precision.
+
+    PyTensor's JAX backend fixes ``jax_enable_x64`` from ``floatX`` once, when
+    it is first imported. A float64 graph sampled later (for example under
+    ``pytensor.config.change_flags(floatX="float64")``) would then be truncated
+    to float32 by JAX. This enables x64 before a JAX backend samples a model
+    whose log density is float64, or when ``JAX_ENABLE_X64`` requests it, and
+    logs a warning when the model itself is float32. It never turns x64 off:
+    PyMC returns JAX arrays in the trace, and later operations on float64 JAX
+    arrays would be truncated. Other backends are unaffected.
+
+    Yields:
+        The recorded precision (``floatX``, ``model_dtype`` and
+        ``jax_enable_x64``), or an empty mapping for non-JAX backends.
+    """
+    if nuts_sampler not in _JAX_NUTS_SAMPLERS:
+        yield {}
+        return
+    import jax
+    import pytensor
+    import pytensor.link.jax.dispatch  # noqa: F401  # First import pins JAX precision from floatX.
+
+    floatx = str(pytensor.config.floatX)
+    model_dtype = str(model.logp().dtype)
+    if model_dtype == "float64" or jax_x64_requested():
+        jax.config.update("jax_enable_x64", True)
+    if model_dtype != "float64":
+        logger.warning(
+            "%s samples a %s model, so the log density is evaluated in single precision. "
+            "Set PYTENSOR_FLAGS=floatX=float64 (or JAX_ENABLE_X64=1) before starting Python "
+            "for double precision; channels with large values or strongly correlated errors, "
+            "such as per-meg delta(O2/N2) alongside CO2, need it.",
+            nuts_sampler,
+            model_dtype,
+        )
+    yield {
+        "floatX": floatx,
+        "model_dtype": model_dtype,
+        "jax_enable_x64": bool(jax.config.read("jax_enable_x64")),
+    }
 
 
 def describe_recorded_sampler(recorded: object) -> dict[str, int | str]:
@@ -370,6 +419,8 @@ class RhimeSampler:
             random variables, whose names are saved as JSON in
             ``sampler_convergence_variables``. Assessment is eager; a failed or
             incomplete convergence report does not prevent returning the trace.
+            For the ``numpyro`` and ``blackjax`` backends, ``sampler_precision``
+            records the JSON precision used (see :func:`jax_sampling_precision`).
         """
         _validate_idata_options(self.sample_kwargs, label="sample_kwargs")
         sample_kwargs = _copy_sampler_options(self.sample_kwargs or {})
@@ -402,7 +453,7 @@ class RhimeSampler:
                 posterior_kwargs["random_seed"] = normalized_seed
 
         timing_start = timer_start()
-        with model:
+        with model, jax_sampling_precision(model, self.nuts_sampler) as precision:
             raw_trace = cast(
                 xr.DataTree,
                 pm.sample(
@@ -447,6 +498,8 @@ class RhimeSampler:
             restored=registry is not None,
         )
 
+        if precision:
+            trace.attrs["sampler_precision"] = json.dumps(precision, sort_keys=True)
         variable_names = [variable.name for variable in model.free_RVs]
         trace.attrs["sampler_convergence_variables"] = json.dumps(variable_names)
         timing_start = timer_start()
