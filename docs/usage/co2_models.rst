@@ -1307,7 +1307,11 @@ This composition is also supported by the cached fixed-OU route.
 
 Tau is fixed in hours. A scalar tau or fixed amplitude applies independently
 to every observed group. Mappings must cover labels such as ``co2:MHD`` and
-``o2:MHD``. Amplitudes and their prior scales use the common concentration unit.
+``o2:MHD``. Each amplitude is in its own channel's units. When the channels
+share a unit, amplitudes and their prior scales use that unit. With mixed units,
+such as CO2 in ppm and per-meg delta(O2/N2) O2, a nonzero fixed amplitude must be
+a ``co2:SITE``/``o2:SITE`` mapping, and inferred amplitudes (one prior for every
+group) are rejected. Trace amplitudes then carry an ``ou_units`` coordinate.
 For example, the ordinary linked configuration can include:
 
 .. code-block:: toml

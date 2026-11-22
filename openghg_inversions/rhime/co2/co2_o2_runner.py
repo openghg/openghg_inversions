@@ -22,6 +22,7 @@ from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
+from .co2_o2_fixed_ou import linked_channel_units
 from .co2_o2_model import _build_co2_o2_model, _validate_channel_offset_options
 from .co2_o2_preparation import Co2O2PreparedInputs
 
@@ -412,11 +413,12 @@ def run_rhime_co2_o2_from_prepared_inputs(
             so offsets allow mixed units (for example ppm CO2 and per-meg O2).
             Boundary terms still require identical channel units.
         tau_hours: Optional fixed OU timescale, scalar or mapping keyed by
-            ``co2:SITE``/``o2:SITE``, in hours. Requires the same channel units.
+            ``co2:SITE``/``o2:SITE``, in hours.
         fixed_site_amplitudes: Fixed additive species/site standard deviations
-            in concentration units, scalar or mapping using the same keys.
+            in each group's channel units, scalar or mapping using the same keys.
+            With mixed channel units a nonzero value must be a mapping.
         site_amplitude_prior: Prior for inferred species/site amplitudes,
-            mutually exclusive with fixed amplitudes.
+            mutually exclusive with fixed amplitudes. Requires common channel units.
         sampler: Sampler configuration or ``"default"``; explicit ``None`` is invalid. Fixed OU requires and
             defaults to PyMC; the fixed-error default uses NumPyro.
 
@@ -462,19 +464,29 @@ def _annotate_linked_fixed_ou_trace(
     *,
     observations: xr.DataArray,
 ) -> xr.DataTree:
-    """Retain OU group identity, units, and joint likelihood semantics."""
-    units = str(observations.observation_units.values[0])
+    """Retain OU group identity, units, and joint likelihood semantics.
+
+    With mixed channel units, OU amplitudes carry an ``ou_units`` coordinate
+    and observation-aligned variables point at ``observation_units``.
+    """
+    channel_units = linked_channel_units(observations)
+    mixed = len(set(channel_units.values())) > 1
+    units = "mixed; see observation_units coordinate" if mixed else next(iter(channel_units.values()))
     for group_name, node in trace.children.items():
         group = node.to_dataset()
         if "ou_site" in group.coords:
             labels = group.ou_site.values.astype(str)
+            species = [label.split(":", 1)[0] for label in labels]
             group = group.assign_coords(
-                ou_species=("ou_site", [label.split(":", 1)[0] for label in labels]),
+                ou_species=("ou_site", species),
                 ou_station=("ou_site", [label.split(":", 1)[1] for label in labels]),
+                ou_units=("ou_site", [channel_units[name] for name in species]),
             )
-        for name in ("ou_site_amplitude", "Y", "error"):
+        for name in ("Y", "error"):
             if name in group:
                 group[name].attrs["units"] = units
+        if "ou_site_amplitude" in group:
+            group["ou_site_amplitude"].attrs["units"] = "mixed; see ou_units coordinate" if mixed else units
         if "ou_tau_hours" in group:
             group.ou_tau_hours.attrs.update(units="hours", dtype="timedelta64[ns]")
         if group_name == "log_likelihood" and "y" in group:

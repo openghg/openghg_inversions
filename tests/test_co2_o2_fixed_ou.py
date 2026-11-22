@@ -38,9 +38,9 @@ from test_co2_cached_sigma import _assert_native_joint_outputs, _compound
 from boundary_test_utils import raw_transport
 
 
-def _prepared():
+def _prepared(o2_units="ppm"):
     inputs = _inputs()
-    inputs["o2_units"] = "ppm"
+    inputs["o2_units"] = o2_units
     for channel, sites, times in [("co2", ["A", "A"], [4, 0]), ("o2", ["A", "B", "A"], [4, 2, 0])]:
         obs = inputs[f"{channel}_observations"]
         dim = obs.dims[0]
@@ -278,12 +278,80 @@ def test_linked_ou_rejects_unsupported_backend_before_sampling(cached):
         )
 
 
-def test_linked_ou_requires_same_units():
-    observations = _prepared().observations.assign_coords(
-        observation_units=("observation", ["ppm", "ppm", "per meg", "per meg", "per meg"])
+def _per_meg_prepared():
+    """The fixed-OU fixture with O2 rows in per meg rather than ppm."""
+    return _prepared(o2_units="per meg")
+
+
+def test_linked_ou_groups_mixed_channel_units():
+    """Each species/site group has one unit, so ppm CO2 and per-meg O2 align."""
+    observations = _per_meg_prepared().observations
+    alignment = linked_fixed_ou_alignment(observations)
+    assert alignment.site_labels.values.tolist() == ["co2:A", "o2:A", "o2:B"]
+    with pytest.raises(ValueError, match="mixes observation units"):
+        linked_fixed_ou_alignment(
+            observations.assign_coords(
+                observation_units=("observation", ["ppm", "ppm", "per meg", "per meg", "ppm"])
+            )
+        )
+
+
+@pytest.mark.usefixtures("double_precision")
+def test_linked_ou_with_mixed_units_matches_dense_oracle():
+    """Per-channel amplitudes in ppm and per meg give the exact dense joint likelihood."""
+    prepared = _per_meg_prepared()
+    kwargs = _kwargs(prepared)
+    assert set(kwargs["observations"].observation_units.values.tolist()) == {"ppm", "per meg"}
+    tau = {"co2:A": 6.0, "o2:A": 8.0, "o2:B": 2.0}
+    amplitudes = {"co2:A": 0.4, "o2:A": 6.0, "o2:B": 3.0}
+    model = build_co2_o2_model(
+        **bound_linked_model_arguments({**kwargs, "tau_hours": tau, "fixed_site_amplitudes": amplitudes})
     )
-    with pytest.raises(ValueError, match="same units"):
-        linked_fixed_ou_alignment(observations)
+    point = model.initial_point()
+    mean = model.compile_fn(model.replace_rvs_by_values([model["modelled_concentration"]]))(point)[0]
+    labels = linked_fixed_ou_alignment(kwargs["observations"]).site_labels.values
+    covariance = _dense(kwargs, np.array([amplitudes[label] for label in labels]), tau)
+    expected = multivariate_normal.logpdf(kwargs["observations"].values, mean=mean, cov=covariance)
+    np.testing.assert_allclose(model.compile_logp(vars=[model["y"]])(point), expected, rtol=1e-8)
+
+
+@pytest.mark.parametrize(
+    "options,message",
+    [
+        ({"fixed_site_amplitudes": 0.5}, "must map"),
+        ({"site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.8}}, "cannot hold mixed"),
+    ],
+)
+@pytest.mark.parametrize("cached", [False, True])
+def test_linked_ou_with_mixed_units_requires_per_channel_amplitudes(options, message, cached):
+    kwargs = bound_linked_model_arguments({**_kwargs(_per_meg_prepared()), "tau_hours": 6.0, **options})
+    if cached:
+        if "site_amplitude_prior" not in options:
+            pytest.skip("The cached linked sampler infers amplitudes.")
+        builder = build_co2_o2_cached_sigma_model
+    else:
+        builder = build_co2_o2_model
+    with pytest.raises(ValueError, match=message):
+        builder(**kwargs)
+    if not cached and "fixed_site_amplitudes" in options:
+        builder(**{**kwargs, "fixed_site_amplitudes": 0.0})
+
+
+def test_linked_ou_trace_labels_units_per_group():
+    from openghg_inversions.rhime.co2.co2_o2_runner import _annotate_linked_fixed_ou_trace
+
+    observations = _per_meg_prepared().observations
+    labels = ["co2:A", "o2:A", "o2:B"]
+    posterior = xr.Dataset(
+        {"ou_site_amplitude": (("chain", "draw", "ou_site"), np.ones((1, 2, 3)))},
+        coords={"ou_site": labels},
+    )
+    constant = xr.Dataset({"error": observations.copy(data=np.ones(5))})
+    trace = xr.DataTree.from_dict({"posterior": posterior, "constant_data": constant})
+    trace = _annotate_linked_fixed_ou_trace(trace, observations=observations)
+    assert trace.posterior.ou_units.values.tolist() == ["ppm", "per meg", "per meg"]
+    assert trace.posterior.ou_site_amplitude.attrs["units"] == "mixed; see ou_units coordinate"
+    assert trace.constant_data.error.attrs["units"] == "mixed; see observation_units coordinate"
 
 
 @pytest.mark.parametrize("cached", [False, True])
