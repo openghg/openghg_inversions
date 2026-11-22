@@ -204,7 +204,7 @@ def test_heterogeneous_import_fails_before_checkpoint(tmp_path, no_inference):
     prepared = prepare_co2_o2_inputs(**_inputs())
     source = tmp_path / "mixed.nc"
     prepared.save(source)
-    with pytest.raises(ValueError, match="unit|OPE-86"):
+    with pytest.raises(ValueError, match="unit|declaration"):
         handoffs.prepare(prepared_path=source, output_dir=tmp_path / "unsupported")
     assert not (tmp_path / "unsupported").exists()
 
@@ -244,7 +244,7 @@ def test_saving_lazy_units_runs_shared_payload_once_and_publishes_only_supported
         manifest = handoffs.save_preparation(prepared, output_dir=destination)
         assert manifest.is_file()
     else:
-        with pytest.raises(ValueError, match="identical|OPE-86"):
+        with pytest.raises(ValueError, match="identical|declaration"):
             handoffs.save_preparation(prepared, output_dir=destination)
         assert not (destination / "prepare-manifest.json").exists()
     assert executions == ["shared"]

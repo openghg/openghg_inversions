@@ -181,17 +181,17 @@ def validate_co2_o2_trace(trace: xr.DataTree, prepared: Co2O2PreparedInputs | No
 def validate_co2_o2_product_request(
     output: Co2O2OutputOptions, prepared: Co2O2PreparedInputs,
 ) -> dict[str, BasisFunctions]:
-    """Validate common-unit reporting and load requested native reporting bases.
+    """Validate per-channel units and load requested native reporting bases.
 
     This boundary creates no model and opens no output destination. Native
     products retain the existing single-source bucket representation; the PARIS
     owner checks signed private-tracer exclusions when constructing products.
     """
-    from .co2_o2_configuration import validate_co2_o2_units
+    from .co2_o2_configuration import validate_co2_o2_channel_units
 
     if output.output_format == "none":
         return {}
-    validate_co2_o2_units(prepared)
+    validate_co2_o2_channel_units(prepared)
     bases = {}
     for species, value in (output.native_flux_bases or {}).items():
         basis = BasisFunctions.load(value) if isinstance(value, str | Path) else value

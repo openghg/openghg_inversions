@@ -561,11 +561,10 @@ error still enter the single joint likelihood once.
 Standalone O2, arbitrary Python callables, and additional recipe or variant
 names are rejected. Linked likelihood selection supports the fixed-error
 default and ``fixed_ou``; it rejects ``additive_sigma``, ``site_sigma``,
-``scalar_sigma``, inferred OU amplitudes, and unequal CO2 and O2 unit labels. The lower-level
-linked fixed-error API continues to represent row-specific mixed units;
-configuring a heterogeneous ppm/per-meg
-run is deferred until the scaling contract tracked in `OPE-86
-<https://linear.app/openghg-inversions/issue/OPE-86>`_ is available. Use the
+``scalar_sigma``, inferred OU amplitudes, and unequal CO2 and O2 mole-fraction unit labels.
+CO2 ppm with per-meg ``delta(O2/N2)`` O2 is configured with ``channels.o2.observable =
+"delta_o2_n2"`` when the prepared artifact declares that observable (see
+:doc:`co2_model_family`). Use the
 direct Python interfaces for experimental combinations outside this matrix.
 The linked :class:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs` artifact
 supports NetCDF and Zarr save/load at the prepared-input Python boundary.
@@ -1009,9 +1008,12 @@ the staged linked route also exposes these products through
    o2_concentration = products["o2"]["concentration"]
 
 Observations require site labels and datetime coordinates marking interval
-starts. Both channels must represent dry-air mole fractions convertible to
-``mol mol-1``. Delta(O2/N2) per-meg observations cannot faithfully use this
-variable meaning and raise an explicit error. Prior flux-scale draws and
+starts. Concentration products hold dry-air mole fractions convertible to
+``mol mol-1``. A declared ``delta(O2/N2)`` O2 channel therefore has no PARIS
+concentration product (``products["o2"]`` holds only a requested flux product);
+its per-meg values, residuals and offsets are in the linked basic products,
+labelled by the ``units``, ``observable`` and ``o2_n2_reference_ratio``
+attributes. Undeclared per-meg O2 raises an explicit error. Prior flux-scale draws and
 prior draws for selected boundary/offset terms are required; keep the sampler's
 prior-predictive sampling enabled. Prior and posterior may have different
 numbers of draws or chains. Fixed states use their actual prior draws rather

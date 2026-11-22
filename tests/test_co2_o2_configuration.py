@@ -136,7 +136,7 @@ def test_new_configured_path_rejects_inferred_ou_explicitly(likelihood):
 def test_actual_artifact_units_are_validated_without_model_settings(units):
     prepared = _prepared()
     prepared = replace(prepared, observations=prepared.observations.assign_coords(observation_units=("observation", units)))
-    with pytest.raises(ValueError, match="identical|mol/mol|OPE-86"):
+    with pytest.raises(ValueError, match="identical|mol/mol|declaration|mole fraction"):
         validate_co2_o2_units(prepared)
 
 
@@ -165,8 +165,10 @@ def test_model_rejects_configured_units_that_differ_from_artifact():
 
 def test_direct_owner_binding_checks_both_configured_channel_units():
     model = Co2O2ModelConfig.from_params(_config())
+    with pytest.raises(ValueError, match="CO2 channel units"):
+        replace(model, o2_units="ppb")
     with pytest.raises(ValueError, match="do not match prepared"):
-        replace(model, o2_units="ppb").bind(_prepared())
+        replace(model, co2_units="ppb", o2_units="ppb").bind(_prepared())
 
 
 @pytest.mark.parametrize("co2_anomaly_scale,o2_anomaly_scale", [(0.25, 1.0), (0.0, 1.0), (0.25, 0.0), (0.0, 0.0)])

@@ -379,12 +379,23 @@ is:
    output_name = "linked"
    save_concentrations = true
 
-Both configured channel labels and the imported artifact must use the same
-concentration unit and numerical scale. Heterogeneous CO₂ ppm plus
-``delta(O2/N2)`` per-meg operation is unsupported until the scientific transform
-in `OPE-86 <https://linear.app/openghg-inversions/issue/OPE-86>`_ is defined.
-The existing numerical codec can retain mixed-unit metadata; that does not
-establish support for executing such an artifact through these phases.
+Configured channel labels must match the imported artifact. O2 mole fractions
+use the CO₂ unit and numerical scale. CO₂ ppm with ``delta(O2/N2)`` O2 in per
+meg is supported when the artifact declares that observable:
+
+A per-meg O2 channel is declared, not inferred from its unit label: preparation
+provenance must hold an ``o2_observable`` record from
+:class:`~openghg_inversions.inversion_data.o2n2.DeltaO2N2Declaration`, giving
+the reference O2/N2 ratio, its source and the per-meg unit label. The rows,
+errors and covariance blocks must already be in per meg; OpenGHG Inversions
+does not apply the transform. Configure ``channels.o2.observable =
+"delta_o2_n2"`` and ``channels.o2.units`` equal to the declared label. CO2
+stays a mole fraction. Undeclared per-meg or delta labels are rejected, because
+unit parsers otherwise read ``"per meg"`` as 1e-6 mol/mol.
+
+Linked boundary corrections and fixed OU still require identical channel
+units, so a per-meg run currently uses the fixed-error likelihood without
+linked boundaries.
 
 With the current PyMC 6/Numba backend, native multivariate-normal predictive
 draws require ``floatX=float64`` in ``PYTENSOR_FLAGS`` before starting Python or

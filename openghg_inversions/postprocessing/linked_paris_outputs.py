@@ -14,6 +14,7 @@ from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.operators import BucketBasisOperator
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
+from openghg_inversions.inversion_data.o2n2 import DELTA_O2_N2, MOLE_FRACTION, DeltaO2N2Declaration
 from openghg_inversions.rhime.co2.co2_o2_model import _gather_co2_o2_sensitivity
 from openghg_inversions.postprocessing.boundary_outputs import decode_saved_boundaries, reconstruct_boundary
 from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
@@ -72,7 +73,10 @@ def reconstruct_co2_o2_concentrations(
     Returns:
         CO2 and O2 datasets with observations, posterior model means, residuals
         (observed minus modelled), affine, boundary, offset, and per-source
-        contributions in channel units. Chain/draw labels remain shared. Prior
+        contributions in channel units. Each dataset's ``units`` and
+        ``observable`` attributes label its channel; a declared delta(O2/N2)
+        O2 channel also records ``o2_n2_reference_ratio`` and
+        ``o2_observable_declaration``. Chain/draw labels remain shared. Prior
         draws, when present, preserve fixed-state activity. Their sample
         dimensions are named ``prior_chain`` and ``prior_draw``.
         Boundary mean-shift and anomaly coefficients retain their own labelled
@@ -108,6 +112,7 @@ def reconstruct_co2_o2_concentrations(
         for group in scales_by_group
     }
     result = {}
+    declaration = DeltaO2N2Declaration.from_provenance(prepared.provenance)
     for species in ("co2", "o2"):
         rows = np.flatnonzero(observations["species"].values == species)
         observed = observations.isel(observation=rows)
@@ -167,7 +172,13 @@ def reconstruct_co2_o2_concentrations(
             has_offset=int(f"{species}_offset_concentration" in roles),
             source_components=json.dumps(sources),
             units=str(observed.observation_units.values[0]),
+            observable=DELTA_O2_N2 if species == "o2" and declaration is not None else MOLE_FRACTION,
         )
+        if species == "o2" and declaration is not None:
+            dataset.attrs.update(
+                o2_n2_reference_ratio=declaration.reference_ratio,
+                o2_observable_declaration=json.dumps(declaration.to_provenance(), sort_keys=True),
+            )
         result[species] = dataset
     return result
 
@@ -279,7 +290,10 @@ def make_co2_o2_paris_outputs(
         domain: Domain label for both products.
         obs_avg_period: Averaging interval; observation timestamps mark starts.
         template_version: Only ``latest`` (concentration v04, flux v03).
-            Delta O2/N2 per-meg concentrations are unsupported.
+            The v04 concentration template holds dry-air mole fractions, so a
+            declared delta(O2/N2) O2 channel gets no PARIS concentration
+            product; its per-meg values stay in the linked basic products.
+            Undeclared per-meg O2 is rejected.
         native_flux_bases: Optional species-to-basis mapping for total native
             flux. Each single-source bucket basis uses the full retained state labels
             and zero flux response for the other tracer's private states.
@@ -295,8 +309,9 @@ def make_co2_o2_paris_outputs(
         output_path: Optional directory for separate species/product NetCDFs.
 
     Returns:
-        Mapping keyed by ``co2`` and ``o2``, containing ``concentration`` and,
-        when requested, ``flux`` datasets. Products are eager marginals of one
+        Mapping keyed by ``co2`` and ``o2``, containing ``concentration`` (except
+        for declared delta(O2/N2) O2) and, when requested, ``flux`` datasets.
+        Products are eager marginals of one
         joint posterior. Cross-channel covariance and joint likelihood remain
         in the linked artifact. Serialization does not change input objects.
 
@@ -323,6 +338,9 @@ def make_co2_o2_paris_outputs(
         ),
         "linked_posterior": "Marginals of one joint CO2/O2 posterior; cross-channel covariance remains in the linked trace.",
     }
+    declaration = DeltaO2N2Declaration.from_provenance(prepared.provenance)
+    if declaration is not None:
+        provenance["linked_o2_observable"] = json.dumps(declaration.to_provenance(), sort_keys=True)
     components = reconstruct_co2_o2_concentrations(trace, prepared)
     # Materialize both channels together at the eager PARIS product boundary.
     components = dict(
@@ -336,13 +354,13 @@ def make_co2_o2_paris_outputs(
         value.attrs["units"] = str(value.observation_units.values[0])
     products = {}
     for species, values in components.items():
-        products[species] = {
-            "concentration": _concentration_product(
+        products[species] = {}
+        if values.attrs["observable"] == MOLE_FRACTION:
+            products[species]["concentration"] = _concentration_product(
                 values,
                 domain=domain,
                 obs_avg_period=obs_avg_period,
             )
-        }
         if species in native_flux_bases:
             basis = native_flux_bases[species]
             if basis.source_labels is not None or not isinstance(basis.operator, BucketBasisOperator):

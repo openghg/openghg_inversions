@@ -13,6 +13,7 @@ from openghg_inversions.postprocessing.linked_paris_outputs import (
     reconstruct_co2_o2_concentrations,
 )
 from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
+from openghg_inversions.inversion_data.o2n2 import O2_OBSERVABLE_PROVENANCE_KEY, DeltaO2N2Declaration
 from openghg_inversions.rhime.co2.co2_o2_model import _gather_co2_o2_sensitivity
 from test_rhime_co2_o2 import _inputs
 
@@ -453,3 +454,42 @@ def test_cached_joint_draws_with_baseline_emit_paris(tmp_path, native_multiindex
         assert dataset.attrs["rhime_recipe"] == "co2_o2_cached_sigma_fixed_ou"
     assert "mf_bias_posterior" not in products["co2"]["concentration"]
     assert "mf_bias_posterior" in products["o2"]["concentration"]
+
+
+def test_paris_keeps_co2_concentration_and_omits_per_meg_o2_concentration(tmp_path):
+    from openghg_inversions.basis.basis_functions import BasisFunctions
+
+    declaration = DeltaO2N2Declaration(0.20946 / 0.78084, "CORSO TM5 O2 and N2 curtains", n2_policy="curtain")
+
+    prepared, trace = _joint_fixture(baseline=False, o2_units="per meg", numeric_state=True)
+    prepared = replace(
+        prepared,
+        provenance={**prepared.provenance, O2_OBSERVABLE_PROVENANCE_KEY: declaration.to_provenance()},
+    )
+    country = xr.Dataset(
+        {
+            "country": (("lat", "lon"), np.zeros((2, 5), dtype=int)),
+            "name": ("ncountries", ["United Kingdom"]),
+        },
+        coords={"lat": [50.0, 51.0], "lon": [-2.0, -1.0, 0.0, 1.0, 2.0]},
+    )
+    country_path = tmp_path / "countries.nc"
+    country.to_netcdf(country_path)
+    flat = xr.DataArray(
+        np.tile(np.arange(1, 6), (2, 1)), dims=("lat", "lon"), coords={"lat": country.lat, "lon": country.lon}
+    )
+    flux = xr.where(flat == 4, 0.0, -1e-6).assign_attrs(units="mol / m^2 / s")
+    bases = {"o2": BasisFunctions.from_flat_basis(flat, flux, metadata={"native_source": "o2"})}
+
+    products = make_co2_o2_paris_outputs(
+        trace, prepared, output_path=tmp_path / "outputs", native_flux_bases=bases,
+        start_date="2024-01-01", end_date="2024-02-01", country_file=country_path, country_selections=None,
+    )
+
+    assert set(products["co2"]) == {"concentration"}
+    assert set(products["o2"]) == {"flux"}
+    for dataset in (products["co2"]["concentration"], products["o2"]["flux"]):
+        assert json.loads(dataset.attrs["linked_o2_observable"]) == declaration.to_provenance()
+    assert products["co2"]["concentration"].mf_posterior.attrs["units"] == "mol mol-1"
+    written = sorted(path.name for path in (tmp_path / "outputs").iterdir())
+    assert written == ["co2_concentration.nc", "o2_flux.nc"]
