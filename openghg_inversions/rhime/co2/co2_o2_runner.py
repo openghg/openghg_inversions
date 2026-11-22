@@ -290,6 +290,7 @@ def build_rhime_co2_o2(
     tau_hours: float | Mapping[str, float] | None = None,
     fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     site_amplitude_prior: Mapping[str, Any] | None = None,
+    cross_species_error_correlation: float | Mapping[str, float] | None = None,
 ) -> RhimeModelBuildResult:
     """Materialize borrowed linked inputs and build their joint scientific graph.
 
@@ -329,6 +330,7 @@ def build_rhime_co2_o2(
         tau_hours=tau_hours,
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
+        cross_species_error_correlation=cross_species_error_correlation,
         boundary=bound,
         offset_prior=offset_prior,
         offset_args=offset_args,
@@ -352,6 +354,19 @@ def build_rhime_co2_o2(
             }
         )
         metadata["likelihood"] = "joint Gaussian with fixed OU blocks by (species, site)"
+    if cross_species_error_correlation is not None:
+        variable_roles.update(
+            {
+                "cross_species_error_correlation": "paired_error_correlation",
+                "cross_species_error_partner": "paired_error_partner",
+            }
+        )
+        metadata["cross_species_error_correlation"] = {
+            "value": cross_species_error_correlation
+            if not isinstance(cross_species_error_correlation, Mapping)
+            else dict(cross_species_error_correlation),
+            "pairs": "same site and time; cross covariance rho * sd_co2 * sd_o2 on independent errors",
+        }
     return RhimeModelBuildResult(
         model=model,
         output_contract=OutputContract(
@@ -373,6 +388,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     tau_hours: float | Mapping[str, float] | None = None,
     fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     site_amplitude_prior: Mapping[str, Any] | None = None,
+    cross_species_error_correlation: float | Mapping[str, float] | None = None,
 ) -> xr.DataTree:
     """Build and sample the CO2/O2 model from prepared scientific inputs.
 
@@ -417,6 +433,12 @@ def run_rhime_co2_o2_from_prepared_inputs(
             With mixed channel units a nonzero value must be a mapping.
         site_amplitude_prior: Prior for inferred species/site amplitudes,
             mutually exclusive with fixed amplitudes. Requires common channel units.
+        cross_species_error_correlation: Optional fixed correlation between the
+            independent errors of same-site, same-time CO2 and O2 rows; one
+            value, or a mapping from site to value, each strictly between -1
+            and 1. The cross covariance is ``rho * sd_co2 * sd_o2`` in the
+            product of the channel units. Row correlations and partners are
+            saved as ``paired_error_correlation`` and ``paired_error_partner``.
         sampler: Sampler configuration or ``"default"``; explicit ``None`` is invalid. Fixed OU requires and
             defaults to PyMC; the fixed-error default uses NumPyro.
 
@@ -452,6 +474,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
         tau_hours=tau_hours,
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
+        cross_species_error_correlation=cross_species_error_correlation,
     )
     trace = sample_rhime_model(built, sampler)
     return annotate_co2_o2_trace(trace, built=built)

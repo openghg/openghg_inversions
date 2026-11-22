@@ -1302,6 +1302,24 @@ prior are unchanged. Public boundary and total concentration outputs remain
 absolute; trace annotation restores observed and predictive concentrations once.
 This composition is also supported by the cached fixed-OU route.
 
+Both linked likelihoods accept an optional fixed correlation between the
+independent errors of CO2 and O2 rows at the same site and time,
+``cross_species_error_correlation``: one value for every site or a table keyed
+by site, each strictly between -1 and 1. A matched pair then has cross
+covariance :math:`\rho\,\sigma_{CO_2}\,\sigma_{O_2}` from the independent
+error standard deviations, in CO2 units times O2 units, so ppm CO2 with per-meg
+δ(O2/N2) needs no conversion. Times must match exactly. Rows without a partner,
+aggregation covariance and OU blocks are unchanged. The likelihood uses an exact
+split of each pair into a smaller diagonal plus one rank-one column, so dense,
+low-rank and fixed-OU likelihoods stay exact. Traces save
+``paired_error_correlation`` and ``paired_error_partner`` on the observation
+axis. In configuration:
+
+.. code-block:: toml
+
+   [likelihood]
+   cross_species_error_correlation = -0.9      # or { HFD = -0.97, WAO = -0.9 }
+
 Tau is fixed in hours. A scalar tau or fixed amplitude applies independently
 to every observed group. Mappings must cover labels such as ``co2:MHD`` and
 ``o2:MHD``. Each amplitude is in its own channel's units. When the channels

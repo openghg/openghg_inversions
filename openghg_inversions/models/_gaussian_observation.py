@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import pymc as pm
@@ -28,6 +28,9 @@ from openghg_inversions.observation_error import (
     LOW_RANK_FACTOR,
     AggregationError,
 )
+
+if TYPE_CHECKING:
+    from openghg_inversions.models.paired_error import RegisteredPairedError
 
 
 @dataclass(frozen=True)
@@ -173,6 +176,8 @@ def add_gaussian_observation_likelihood(
     independent_variance: TensorVariable,
     aggregation_error: RegisteredAggregationError,
     output_dim: str,
+    paired_error: RegisteredPairedError | None = None,
+    paired_error_sd: TensorVariable | None = None,
 ) -> TensorVariable:
     """Add the canonical Gaussian observation variable ``y``.
 
@@ -184,10 +189,26 @@ def add_gaussian_observation_likelihood(
         aggregation_error: Selected diagonal, dense, or low-rank fixed
             aggregation covariance.
         output_dim: Named observation dimension for the PyMC variable.
+        paired_error: Optional fixed correlations between pairs of rows.
+            Their cross covariance is ``rho * sd_a * sd_b`` with
+            ``paired_error_sd``. Without aggregation error or with diagonal or
+            dense aggregation error the likelihood is a dense multivariate
+            normal; with low-rank aggregation error each pair adds one exact
+            rank-one column (see :mod:`openghg_inversions.models.paired_error`).
+        paired_error_sd: Standard deviations correlated by ``paired_error``.
+            Their variance must be part of ``independent_variance``.
 
     Returns:
         Observed PyMC variable named ``y``.
     """
+    if paired_error is not None:
+        if paired_error_sd is None:
+            raise ValueError("Paired error correlation requires the paired standard deviations.")
+        return _add_paired_gaussian_likelihood(
+            observed=observed, mean=mean, independent_variance=independent_variance,
+            aggregation_error=aggregation_error, output_dim=output_dim,
+            paired_error=paired_error, paired_error_sd=paired_error_sd,
+        )
     if aggregation_error.mode in ("none", "diagonal"):
         variance = independent_variance
         if aggregation_error.mode == "diagonal":
@@ -220,6 +241,54 @@ def add_gaussian_observation_likelihood(
             "y",
             mean,
             aggregation_error.factor,
+            diagonal,
+            logp=_low_rank_gaussian_logp,
+            random=_low_rank_gaussian_random,
+            signature="(n),(n,r),(n)->(n)",
+            observed=observed,
+            dims=output_dim,
+        ),
+    )
+
+
+def _add_paired_gaussian_likelihood(
+    *,
+    observed: TensorVariable,
+    mean: TensorVariable,
+    independent_variance: TensorVariable,
+    aggregation_error: RegisteredAggregationError,
+    output_dim: str,
+    paired_error: RegisteredPairedError,
+    paired_error_sd: TensorVariable,
+) -> TensorVariable:
+    """Add ``y`` with fixed pair correlations; see :func:`add_gaussian_observation_likelihood`."""
+    if aggregation_error.mode in ("none", "diagonal", "dense"):
+        variance = independent_variance
+        if aggregation_error.mode == "diagonal":
+            assert aggregation_error.diagonal_variance is not None
+            variance = variance + aggregation_error.diagonal_variance
+        covariance = pt.diag(variance) + paired_error.covariance(paired_error_sd)
+        if aggregation_error.mode == "dense":
+            assert aggregation_error.covariance is not None
+            covariance = covariance + aggregation_error.covariance
+        return cast(
+            TensorVariable,
+            pm.MvNormal("y", mu=mean, cov=covariance, observed=observed, dims=output_dim),
+        )
+    assert aggregation_error.factor is not None
+    assert aggregation_error.diagonal_variance is not None
+    diagonal = (
+        independent_variance
+        - paired_error.reduction(paired_error_sd)
+        + aggregation_error.diagonal_variance
+    )
+    factor = pt.concatenate([aggregation_error.factor, paired_error.factor(paired_error_sd)], axis=1)
+    return cast(
+        TensorVariable,
+        pm.CustomDist(
+            "y",
+            mean,
+            factor,
             diagonal,
             logp=_low_rank_gaussian_logp,
             random=_low_rank_gaussian_random,

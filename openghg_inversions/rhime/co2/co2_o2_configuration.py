@@ -18,6 +18,7 @@ from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, normalise_optional_mapping
 
+from .co2_o2_error_correlation import validate_cross_species_error_correlation
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .configuration import (
     _validate_section_option_names, _PREPARATION_OPTION_NAMES, _SAMPLING_OPTION_NAMES,
@@ -100,7 +101,7 @@ def _validate_co2_o2_option_names(*requests: Mapping[str, object]) -> None:
         **{f"channels.{channel}" + (f".{path}" if path else ""): names
            for channel in ("co2", "o2") for path, names in channel_sections.items()},
         "likelihood": frozenset({"kind", "tau_hours", "fixed_site_amplitudes", "site_amplitude_prior",
-                                 "site_amplitude_prior_scale"}),
+                                 "site_amplitude_prior_scale", "cross_species_error_correlation"}),
         "likelihood.site_amplitude_prior": _PRIOR_OPTION_NAMES,
         "sampling": _SAMPLING_OPTION_NAMES,
         "outputs": frozenset(Co2O2OutputOptions.__dataclass_fields__),
@@ -188,6 +189,9 @@ class Co2O2ModelConfig:
     be supplied for both channels or omitted for both to use saved errors.
     Fixed independent error and fixed-amplitude OU are supported; inferred OU
     and per-meg transformations remain separate work.
+    ``cross_species_error_correlation`` (``likelihood.cross_species_error_correlation``)
+    optionally correlates the independent errors of same-site, same-time CO2
+    and O2 rows with one fixed value or a site-keyed table of values.
     ``boundary`` maps configured channels to a choice, or to ``None`` when
     that channel's boundary is explicitly disabled. Boundary frequency and
     anchor choices apply to every enabled channel; choices supplied under both
@@ -203,8 +207,15 @@ class Co2O2ModelConfig:
     offset_args: Mapping[str, Any] | None = None
     tau_hours: float | Mapping[str, float] | None = None
     fixed_site_amplitudes: float | Mapping[str, float] | None = None
+    cross_species_error_correlation: float | Mapping[str, float] | None = None
 
     def __post_init__(self) -> None:
+        if self.cross_species_error_correlation is not None:
+            object.__setattr__(
+                self,
+                "cross_species_error_correlation",
+                validate_cross_species_error_correlation(self.cross_species_error_correlation),
+            )
         for item in fields(self):
             value = getattr(self, item.name)
             if isinstance(value, Mapping):
@@ -250,8 +261,15 @@ class Co2O2ModelConfig:
             raise ValueError("Configure independent_error_sd for both linked channels or omit it for both.")
         if units["co2"] != units["o2"]:
             raise ValueError("The linked configuration currently requires identical CO2 and O2 channel units.")
-        likelihood = _likelihood(options)
-        kwargs = {} if likelihood is None else _co2_likelihood(likelihood)["likelihood_kwargs"]
+        likelihood_options = _table(options.get("likelihood", {}), "likelihood")
+        correlation = likelihood_options.pop("cross_species_error_correlation", None)
+        likelihood = _likelihood({**options, "likelihood": likelihood_options})
+        kwargs = {} if likelihood is None else dict(_co2_likelihood(likelihood)["likelihood_kwargs"])
+        if correlation is not None:
+            kwargs["cross_species_error_correlation"] = (
+                dict(_table(correlation, "likelihood.cross_species_error_correlation"))
+                if isinstance(correlation, Mapping) else correlation
+            )
         return cls(units["co2"], units["o2"], _frozen(errors), **_frozen(model), **kwargs)
 
     def bind(self, prepared: Co2O2PreparedInputs) -> dict[str, Any]:

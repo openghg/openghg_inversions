@@ -26,6 +26,7 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.models.components import add_model_data, add_sigma_component
+from openghg_inversions.models.paired_error import PairedErrorCorrelation, add_paired_error_data
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models._gaussian_observation import (
     add_aggregation_error_data,
@@ -54,6 +55,7 @@ def add_additive_sigma_likelihood(
     additive_sigma_prior: PriorArgs | None = None,
     output_dim: str = "nmeasure",
     observation_error_name: str = "error",
+    paired_error_correlation: PairedErrorCorrelation | None = None,
 ) -> TensorVariable:
     """Add a Gaussian likelihood with additive mismatch variance.
 
@@ -83,6 +85,11 @@ def add_additive_sigma_likelihood(
             additive mismatch scale.
         output_dim: Observation dimension used for named PyMC variables.
         observation_error_name: PyMC data name for the reported error.
+        paired_error_correlation: Optional fixed correlations between pairs of
+            rows' reported ``observation_error``; see
+            :mod:`openghg_inversions.models.paired_error`. Other variance terms
+            stay independent. Row correlations and partners are recorded as
+            ``paired_error_correlation`` and ``paired_error_partner`` data.
 
     Returns:
         The observed Gaussian variable, named ``y``. The total marginal error
@@ -108,6 +115,7 @@ def add_additive_sigma_likelihood(
         observations,
         output_dim=output_dim,
     )
+    registered_pairs = add_paired_error_data(paired_error_correlation, observations, output_dim=output_dim)
 
     independent_variance = reported_error**2
     if fixed_model_mismatch is not None:
@@ -160,6 +168,8 @@ def add_additive_sigma_likelihood(
         independent_variance=independent_variance,
         aggregation_error=registered_aggregation_error,
         output_dim=output_dim,
+        paired_error=registered_pairs,
+        paired_error_sd=reported_error if registered_pairs is not None else None,
     )
 __all__ = [
     "DEFAULT_ADDITIVE_SIGMA_PRIOR",
