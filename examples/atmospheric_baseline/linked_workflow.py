@@ -5,8 +5,8 @@ masses of 1/4, hourly integrated transport, explicit zero unresolved covariance,
 0.05 ppm measurement error SD, noiseless truth observations, and distinct already
 signed GPP/TER/FF O2 responses.
 The scalar atmospheric-level injections are physical ppm. They are controls,
-not tuning. Fits use the ordinary linked recipe with the outer-flux option and a
-level-only boundary per channel.
+not tuning. Fits use the ordinary linked recipe with a level-only boundary per
+channel and the outer-flux option holding chosen outer states at their prior mean.
 """
 
 from __future__ import annotations
@@ -117,7 +117,7 @@ def synthetic_linked_inputs(
 
     Args:
         injected_baseline: Add the declared physical atmospheric shifts.
-        fixed_outer_truth: Set fixed outer prior means to their known truth.
+        fixed_outer_truth: Set the GPP and TER prior means to their known truth.
 
     Returns:
         Linked native templates in physical ppm. The prior labels GPP, TER and
@@ -152,12 +152,12 @@ def synthetic_linked_inputs(
     )
 
 
-def model_request(mode: str = "multiplicative", likelihood: str = "fixed_independent") -> dict:
+def model_request(held: str = "ocean", likelihood: str = "fixed_independent") -> dict:
     """Return the configured linked request with a level-only boundary per channel.
 
     Args:
-        mode: Outer-flux mode, ``fixed`` or ``multiplicative``. Ocean states are
-            held at their prior mean in both.
+        held: Outer states held at their prior mean: ``ocean`` (outer GPP and
+            TER stay sampled) or ``outer`` (every outer state).
         likelihood: ``fixed_independent`` or ``fixed_ou``.
 
     Returns:
@@ -168,9 +168,8 @@ def model_request(mode: str = "multiplicative", likelihood: str = "fixed_indepen
         "channels": {name: {"units": "ppm", "boundary": {
             "type": "additive", "anomaly_scale": 0.0, "mean_shift_prior": level,
         }} for name in ("co2", "o2")},
-        # Fixed mode holds every outer state; multiplicative mode holds the oceans.
-        "outer_flux": {"mode": mode, "outer_groups": ["outer"],
-                       **({"fixed_sources": ["ocean"]} if mode == "multiplicative" else {})},
+        "outer_flux": {"mode": "fixed", "outer_groups": ["outer"],
+                       **({"fixed_sources": ["ocean"]} if held == "ocean" else {})},
         "likelihood": {"kind": "fixed_independent"},
     }
     if likelihood == "fixed_ou":
@@ -181,13 +180,13 @@ def model_request(mode: str = "multiplicative", likelihood: str = "fixed_indepen
 
 
 def prepare_control(
-    *, injected_baseline: bool = False, mode: str = "multiplicative",
+    *, injected_baseline: bool = False, held: str = "ocean",
 ) -> Co2O2PreparedInputs:
     """Generate noiseless targets from the configured outer-flux model at the truth.
 
     Args:
         injected_baseline: Inject +0.35 ppm CO2 and -0.45 ppm O2 atmospheric levels.
-        mode: Outer-flux mode, ``fixed`` or ``multiplicative``.
+        held: Outer states held at their prior mean, ``ocean`` or ``outer``.
 
     Returns:
         The linked preparation with its observations replaced by the model's
@@ -199,9 +198,9 @@ def prepare_control(
 
     from openghg_inversions.rhime.co2 import Co2O2ModelConfig, build_rhime_co2_o2
 
-    linked = synthetic_linked_inputs(injected_baseline=injected_baseline, fixed_outer_truth=mode == "fixed")
+    linked = synthetic_linked_inputs(injected_baseline=injected_baseline, fixed_outer_truth=held == "outer")
     built = build_rhime_co2_o2(
-        prepared_inputs=linked, **Co2O2ModelConfig.from_params(model_request(mode)).bind(linked),
+        prepared_inputs=linked, **Co2O2ModelConfig.from_params(model_request(held)).bind(linked),
     )
     levels = INJECTED_LEVEL if injected_baseline else {"co2": 0., "o2": 0.}
     forced = pm.do(built.model, {
@@ -213,7 +212,7 @@ def prepare_control(
     })
 
 
-def run_control(output_dir, *, injected_baseline=False, mode="multiplicative", likelihood="fixed_independent", draws=250, tune=250):
+def run_control(output_dir, *, injected_baseline=False, held="ocean", likelihood="fixed_independent", draws=250, tune=250):
     """Run saved preparation, configured sampling and saved products.
 
     Submit this function on Slurm. The report records recovery errors without
@@ -222,7 +221,7 @@ def run_control(output_dir, *, injected_baseline=False, mode="multiplicative", l
     Args:
         output_dir: Destination for preparation, samples, products and recovery.json.
         injected_baseline: Inject the declared physical atmospheric levels.
-        mode: Outer-flux mode, ``fixed`` or ``multiplicative``.
+        held: Outer states held at their prior mean, ``ocean`` or ``outer``.
         likelihood: ``fixed_independent`` or ``fixed_ou``.
         draws: Retained posterior draws per chain.
         tune: Warmup draws per chain.
@@ -238,9 +237,9 @@ def run_control(output_dir, *, injected_baseline=False, mode="multiplicative", l
     from openghg_inversions.rhime.co2.co2_o2_handoffs import postprocess, sample, save_preparation
 
     destination = Path(output_dir)
-    preparation = save_preparation(prepare_control(injected_baseline=injected_baseline, mode=mode),
+    preparation = save_preparation(prepare_control(injected_baseline=injected_baseline, held=held),
                                    output_dir=destination / "prepare")
-    request = model_request(mode, likelihood)
+    request = model_request(held, likelihood)
     request["sampling"] = {"draws": draws, "tune": tune, "chains": 2, "nuts_sampler": "pymc",
                            "random_seed": 246, "target_accept": .95}
     samples = sample(preparation, model=request, output_dir=destination / "sample")
@@ -251,7 +250,7 @@ def run_control(output_dir, *, injected_baseline=False, mode="multiplicative", l
     diagnostics = posterior_summary(posterior.to_dataset()[names])
     level_truth = INJECTED_LEVEL if injected_baseline else {"co2": 0., "o2": 0.}
     report = {
-        "control": "injected" if injected_baseline else "zero", "outer_mode": mode, "likelihood": likelihood,
+        "control": "injected" if injected_baseline else "zero", "outer_held": held, "likelihood": likelihood,
         "level_truth_ppm": level_truth, "positive_flux_truth": dict(zip(STATE_LABELS, TRUTH.tolist(), strict=True)),
         "level_posterior_mean_ppm": {name: float(posterior[f"{name}_bc_mean_shift"].mean()) for name in ("co2", "o2")},
         "level_95pct_interval_ppm": {
@@ -272,11 +271,11 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--mode", choices=["fixed", "multiplicative"], default="multiplicative")
+    parser.add_argument("--held", choices=["ocean", "outer"], default="ocean")
     parser.add_argument("--likelihood", choices=["fixed_independent", "fixed_ou"], default="fixed_independent")
     parser.add_argument("--draws", type=int, default=250)
     parser.add_argument("--tune", type=int, default=250)
     args = parser.parse_args()
     for injected in (False, True):
         run_control(f"{args.output_dir}/{'injected' if injected else 'zero'}", injected_baseline=injected,
-                    mode=args.mode, likelihood=args.likelihood, draws=args.draws, tune=args.tune)
+                    held=args.held, likelihood=args.likelihood, draws=args.draws, tune=args.tune)
