@@ -7,11 +7,9 @@ from typing import Any, Literal
 
 import xarray as xr
 
-from openghg_inversions.biosphere_prior import BiospherePrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
-from openghg_inversions.correlated_state import CorrelatedPrior
-from openghg_inversions.models.biosphere import resolve_retained_flux_prior
 from openghg_inversions.models.boundary import Choice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.contracts import OutputContract
@@ -36,7 +34,6 @@ from .co2_o2_runner import (
 
 def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     *,
-    biosphere_prior: BiospherePrior | None = None,
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray | None = None,
     tau_hours: float | Mapping[str, float],
@@ -66,9 +63,6 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     :ref:`centered boundary contract <surface-centered-boundary-contract>`.
 
     Args:
-        biosphere_prior: Optional explicit calibration of the prepared retained
-            prior, checked once before graph construction; omission preserves
-            existing behavior.
         prepared_inputs: Linked handoff containing joint labelled observations,
             native-channel sensitivities, affine contribution, retained prior,
             joint aggregation covariance, ratio provenance, and optional
@@ -124,9 +118,8 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             inconsistent; selected centered boundaries use a floatX other
             than float64; OU scales or amplitudes are invalid; or the sampler
             requests an unsupported backend, step, tuning control, or
-            predictive keyword, or ``biosphere_prior`` does not calibrate the
-            prepared retained prior. Label, prior, covariance, and activity
-            errors from model construction also propagate.
+            predictive keyword. Label, prior, covariance, and activity errors
+            from model construction also propagate.
         TypeError: If channel offset frequency or boolean options have
             unsupported types, or the sampler is neither a configuration nor
             ``"default"``.
@@ -143,14 +136,13 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     offset_prior = eager_priors["offset"]
     site_amplitude_prior = eager_priors["amplitude"]
     observations, fixed, co2, o2, error = materialized
-    flux_prior = resolve_retained_flux_prior(CorrelatedPrior.from_lognormal(prepared.retained_prior), biosphere_prior)
     cached = _build_co2_o2_cached_sigma_model(
         observations=observations,
         fixed_prior_contribution=fixed,
         co2_sensitivity=co2,
         o2_sensitivity=o2,
         aggregation_error=prepared.aggregation_error,
-        retained_prior=flux_prior,
+        retained_prior=CorrelatedPrior.from_lognormal(prepared.retained_prior),
         independent_error_sd=error,
         tau_hours=tau_hours,
         site_amplitude_prior=site_amplitude_prior,
@@ -195,7 +187,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         state_target_accept=state_target_accept,
     )
     trace = sample_rhime_model(built, sampling_sampler)
-    trace = annotate_co2_o2_trace(trace, built=built, biosphere_prior=biosphere_prior)
+    trace = annotate_co2_o2_trace(trace, built=built)
     trace.attrs["rhime_recipe"] = "co2_o2_cached_sigma_fixed_ou"
     for group in trace.children.values():
         group.attrs["rhime_recipe"] = "co2_o2_cached_sigma_fixed_ou"
