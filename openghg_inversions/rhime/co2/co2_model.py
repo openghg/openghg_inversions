@@ -35,7 +35,7 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
-from openghg_inversions.models.outer_flux import OuterFlux, check_outer_flux_boundary
+from openghg_inversions.models.outer_flux import OuterStates
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import (
     StateActivity,
@@ -94,7 +94,6 @@ def _normalise_offset_args(
 def _check_co2_model_options(
     *,
     boundary: Bound | None,
-    outer_flux: OuterFlux | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None,
     likelihood_kwargs: Mapping[str, Any] | None,
     sigma_alignment: SigmaAlignment | None,
@@ -110,11 +109,9 @@ def _check_co2_model_options(
     Raises:
         ValueError: If a centered boundary is combined with a custom
             likelihood callback, ``likelihood_kwargs`` or ``sigma_prior`` lack
-            the option they configure, a selected ``likelihood_builder`` is
-            combined with default additive-sigma or fixed-mismatch options, or
-            ``outer_flux`` lacks a centered boundary mean shift.
+            the option they configure, or a selected ``likelihood_builder`` is
+            combined with default additive-sigma or fixed-mismatch options.
     """
-    check_outer_flux_boundary(outer_flux, boundary)
     if (isinstance(boundary, CenteredBoundary)
             and likelihood_builder is not None
             and likelihood_builder is not add_fixed_ou_gaussian_likelihood):
@@ -150,7 +147,7 @@ def build_co2_model(
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
-    outer_flux: OuterFlux | None = None,
+    outer_flux: OuterStates | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> pm.Model:
@@ -221,11 +218,9 @@ def build_co2_model(
         state_activity: Optional labelled activity policy for retained flux
             states.
         boundary: Resolved boundary component bound to this fit.
-        outer_flux: Optional outer-region flux option bound to these rows. It
-            centres the sampled outer columns after exact-zero pruning, holds
-            fixed outer states at their prior mean and requires a centered
-            additive or anomaly-scaling ``boundary`` with a mean shift, which
-            is then the model's only atmospheric level. See
+        outer_flux: Optional outer states resolved on ``retained_prior``.
+            Its fixed outer states are held at their prior mean with zero
+            uncertainty after exact-zero pruning. See
             :mod:`openghg_inversions.models.outer_flux`.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added. Site codes are derived from the ``site`` coordinate
@@ -248,7 +243,6 @@ def build_co2_model(
     # Cheap option conflicts fail before any lazy input is executed.
     _check_co2_model_options(
         boundary=boundary,
-        outer_flux=outer_flux,
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
         sigma_alignment=sigma_alignment,
@@ -298,7 +292,7 @@ def _build_co2_model(
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
-    outer_flux: OuterFlux | None = None,
+    outer_flux: OuterStates | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> pm.Model:
@@ -311,7 +305,6 @@ def _build_co2_model(
     """
     _check_co2_model_options(
         boundary=boundary,
-        outer_flux=outer_flux,
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
         sigma_alignment=sigma_alignment,
@@ -325,13 +318,9 @@ def _build_co2_model(
     offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
-    if outer_flux is not None:
-        # Centre the retained sampled outer columns; their prior-mean level joins the fixed term.
-        prepared_flux = outer_flux.centre(prepared_flux)
-        fixed_prior_contribution = outer_flux.restore_level(fixed_prior_contribution)
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
     if outer_flux is not None:
-        activity = outer_flux.states.fix_states(activity)
+        activity = outer_flux.fix_states(activity)
 
     with registered_model() as model:
         flux_scaling = add_correlated_state_with_activity(
@@ -354,8 +343,6 @@ def _build_co2_model(
         terms: list[ConcentrationTerm] = [ConcentrationTerm.absolute(co2_flux_contribution)]
         if boundary is not None:
             terms.append(boundary.add())
-        if outer_flux is not None and outer_flux.choice.mode == "additive":
-            terms.append(outer_flux.add(output_dim="nmeasure"))
         if offset_prior is not None:
             offset = add_offset_component(
                 observations,
