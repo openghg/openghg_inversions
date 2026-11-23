@@ -132,12 +132,12 @@ random_seed = 12345
 #   mean_by_period = true (requires frequency), or type = "anomaly_scaling" with
 #   scale_sd = 0.8 and reference = "whole_window_transport_mean".
 
-# Outer-region flux corrections whose level the boundary mean shift owns
-# (see docs/usage/atmospheric_baseline.rst). Needs a centred boundary with
-# mean_shift_prior and basis_group labels on the prepared retained states,
-# which come from the coherent reduction's restriction; configured CO2
-# preparation does not add them yet (issue #1094). fixed_sources also needs
-# source labels on those states.
+# Hold outer-region flux states at their prior mean with zero uncertainty, a
+# what-if for a known outer prior (see docs/usage/atmospheric_baseline.rst).
+# Needs basis_group labels on the prepared retained states, which come from the
+# coherent reduction's restriction; configured CO2 preparation does not add
+# them yet (issue #1094). fixed_sources holds only outer states with those
+# source labels.
 # [model.outer_flux]
-# mode = "multiplicative"   # or "fixed"
+# mode = "fixed"
 # outer_groups = ["outer"]
