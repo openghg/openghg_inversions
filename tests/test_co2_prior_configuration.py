@@ -23,7 +23,7 @@ from openghg_inversions.rhime.co2 import (
 )
 from openghg_inversions.rhime.co2.co2_preparation import Co2PreparedInputs, prepare_co2_inputs
 from openghg_inversions.rhime.co2.co2_o2_configuration import load_co2_o2_params
-from openghg_inversions.rhime.co2.co2_o2_model import bind_linked_outer_flux, build_co2_o2_model
+from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
 from openghg_inversions.sigma import SigmaAlignment
 from openghg_inversions.rhime.co2.execution import load_co2_params
 from openghg_inversions.rhime.co2.inference import build_co2_inference
@@ -186,14 +186,14 @@ def test_configured_outer_flux_matches_python_option(cached):
     request = {
         "model": {
             "boundary": {"type": "anomaly_scaling", "scale_sd": 0.3, "mean_shift_prior": mean_shift_prior},
-            "outer_flux": {"mode": "multiplicative", "outer_groups": ["outer"]},
+            "outer_flux": {"mode": "fixed", "outer_groups": ["outer"]},
         },
         "likelihood": likelihood,
     }
     choices = Co2ModelConfig.from_params(load_co2_params(params=request)).model_arguments()
-    assert choices["outer_flux"] == OuterFluxChoice("multiplicative", ("outer",))
+    assert choices["outer_flux"] == OuterFluxChoice("fixed", ("outer",))
     built, _ = build_co2_inference(prepared, choices)
-    assert json.loads(json.dumps(built.output_contract.metadata))["outer_flux_mode"] == "multiplicative"
+    assert json.loads(json.dumps(built.output_contract.metadata))["outer_flux_mode"] == "fixed"
 
     prior = CorrelatedPrior(inv.alpha_prior_mean, inv.alpha_prior_covariance, covariance_dim="region_cov")
     expected = build_co2_model(
@@ -204,7 +204,7 @@ def test_configured_outer_flux_matches_python_option(cached):
         observation_error=inv.mf_error,
         aggregation_error=resolve_aggregation_error(inv, prepared.aggregation_error_mode),
         boundary=AnomalyScalingChoice(mean_shift_prior, 0.3).bind(inv.mf, RawCenteredSensitivity.validate(inv)),
-        outer_flux=OuterFluxChoice("multiplicative", ("outer",)).resolve_states(prior).bind_rows(inv.mf, inv.H),
+        outer_flux=OuterFluxChoice("fixed", ("outer",)).resolve_states(prior),
         **(
             {"likelihood_builder": add_fixed_ou_gaussian_likelihood,
              "likelihood_kwargs": {k: v for k, v in likelihood.items() if k != "kind"}}
@@ -243,7 +243,7 @@ def test_linked_configured_outer_flux_matches_python_option(monkeypatch, cached)
             "independent_error_sd": 0.1,
             "boundary": {"type": "anomaly_scaling", "scale_sd": 0.3, "mean_shift_prior": mean_shift_prior},
         }
-    outer = {"mode": "multiplicative", "outer_groups": ["outer"], "fixed_sources": ["ocean"]}
+    outer = {"mode": "fixed", "outer_groups": ["outer"], "fixed_sources": ["ocean"]}
     request = {"channels": channels, "outer_flux": outer}
     choices = Co2O2ModelConfig.from_params(load_co2_o2_params(params=request)).bind(prepared)
     ou = dict(tau_hours=5.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75})
@@ -263,10 +263,8 @@ def test_linked_configured_outer_flux_matches_python_option(monkeypatch, cached)
         configured = built[0]
     else:
         configured = build_rhime_co2_o2(prepared_inputs=prepared, **choices).model
-    outer_flux = bind_linked_outer_flux(
-        OuterFluxChoice("multiplicative", ("outer",), ("ocean",)), prepared.retained_prior,
-        observations=kwargs["observations"],
-        co2_sensitivity=kwargs["co2_sensitivity"], o2_sensitivity=kwargs["o2_sensitivity"],
+    outer_flux = OuterFluxChoice("fixed", ("outer",), ("ocean",)).resolve_states(
+        CorrelatedPrior.from_lognormal(prepared.retained_prior),
     )
     expected = build_co2_o2_model(**kwargs, boundary=expected_boundary, outer_flux=outer_flux, **(ou if cached else {}))
     _parity(configured, expected)
@@ -275,7 +273,7 @@ def test_linked_configured_outer_flux_matches_python_option(monkeypatch, cached)
 @pytest.mark.parametrize(
     "outer, match",
     [
-        ({"mode": "additive", "outer_groups": ["outer"]}, "fixed\" or \"multiplicative"),
+        ({"mode": "multiplicative", "outer_groups": ["outer"]}, 'must be "fixed"'),
         ({"mode": "fixed"}, "outer_groups"),
         ({"mode": "fixed", "outer_groups": "outer"}, "list of strings"),
         ({"mode": "fixed", "outer_groups": ["outer"], "level_sd": 1.0}, "Unknown"),
@@ -305,14 +303,14 @@ def test_outer_flux_selectors_survive_co2_preparation_and_saving(tmp_path, label
     prepare_co2_inputs(canonical, reduction).save(tmp_path / "prepared.nc")
     inv = Co2PreparedInputs.load(tmp_path / "prepared.nc").inv_inputs
     prior = CorrelatedPrior(inv.alpha_prior_mean, inv.alpha_prior_covariance, covariance_dim="region_cov")
-    # The fixture's states are all correlated, so fixed_sources is not exercised here.
-    choice = OuterFluxChoice("multiplicative", ("outer",))
+    # The fixture's states are all correlated, so only the selector labels are checked here.
+    choice = OuterFluxChoice("fixed", ("outer",))
     if not labelled:
         with pytest.raises(ValueError, match="basis_group"):
             choice.resolve_states(prior)
         return
     assert inv.alpha_prior_mean["source"].values.tolist() == sources
-    assert choice.resolve_states(prior).sampled.values.tolist() == [group == "outer" for group in groups]
+    assert inv.alpha_prior_mean["basis_group"].values.tolist() == groups
 
 
 def test_outer_flux_selectors_survive_linked_preparation_and_saving():
@@ -325,26 +323,25 @@ def test_outer_flux_selectors_survive_linked_preparation_and_saving():
         prior.mean.assign_coords(basis_group=(prior.state_dim, groups)), prior.arithmetic_covariance,
     )
     prepared = Co2O2PreparedInputs.from_datatree(prepare_co2_o2_inputs(**inputs).to_datatree())
-    states = OuterFluxChoice("multiplicative", ("outer",), ("ocean",)).resolve_states(
+    states = OuterFluxChoice("fixed", ("outer",), ("ocean",)).resolve_states(
         CorrelatedPrior.from_lognormal(prepared.retained_prior)
     )
     ocean = np.char.lower(prepared.retained_prior.mean["source"].values.astype(str)) == "ocean"
     outer = np.array(groups) == "outer"
     np.testing.assert_array_equal(states.fixed.values, outer & ocean)
-    np.testing.assert_array_equal(states.sampled.values, outer & ~ocean)
 
 
 def test_toml_outer_flux_choice_is_the_python_choice():
     request = tomllib.loads("""
         [model.outer_flux]
-        mode = "multiplicative"
+        mode = "fixed"
         outer_groups = ["outer"]
         fixed_sources = ["ocean"]
         [likelihood]
         kind = "additive_sigma"
     """)
     config = Co2ModelConfig.from_params(load_co2_params(params=request))
-    assert config.outer_flux == OuterFluxChoice("multiplicative", ("outer",), ("ocean",))
+    assert config.outer_flux == OuterFluxChoice("fixed", ("outer",), ("ocean",))
 
 
 @pytest.mark.parametrize("request_kind", ["params_file", "config_file"])

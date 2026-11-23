@@ -327,9 +327,6 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.array_ops.to_dense_tree
    openghg_inversions.models.outer_flux.OuterFluxChoice
    openghg_inversions.models.outer_flux.OuterStates
-   openghg_inversions.models.outer_flux.OuterFlux
-   openghg_inversions.rhime.co2.atmospheric_baseline.reconstruct_atmospheric_baseline
-   openghg_inversions.rhime.co2.co2_o2_model.bind_linked_outer_flux
    openghg_inversions.models.add_linked_linear_component
    openghg_inversions.models.add_correlated_lognormal_state
    openghg_inversions.models.add_correlated_state_with_activity
