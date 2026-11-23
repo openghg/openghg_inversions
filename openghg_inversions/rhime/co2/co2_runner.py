@@ -523,6 +523,14 @@ def build_co2_from_materialized(
         raise ValueError("CO2 model inputs and enabled priors must be materialized before building.")
     if likelihood_builder is None and not no_model_error and sigma_alignment is None:
         sigma_alignment = SigmaAlignment.from_observations(model_inputs["mf"])
+    if (
+        outer_flux is not None and outer_flux.mode == "marginalise"
+        and likelihood_builder is add_scalar_sigma_eigen_likelihood
+    ):
+        raise ValueError(
+            'outer_flux mode = "marginalise" changes the aggregation-error covariance, so it cannot use a '
+            "scalar-sigma eigenbasis prepared for the unchanged covariance."
+        )
     aggregation_error = resolve_aggregation_error(
         model_inputs,
         prepared.aggregation_error_mode,
