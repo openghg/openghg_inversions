@@ -747,13 +747,20 @@ def test_gaussian_estimator_builds_with_the_configured_outer_flux(case, double_p
     assert captured["outer_flux"] is outer_flux
 
 
-def test_marginalised_outer_flux_equals_the_jointly_solved_inner_marginal(case, double_precision):
-    """The exact solve with the outer state marginalised equals the inner block of the joint solve."""
+@pytest.mark.parametrize("correlated", [False, True])
+def test_marginalised_outer_flux_equals_the_jointly_solved_inner_marginal(case, double_precision, correlated):
+    """The exact solve with the outer state marginalised equals the inner block of the joint solve.
+
+    The synthetic prior correlates the two states; the uncorrelated case drops that covariance.
+    """
     from openghg_inversions.models.outer_flux import OuterFluxChoice
 
     prepared, _, params = case
     inputs = prepared.inv_inputs
-    covariance = inputs.alpha_prior_covariance.copy(data=np.diag(np.diag(inputs.alpha_prior_covariance.values)))
+    covariance = inputs.alpha_prior_covariance
+    assert covariance.values[0, 1] != 0
+    if not correlated:
+        covariance = covariance.copy(data=np.diag(np.diag(covariance.values)))
     inputs = inputs.assign(alpha_prior_covariance=covariance).assign_coords(basis_group=("region", ["inner", "outer"]))
     prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
 
