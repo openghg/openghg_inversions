@@ -84,6 +84,7 @@ domain = "EUROPE"
 # gpp_ter_correlation = 0.7
 # gpp_source = "co2_BASE_GPP"
 # ter_source = "co2_BASE_TER"
+# latent_correlation_floor = 1e-6  # opt-in repair if a copula prior's latent correlation is not PD
 #
 # # A geodesic class is a dense block of 8 n**2 bytes for n cells, so name only
 # # classes up to about 1e4 cells (here class 1); other classes stay separable.

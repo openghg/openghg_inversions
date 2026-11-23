@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import Any, cast
 
 import xarray as xr
@@ -36,7 +37,7 @@ from .co2_cached_sigma_model import (
     _build_co2_cached_sigma_model,
 )
 from .co2_model import _normalise_offset_args
-from .co2_preparation import ALPHA_PRIOR_MARGINAL, Co2PreparedInputs
+from .co2_preparation import ALPHA_PRIOR_MARGINAL, Co2PreparedInputs, retained_prior_options
 from .co2_runner import (
     _bind_co2_boundary,
     _materialize_co2_inputs,
@@ -275,9 +276,7 @@ def build_rhime_co2_cached_sigma(
     retained_prior = CorrelatedPrior(
         model_inputs["alpha_prior_mean"],
         prior_covariance,
-        marginal=(
-            model_inputs[ALPHA_PRIOR_MARGINAL] if ALPHA_PRIOR_MARGINAL in model_inputs else "lognormal"
-        ),
+        **retained_prior_options(model_inputs),
         covariance_dim=str(prior_covariance.dims[-1]),
     )
     outer = None if outer_flux is None else outer_flux.resolve_states(retained_prior)
@@ -299,7 +298,7 @@ def build_rhime_co2_cached_sigma(
         offset_drop_first=offset_drop_first,
         offset_per_site=offset_per_site,
     )
-    return cached_model
+    return replace(cached_model, prior_metadata=retained_prior.metadata())
 
 
 def co2_cached_sigma_build_result(
@@ -319,7 +318,10 @@ def co2_cached_sigma_build_result(
     metadata = {
         "recipe": "co2",
         "kind": "builtin",
-        "prior": "correlated arithmetic-moment lognormal",
+        **(
+            cached_model.prior_metadata if cached_model.prior_metadata is not None
+            else {"prior": "correlated arithmetic-moment lognormal"}
+        ),
         "mismatch_component": "fixed_within_site_ou",
         "basis_artifact_source": getattr(
             prepared_inputs,

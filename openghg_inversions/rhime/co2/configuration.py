@@ -96,7 +96,7 @@ _NATIVE_PRIOR_OPTION_NAMES = frozenset({
 # A ``sources`` table selects separate native fields per flux source.
 _MULTISOURCE_NATIVE_PRIOR_OPTION_NAMES = frozenset({
     "sources", "gpp_ter_correlation", "gpp_source", "ter_source", "restriction", "class_labels_path",
-    "retained_regions_path", "calibration",
+    "retained_regions_path", "calibration", "latent_correlation_floor",
 })
 _NATIVE_SOURCE_PRIOR_OPTION_NAMES = _NATIVE_PRIOR_OPTION_NAMES | {"geodesic_correlation_length_km"}
 _NATIVE_CALIBRATION_OPTION_NAMES = frozenset({"targets_path", "statistic"})
@@ -544,6 +544,11 @@ class Co2MultiSourceNativePrior:
             region labels it retains.
         calibration: Optional amplitude calibration for sources without
             ``sigma``.
+        latent_correlation_floor: Opt-in eigenvalue floor that repairs a
+            copula prior whose latent correlation is not positive definite
+            (see :class:`~openghg_inversions.correlated_state.CorrelatedPrior`).
+            ``None`` rejects such priors. Requires a source with a
+            non-lognormal ``marginal``.
     """
 
     sources: Mapping[str, Co2NativeSourcePrior]
@@ -554,6 +559,7 @@ class Co2MultiSourceNativePrior:
     class_labels_path: Path | None = None
     retained_regions_path: Path | None = None
     calibration: Co2NativeBCalibration | None = None
+    latent_correlation_floor: float | None = None
 
     @classmethod
     def from_params(cls, value: object) -> Co2MultiSourceNativePrior:
@@ -595,6 +601,11 @@ class Co2MultiSourceNativePrior:
                 result[name] = _path(options.pop(name), f"{path}.{name}")
         if "calibration" in options:
             result["calibration"] = Co2NativeBCalibration.from_params(options.pop("calibration"))
+        if "latent_correlation_floor" in options:
+            floor = _number(options.pop("latent_correlation_floor"), f"{path}.latent_correlation_floor", positive=True)
+            if floor > 0.1:
+                raise ValueError(f"{path}.latent_correlation_floor must be in (0, 0.1].")
+            result["latent_correlation_floor"] = floor
         _reject_unknown(options, path)
         prior = cls(**result)
         prior._check(path)
@@ -641,6 +652,13 @@ class Co2MultiSourceNativePrior:
             raise ValueError(
                 f"{path}.retained_regions_path requires restriction = 'absolute_flux_weighted_mean'."
             )
+        if self.latent_correlation_floor is not None and all(
+            source.marginal in (None, "lognormal") for source in self.sources.values()
+        ):
+            raise ValueError(
+                f"{path}.latent_correlation_floor applies only to copula priors; set a non-lognormal "
+                f"marginal on a source in {path}.sources."
+            )
 
     def to_params(self) -> dict[str, Any]:
         """Return the table :meth:`from_params` reads back, omitting defaults left unset."""
@@ -656,6 +674,8 @@ class Co2MultiSourceNativePrior:
                 result[name] = str(getattr(self, name))
         if self.calibration is not None:
             result["calibration"] = self.calibration.to_params()
+        if self.latent_correlation_floor is not None:
+            result["latent_correlation_floor"] = self.latent_correlation_floor
         return result
 
 

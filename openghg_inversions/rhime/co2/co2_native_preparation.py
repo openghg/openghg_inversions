@@ -61,7 +61,7 @@ from openghg_inversions.rhime.preparation import (
 )
 
 from .co2_affine_output import import_explicit_affine_flux_map, produce_bucket_affine_flux_map
-from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs
+from .co2_preparation import LATENT_CORRELATION_FLOOR, Co2PreparedInputs, prepare_co2_inputs
 
 if TYPE_CHECKING:
     from .configuration import (
@@ -633,14 +633,20 @@ def _retained_marginal(prior: Co2MultiSourceNativePrior, retained_mean: xr.DataA
     """Each retained state's configured marginal, or ``None`` when no source sets one.
 
     Leaving the variable out when no source sets ``marginal`` keeps existing
-    preparations unchanged.
+    preparations unchanged. A configured ``latent_correlation_floor`` is
+    stored as the variable's attribute of the same name.
     """
     if all(source.marginal is None for source in prior.sources.values()):
         return None
     sources = np.asarray(retained_mean["source"].values).astype(str)
     names = [prior.sources[source].marginal or "lognormal" for source in sources]
+    attrs = (
+        {} if prior.latent_correlation_floor is None
+        else {LATENT_CORRELATION_FLOOR: float(prior.latent_correlation_floor)}
+    )
     return xr.DataArray(
         np.asarray(names, dtype=str), dims=retained_mean.dims, coords=retained_mean.coords, name="alpha_prior_marginal",
+        attrs=attrs,
     )
 
 

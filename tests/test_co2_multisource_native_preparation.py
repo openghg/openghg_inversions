@@ -710,3 +710,44 @@ def test_source_marginals_sample_through_the_runner(merged: MergedData, files: d
     assert posterior["flux_scaling"].sizes["region"] == 7
     biosphere = posterior["flux_scaling"].where(posterior["source"] != "ff", drop=True)
     assert biosphere.sizes["region"] == 4 and float(biosphere.min()) > 0
+
+
+def test_latent_correlation_floor_round_trips_and_needs_a_copula_marginal(files: dict[str, Path]) -> None:
+    table = _with_marginals(_native_prior(files), gpp="weibull")
+    table["latent_correlation_floor"] = 1e-6
+    prior = Co2PreparationConfig.from_params(_request(files, table), require_source=True).native.native_prior
+    assert isinstance(prior, Co2MultiSourceNativePrior) and prior.latent_correlation_floor == 1e-6
+    assert Co2MultiSourceNativePrior.from_params(prior.to_params()) == prior
+    lognormal = _native_prior(files)
+    lognormal["latent_correlation_floor"] = 1e-6
+    with pytest.raises(ValueError, match="latent_correlation_floor applies only to copula priors"):
+        Co2MultiSourceNativePrior.from_params(lognormal)
+    table["latent_correlation_floor"] = 0.5
+    with pytest.raises(ValueError, match=r"latent_correlation_floor must be in \(0, 0.1\]"):
+        Co2MultiSourceNativePrior.from_params(table)
+
+
+def test_preparation_stores_the_latent_correlation_floor(
+    tmp_path: Path, merged: MergedData, files: dict[str, Path],
+) -> None:
+    from openghg_inversions.rhime.co2.co2_preparation import retained_prior_options
+
+    table = _with_marginals(_native_prior(files), gpp="weibull", ter="weibull")
+    table["latent_correlation_floor"] = 1e-6
+    prepared = handoffs.load_preparation(_prepare(tmp_path, _request(files, table), merged, "floor")).prepared
+    assert prepared.inv_inputs.alpha_prior_marginal.attrs["latent_correlation_floor"] == 1e-6
+    assert retained_prior_options(prepared.inv_inputs)["latent_correlation_floor"] == 1e-6
+
+
+@pytest.mark.usefixtures("double_precision")
+def test_runner_records_the_prior_marginals_and_repair_in_the_trace(merged: MergedData, files: dict[str, Path]) -> None:
+    table = _with_marginals(_native_prior(files), gpp="weibull", ter="weibull")
+    table["latent_correlation_floor"] = 1e-6
+    config = _request(files, table)
+    config["sampling"] = {"draws": 5, "tune": 5, "chains": 1, "progressbar": False, "random_seed": 3}
+    config["outputs"] = {"output_format": "none"}
+    metadata = json.loads(run_co2(params=config, merged_data=merged).idata.attrs["rhime_model_metadata"])
+    assert metadata["prior"] == "correlated arithmetic-moment Gaussian copula"
+    assert metadata["prior_marginals"] == {"lognormal": 3, "weibull": 4}
+    repair = metadata["prior_latent_correlation_repair"]
+    assert repair["method"] == "eigenvalue_floor" and repair["floor"] == 1e-6 and repair["applied"] is False

@@ -807,6 +807,13 @@ all but allows negative scalings. Preparation stores the choice as
 preparations are unchanged. Every marginal works with both PyMC's sampler
 and numpyro; under numpyro, gamma uses TensorFlow Probability.
 
+A copula prior whose latent correlation is not positive definite fails unless
+``[prepared_inputs.native_prior]`` sets ``latent_correlation_floor`` (for
+example ``1e-6``), which repairs it and records the change in the trace; see
+:ref:`latent-correlation-repair`. Preparation stores the floor as an attribute
+of ``alpha_prior_marginal``. It needs a source with a non-lognormal
+``marginal``.
+
 ``gpp_ter_correlation`` is the correlation ``rho`` (``|rho| < 1``) of the GPP and
 TER *scaling* anomalies; positive ``rho`` makes their signed flux anomalies
 cancel in the net biosphere flux. It needs one shared kernel, so the two

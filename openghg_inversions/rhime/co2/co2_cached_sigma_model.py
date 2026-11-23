@@ -77,6 +77,8 @@ class Co2CachedSigmaModel:
     resolves them separately for construction and each sampling chain.
     ``boundary_outputs`` and ``outer_flux_outputs`` declare the bound
     boundary's and outer-flux option's roles, units and metadata.
+    ``prior_metadata`` describes the retained prior (marginals and any
+    latent-correlation repair) when the runner supplies it.
     """
 
     model: pm.Model
@@ -90,6 +92,7 @@ class Co2CachedSigmaModel:
     initial_values: dict[str, Any]
     boundary_outputs: Outputs | None = None
     outer_flux_outputs: Outputs | None = None
+    prior_metadata: Mapping[str, Any] | None = None
 
 
 def _materialize_cached_linear_projection(

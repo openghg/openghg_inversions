@@ -172,6 +172,26 @@ def _require_equivalent_units(actual: Any, expected: str, *, name: str) -> None:
 ALPHA_PRIOR_MARGINAL = "alpha_prior_marginal"
 """Optional prepared variable naming each retained state's marginal family."""
 
+LATENT_CORRELATION_FLOOR = "latent_correlation_floor"
+"""Optional attribute of ``alpha_prior_marginal``: the opt-in latent-correlation eigenvalue floor."""
+
+
+def retained_prior_options(inputs: Mapping[Any, Any]) -> dict[str, Any]:
+    """Return the :class:`~openghg_inversions.correlated_state.CorrelatedPrior` options a preparation stores.
+
+    Args:
+        inputs: Prepared or materialized model inputs.
+
+    Returns:
+        ``marginal`` (``"lognormal"`` when not stored) and
+        ``latent_correlation_floor`` (``None`` when not stored).
+    """
+    if ALPHA_PRIOR_MARGINAL not in inputs:
+        return {"marginal": "lognormal", "latent_correlation_floor": None}
+    marginal = inputs[ALPHA_PRIOR_MARGINAL]
+    floor = marginal.attrs.get(LATENT_CORRELATION_FLOOR)
+    return {"marginal": marginal, "latent_correlation_floor": None if floor is None else float(floor)}
+
 
 def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     """Validate the scientific layout owned by the CO2 artifact."""
@@ -215,6 +235,16 @@ def _validate_co2_dataset(inputs: xr.Dataset) -> None:
         unknown = sorted(set(map(str, np.asarray(marginal.values).ravel())) - set(STATE_MARGINALS))
         if unknown:
             raise ValueError(f"CO2 {ALPHA_PRIOR_MARGINAL} has unsupported marginal(s) {unknown!r}.")
+        if LATENT_CORRELATION_FLOOR in marginal.attrs:
+            floor = marginal.attrs[LATENT_CORRELATION_FLOOR]
+            if (
+                isinstance(floor, bool) or not isinstance(floor, (int, float, np.number))
+                or not 0.0 < float(floor) <= 0.1
+            ):
+                raise ValueError(
+                    f"CO2 {ALPHA_PRIOR_MARGINAL} attribute {LATENT_CORRELATION_FLOOR!r} must be a number in "
+                    f"(0, 0.1]; got {floor!r}."
+                )
     covariance_dim = f"{state_dim}_cov"
     covariance = inputs["alpha_prior_covariance"]
     validate_covariance_coordinates(
@@ -583,7 +613,8 @@ def prepare_co2_inputs(
             the reduction's retained-state labels. It is stored as
             ``alpha_prior_marginal`` and selects each state's marginal in the
             runners' :class:`~openghg_inversions.correlated_state.CorrelatedPrior`.
-            Omit it for the lognormal prior.
+            Its ``latent_correlation_floor`` attribute, if any, is kept and
+            passed to that prior. Omit it for the lognormal prior.
 
     Returns:
         A structurally validated, serializable artifact accepted by both CO2
