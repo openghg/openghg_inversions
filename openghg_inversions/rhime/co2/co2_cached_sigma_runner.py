@@ -10,13 +10,22 @@ from __future__ import annotations
 import copy
 import json
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import Any, cast
 
 import xarray as xr
 from pymc.initial_point import convert_str_to_rv_dict, make_initial_point_fn  # type: ignore[import-untyped]
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
+from openghg_inversions.inference.cached_sigma import (
+    make_cached_sigma_compound_step,
+    make_cached_state_nuts_step,
+)
+from openghg_inversions.inference.fixed_amplitudes import (
+    FixedSiteAmplitudeFile,
+    FixedSiteAmplitudes,
+    resolve_fixed_site_amplitudes,
+)
 from openghg_inversions.models.boundary import Choice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
@@ -145,19 +154,29 @@ def _sampler_for_cached_graph(
         model=model, overrides=defaults, return_transformed=True,
     )(seed=0)
     with model:
-        sample_kwargs["step"] = make_cached_sigma_compound_step(
-            model=model,
-            sigma=cached_model.amplitude,
-            states=cached_model.states,
-            modelled_mean=cached_model.modelled_mean,
-            target=cached_model.target,
-            shared_cache=cached_model.shared_cache,
-            initial_cache=cached_model.initial_cache,
-            cached_state_logp=cached_model.cached_state_logp,
-            initial_point=baseline,
-            sigma_target_accept=sigma_target_accept,
-            state_target_accept=state_target_accept,
-        )
+        if cached_model.fixed_amplitudes is not None:
+            # Fixed θ: the quadratic was built once at the supplied amplitudes.
+            sample_kwargs["step"] = make_cached_state_nuts_step(
+                model=model,
+                states=cached_model.states,
+                cached_state_logp=cached_model.cached_state_logp,
+                initial_point=baseline,
+                state_target_accept=state_target_accept,
+            )
+        else:
+            sample_kwargs["step"] = make_cached_sigma_compound_step(
+                model=model,
+                sigma=cached_model.amplitude,
+                states=cached_model.states,
+                modelled_mean=cached_model.modelled_mean,
+                target=cached_model.target,
+                shared_cache=cached_model.shared_cache,
+                initial_cache=cached_model.initial_cache,
+                cached_state_logp=cached_model.cached_state_logp,
+                initial_point=baseline,
+                sigma_target_accept=sigma_target_accept,
+                state_target_accept=state_target_accept,
+            )
     sample_kwargs.setdefault("mp_ctx", "spawn")
     configured = copy.copy(sampler)
     configured.sample_kwargs = sample_kwargs
@@ -218,8 +237,11 @@ def build_rhime_co2_cached_sigma(
     *,
     prepared_inputs: Co2PreparedInputs,
     tau_hours: float | Mapping[str, float],
-    site_amplitude_prior: PriorArgs,
+    site_amplitude_prior: PriorArgs | None = None,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
+    fixed_site_amplitudes: (
+        float | Mapping[str, float] | FixedSiteAmplitudeFile | FixedSiteAmplitudes | None
+    ) = None,
     boundary: Choice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
@@ -232,9 +254,17 @@ def build_rhime_co2_cached_sigma(
         tau_hours: Fixed OU decorrelation time in hours, as a scalar or a
             mapping covering all observed sites.
         site_amplitude_prior: Independent positive site-amplitude prior in
-            observation concentration units.
+            observation concentration units. Required unless
+            ``fixed_site_amplitudes`` is supplied.
         initial_site_amplitudes: Positive scalar or site mapping in the same
-            units; defaults to the prior support point.
+            units; defaults to the prior support point. Inferred amplitudes only.
+        fixed_site_amplitudes: Supplied non-negative amplitudes in the same
+            units, instead of ``site_amplitude_prior``: a scalar, a site
+            mapping, a :class:`FixedSiteAmplitudeFile` (for example a previous
+            run's posterior, summarised by its median), or resolved
+            :class:`FixedSiteAmplitudes`. The state quadratic is then built
+            once and only the states are sampled; the returned model records
+            the amplitude source in ``fixed_amplitude_source``.
         boundary: Optional boundary choice, bound once to the prepared
             ``H_bc`` or centered operands. ``None`` omits the boundary.
         offset_prior: Optional prior for an offset component. When omitted, no
@@ -251,15 +281,21 @@ def build_rhime_co2_cached_sigma(
     """
     if offset_prior is None and offset_args:
         raise ValueError("offset_args require offset_prior.")
+    if (site_amplitude_prior is None) == (fixed_site_amplitudes is None):
+        raise ValueError("Pass exactly one of site_amplitude_prior or fixed_site_amplitudes.")
+    fixed = None if fixed_site_amplitudes is None else resolve_fixed_site_amplitudes(fixed_site_amplitudes)
     offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
     prepared = prepared_inputs
     names = co2_cached_sigma_input_names(prepared)
     model_inputs, eager_priors, bound = _materialize_co2_inputs(
         prepared.rhime_inputs, names,
-        {"amplitude": site_amplitude_prior, **({"offset": offset_prior} if offset_prior is not None else {})},
+        {
+            **({"amplitude": site_amplitude_prior} if site_amplitude_prior is not None else {}),
+            **({"offset": offset_prior} if offset_prior is not None else {}),
+        },
         _bind_co2_boundary(prepared.inv_inputs, boundary),
     )
-    site_amplitude_prior = eager_priors["amplitude"]
+    site_amplitude_prior = eager_priors.get("amplitude")
     offset_prior = eager_priors.get("offset")
     aggregation_error = resolve_aggregation_error(
         model_inputs,
@@ -281,6 +317,7 @@ def build_rhime_co2_cached_sigma(
         tau_hours=tau_hours,
         site_amplitude_prior=site_amplitude_prior,
         initial_site_amplitudes=initial_site_amplitudes,
+        fixed_site_amplitudes=None if fixed is None else fixed.values,
         state_activity=cast(StateActivity | None, _state_activity_from_inputs(model_inputs)),
         boundary=bound,
         offset_prior=offset_prior,
@@ -288,6 +325,8 @@ def build_rhime_co2_cached_sigma(
         offset_drop_first=offset_drop_first,
         offset_per_site=offset_per_site,
     )
+    if fixed is not None:
+        cached_model = replace(cached_model, fixed_amplitude_source=dict(fixed.source))
     return cached_model
 
 
@@ -317,6 +356,14 @@ def co2_cached_sigma_build_result(
         ),
         "basis_artifact_path": getattr(prepared_inputs, "basis_artifact_path", None),
     }
+    if cached_model.fixed_amplitudes is not None:
+        metadata.update(
+            ou_site_amplitude_treatment="fixed",
+            ou_site_amplitude_source=dict(cached_model.fixed_amplitude_source or {"kind": "supplied"}),
+            posterior_scope="conditional on the fixed OU site amplitudes; their uncertainty is not propagated",
+        )
+    else:
+        metadata["ou_site_amplitude_treatment"] = "sampled"
     variable_roles = {
         "observation": "Y",
         "observation_error": "error",

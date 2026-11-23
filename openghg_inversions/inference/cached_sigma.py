@@ -484,6 +484,56 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
     )
     if not states:
         return CompoundStep([sigma_step])
+    state_step = make_cached_state_nuts_step(
+        model=model,
+        states=states,
+        cached_state_logp=cached_state_logp,
+        initial_point=point,
+        state_target_accept=state_target_accept,
+        rng=state_rng,
+    )
+    return CompoundStep([sigma_step, state_step])
+
+
+def make_cached_state_nuts_step(  # noqa: PLR0913
+    *,
+    model: pm.Model,
+    states: Sequence[TensorVariable],
+    cached_state_logp: TensorVariable | None,
+    initial_point: PointType | None = None,
+    state_target_accept: float = 0.9,
+    rng: RandomGenerator = None,
+) -> pm.NUTS:
+    """Construct stock state NUTS that reads the cached state-likelihood quadratic.
+
+    The state density is the model's free-variable priors and transform
+    Jacobians plus ``cached_state_logp``; the observed likelihood is excluded.
+    The compound sweep uses this step after each amplitude update. With
+    supplied (fixed) amplitudes it is the whole sampler: the quadratic is
+    built once, so no trajectory refactors the observation covariance.
+
+    Args:
+        model: Model owning ``states`` and the cached expression.
+        states: Free variables updated jointly by the NUTS step.
+        cached_state_logp: Cached quadratic over the state coefficients.
+            Observed models require it; legacy Potential-only callers may omit it.
+        initial_point: Transformed point used for compilation and the values
+            of any non-state variables. Defaults to the model's initial point.
+        state_target_accept: Target acceptance probability.
+        rng: Random generator for the step.
+
+    Returns:
+        A stock PyMC NUTS step over ``states``.
+
+    Raises:
+        ValueError: If no states are supplied, or an observed model has no
+            cached expression.
+    """
+    if not states:
+        raise ValueError("Cached state NUTS requires at least one sampled state.")
+    if cached_state_logp is None and model.observed_RVs:
+        raise ValueError("Observed models require an explicit cached_state_logp for state NUTS.")
+    point = model.initial_point() if initial_point is None else initial_point
     state_function = None
     if cached_state_logp is not None:
         state_values = get_value_vars_from_user_vars(list(states), model)
@@ -503,19 +553,19 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
         )
         state_function.set_extra_values(point)
     with model:
-        state_step = pm.NUTS(
+        return pm.NUTS(
             vars=list(states),
             target_accept=state_target_accept,
             initial_point=point,
             model=model,
-            rng=state_rng,
+            rng=rng,
             logp_dlogp_func=state_function,
         )
-    return CompoundStep([sigma_step, state_step])
 
 
 __all__ = [
     "PymcCachedSigmaNutsStep",
     "PytensorMarginalQuadraticCache",
     "make_cached_sigma_compound_step",
+    "make_cached_state_nuts_step",
 ]

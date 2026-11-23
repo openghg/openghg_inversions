@@ -74,6 +74,9 @@ class Co2CachedSigmaModel:
     ``initial_values`` contains untransformed sampling overrides or PyMC
     initialization strategies, lifted from graph metadata. The matched runner
     resolves them separately for construction and each sampling chain.
+    ``fixed_amplitudes`` is ``None`` when site amplitudes are inferred. When
+    it holds supplied amplitudes, ``amplitude`` is constant data, the cached
+    quadratic is built once at those values, and only ``states`` are sampled.
     """
 
     model: pm.Model
@@ -86,6 +89,8 @@ class Co2CachedSigmaModel:
     cached_state_logp: TensorVariable
     initial_values: dict[str, Any]
     boundary: Bound | None = None
+    fixed_amplitudes: np.ndarray | None = None
+    fixed_amplitude_source: Mapping[str, Any] | None = None
 
 
 def _materialize_cached_linear_projection(
@@ -159,10 +164,18 @@ def _add_cached_likelihood(
     site_coord: xr.DataArray,
     site_index: xr.DataArray,
     initial_amplitudes: np.ndarray | None,
-    site_amplitude_prior: PriorArgs,
+    site_amplitude_prior: PriorArgs | None,
     output_dim: str,
+    fixed_amplitudes: np.ndarray | None = None,
 ) -> Co2CachedSigmaModel:
-    """Lower ordered scientific terms once at the cached-likelihood boundary."""
+    """Lower ordered scientific terms once at the cached-likelihood boundary.
+
+    Exactly one of ``site_amplitude_prior`` (inferred amplitudes) and
+    ``fixed_amplitudes`` (supplied non-negative amplitudes ordered as
+    ``site_coord``) is required.
+    """
+    if (site_amplitude_prior is None) == (fixed_amplitudes is None):
+        raise ValueError("Pass exactly one of site_amplitude_prior or fixed_amplitudes.")
     blocks = tuple(block for term in terms for block in term.blocks)
     # Align observation rows only: coefficient axes belong to each block, even when their names coincide.
     fixed = [
@@ -192,6 +205,23 @@ def _add_cached_likelihood(
         ),
     )
     add_coords(site_coord.coords)
+    if fixed_amplitudes is not None:
+        if initial_amplitudes is not None:
+            raise ValueError("initial_site_amplitudes apply only to inferred amplitudes.")
+        return _add_fixed_amplitude_cached_likelihood(
+            terms,
+            blocks,
+            target=target,
+            covariance=covariance,
+            modelled_mean=modelled_mean,
+            observations=observations,
+            observation_error=observation_error,
+            site_coord=site_coord,
+            site_index=site_index,
+            fixed_amplitudes=fixed_amplitudes,
+            output_dim=output_dim,
+        )
+    assert site_amplitude_prior is not None
     amplitude_prior = dict(site_amplitude_prior)
     amplitude_prior["pdf"] = str(amplitude_prior.get("pdf", "")).casefold().replace("-", "")
     if amplitude_prior["pdf"] == "lognormal":
@@ -288,6 +318,101 @@ def _add_cached_likelihood(
     )
 
 
+def _add_fixed_amplitude_cached_likelihood(
+    terms: tuple[AffineConcentrationTerm, ...],
+    blocks: tuple[AffineBlock, ...],
+    *,
+    target: FixedOuCachedSigmaTarget,
+    covariance: FixedOuLowRank,
+    modelled_mean: TensorVariable,
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    site_coord: xr.DataArray,
+    site_index: xr.DataArray,
+    fixed_amplitudes: np.ndarray,
+    output_dim: str,
+) -> Co2CachedSigmaModel:
+    """Build the cached state quadratic once at supplied site amplitudes.
+
+    The observed joint likelihood is the stock fixed-amplitude fixed-OU
+    distribution, so stored log likelihoods and predictive draws keep their
+    meaning. Only the state sampler reads the cached quadratic.
+    """
+    amplitudes = np.asarray(fixed_amplitudes, dtype=np.float64)
+    if (
+        amplitudes.shape != (site_coord.size,)
+        or not np.isfinite(amplitudes).all()
+        or np.any(amplitudes < 0.0)
+    ):
+        raise ValueError("Fixed site amplitudes must be finite, non-negative and cover every site.")
+    mode_variance = covariance.mode_eigenvalues + np.square(amplitudes)[covariance.mode_site_index]
+    if np.any(mode_variance <= 0.0):
+        raise ValueError(
+            "Fixed OU amplitudes must produce a positive-definite complete "
+            "observation covariance with strictly positive generalized "
+            "base-plus-OU mode variances before the low-rank update."
+        )
+    if not blocks:
+        raise ValueError("Fixed site amplitudes require at least one active state to sample.")
+    initial_cache = target.refresh(amplitudes)
+    shared_cache = PytensorMarginalQuadraticCache(initial_cache)
+    observed = add_model_data(observations.transpose(output_dim), "Y")
+    add_model_data(observation_error.transpose(output_dim), "error")
+    add_model_data(site_index)
+    add_model_data(
+        xr.DataArray(
+            covariance.tau_hours_by_site,
+            dims=(OU_SITE_DIM,),
+            coords={OU_SITE_DIM: site_coord},
+            name="ou_tau_hours",
+        )
+    )
+    amplitude = add_model_data(
+        xr.DataArray(
+            amplitudes,
+            dims=(OU_SITE_DIM,),
+            coords={OU_SITE_DIM: site_coord},
+            name=OU_SITE_AMPLITUDE,
+        )
+    )
+    pm.Deterministic(
+        "epsilon",
+        pt.sqrt(covariance.marginal_variance(amplitude)),
+        dims=output_dim,
+    )
+    coefficients = pt.concatenate([block.coefficients for block in blocks])
+    cached_state_logp = shared_cache.log_likelihood(coefficients)
+    pm.CustomDist(
+        "y",
+        modelled_mean,
+        amplitude,
+        logp=covariance.logp,
+        random=covariance.random,
+        signature="(n),(s)->(n)",
+        observed=observed,
+        dims=output_dim,
+    )
+    model = pm.modelcontext(None)
+    initial_values = {
+        str(rv.name): value for rv, value in model.rvs_to_initial_values.items() if value is not None
+    }
+    # As for inferred amplitudes, keep scientific starts for the matched runner.
+    for rv in model.free_RVs:
+        model.set_initval(rv, None)
+    return Co2CachedSigmaModel(
+        model=model,
+        target=target,
+        shared_cache=shared_cache,
+        initial_cache=initial_cache,
+        amplitude=amplitude,
+        states=tuple(rv for term in terms for rv in term.sampled_rvs),
+        modelled_mean=modelled_mean,
+        cached_state_logp=cached_state_logp,
+        initial_values=initial_values,
+        fixed_amplitudes=amplitudes.copy(),
+    )
+
+
 def build_co2_cached_sigma_model(
     flux_sensitivity: xr.DataArray,
     *,
@@ -297,8 +422,9 @@ def build_co2_cached_sigma_model(
     observation_error: xr.DataArray,
     aggregation_error: AggregationError,
     tau_hours: float | Mapping[str, float],
-    site_amplitude_prior: PriorArgs,
+    site_amplitude_prior: PriorArgs | None = None,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
+    fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
     offset_prior: PriorArgs | None = None,
@@ -342,10 +468,18 @@ def build_co2_cached_sigma_model(
         tau_hours: Fixed OU decorrelation time in hours. A scalar applies to
             every site; a mapping must cover every observed site label.
         site_amplitude_prior: Independent positive prior specification for site
-            amplitudes, in the observations' concentration units.
+            amplitudes, in the observations' concentration units. Required
+            unless ``fixed_site_amplitudes`` is supplied.
         initial_site_amplitudes: Optional positive initial amplitude in the
             same units, supplied as one scalar or a mapping covering every
-            observed site. Defaults to the prior support point.
+            observed site. Defaults to the prior support point. Only for
+            inferred amplitudes.
+        fixed_site_amplitudes: Optional non-negative amplitudes in the same
+            units, as one scalar or a mapping covering every observed site.
+            When supplied instead of ``site_amplitude_prior``, the amplitudes
+            are constant data, the state quadratic is built once, and the
+            matched sampler updates only the states (fixed-θ sampling). The
+            posterior is then conditional on these values.
         state_activity: Optional labelled active/fixed policy for retained flux
             states. Fixed values are dimensionless flux scalings.
         boundary: Resolved boundary component bound to this fit.
@@ -391,6 +525,7 @@ def build_co2_cached_sigma_model(
         tau_hours=tau_hours,
         site_amplitude_prior=site_amplitude_prior,
         initial_site_amplitudes=initial_site_amplitudes,
+        fixed_site_amplitudes=fixed_site_amplitudes,
         state_activity=state_activity,
         boundary=boundary,
         offset_prior=offset_prior,
@@ -410,8 +545,9 @@ def _build_co2_cached_sigma_model(
     observation_error: xr.DataArray,
     aggregation_error: AggregationError,
     tau_hours: float | Mapping[str, float],
-    site_amplitude_prior: PriorArgs,
+    site_amplitude_prior: PriorArgs | None = None,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
+    fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
     offset_prior: PriorArgs | None = None,
@@ -429,6 +565,10 @@ def _build_co2_cached_sigma_model(
     """
     if offset_prior is None and (offset_freq is not None or offset_drop_first or not offset_per_site):
         raise ValueError("Non-default offset options require offset_prior.")
+    if (site_amplitude_prior is None) == (fixed_site_amplitudes is None):
+        raise ValueError("Pass exactly one of site_amplitude_prior or fixed_site_amplitudes.")
+    if fixed_site_amplitudes is not None and initial_site_amplitudes is not None:
+        raise ValueError("initial_site_amplitudes apply only to inferred amplitudes.")
     validate_observation_error_arrays(
         observations,
         observation_error,
@@ -444,6 +584,17 @@ def _build_co2_cached_sigma_model(
     initial_amplitudes = _site_values(
         initial_site_amplitudes,
         site_coord=site_coord,
+    )
+    fixed_amplitudes = (
+        None
+        if fixed_site_amplitudes is None
+        else fixed_ou_site_values(
+            fixed_site_amplitudes,
+            site_coord.size,
+            "fixed_site_amplitudes",
+            positive=False,
+            coordinate=site_coord,
+        )
     )
     prepared_flux = prepare_linear_sensitivity(
         flux_sensitivity,
@@ -558,6 +709,7 @@ def _build_co2_cached_sigma_model(
             initial_amplitudes=initial_amplitudes,
             site_amplitude_prior=site_amplitude_prior,
             output_dim=output_dim,
+            fixed_amplitudes=fixed_amplitudes,
         )
         return replace(cached, boundary=boundary)
 

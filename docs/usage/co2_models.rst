@@ -278,6 +278,9 @@ automatic policy:
    * - ``fixed_ou`` with fixed amplitudes
      - PyMC NUTS
      - The custom likelihood operation has no JAX implementation.
+   * - ``fixed_ou`` with fixed amplitudes and ``cached_state_quadratic = true``
+     - PyMC state NUTS on a cached quadratic built once
+     - :ref:`Fixed-θ state sampling <co2-cached-fixed-theta>`; no amplitude step.
    * - ``fixed_ou`` with inferred amplitudes
      - PyMC cached amplitude update, then state NUTS when states exist
      - Requires the matched cache and ordered amplitude/state update.
@@ -376,7 +379,10 @@ require retained-site coverage, then select retained labels.
      - Positive scalar-or-site-map ``tau_hours`` and exactly one of
        ``fixed_site_amplitudes`` or ``site_amplitude_prior``
      - Fixed amplitudes are non-negative; the inferred-amplitude prior must
-       have positive support.
+       have positive support. ``cached_state_quadratic = true`` (fixed
+       amplitudes only) selects :ref:`fixed-θ state sampling
+       <co2-cached-fixed-theta>`, which also accepts a file table for
+       ``fixed_site_amplitudes``.
    * - ``scalar_sigma``
      - ``eigenbasis_path`` and positive-support ``sigma_prior``
      - The eigenbasis must match the prepared artifact as described in
@@ -428,6 +434,8 @@ CO2 fixed OU with inferred amplitudes also accepts positive
 ``sigma_target_accept`` and ``state_target_accept`` belong in ``[sampling]``.
 Posterior-predictive name lists may contain only ``y`` or ``concentration``.
 The implementation selects the matched cached sampler automatically.
+With fixed amplitudes and ``cached_state_quadratic = true``, only
+``state_target_accept`` applies; see :ref:`co2-cached-fixed-theta`.
 
 The optional ``[sampling]`` table is shared by the supported setups.
 Defaults below apply when an option is omitted; linked fixed-error sampling
@@ -1267,6 +1275,59 @@ through :func:`openghg_inversions.observation_error.resolve_aggregation_error`.
 A custom pipeline that constructs an ``AggregationError`` directly owns the
 completeness, coherence, and numerical covariance guarantees of that object;
 there is no separate public complete-covariance validator.
+
+.. _co2-cached-fixed-theta:
+
+Fixed site amplitudes on the cached route (fixed-θ state sampling)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The same route can hold the OU site amplitudes at supplied values and sample
+only the states. The state-likelihood quadratic is then built once, and no
+amplitude step runs. Most of the cost of the joint sampler is the amplitude
+block, so this is much cheaper. The observed likelihood is the ordinary
+fixed-amplitude fixed-OU distribution, so stored log likelihoods and
+predictive draws keep their meaning. Opt in with
+``cached_state_quadratic = true``; without it, fixed amplitudes keep the
+ordinary PyMC route.
+
+.. code-block:: toml
+
+   [likelihood]
+   kind = "fixed_ou"
+   tau_hours = 5.0
+   cached_state_quadratic = true
+   # Either supply values (a scalar or a site table) ...
+   # fixed_site_amplitudes = { MHD = 0.9, TAC = 2.9 }
+   # ... or summarise a previous run's posterior draws.
+   fixed_site_amplitudes = { path = "previous/posterior.nc", statistic = "median" }
+
+A file table reads ``variable`` (default ``"ou_site_amplitude"``) labelled by
+``ou_site``. By default it reads the ``posterior`` group when the file has
+one, and the root otherwise; set ``group`` to choose another. When the
+variable has ``chain`` and ``draw`` dimensions, ``statistic`` (``"median"``,
+the default, or ``"mean"``) summarises them. Site labels must cover every
+observed site. The file is read when the model is built. In Python, pass
+values, a :class:`~openghg_inversions.inference.fixed_amplitudes.FixedSiteAmplitudeFile`
+or resolved
+:class:`~openghg_inversions.inference.fixed_amplitudes.FixedSiteAmplitudes`
+as ``fixed_site_amplitudes`` to
+:func:`~openghg_inversions.rhime.co2.co2_cached_sigma_runner.build_rhime_co2_cached_sigma`.
+
+The trace records ``algorithm = "cached_ou_fixed_sigma_state_nuts"`` in
+``rhime_actual_inference``. Both that record and ``rhime_model_metadata`` carry
+``ou_site_amplitude_treatment = "fixed"`` and ``ou_site_amplitude_source``. For
+a file, the source holds its resolved path, SHA-256, group, variable,
+statistic and number of summarised draws. The amplitudes are stored in
+``constant_data``.
+
+The posterior is conditional on the supplied amplitudes and does not include
+their uncertainty. Values taken from the joint run's own posterior medians
+reproduce that run closely, but that does not show that a cheaply estimated
+amplitude would. Before using a cheaper amplitude estimate for real runs,
+compare it with joint cached-OU runs on cases chosen in advance (see
+`openghg_inversions#1109 <https://github.com/openghg/openghg_inversions/issues/1109>`_).
+Only the single-channel CO2 recipe supports this mode at present. Linked
+CO2/O2 support will follow the mixed-unit OU and cross-species correlation work.
 
 
 Linked fixed-OU mismatch and cached sampling

@@ -6,6 +6,7 @@ from typing import Any
 
 import xarray as xr
 
+from openghg_inversions.inference.fixed_amplitudes import FixedSiteAmplitudeFile, FixedSiteAmplitudes
 from openghg_inversions.inference.sampling import describe_recorded_sampler
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
@@ -23,16 +24,42 @@ from .co2_preparation import Co2PreparedInputs
 from .co2_runner import annotate_co2_trace, build_co2_from_materialized, materialize_co2_inputs
 
 
+CACHED_STATE_QUADRATIC = "cached_state_quadratic"
+
+
 def uses_cached_ou(model: Mapping[str, Any]) -> bool:
-    """Identify the inferred independent-amplitude fixed-OU target."""
-    return (
-        model.get("likelihood_builder") is add_fixed_ou_gaussian_likelihood
-        and "site_amplitude_prior" in model.get("likelihood_kwargs", {})
+    """Identify the matched cached fixed-OU route.
+
+    Inferred independent amplitudes always use it. Supplied amplitudes use it
+    when ``likelihood_kwargs["cached_state_quadratic"]`` is true (fixed-θ
+    state sampling); otherwise they keep the stock PyMC likelihood.
+    """
+    kwargs = model.get("likelihood_kwargs") or {}
+    return model.get("likelihood_builder") is add_fixed_ou_gaussian_likelihood and (
+        "site_amplitude_prior" in kwargs or bool(kwargs.get(CACHED_STATE_QUADRATIC, False))
     )
+
+
+def uses_fixed_theta_cached_ou(model: Mapping[str, Any]) -> bool:
+    """Identify cached fixed-OU state sampling at supplied site amplitudes."""
+    return uses_cached_ou(model) and "fixed_site_amplitudes" in (model.get("likelihood_kwargs") or {})
 
 
 def validate_co2_inference(model: Mapping[str, Any], sampler: RhimeSampler) -> None:
     """Validate graph-independent sampler policy before loading scientific inputs."""
+    kwargs = model.get("likelihood_kwargs") or {}
+    if kwargs.get(CACHED_STATE_QUADRATIC) and "site_amplitude_prior" in kwargs:
+        raise ValueError(
+            "cached_state_quadratic applies to fixed_site_amplitudes; inferred amplitudes "
+            "always use the cached route."
+        )
+    if kwargs.get(CACHED_STATE_QUADRATIC) and model.get("likelihood_builder") is not add_fixed_ou_gaussian_likelihood:
+        raise ValueError("cached_state_quadratic requires the fixed_ou likelihood.")
+    supplied = kwargs.get("fixed_site_amplitudes")
+    if isinstance(supplied, FixedSiteAmplitudeFile | FixedSiteAmplitudes) and not uses_cached_ou(model):
+        raise ValueError(
+            "Fixed site amplitudes read from a file require cached_state_quadratic=True."
+        )
     if uses_cached_ou(model):
         validate_cached_co2_sampler(sampler)
 
@@ -45,6 +72,7 @@ def build_co2_inference(
         options = dict(model)
         options.pop("likelihood_builder")
         likelihood = dict(options.pop("likelihood_kwargs"))
+        likelihood.pop(CACHED_STATE_QUADRATIC, None)
         cached = build_rhime_co2_cached_sigma(prepared_inputs=prepared, **options, **likelihood)
         return co2_cached_sigma_build_result(cached, prepared), cached
     inputs, priors, boundary = materialize_co2_inputs(
@@ -99,6 +127,10 @@ def describe_co2_inference(recorded: object) -> dict[str, Any]:
         value = recorded.get(name)
         if isinstance(value, int | float) and not isinstance(value, bool) and 0 < value < 1:
             record[name] = value
+    if recorded.get("ou_site_amplitude_treatment") in ("fixed", "sampled"):
+        record["ou_site_amplitude_treatment"] = recorded["ou_site_amplitude_treatment"]
+    if isinstance(recorded.get("ou_site_amplitude_source"), Mapping):
+        record["ou_site_amplitude_source"] = dict(recorded["ou_site_amplitude_source"])
     return record
 
 
@@ -114,10 +146,18 @@ def sample_co2_inference(
             sampler, cached_model=cached, sigma_target_accept=sigma_target_accept,
             state_target_accept=state_target_accept,
         )
-        actual: dict[str, Any] = {**active.describe(), "algorithm": "cached_ou_sigma_nuts",
-                  "sigma_target_accept": sigma_target_accept}
-        if cached.states:
-            actual.update(algorithm="cached_ou_sigma_then_state_nuts", state_target_accept=state_target_accept)
+        if cached.fixed_amplitudes is not None:
+            actual: dict[str, Any] = {
+                **active.describe(), "algorithm": "cached_ou_fixed_sigma_state_nuts",
+                "state_target_accept": state_target_accept,
+                "ou_site_amplitude_treatment": "fixed",
+                "ou_site_amplitude_source": dict(cached.fixed_amplitude_source or {"kind": "supplied"}),
+            }
+        else:
+            actual = {**active.describe(), "algorithm": "cached_ou_sigma_nuts",
+                      "sigma_target_accept": sigma_target_accept}
+            if cached.states:
+                actual.update(algorithm="cached_ou_sigma_then_state_nuts", state_target_accept=state_target_accept)
     else:
         active = sampler
         actual = {**active.describe(), "algorithm": "nuts"}
