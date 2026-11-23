@@ -24,7 +24,7 @@ from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
-from .co2_o2_model import _build_co2_o2_model, _validate_channel_offset_options, bind_linked_outer_flux
+from .co2_o2_model import _build_co2_o2_model, _validate_channel_offset_options
 from .co2_o2_preparation import Co2O2PreparedInputs
 
 _CO2_O2_VARIABLE_ROLES = {
@@ -320,10 +320,7 @@ def build_rhime_co2_o2(
         materialized
     )
     flux_prior = CorrelatedPrior.from_lognormal(prepared.retained_prior)
-    outer = None if outer_flux is None else bind_linked_outer_flux(
-        outer_flux, flux_prior,
-        observations=observations, co2_sensitivity=co2_sensitivity, o2_sensitivity=o2_sensitivity,
-    )
+    outer = None if outer_flux is None else outer_flux.resolve_states(flux_prior)
     model = _build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
@@ -351,7 +348,7 @@ def build_rhime_co2_o2(
         variable_roles["baseline_concentration"] = "baseline_concentration"
     metadata = {**_co2_o2_metadata(prepared, observations=observations), **boundary_metadata}
     if outer is not None:
-        metadata.update(outer["co2"].outputs().metadata)
+        metadata.update(outer.outputs().metadata)
     if tau_hours is not None:
         variable_roles.update(
             {
@@ -418,8 +415,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
             disables a channel's boundary; omitted channels have no boundary
             term, with a warning when the preparation has their transport.
         outer_flux: Optional outer-flux choice for the joint flux state,
-            resolved on the flux prior and bound to each channel's rows with
-            :func:`~openghg_inversions.rhime.co2.co2_o2_model.bind_linked_outer_flux`.
+            resolved once on the flux prior and shared by both channels.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
             with the same meanings as the CO2 offset component. Baseline terms

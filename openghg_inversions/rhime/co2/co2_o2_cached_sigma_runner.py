@@ -21,7 +21,7 @@ from .co2_cached_sigma_runner import (
     _sampler_for_cached_graph,
 )
 from .co2_o2_cached_sigma_model import _build_co2_o2_cached_sigma_model
-from .co2_o2_model import _validate_channel_offset_options, bind_linked_outer_flux
+from .co2_o2_model import _validate_channel_offset_options
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .co2_o2_runner import (
     _CO2_O2_VARIABLE_ROLES,
@@ -91,8 +91,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             have no boundary term, with a warning when the preparation has
             their transport.
         outer_flux: Optional outer-flux choice for the joint flux state,
-            resolved on the flux prior and bound to each channel's rows with
-            :func:`~openghg_inversions.rhime.co2.co2_o2_model.bind_linked_outer_flux`.
+            resolved once on the flux prior and shared by both channels.
         offset_prior: Channel-keyed offset priors in concentration units.
             Channels omitted from this mapping have no offset.
         offset_args: Per-channel per_site, offset_freq, and drop_first options
@@ -142,9 +141,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     site_amplitude_prior = eager_priors["amplitude"]
     observations, fixed, co2, o2, error = materialized
     flux_prior = CorrelatedPrior.from_lognormal(prepared.retained_prior)
-    outer = None if outer_flux is None else bind_linked_outer_flux(
-        outer_flux, flux_prior, observations=observations, co2_sensitivity=co2, o2_sensitivity=o2,
-    )
+    outer = None if outer_flux is None else outer_flux.resolve_states(flux_prior)
     cached = _build_co2_o2_cached_sigma_model(
         observations=observations,
         fixed_prior_contribution=fixed,
@@ -168,7 +165,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         likelihood="joint Gaussian with fixed OU blocks by (species, site)",
     )
     if outer is not None:
-        metadata.update(outer["co2"].outputs().metadata)
+        metadata.update(outer.outputs().metadata)
     roles = dict(_CO2_O2_VARIABLE_ROLES)
     roles.update(
         independent_error="error",
