@@ -745,3 +745,30 @@ def test_gaussian_estimator_builds_with_the_configured_outer_flux(case, double_p
     with pytest.raises(Built):
         co2_inference.sample_co2_inference(prepared, model, sampling.sampler, method="gaussian")
     assert captured["outer_flux"] is outer_flux
+
+
+def test_marginalised_outer_flux_equals_the_jointly_solved_inner_marginal(case, double_precision):
+    """The exact solve with the outer state marginalised equals the inner block of the joint solve."""
+    from openghg_inversions.models.outer_flux import OuterFluxChoice
+
+    prepared, _, params = case
+    inputs = prepared.inv_inputs
+    covariance = inputs.alpha_prior_covariance.copy(data=np.diag(np.diag(inputs.alpha_prior_covariance.values)))
+    inputs = inputs.assign(alpha_prior_covariance=covariance).assign_coords(basis_group=("region", ["inner", "outer"]))
+    prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
+
+    joint, _ = _run_gaussian(prepared, params)
+    marginal, _ = _run_gaussian(prepared, params, outer_flux=OuterFluxChoice("marginalise", ("outer",)))
+    joint_exact = joint["gaussian_posterior"].dataset
+    marginal_exact = marginal["gaussian_posterior"].dataset
+    assert list(marginal_exact.state_label.values) == list(joint_exact.state_label.values)
+    keep = np.array([label != "flux_scaling[1]" for label in joint_exact.state_label.values])
+    np.testing.assert_allclose(marginal_exact.posterior_mean.values[keep], joint_exact.posterior_mean.values[keep], rtol=1e-10)
+    np.testing.assert_allclose(
+        marginal_exact.posterior_covariance.values[np.ix_(keep, keep)], joint_exact.posterior_covariance.values[np.ix_(keep, keep)],
+        rtol=1e-9, atol=1e-13,
+    )
+    # The outer state is held at its prior mean; its prior uncertainty is in the noise, not the state.
+    outer = ~keep
+    np.testing.assert_allclose(marginal_exact.posterior_mean.values[outer], inputs.alpha_prior_mean.values[1])
+    np.testing.assert_allclose(marginal_exact.posterior_covariance.values[np.ix_(outer, outer)], 0.0, atol=1e-15)
