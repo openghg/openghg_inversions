@@ -95,6 +95,16 @@ def prepare_native_co2(
         merged_data.validate_for_preparation(
             species="co2", domain=domain, start_date=start_date, end_date=end_date, split_by_sectors=False,
         )
+    bc_time_method = acquisition.get("bc_time_method", "release_time")
+    if use_bc:
+        # Supplied data must have been prepared with the configured boundary timing.
+        recorded = {site: data.attrs.get("bc_time_method") for site, data in merged_data.site_data.items()}
+        conflicting = sorted(site for site, method in recorded.items() if method not in (None, bc_time_method))
+        if conflicting:
+            raise ValueError(
+                f"Merged data for sites {conflicting} use a different bc_time_method from the "
+                f"configured {bc_time_method!r}; acquire them with the configured boundary timing."
+            )
 
     merged_data.validate_scientific_inputs(
         split_by_sectors=False, use_bc=use_bc, flux_sources=flux_sources,
@@ -146,6 +156,7 @@ def prepare_native_co2(
             "native_prior": asdict(prior),
             "flux_sources": list(flux_sources),
             "basis_algorithm": native.basis.basis_algorithm,
+            "bc_time_method": bc_time_method if use_bc else None,
         }},
     )
     affine = produce_bucket_affine_flux_map(prepared, native_mean, prepared_inputs_id="unsaved")

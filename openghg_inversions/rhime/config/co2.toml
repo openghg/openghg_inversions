@@ -25,6 +25,7 @@ domain = "EUROPE"
 # boundary_reference = 400.0
 # boundary_reference_units = "ppm"
 # boundary_mass_tolerance = 1e-4
+# bc_time_method = "release_time"      # or "mean_age": lag each curtain cell by its mean particle age
 #
 # [prepared_inputs.observations]
 # filters = ["daytime9to5"]

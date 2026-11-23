@@ -81,7 +81,7 @@ _SITE_OPTION_NAMES = frozenset({
 })
 _ACQUISITION_STRING_NAMES = frozenset({
     "bc_store", "obs_store", "footprint_store", "flux_store", "flux_domain", "fp_model", "fp_species",
-    "calibration_scale", "bc_input", "flux_non_finite_check", "boundary_reference_units",
+    "calibration_scale", "bc_input", "flux_non_finite_check", "boundary_reference_units", "bc_time_method",
 })
 _ACQUISITION_OPTION_NAMES = _SITE_OPTION_NAMES | _ACQUISITION_STRING_NAMES | {
     "flux_sources", "surface_transport", "use_bc", "boundary_reference", "boundary_mass_tolerance",
@@ -490,6 +490,7 @@ def _acquisition(value: object) -> dict[str, Any]:
         boundary_reference=result.get("boundary_reference"),
         boundary_reference_units=result.get("boundary_reference_units"),
         boundary_mass_tolerance=result.get("boundary_mass_tolerance"),
+        bc_time_method=result.get("bc_time_method", "release_time"),
     )
     return result
 

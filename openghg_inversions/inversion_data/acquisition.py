@@ -37,8 +37,9 @@ from openghg_inversions.inversion_data.getters import get_flux_data, get_footpri
 from openghg_inversions.inversion_data.scenario import merged_scenario_data
 from openghg_inversions.inversion_data.surface import (
     TransportMode, _attach_surface_provenance, _dataset, _observation_roles,
-    _resolve_surface_observations, _surface_site_responses, _validate_platform,
+    _resolve_surface_observations, _surface_site_responses, _validate_platform, check_bc_time_method,
 )
+from openghg_inversions.inversion_data._boundary import BoundaryTimeMethod, mean_age_history_start
 from openghg_inversions.inversion_data._surface_support import _time_index, required_flux_support
 from openghg_inversions.inversion_data._surface_schema import _validate_surface_forcing, _validate_surface_transport
 
@@ -63,6 +64,7 @@ class AcquisitionFacts:
     use_bc: bool | None = None
     bc_input: str | None = None
     flux_non_finite_check: FluxNonFiniteCheck | None = None
+    bc_time_method: str | None = None
 
 
 @dataclass
@@ -326,6 +328,7 @@ class MergedData:
         boundary_reference: float | None = None,
         boundary_reference_units: str | None = None,
         boundary_mass_tolerance: float | None = None,
+        bc_time_method: BoundaryTimeMethod | None = None,
     ) -> MergedData:
         """Acquire fresh merged data using complete aligned selectors.
 
@@ -343,7 +346,11 @@ class MergedData:
         or centered representation with
         :func:`~openghg_inversions.inversion_data.select_boundary_representation`.
         The ModelScenario route keeps OpenGHG absolute baseline sensitivities
-        with climatology disabled and so supports only ordinary preparation. Resolved
+        with climatology disabled and so supports only ordinary preparation.
+        ``bc_time_method`` (surface route only; default ``"release_time"``)
+        selects boundary timing; ``"mean_age"`` lags each curtain cell by its
+        stored mean particle age. The ModelScenario route has release-time
+        boundaries only and rejects ``"mean_age"``. Resolved
         transport requires time-resolved selectors and complete flux history
         and residual months. Mixed native source axes are rejected until native
         reporting can represent them; supplied-input preparation supports them.
@@ -353,6 +360,11 @@ class MergedData:
                 boundary_reference, boundary_reference_units, boundary_mass_tolerance,
             )):
                 raise ValueError("Boundary reference and mass tolerance apply only with surface_transport.")
+            if bc_time_method not in (None, "release_time"):
+                raise ValueError(
+                    f"bc_time_method={bc_time_method!r} requires surface_transport; the ModelScenario "
+                    "route supports only release-time boundary conditions with the pinned OpenGHG."
+                )
             acquired = _acquire_scenario_data(
                 species=species, site_options=site_options, domain=domain,
                 start_date=start_date, end_date=end_date, flux_sources=flux_sources,
@@ -372,6 +384,7 @@ class MergedData:
                 use_bc=use_bc, bc_input=bc_input, flux_non_finite_check=flux_non_finite_check,
                 boundary_reference=boundary_reference, boundary_reference_units=boundary_reference_units,
                 boundary_mass_tolerance=boundary_mass_tolerance,
+                bc_time_method=bc_time_method or "release_time",
             )
         return cls(
             site_data=acquired.site_data, flux_data=acquired.flux_data,
@@ -516,20 +529,27 @@ def _acquire_scenario_data(
 
 def _get_boundary_data(
     *, use_bc: bool, species: str, domain: str, bc_input: str | None,
-    start_date: str, end_date: str, store: str,
+    start_date: str, end_date: str, store: str, history_start: pd.Timestamp | None = None,
 ) -> tuple[BoundaryConditionsData | None, InputProvenance | None]:
-    """Retrieve optional curtains, retaining the interval governing the requested start."""
+    """Retrieve optional curtains, retaining the interval governing the requested start.
+
+    ``history_start`` extends retrieval back to an earlier required time, such
+    as the earliest mean-age lagged time, still including its governing interval.
+    """
     if not use_bc:
         return None, None
+    earliest = pd.Timestamp(start_date)
+    if history_start is not None:
+        earliest = min(earliest, pd.Timestamp(history_start))
     try:
         catalog = search_bc(
             species=species, domain=domain, bc_input=bc_input,
-            start_date=start_date, end_date=end_date, store=store,
+            start_date=start_date if history_start is None else str(earliest), end_date=end_date, store=store,
         )
-        query_start = pd.Timestamp(start_date)
+        query_start = earliest
         # Label slicing otherwise drops the governing interval, including off-anchor labels.
         for period in catalog.results.get("time_period", pd.Series(dtype=object)).dropna().unique():
-            query_start = min(query_start, pd.Timestamp(start_date) - relative_time_offset(period=period))
+            query_start = min(query_start, earliest - relative_time_offset(period=period))
         selected_uuids = catalog.results.get("uuid", pd.Series(dtype=object)).dropna().tolist()
         selection_kwargs: dict[str, Any] = {"uuid": selected_uuids} if selected_uuids else {}
         boundary = get_bc(
@@ -650,6 +670,7 @@ def check_surface_request(
     boundary_reference: float | None = None,
     boundary_reference_units: str | None = None,
     boundary_mass_tolerance: float | None = None,
+    bc_time_method: BoundaryTimeMethod = "release_time",
 ) -> None:
     """Check surface acquisition options that need no retrieval.
 
@@ -674,6 +695,7 @@ def check_surface_request(
             platform is not None and not is_surface_platform(platform)
         ):
             raise ValueError("Surface acquisition supports only continuous surface platforms.")
+    check_bc_time_method(bc_time_method, use_bc=use_bc)
     if use_bc:
         if boundary_mass_tolerance is None:
             raise ValueError("Surface boundaries require boundary_mass_tolerance.")
@@ -707,6 +729,7 @@ def acquire_surface_data(
     boundary_reference: float | None = None,
     boundary_reference_units: str | None = None,
     boundary_mass_tolerance: float | None = None,
+    bc_time_method: BoundaryTimeMethod = "release_time",
 ) -> MergedData:
     """Acquire surface inputs using retained native releases to plan flux support.
 
@@ -714,7 +737,12 @@ def acquire_surface_data(
     specify exactly one integrated or time-resolved mode per flux source, for
     continuous surface CO2/O2 mole fractions. Boundaries keep centered
     anomaly/mass/reference operands and require the boundary reference, its
-    units and the mass tolerance.
+    units and the mass tolerance. ``bc_time_method="mean_age"`` lags each
+    curtain cell by its stored mean particle age; site footprints must then
+    carry ``mean_age_particles_n/e/s/w``, and boundary retrieval reaches back
+    to the earliest positive-weight lagged time (computing one scalar
+    reduction of each site's ages and weights). The method is recorded in
+    site attributes and acquisition facts.
 
     Retrieve observation/footprint pairs first, then the union of backward
     histories and complete residual months. Missing sites are dropped together
@@ -736,6 +764,7 @@ def acquire_surface_data(
         species=species, site_options=site_options, flux_sources=flux_sources, transport=transport,
         use_bc=use_bc, boundary_reference=boundary_reference,
         boundary_reference_units=boundary_reference_units, boundary_mass_tolerance=boundary_mass_tolerance,
+        bc_time_method=bc_time_method,
     )
     flux_sources = cast(Sequence[str], flux_sources)
 
@@ -763,7 +792,7 @@ def acquire_surface_data(
             _validate_surface_transport(
                 obs_view, footprint_view, {source: footprint_view for source in transport},
                 species=species.lower(), transport=transport, particle_locations=use_bc,
-                observation_variable=primary,
+                observation_variable=primary, particle_ages=use_bc and bc_time_method == "mean_age",
             )
             resolved_sites[i] = _resolve_surface_observations(
                 obs_view, footprint_view, roles=roles, output_units=output_units,
@@ -811,9 +840,13 @@ def acquire_surface_data(
                 "use prepare_surface_site for source-wise supplied-input responses."
             ) from exc
 
+    history_start = None
+    if use_bc and bc_time_method == "mean_age":
+        # Reach back by the largest particle age, not one BC period.
+        history_start = min(mean_age_history_start(native) for _, _, native in resolved_sites.values())
     bc_data, boundary_provenance = _get_boundary_data(
         use_bc=use_bc, species=species, domain=domain, bc_input=bc_input,
-        start_date=start_date, end_date=end_date, store=bc_store,
+        start_date=start_date, end_date=end_date, store=bc_store, history_start=history_start,
     )
     if bc_data is not None and boundary_provenance is not None:
         bc_data = _with_selected_provenance(bc_data, boundary_provenance)
@@ -834,7 +867,7 @@ def acquire_surface_data(
                 aligned_obs, site_fp, native_fp, {source: native_fp for source in transport}, flux_views,
                 species=species.lower(), transport=transport, boundary_view=boundary_view,
                 boundary_reference=boundary_reference, boundary_reference_units=boundary_reference_units,
-                boundary_mass_tolerance=boundary_mass_tolerance,
+                boundary_mass_tolerance=boundary_mass_tolerance, bc_time_method=bc_time_method,
             )
             prepared = _attach_surface_provenance(
                 prepared, site_footprint=footprint, source_footprints={source: footprint for source in transport},
@@ -866,6 +899,7 @@ def acquire_surface_data(
             flux_domain=flux_domain, fp_model=fp_model, fp_species=fp_species,
             calibration_scale=calibration_scale, use_bc=use_bc, bc_input=bc_input,
             flux_non_finite_check=flux_non_finite_check,
+            bc_time_method=bc_time_method if use_bc else None,
         ),
     )
 
