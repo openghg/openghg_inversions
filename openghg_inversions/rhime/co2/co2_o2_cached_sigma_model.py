@@ -43,11 +43,9 @@ from .co2_cached_sigma_model import (
     _site_values,
 )
 from .co2_o2_fixed_ou import linked_fixed_ou_alignment
-from openghg_inversions.models.outer_flux import OuterFlux
+from openghg_inversions.models.outer_flux import OuterStates
 from .co2_o2_model import (
     _add_co2_o2_baseline_components,
-    _centre_linked_outer_flux,
-    _check_linked_outer_flux,
     _gather_co2_o2_sensitivity,
 )
 
@@ -66,7 +64,7 @@ def build_co2_o2_cached_sigma_model(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
-    outer_flux: Mapping[str, OuterFlux] | None = None,
+    outer_flux: OuterStates | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -111,7 +109,7 @@ def build_co2_o2_cached_sigma_model(
         state_activity: Optional labelled policy fixing or activating retained
             states.
         boundary: Resolved boundary component, keyed by channel.
-        outer_flux: Optional outer-region flux option keyed by channel; see
+        outer_flux: Optional outer states shared by both channels; see
             :func:`~openghg_inversions.rhime.co2.co2_o2_model.build_co2_o2_model`.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
@@ -135,11 +133,10 @@ def build_co2_o2_cached_sigma_model(
         ValueError: If channel options, labels, units, activity, covariance,
             positive amplitudes or explicit double precision are invalid.
     """
-    _check_linked_outer_flux(outer_flux, boundary)
     (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd), boundary, outer_flux, priors = (
         dask_compute(*to_dense_tree((
             (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd),
-            dict(boundary or {}), None if outer_flux is None else dict(outer_flux),
+            dict(boundary or {}), outer_flux,
             {"amplitude": site_amplitude_prior, "offset": offset_prior},
         )))
     )
@@ -178,7 +175,7 @@ def _build_co2_o2_cached_sigma_model(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
-    outer_flux: Mapping[str, OuterFlux] | None = None,
+    outer_flux: OuterStates | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -207,14 +204,9 @@ def _build_co2_o2_cached_sigma_model(
     joint = _gather_co2_o2_sensitivity(co2_sensitivity, o2_sensitivity, output_dim=output_dim)
     joint = joint.sel({output_dim: observations[output_dim]})
     prepared_flux = prepare_linear_sensitivity(joint, output_dim=output_dim)
-    _check_linked_outer_flux(outer_flux, boundary)
-    if outer_flux is not None:
-        prepared_flux, fixed_prior_contribution = _centre_linked_outer_flux(
-            prepared_flux, fixed_prior_contribution, observations, outer_flux,
-        )
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
     if outer_flux is not None:
-        activity = outer_flux["co2"].states.fix_states(activity)
+        activity = outer_flux.fix_states(activity)
     prepared_flux, active_design, fixed_flux = _materialize_cached_linear_projection(
         prepared_flux,
         activity,

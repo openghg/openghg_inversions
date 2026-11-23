@@ -698,7 +698,12 @@ def test_fixed_outer_basis_labels_per_source_states(
 def test_configured_outer_flux_selects_fixed_outer_basis_states(
     tmp_path: Path, merged: MergedData, files: dict[str, Path], per_source: bool,
 ) -> None:
-    """``[model.outer_flux]`` builds on a configured fixed-outer preparation without hand-added labels."""
+    """``[model.outer_flux]`` finds the outer states of a configured fixed-outer preparation without hand-added labels.
+
+    The native prior correlates outer and inner states, so holding the outer
+    states at their prior mean while sampling the others would not be the
+    conditional prior; the option rejects it after selecting them.
+    """
     from openghg_inversions.correlated_state import CorrelatedLognormalPrior
     from openghg_inversions.models.outer_flux import OuterFluxChoice
     from openghg_inversions.rhime.co2.inference import build_co2_inference
@@ -707,21 +712,19 @@ def test_configured_outer_flux_selects_fixed_outer_basis_states(
                     else {"sigma": 0.2, "correlation_length": 1.0})
     config = _request({"partition": tmp_path / "unused.nc"} if not per_source else files, native_prior)
     config["prepared_inputs"]["basis"] = _fixed_outer_basis(tmp_path)
-    # The boundary choice also selects the centred representation at preparation;
-    # a level-only additive boundary needs no centring weights.
-    config["model"] = {
-        "boundary": {"type": "additive", "anomaly_scale": 0.0,
-                     "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 1.0}},
-        "outer_flux": {"mode": "multiplicative", "outer_groups": ["outer"]},
-    }
+    config["model"] = {"outer_flux": {"mode": "fixed", "outer_groups": ["outer"]}}
     prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, "outer_flux")).prepared
     choices = Co2ModelConfig.from_params(load_co2_params(params=config)).model_arguments()
-    built, _ = build_co2_inference(prepared, choices)
-    assert built.output_contract.metadata["outer_flux_mode"] == "multiplicative"
+    assert choices["outer_flux"] == OuterFluxChoice("fixed", ("outer",))
 
     inputs = prepared.inv_inputs
+    outer = inputs.alpha_prior_mean.basis_group.values == "outer"
+    assert int(outer.sum()) == (len(SOURCES) if per_source else 1)
+    covariance = inputs.alpha_prior_covariance.values
+    assert np.any(covariance[np.ix_(outer, ~outer)] != 0)
     prior = CorrelatedLognormalPrior(inputs.alpha_prior_mean, inputs.alpha_prior_covariance,
                                      covariance_dim=str(inputs.alpha_prior_covariance.dims[-1]))
-    states = OuterFluxChoice("multiplicative", ("outer",)).resolve_states(prior)
-    np.testing.assert_array_equal(states.sampled.values, inputs.alpha_prior_mean.basis_group.values == "outer")
-    assert int(states.sampled.sum()) == (len(SOURCES) if per_source else 1)
+    with pytest.raises(ValueError, match="zero prior covariance"):
+        OuterFluxChoice("fixed", ("outer",)).resolve_states(prior)
+    with pytest.raises(ValueError, match="zero prior covariance"):
+        build_co2_inference(prepared, choices)

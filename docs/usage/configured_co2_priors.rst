@@ -71,21 +71,18 @@ both channels:
 
 .. code-block:: toml
 
-   [model.boundary]
-   type = "anomaly_scaling"
-   scale_sd = 0.8
-   mean_shift_prior = { pdf = "normal", mu = 0.0, sigma = 2.0 }
-
    [model.outer_flux]
-   mode = "multiplicative"   # or "fixed"
+   mode = "fixed"
    outer_groups = ["outer"]
-   fixed_sources = ["ocean"]
+   fixed_sources = ["ocean"]   # optional
 
-``outer_groups`` selects outer states by the ``basis_group`` coordinate of the
-prepared retained prior, and ``fixed_sources`` holds those with a matching
-``source`` coordinate at their prior mean. Model construction rejects the
-option when the boundary has no ``mean_shift_prior`` (in each channel for
-linked runs), or when the prepared state lacks those coordinates.
+``"fixed"`` is the only mode. It holds the selected outer states at their
+prior mean with zero uncertainty, a what-if for a known outer prior rather
+than a way to leave the outer flux unsampled. ``outer_groups`` selects outer
+states by the ``basis_group`` coordinate of the prepared retained prior;
+``fixed_sources``, when given, holds only those with a matching ``source``
+coordinate and leaves the other outer states sampled. Model construction
+rejects the option when the prepared state lacks those coordinates.
 
 Preparation and saved preparations keep these coordinates. For ordinary CO2
 they come from the retained-state labels of the coherent reduction's
@@ -94,6 +91,6 @@ states ``"outer"`` and ``"inner"`` (see :doc:`grouped_basis_layout`), and
 per-source native priors label each state's ``source``. For linked CO2/O2 they
 come from the retained prior passed to
 :func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs`, which always
-carries ``source``; preparation does not add ``basis_group`` there. Additive
-outer patterns are available from Python only. Run metadata records the
-outer-flux mode and selectors beside the boundary metadata.
+carries ``source``; preparation does not add ``basis_group`` there. Run
+metadata records the outer-flux mode and selectors beside the boundary
+metadata.
