@@ -67,7 +67,7 @@ class OuterFluxChoice:
     Attributes:
         mode: ``"fixed"`` holds the selected outer states at their prior mean
             with zero uncertainty. ``"marginalise"`` also holds them at their
-            prior mean and adds :math:`H_O \Sigma_{OO} H_O^T` to the error
+            prior mean and adds :math:`H_O \\Sigma_{OO} H_O^T` to the error
             covariance, keeping their prior uncertainty without sampling them.
         outer_groups: ``basis_group`` labels of the outer states.
         fixed_sources: ``source`` labels of the outer states to hold (or
