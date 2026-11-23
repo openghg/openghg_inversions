@@ -1068,8 +1068,8 @@ def prepare_active_correlated_prior(
     """Subset a correlated prior to its active states before graph construction.
 
     The active prior keeps each active state's marginal. Its latent
-    correlation is the active block of the full one, because the copula
-    matches covariances pair by pair. Pass the result to
+    correlation is the active block of the full one (repaired, if the full
+    prior was), so it is the full prior's marginal on the active states. Pass the result to
     ``_add_prepared_correlated_lognormal_state_with_activity``.
 
     Args:
@@ -1097,10 +1097,7 @@ def prepare_active_correlated_prior(
     state_dim = activity.state_dim
     active_mean = _active_state_array(mean, state_dim, active_indices, var_name)
     active_marginal = _active_state_array(prior.marginal, state_dim, active_indices, var_name)
-    active_covariance = prior.arithmetic_covariance.isel(
-        {state_dim: active_indices, prior.covariance_dim: active_indices}
-    ).values
-    return CorrelatedPrior(active_mean, active_covariance, marginal=active_marginal)
+    return prior._restrict(active_mean, active_marginal, active_indices)
 
 
 def add_sigma_component(

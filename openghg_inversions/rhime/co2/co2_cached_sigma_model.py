@@ -74,6 +74,8 @@ class Co2CachedSigmaModel:
     ``initial_values`` contains untransformed sampling overrides or PyMC
     initialization strategies, lifted from graph metadata. The matched runner
     resolves them separately for construction and each sampling chain.
+    ``prior_metadata`` describes the retained prior (marginals and any
+    latent-correlation repair) when the runner supplies it.
     """
 
     model: pm.Model
@@ -86,6 +88,7 @@ class Co2CachedSigmaModel:
     cached_state_logp: TensorVariable
     initial_values: dict[str, Any]
     boundary: Bound | None = None
+    prior_metadata: Mapping[str, Any] | None = None
 
 
 def _materialize_cached_linear_projection(

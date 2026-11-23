@@ -53,7 +53,7 @@ from openghg_inversions.sigma import SigmaAlignment
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
 from .co2_model import _build_co2_model, _normalise_offset_args
-from .co2_preparation import ALPHA_PRIOR_MARGINAL, Co2PreparedInputs
+from .co2_preparation import ALPHA_PRIOR_MARGINAL, Co2PreparedInputs, retained_prior_options
 
 _CO2_SCIENTIFIC_INPUT_NAMES = (
     "H",
@@ -543,9 +543,7 @@ def build_co2_from_materialized(
     retained_prior = CorrelatedPrior(
         model_inputs["alpha_prior_mean"],
         prior_covariance,
-        marginal=(
-            model_inputs[ALPHA_PRIOR_MARGINAL] if ALPHA_PRIOR_MARGINAL in model_inputs else "lognormal"
-        ),
+        **retained_prior_options(model_inputs),
         covariance_dim=str(prior_covariance.dims[-1]),
     )
     model = _build_co2_model(
@@ -599,7 +597,7 @@ def build_co2_from_materialized(
             metadata={
                 "recipe": "co2",
                 "kind": "builtin",
-                "prior": "correlated arithmetic-moment lognormal",
+                **retained_prior.metadata(),
                 "no_model_error": no_model_error,
                 "use_bc": boundary is not None,
                 **(boundary_outputs.metadata if boundary_outputs is not None else {"boundary_formulation": None}),
