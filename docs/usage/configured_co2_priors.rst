@@ -72,15 +72,17 @@ both channels:
 .. code-block:: toml
 
    [model.outer_flux]
-   mode = "fixed"
+   mode = "marginalise"        # or "fixed"
    outer_groups = ["outer"]
    fixed_sources = ["ocean"]   # optional
 
-``"fixed"`` is the only mode. It holds the selected outer states at their
-prior mean with zero uncertainty, a what-if for a known outer prior rather
-than a way to leave the outer flux unsampled. ``outer_groups`` selects outer
+Both modes hold the selected outer states at their prior mean.
+``"marginalise"`` keeps their prior uncertainty by adding
+:math:`H_O\Sigma_{OO}H_O^T` to the fixed aggregation-error covariance;
+``"fixed"`` drops it, a what-if for a known outer prior rather than a way to
+leave the outer flux unsampled. ``outer_groups`` selects outer
 states by the ``basis_group`` coordinate of the prepared retained prior;
-``fixed_sources``, when given, holds only those with a matching ``source``
+``fixed_sources``, when given, selects only those with a matching ``source``
 coordinate and leaves the other outer states sampled. Model construction
 rejects the option when the prepared state lacks those coordinates.
 

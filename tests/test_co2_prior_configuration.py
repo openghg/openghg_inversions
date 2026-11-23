@@ -186,14 +186,15 @@ def test_configured_outer_flux_matches_python_option(cached):
     request = {
         "model": {
             "boundary": {"type": "anomaly_scaling", "scale_sd": 0.3, "mean_shift_prior": mean_shift_prior},
-            "outer_flux": {"mode": "fixed", "outer_groups": ["outer"]},
+            "outer_flux": {"mode": "marginalise", "outer_groups": ["outer"]},
         },
         "likelihood": likelihood,
     }
     choices = Co2ModelConfig.from_params(load_co2_params(params=request)).model_arguments()
-    assert choices["outer_flux"] == OuterFluxChoice("fixed", ("outer",))
+    assert choices["outer_flux"] == OuterFluxChoice("marginalise", ("outer",))
     built, _ = build_co2_inference(prepared, choices)
-    assert json.loads(json.dumps(built.output_contract.metadata))["outer_flux_mode"] == "fixed"
+    metadata = json.loads(json.dumps(built.output_contract.metadata))
+    assert metadata["outer_flux_mode"] == "marginalise" and metadata["outer_marginal_rank"] == 1
 
     prior = CorrelatedPrior(inv.alpha_prior_mean, inv.alpha_prior_covariance, covariance_dim="region_cov")
     expected = build_co2_model(
@@ -204,7 +205,7 @@ def test_configured_outer_flux_matches_python_option(cached):
         observation_error=inv.mf_error,
         aggregation_error=resolve_aggregation_error(inv, prepared.aggregation_error_mode),
         boundary=AnomalyScalingChoice(mean_shift_prior, 0.3).bind(inv.mf, RawCenteredSensitivity.validate(inv)),
-        outer_flux=OuterFluxChoice("fixed", ("outer",)).resolve_states(prior),
+        outer_flux=OuterFluxChoice("marginalise", ("outer",)).resolve_states(prior),
         **(
             {"likelihood_builder": add_fixed_ou_gaussian_likelihood,
              "likelihood_kwargs": {k: v for k, v in likelihood.items() if k != "kind"}}
@@ -273,7 +274,7 @@ def test_linked_configured_outer_flux_matches_python_option(monkeypatch, cached)
 @pytest.mark.parametrize(
     "outer, match",
     [
-        ({"mode": "multiplicative", "outer_groups": ["outer"]}, 'must be "fixed"'),
+        ({"mode": "multiplicative", "outer_groups": ["outer"]}, 'must be "fixed" or "marginalise"'),
         ({"mode": "fixed"}, "outer_groups"),
         ({"mode": "fixed", "outer_groups": "outer"}, "list of strings"),
         ({"mode": "fixed", "outer_groups": ["outer"], "level_sd": 1.0}, "Unknown"),
@@ -334,14 +335,14 @@ def test_outer_flux_selectors_survive_linked_preparation_and_saving():
 def test_toml_outer_flux_choice_is_the_python_choice():
     request = tomllib.loads("""
         [model.outer_flux]
-        mode = "fixed"
+        mode = "marginalise"
         outer_groups = ["outer"]
         fixed_sources = ["ocean"]
         [likelihood]
         kind = "additive_sigma"
     """)
     config = Co2ModelConfig.from_params(load_co2_params(params=request))
-    assert config.outer_flux == OuterFluxChoice("fixed", ("outer",), ("ocean",))
+    assert config.outer_flux == OuterFluxChoice("marginalise", ("outer",), ("ocean",))
 
 
 @pytest.mark.parametrize("request_kind", ["params_file", "config_file"])

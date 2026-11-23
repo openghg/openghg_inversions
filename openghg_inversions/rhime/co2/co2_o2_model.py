@@ -346,8 +346,10 @@ def build_co2_o2_model(
             states.
         boundary: Resolved boundary component, keyed by channel.
         outer_flux: Optional outer states resolved on ``retained_prior``,
-            shared by both channels. Its fixed outer states are held at their
-            prior mean after joint exact-zero pruning. See
+            shared by both channels. Its selected outer states are held at
+            their prior mean after joint exact-zero pruning; in
+            ``"marginalise"`` mode their prior covariance, through the joint
+            sensitivity, is added to ``aggregation_error``. See
             :doc:`/usage/atmospheric_baseline`.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
@@ -436,6 +438,7 @@ def _build_co2_o2_model(
     activity = resolve_state_activity(prepared_sensitivity.removed, state_activity)
     if outer_flux is not None:
         activity = outer_flux.fix_states(activity)
+        aggregation_error = outer_flux.add_marginal_error(joint_sensitivity, aggregation_error, output_dim=output_dim)
 
     with registered_model() as model:
         state = add_correlated_state_with_activity(

@@ -57,10 +57,12 @@ output_format = "basic"
 # channels share one calendar.
 
 # Hold outer-region flux states of the joint flux state at their prior mean,
-# outside channels (see docs/usage/atmospheric_baseline.rst). The retained
+# outside channels (see docs/usage/atmospheric_baseline.rst). "marginalise"
+# adds their prior uncertainty to the joint error covariance across both
+# channels; "fixed" drops it. The retained
 # prior given to preparation must carry basis_group labels; preparation keeps
 # them but does not add them (issue #1094).
 # [outer_flux]
-# mode = "fixed"
+# mode = "marginalise"
 # outer_groups = ["outer"]
-# fixed_sources = ["ocean"]   # optional: hold only these outer sources
+# fixed_sources = ["ocean"]   # optional: select only these outer sources

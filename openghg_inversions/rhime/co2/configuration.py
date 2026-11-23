@@ -1082,13 +1082,13 @@ def _strings(value: object, path: str) -> tuple[str, ...]:
 def _outer_flux_choice(value: object, path: str) -> OuterFluxChoice:
     """Resolve one ``outer_flux`` table into an outer-flux choice.
 
-    Only the ``"fixed"`` mode exists.
+    The modes are ``"fixed"`` and ``"marginalise"``.
     """
     options = _table(value, path)
-    modes: dict[str, OuterMode] = {"fixed": "fixed"}
+    modes: dict[str, OuterMode] = {"fixed": "fixed", "marginalise": "marginalise"}
     mode = _string(_take(options, "mode", path), f"{path}.mode")
     if mode not in modes:
-        raise ValueError(f'{path}.mode must be "fixed", not {mode!r}.')
+        raise ValueError(f'{path}.mode must be "fixed" or "marginalise", not {mode!r}.')
     outer_groups = _strings(_take(options, "outer_groups", path), f"{path}.outer_groups")
     fixed_sources = _strings(options.pop("fixed_sources", []), f"{path}.fixed_sources")
     _reject_unknown(options, path)

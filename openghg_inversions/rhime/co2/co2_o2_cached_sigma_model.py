@@ -207,6 +207,7 @@ def _build_co2_o2_cached_sigma_model(
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
     if outer_flux is not None:
         activity = outer_flux.fix_states(activity)
+        aggregation_error = outer_flux.add_marginal_error(joint, aggregation_error, output_dim=output_dim)
     prepared_flux, active_design, fixed_flux = _materialize_cached_linear_projection(
         prepared_flux,
         activity,

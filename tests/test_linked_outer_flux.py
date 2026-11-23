@@ -8,7 +8,7 @@ import pytest
 from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.rhime.co2.co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
-from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
+from openghg_inversions.rhime.co2.co2_o2_model import _gather_co2_o2_sensitivity, build_co2_o2_model
 from test_co2_o2_fixed_ou import _prepared
 from test_rhime_co2_o2 import _independent_error
 
@@ -66,8 +66,9 @@ def test_fixed_outer_states_are_held_in_the_joint_state():
     np.testing.assert_allclose(prediction, base.fixed_prior_contribution.values + raw, atol=1e-8)
 
 
-def test_ordinary_and_cached_linked_models_have_the_same_density():
-    _, _, inputs = case()
+@pytest.mark.parametrize("mode", ["fixed", "marginalise"])
+def test_ordinary_and_cached_linked_models_have_the_same_density(mode):
+    _, _, inputs = case(OuterFluxChoice(mode, ("outer",)))
     ordinary = build_co2_o2_model(**inputs, **NOISE)
     cached = build_co2_o2_cached_sigma_model(**inputs, **NOISE)
     point = ordinary.initial_point()
@@ -100,3 +101,25 @@ def test_fixed_sources_hold_only_matching_outer_states():
     np.testing.assert_array_equal(inputs["outer_flux"].fixed, held)
     model = build_co2_o2_model(**inputs, **NOISE)
     assert model.initial_point()["flux_scaling_active_latent"].shape == (int((~held).sum()),)
+
+
+def test_marginalised_linked_error_spans_both_channels():
+    """One joint H_O Sigma_OO H_O^T term covers the CO2 and O2 rows, including their cross-covariance."""
+    base, prior, inputs = case(OuterFluxChoice("marginalise", ("outer",)))
+    states = inputs["outer_flux"]
+    joint = _gather_co2_o2_sensitivity(base.co2_sensitivity, base.o2_sensitivity, output_dim="observation")
+    joint = joint.sel(observation=base.observations["observation"])
+    widened = states.add_marginal_error(joint, base.aggregation_error, output_dim="observation")
+    species = base.observations.indexes["observation"].get_level_values("species")
+    added = states.marginal_error_factor(joint, output_dim="observation").values
+    assert added.shape[1] == states.prior_factor.shape[1] > 0
+    assert np.abs(added[species == "co2"] @ added[species == "o2"].T).max() > 0
+    fixed_choice = OuterFluxChoice("fixed", ("outer",))
+    explicit = build_co2_o2_model(
+        **{**inputs, "aggregation_error": widened, "outer_flux": fixed_choice.resolve_states(prior)}, **NOISE,
+    )
+    marginalised = build_co2_o2_model(**inputs, **NOISE)
+    point = marginalised.initial_point()
+    for name in point:
+        point[name] = np.linspace(0.1, 0.3, point[name].size).reshape(point[name].shape)
+    np.testing.assert_allclose(marginalised.compile_logp()(point), explicit.compile_logp()(point), rtol=1e-12)
