@@ -337,8 +337,7 @@ A Gaussian run logs a warning (Python ``logging``, which reaches stderr when
 the application configures no logging handlers, as the ``rhime`` CLI does not)
 that the LogNormal flux prior was replaced by its moment-matched Normal, and
 records ``state_prior_substitution = "lognormal→normal (moment-matched)"`` in
-``rhime_actual_inference`` and the ``gaussian_posterior`` attributes. A
-calibrated biosphere prior changes only the covariance of that Normal prior. An
+``rhime_actual_inference`` and the ``gaussian_posterior`` attributes. An
 empirical-Bayes run logs one more warning with the mode and the per-site sigma.
 
 The estimator refuses what it cannot solve exactly: an inferred model-error

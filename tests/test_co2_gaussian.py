@@ -16,12 +16,11 @@ import scipy.linalg as sl
 import xarray as xr
 
 from examples.co2_handoffs import configuration, synthetic_inputs
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.rhime.co2 import execution, handoffs
 from openghg_inversions.rhime.co2 import inference as co2_inference
 from openghg_inversions.inference.gls import paige_gls, psd_factor
 from openghg_inversions.rhime.co2 import co2_gaussian
-from openghg_inversions.rhime.co2.co2_gaussian import GAUSSIAN_ALGORITHM, check_co2_gaussian_model
+from openghg_inversions.rhime.co2.co2_gaussian import GAUSSIAN_ALGORITHM
 from openghg_inversions.rhime.co2.co2_outputs import validate_co2_trace
 from openghg_inversions.rhime.co2.configuration import Co2ModelConfig, _resolve_co2_sampling
 from openghg_inversions.rhime.co2.model_mismatch import (
@@ -167,46 +166,6 @@ def test_default_sampling_stays_nuts(case, monkeypatch):
     monkeypatch.setattr(co2_inference, "annotate_co2_inference", lambda trace, *args: trace)
     _, actual = co2_inference.sample_co2_inference(None, {}, default.sampler)
     assert actual["algorithm"] == "nuts"
-
-
-def test_a_partial_biosphere_calibration_passes_the_configuration_check():
-    # A calibration changes only moments; the estimator substitutes Normal marginals for every state.
-    biosphere = SimpleNamespace(data=xr.Dataset({"biosphere": ("region", [True, False])}))
-    check_co2_gaussian_model({"no_model_error": True, "biosphere_prior": biosphere})
-
-
-def test_calibrated_gaussian_biosphere_prior_is_used_and_recorded(case, double_precision):
-    prepared, _, params = case
-    inputs = prepared.inv_inputs
-    covariance = inputs.alpha_prior_covariance * 1.5
-    calibration = xr.Dataset(
-        {"baseline_mean": inputs.alpha_prior_mean, "baseline_covariance": inputs.alpha_prior_covariance,
-         "covariance": covariance, "biosphere": xr.ones_like(inputs.alpha_prior_mean, dtype=bool)},
-        attrs={"biosphere_prior_schema": "openghg_inversions.biosphere_prior/v1"},
-    )
-    baseline = CorrelatedLognormalPrior(inputs.alpha_prior_mean, inputs.alpha_prior_covariance,
-                                        covariance_dim=str(inputs.alpha_prior_covariance.dims[-1]))
-    biosphere = SimpleNamespace(data=calibration, to_dataset=lambda: calibration, baseline=baseline)
-    model = {**Co2ModelConfig.from_params(params).model_arguments(), "biosphere_prior": biosphere}
-    sampling = _resolve_co2_sampling(params, model=model)
-    trace, actual = co2_inference.sample_co2_inference(prepared, model, sampling.sampler, method="gaussian")
-    exact = trace["gaussian_posterior"].dataset
-    assert actual["state_prior_substitution"] == exact.attrs["state_prior_substitution"]
-    np.testing.assert_allclose(exact.prior_covariance.values[:2, :2], covariance.values, rtol=1e-12)
-    assert json.loads(trace.attrs["rhime_model_metadata"])["prior"] == "correlated arithmetic-moment gaussian"
-    assert "biosphere_prior" in trace.children
-    altered = calibration.assign(baseline_covariance=covariance)
-    biosphere = SimpleNamespace(data=altered, to_dataset=lambda: altered, baseline=baseline)
-    with pytest.raises(ValueError, match="baseline arithmetic moments"):
-        co2_inference.sample_co2_inference(prepared, {**model, "biosphere_prior": biosphere}, sampling.sampler,
-                                           method="gaussian")
-    column_dim = str(covariance.dims[1])
-    tokens = [json.dumps(label) for label in inputs.alpha_prior_mean.indexes[covariance.dims[0]].tolist()[::-1]]
-    reversed_columns = calibration.assign_coords({f"{column_dim}_label": (column_dim, tokens)})
-    biosphere = SimpleNamespace(data=reversed_columns, to_dataset=lambda: reversed_columns, baseline=baseline)
-    with pytest.raises(ValueError, match="column identity"):
-        co2_inference.sample_co2_inference(prepared, {**model, "biosphere_prior": biosphere}, sampling.sampler,
-                                           method="gaussian")
 
 
 def _dense_inputs(aggregation, error):

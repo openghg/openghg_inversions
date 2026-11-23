@@ -40,7 +40,6 @@ from numpy.typing import NDArray
 import pytensor
 import xarray as xr
 
-from openghg_inversions.biosphere_prior import BiospherePrior
 from openghg_inversions.inference.exact_gaussian import (
     affine_maps, exact_gaussian_trace, normal_variables, solve_linear_gaussian_model,
 )
@@ -175,19 +174,11 @@ def check_co2_gaussian_model(model: Mapping[str, Any]) -> None:
         _require_normal(boundary.mean_prior, "boundary mean-shift")
 
 
-def _gaussian_state_prior(
-    inputs: xr.Dataset, biosphere: BiospherePrior | None,
-) -> tuple[GaussianStatePrior, dict[str, Any]]:
+def _gaussian_state_prior(inputs: xr.Dataset) -> tuple[GaussianStatePrior, dict[str, Any]]:
     """Return the Gaussian retained-state moments and their PSD factor record."""
     mean = inputs["alpha_prior_mean"]
     covariance = inputs["alpha_prior_covariance"]
     description = "correlated arithmetic-moment gaussian"
-    if biosphere is not None:
-        baseline_mean, _ = xr.align(biosphere.data.baseline_mean, mean, join="exact")
-        if not (np.array_equal(baseline_mean.values, mean.values)
-                and np.array_equal(biosphere.data.baseline_covariance.values, covariance.values)):
-            raise ValueError("Biosphere calibration must use this preparation's baseline arithmetic moments.")
-        covariance = biosphere.data.covariance
     state_dim = str(mean.dims[0])
     factor = psd_factor(np.asarray(covariance.values, dtype=np.float64))
     labelled = xr.DataArray(
@@ -438,14 +429,11 @@ def sample_co2_gaussian(
         offset_prior=model.get("offset_prior"),
         offset_args=model.get("offset_args"),
     )
-    biosphere = model.get("biosphere_prior")
-    gaussian_prior, prior_record = _gaussian_state_prior(inputs, biosphere)
-    # A biosphere calibration changes only the covariance; the marginals stay LogNormal.
+    gaussian_prior, prior_record = _gaussian_state_prior(inputs)
     logger.warning(
         'method = "gaussian" replaces the correlated LogNormal flux prior with the Normal prior of '
         "the same arithmetic moments (%s): %s.",
-        "the calibrated biosphere covariance" if biosphere is not None
-        else "alpha_prior_mean, alpha_prior_covariance",
+        "alpha_prior_mean, alpha_prior_covariance",
         STATE_PRIOR_SUBSTITUTION,
     )
 
@@ -454,7 +442,7 @@ def sample_co2_gaussian(
             model_inputs, prepared_inputs=prepared, priors=priors, boundary=boundary,
             fixed_model_mismatch=fixed, no_model_error=True,
             offset_prior=model.get("offset_prior"), offset_args=model.get("offset_args"),
-            biosphere_prior=biosphere, outer_flux=model.get("outer_flux"), gaussian_prior=gaussian_prior,
+            outer_flux=model.get("outer_flux"), gaussian_prior=gaussian_prior,
         )
 
     configured = (sampler.sample_kwargs or {}).get("random_seed")
@@ -537,7 +525,6 @@ def sample_co2_gaussian(
     )
     trace = annotate_co2_trace(
         trace, built, concentration_units=prepared.inv_inputs["mf"].attrs.get("units"),
-        biosphere_prior=biosphere,
     )
     diagnostics = posterior.diagnostics.to_dict()
     prior_draws = (
@@ -562,8 +549,7 @@ def sample_co2_gaussian(
     }
     attrs: dict[str, Any] = {
         "algorithm": GAUSSIAN_ALGORITHM, "draws": sampler.draws, "seed": seed,
-        "state_prior": "gaussian with the prepared arithmetic moments" if biosphere is None
-        else "gaussian with the calibrated biosphere arithmetic moments",
+        "state_prior": "gaussian with the prepared arithmetic moments",
         "gls_diagnostics": json.dumps(diagnostics, sort_keys=True),
         "flux_prior_psd_factor": json.dumps(prior_record, sort_keys=True),
         "noise_factor": json.dumps(noise_record, sort_keys=True),

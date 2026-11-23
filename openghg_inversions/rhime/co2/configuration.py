@@ -122,7 +122,6 @@ _MODEL_SECTION_OPTION_NAMES = {
     "boundary.prior": _PRIOR_OPTION_NAMES,
     "offset": frozenset({"prior", "frequency", "per_site", "drop_first"}),
     "offset.prior": _PRIOR_OPTION_NAMES,
-    "biosphere": frozenset({"path"}),
     "outer_flux": frozenset({"mode", "outer_groups", "fixed_sources"}),
 }
 
@@ -265,7 +264,7 @@ def _validate_co2_option_names(*requests: Mapping[str, object]) -> None:
         "prepared_inputs.basis": _BASIS_OPTION_NAMES,
         "prepared_inputs.native_prior": _NATIVE_PRIOR_OPTION_NAMES | _MULTISOURCE_NATIVE_PRIOR_OPTION_NAMES,
         "prepared_inputs.native_prior.calibration": _NATIVE_CALIBRATION_OPTION_NAMES,
-        "model": frozenset({"boundary", "offset", "biosphere", "outer_flux"}),
+        "model": frozenset({"boundary", "offset", "outer_flux"}),
         **{f"model.{path}": names for path, names in _MODEL_SECTION_OPTION_NAMES.items()},
         "likelihood": _LIKELIHOOD_OPTION_NAMES,
         "likelihood.sigma_prior": _PRIOR_OPTION_NAMES,
@@ -1063,11 +1062,6 @@ def _model(value: object, path: str = "model") -> dict[str, Any]:
     """
     options = _table(value, path)
     result: dict[str, Any] = {}
-    if "biosphere" in options:
-        biosphere_path = f"{path}.biosphere"
-        biosphere = _table(options.pop("biosphere"), biosphere_path)
-        result["biosphere_prior_path"] = _path(_take(biosphere, "path", biosphere_path), f"{biosphere_path}.path")
-        _reject_unknown(biosphere, biosphere_path)
     if "boundary" in options:
         result["boundary"] = _boundary_choice(_table(options.pop("boundary"), f"{path}.boundary"), f"{path}.boundary")
     if "outer_flux" in options:
@@ -1264,7 +1258,6 @@ class Co2ModelConfig:
     fixed_model_mismatch: float | Mapping[str, float] | EmpiricalBayesMismatch | None = None
     likelihood_builder: Callable[..., Any] | None = None
     likelihood_kwargs: Mapping[str, Any] | None = None
-    biosphere_prior_path: Path | None = None
     outer_flux: OuterFluxChoice | None = None
 
     def __post_init__(self) -> None:
@@ -1291,22 +1284,13 @@ class Co2ModelConfig:
         return {"likelihood_builder": self.likelihood_builder, "likelihood_kwargs": self.likelihood_kwargs or {}}
 
     def model_arguments(self) -> dict[str, Any]:
-        """Bind these choices as keywords, loading a selected biosphere prior.
-
-        Call after output preflight: this opens the calibrated prior artifact.
-        """
-        from .prior_configuration import load_biosphere_prior
-
-        result = {item.name: getattr(self, item.name) for item in fields(self)
-                  if item.name != "biosphere_prior_path" and getattr(self, item.name) is not None}
-        if self.biosphere_prior_path is not None:
-            result["biosphere_prior"] = load_biosphere_prior(self.biosphere_prior_path)
-        return result
+        """Bind these choices as keywords at the ordinary scientific boundary."""
+        return {item.name: getattr(self, item.name) for item in fields(self) if getattr(self, item.name) is not None}
 
     def artifact_paths(self) -> tuple[Path, ...]:
-        """Identify the calibrated prior and likelihood artifacts consumed during construction."""
+        """Identify the likelihood artifacts consumed during construction."""
         eigenbasis = (self.likelihood_kwargs or {}).get("eigenbasis_path")
-        return tuple(Path(path).resolve() for path in (self.biosphere_prior_path, eigenbasis) if path is not None)
+        return () if eigenbasis is None else (Path(eigenbasis).resolve(),)
 
 
 # NUTS-only sampling options, refused with the exact Gaussian estimator.

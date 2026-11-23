@@ -1,11 +1,10 @@
-Configured CO2 priors and saved calibration
-===========================================
+Configured CO2 priors
+=====================
 
-Use this workflow to configure :doc:`boundary_correction_structures`, a saved
-:doc:`biosphere_prior` calibration or the outer-flux option of
-:doc:`atmospheric_baseline`. Boundary structures and the outer-flux option are
-choices bound to the prepared inputs at model construction; only the biosphere
-calibration is resolved once and saved. Existing model defaults are unchanged. These APIs require the
+Use this workflow to configure :doc:`boundary_correction_structures` or the
+outer-flux option of :doc:`atmospheric_baseline`. Both are choices bound to
+the prepared inputs at model construction; nothing is prepared or saved
+separately. Existing model defaults are unchanged. These APIs require the
 package's supported Python 3.12 or 3.13 runtime.
 
 .. _co2-configured-boundary-structures:
@@ -49,59 +48,18 @@ The boundary is bound to the prepared centered operands of each run; nothing
 is prepared or saved separately, and the trace records the options and the
 arrays the model used.
 
-Calibrate a biosphere prior once
---------------------------------
-
-A biosphere calibration is a sensitivity intervention, prepared and saved once
-and then loaded by path. ``BiospherePriorConfig.from_params(table)`` requires
-exactly one policy: positive ``residual_sd_multiplier``, ``target_residual_sd`` or
-``target_gross_sd``. Absolute targets are value/units tables in compatible
-flux units. The gross target is marginal, including explained variance;
-infeasible targets fail at calibration. There is no default shrinkage.
-
-Pass the original retained prior and the labelled boolean ``biosphere``
-selector, ``weights`` and ``reference`` to ``prepare``. Labels have the
-:doc:`biosphere_prior` contracts: no source-name or positional pairing is
-inferred. Calibration is an explicit eager step for the small retained
-covariance.
-
-``save(prepared, new_path)`` refuses an existing destination and uses the
-trace MultiIndex codec with a ``biosphere_prior`` group; ``load_biosphere_prior``
-reopens it. The saved calibration includes original moments, exact state
-labels, selector, reporting functionals, resulting covariance, residual weights
-and the resolved policy. Reload validates them and does not resolve the policy
-again or use current inputs or selected subsets. The model samples the
-calibrated covariance with the retained prior's marginal families.
-
-Select a saved calibration for ordinary or linked inference
------------------------------------------------------------
-
-The CO2 TOML/JSON/Python model owner accepts:
-
-.. code-block:: toml
-
-   [model.biosphere]
-   path = "/path/to/biosphere.nc"
+Protected inputs and outputs
+----------------------------
 
 ``Co2ModelConfig.from_params`` validates choices without reading files.
-``sampler_arguments()`` resolves sampling policy without opening artifacts;
-``model_arguments()`` loads the calibration after output preflight. The full
-``run_co2`` and saved ``handoffs.sample`` routes use those arguments for
-ordinary and cached inference. Before inference, resolved trace and product
-targets are checked against the selected calibration and the
-preparation/reconstruction files the run loads, including active likelihood
-eigenbasis and country-reporting files. Product writers check all destinations
-before writing, including consumed stage manifests, prepared inputs, posterior
-and affine companion during saved replay. This protection covers aliases and
-overlapping directory stores. Saved traces carry fitted boundary facts and the
-calibration group, so output replay needs neither the input paths nor a newly
-calibrated prior. A different original retained prior fails at model
-construction.
-
-For linked CO2/O2, use a shared top-level ``[biosphere] path=...``.
-``Co2O2ModelConfig.bind`` loads it and retains one shared calibrated flux
-state; each channel keeps its own boundary choice. The shipped ``co2.toml``,
-``co2_fixed_ou.toml`` and ``co2_o2.toml`` templates include commented examples.
+``sampler_arguments()`` resolves sampling policy and ``model_arguments()``
+binds the model choices. Before inference, the full ``run_co2`` and saved
+``handoffs.sample`` routes check resolved trace and product targets against the
+preparation and reconstruction files the run loads, including active
+likelihood eigenbasis and country-reporting files and the consumed request.
+Product writers check all destinations before writing, including consumed
+stage manifests, prepared inputs, posterior and affine companion during saved
+replay. This protection covers aliases and overlapping directory stores.
 
 Configure the outer-flux option
 -------------------------------
@@ -136,25 +94,5 @@ passed to :func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs`, which
 always carries ``source``. Configured CO2 preparation does not yet label
 inner and outer states with ``basis_group``
 (`#1094 <https://github.com/openghg/openghg_inversions/issues/1094>`_). Additive
-outer patterns are available from Python only. A configured biosphere
-calibration is used as the flux prior as usual. Run metadata records the
+outer patterns are available from Python only. Run metadata records the
 outer-flux mode and selectors beside the boundary metadata.
-
-Runnable saved-calibration example
-----------------------------------
-
-This offline example constructs labelled synthetic inputs, applies a marginal
-gross-SD target, saves and reopens the calibration, builds ordinary CO2 with a
-configured anomaly-scaling boundary,
-and verifies saved absolute prior predictions. The widths demonstrate syntax
-and have no calibration authority for a real inversion.
-
-.. code-block:: bash
-
-   PYTENSOR_FLAGS=floatX=float64,base_compiledir=/tmp/ogi-config-example \
-     uv run python -m examples.biosphere_prior.saved_configuration /path/to/new-output
-
-.. literalinclude:: ../../examples/biosphere_prior/saved_configuration.py
-   :language: python
-   :start-after: # BEGIN EXAMPLE
-   :end-before: # END EXAMPLE
