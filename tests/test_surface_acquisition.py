@@ -806,3 +806,41 @@ def test_single_observation_bin_keeps_chosen_cadence_without_sampling_attr(input
     assert result.sizes["time"] == 1
     assert result.attrs["sampling_period"] == 14400
     np.testing.assert_allclose(result.mf_mod, 1.)
+
+
+def test_ordinary_boundary_defaults_unitless_footprint_height_to_metres(inputs):
+    """Store NAME footprints have no height units; CORSO-like curtains declare metres."""
+    obs, fp, flux = inputs
+    fp, bc = boundary_inputs(fp)
+    bc = bc.assign_coords(height=bc.height.assign_attrs(units="m"))
+    for direction in "nesw":  # OpenGHG's ordinary path quantifies these; use a plain unit
+        bc[f"vmr_{direction}"] = (bc[f"vmr_{direction}"] / 4).assign_attrs(units="ppm")
+    assert "units" not in fp.height.attrs
+    borrowed = {name: value.data for name, value in fp.data_vars.items()}
+    with pytest.warns(UserWarning, match="assuming metres"):
+        result = prepare_surface_site(
+            obs, fp, {"a": flux}, species="co2", transport={"a": "integrated"}, boundary_data=bc,
+        )
+    declared = fp.assign_coords(height=fp.height.assign_attrs(units="m"))
+    reference = prepare_surface_site(
+        obs, declared, {"a": flux}, species="co2", transport={"a": "integrated"}, boundary_data=bc,
+    )
+    for name in ("bc_n", "bc_e", "bc_s", "bc_w", "bc_mod"):
+        xr.testing.assert_identical(result[name].reset_coords(drop=True), reference[name].reset_coords(drop=True))
+    assert "footprint_height_units_assumed" not in reference.attrs
+    assert result.attrs["footprint_height_units_assumed"] == "m"
+    assert "units" not in fp.height.attrs  # the caller's footprint is unchanged
+    for name, value in fp.data_vars.items():
+        assert value.data is borrowed[name]
+
+
+@pytest.mark.parametrize("boundary_units, footprint_units", [(None, None), ("m", "m"), ("km", None)])
+def test_ordinary_boundary_height_allowance_is_narrow(inputs, boundary_units, footprint_units):
+    _, fp, _ = inputs
+    fp, bc = boundary_inputs(fp)
+    if boundary_units:
+        bc = bc.assign_coords(height=bc.height.assign_attrs(units=boundary_units))
+    if footprint_units:
+        fp = fp.assign_coords(height=fp.height.assign_attrs(units=footprint_units))
+    returned, assumed = surface._default_curtain_height_units(fp, bc)
+    assert assumed is None and returned is fp
