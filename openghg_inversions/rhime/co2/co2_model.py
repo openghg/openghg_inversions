@@ -318,6 +318,10 @@ def _build_co2_model(
         offset_prior = dict(offset_prior)
     offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
+    if outer_flux is not None:
+        flux_sensitivity, fixed_prior_contribution = outer_flux.condition_sensitivity(
+            flux_sensitivity, fixed_prior_contribution, output_dim="nmeasure",
+        )
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
     if outer_flux is not None:
