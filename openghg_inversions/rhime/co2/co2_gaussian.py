@@ -43,12 +43,14 @@ import xarray as xr
 from openghg_inversions.inference.exact_gaussian import (
     affine_maps, exact_gaussian_trace, normal_variables, solve_linear_gaussian_model,
 )
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inference.gls import psd_factor
 from openghg_inversions.inference.sampling import RhimeSampler
 from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice, MultiplicativeChoice
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.observation_error import (
-    aggregation_error_as_low_rank, prepare_low_rank_aggregation_error, resolve_aggregation_error,
+    AggregationError, aggregation_error_as_low_rank, prepare_low_rank_aggregation_error, resolve_aggregation_error,
 )
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 
@@ -188,8 +190,27 @@ def _gaussian_state_prior(inputs: xr.Dataset) -> tuple[GaussianStatePrior, dict[
     return GaussianStatePrior(mean=mean, factor=labelled, description=description), factor.diagnostics
 
 
+def _aggregation_error(
+    inputs: xr.Dataset, prepared: Co2PreparedInputs, outer_flux: OuterFluxChoice | None,
+) -> AggregationError:
+    """Return the graph's fixed aggregation error, including any marginalised outer flux.
+
+    The CO2 builder adds :math:`H_O \Sigma_{OO} H_O^T` for a ``"marginalise"``
+    outer-flux choice, so the noise factor and the empirical-Bayes residual
+    covariance add it too. Outer states are selected on the prepared
+    arithmetic moments, as in the builder.
+    """
+    aggregation = resolve_aggregation_error(inputs, prepared.aggregation_error_mode)
+    if outer_flux is None:
+        return aggregation
+    covariance = inputs["alpha_prior_covariance"]
+    prior = CorrelatedPrior(inputs["alpha_prior_mean"], covariance, covariance_dim=str(covariance.dims[-1]))
+    return outer_flux.resolve_states(prior).add_marginal_error(inputs["H"], aggregation, output_dim="nmeasure")
+
+
 def _co2_noise_factor(
     inputs: xr.Dataset, prepared: Co2PreparedInputs, fixed_model_mismatch: Any,
+    outer_flux: OuterFluxChoice | None = None,
 ) -> tuple[NDArray[np.float64], dict[str, Any]]:
     """Return a factor ``F_W`` of the fixed CO2 likelihood covariance ``A + R``.
 
@@ -215,7 +236,7 @@ def _co2_noise_factor(
     else:
         mismatch = np.zeros_like(error)
     variance = error**2 + mismatch**2
-    aggregation = resolve_aggregation_error(inputs, prepared.aggregation_error_mode)
+    aggregation = _aggregation_error(inputs, prepared, outer_flux)
     record: dict[str, Any] = {"aggregation_error_mode": aggregation.mode,
                               "independent_variance": "mf_error**2 + fixed_model_mismatch**2"}
     if aggregation.mode in ("low_rank", "diagonal"):
@@ -328,7 +349,7 @@ def _with_mismatch(inputs: xr.Dataset, values: NDArray[np.float64]) -> xr.Datase
 
 def _empirical_bayes(
     choice: EmpiricalBayesMismatch, inputs: xr.Dataset, prepared: Co2PreparedInputs,
-    build: Any, rng: np.random.Generator,
+    build: Any, rng: np.random.Generator, outer_flux: OuterFluxChoice | None = None,
 ) -> tuple[NDArray[np.float64], dict[str, Any]]:
     """Estimate the per-site empirical-Bayes mismatch from the prior residual of the Gaussian graph.
 
@@ -344,7 +365,7 @@ def _empirical_bayes(
     (mean_map,) = affine_maps(provisional.model, [mean], variables, rng=rng)
     residual = observations - (mean_map.offset + mean_map.matrix @ variables.prior_mean)
     prior_state_variance = np.einsum("ij,j->i", mean_map.matrix**2, variables.prior_sd**2)
-    aggregation = resolve_aggregation_error(inputs, prepared.aggregation_error_mode)
+    aggregation = _aggregation_error(inputs, prepared, outer_flux)
     sites = observation_sites(inputs["mf"])
     error_variance = np.asarray(inputs["mf_error"].transpose("nmeasure").values, dtype=np.float64) ** 2
     aggregation_variance = np.asarray(aggregation.marginal_variance, dtype=np.float64)
@@ -451,7 +472,9 @@ def sample_co2_gaussian(
     mismatch_record: dict[str, Any]
     fixed: float | xr.DataArray | None
     if isinstance(mismatch, EmpiricalBayesMismatch):
-        sigma_rows, eb_record = _empirical_bayes(mismatch, inputs, prepared, build, mismatch_rng)
+        sigma_rows, eb_record = _empirical_bayes(
+            mismatch, inputs, prepared, build, mismatch_rng, model.get("outer_flux"),
+        )
         inputs = _with_mismatch(inputs, sigma_rows)
         fixed = inputs["fixed_model_mismatch"]
         mismatch_record = {"source": "empirical Bayes", "empirical_bayes": eb_record}
@@ -473,7 +496,7 @@ def sample_co2_gaussian(
             else "prepared fixed_model_mismatch" if "fixed_model_mismatch" in inputs else "none"
         )}
     built = build(inputs, fixed)
-    noise_factor, noise_record = _co2_noise_factor(inputs, prepared, fixed)
+    noise_factor, noise_record = _co2_noise_factor(inputs, prepared, fixed, model.get("outer_flux"))
     _check_noise_against_graph(built, noise_factor)
     if "fixed_model_mismatch" in built.model.named_vars:
         sigma = np.asarray(pytensor.function([], built.model["fixed_model_mismatch"])(), dtype=np.float64)
