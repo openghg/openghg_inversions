@@ -194,13 +194,13 @@ def sample(
         raise ValueError("Linked fixed-OU requires nuts_sampler='pymc'.")
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
-        referenced=(Path(preparation_manifest).resolve(), preparation.payload) + model_config.artifact_paths()
+        referenced=(Path(preparation_manifest).resolve(), preparation.payload)
         + tuple(Path(path).resolve() for path in referenced),
     )
     model_options = model_config.bind(preparation.prepared)
     built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
     trace = sample_rhime_model(built, active_sampler, recompute_deterministics=True)
-    trace = annotate_co2_o2_trace(trace, built=built, biosphere_prior=model_options.get("biosphere_prior"))
+    trace = annotate_co2_o2_trace(trace, built=built)
     return save_samples(
         preparation_manifest, trace, actual_inference=active_sampler.describe(),
         preparation_generation=preparation.generation, output_dir=output_dir,
@@ -279,7 +279,7 @@ def prior_predictive(
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
     check_checkpoint_targets(
         destination, stage=None, payloads=("prior-predictive.nc", str(report.relative_to(destination))),
-        referenced=(Path(preparation_manifest).resolve(), preparation.payload) + model_config.artifact_paths()
+        referenced=(Path(preparation_manifest).resolve(), preparation.payload)
         + tuple(Path(path).resolve() for path in referenced),
     )
     report.unlink(missing_ok=True)
@@ -290,7 +290,7 @@ def prior_predictive(
     registry = get_coord_registry(built.model)
     if registry is not None:
         prior = restore_inferencedata_coords(prior, registry)
-    prior = annotate_co2_o2_trace(prior, built=built, biosphere_prior=model_options.get("biosphere_prior"))
+    prior = annotate_co2_o2_trace(prior, built=built)
     concentration = built.output_contract.variable_roles.get("concentration")
     predictive = prior.children.get("prior_predictive")
     values = [np.asarray(group[name].values) for group in prior.children.values() for name in group.data_vars]
