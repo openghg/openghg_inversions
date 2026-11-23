@@ -95,33 +95,6 @@ manifest lifetime, compatible model changes and graph-free product replay.
    openghg_inversions.rhime.outputs.postprocess_multisector_outputs
    openghg_inversions.rhime.outputs.save_inversion_output
 
-Calibrate retained biosphere priors
------------------------------------
-
-See :doc:`the calibration equations and Python workflow </usage/biosphere_prior>`
-for the explicit retained-state intervention and its fixed-reduction scope.
-
-.. autosummary::
-   :nosignatures:
-
-   openghg_inversions.biosphere_prior.BiospherePrior
-   openghg_inversions.biosphere_prior.calibrate_biosphere_prior
-   openghg_inversions.models.biosphere.resolve_retained_flux_prior
-   openghg_inversions.correlated_state.CorrelatedPrior
-   openghg_inversions.models.biosphere.annotate_biosphere_prior
-
-Configure and persist CO2 priors
---------------------------------
-
-See :doc:`configured CO2 priors </usage/configured_co2_priors>` for explicit
-preparation choices and reuse of frozen scientific artifacts.
-
-.. autosummary::
-   :nosignatures:
-
-   openghg_inversions.rhime.co2.BiospherePriorConfig
-   openghg_inversions.rhime.co2.load_biosphere_prior
-
 Run specifications and results
 ------------------------------
 

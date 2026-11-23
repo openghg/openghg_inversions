@@ -6,10 +6,8 @@ seams for the CO₂-only and linked CO₂/O₂ recipes. Start with the
 :doc:`CO₂ model family <co2_model_family>` support matrix before using these
 interfaces.
 
-An explicit Python ``biosphere_prior`` option changes one calibrated retained
-biosphere uncertainty direction while keeping the reduction fixed. See
-:doc:`biosphere_prior` for calibration targets, sampled marginals and
-provenance. Omission preserves the existing prior.
+The retained flux state is sampled from a correlated prior with a marginal
+family per state; see :doc:`flux_prior`.
 
 .. _co2-only-model:
 

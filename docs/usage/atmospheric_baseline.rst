@@ -27,14 +27,13 @@ Outer-flux modes
 
 Outer states are the flux states whose ``basis_group`` coordinate is in
 ``outer_groups``. They stay in the ordinary ``flux_scaling`` state, so CO2
-outputs, state activity and :doc:`biosphere calibration <biosphere_prior>`
-work as they do without the option.
+outputs, state activity and the :doc:`retained flux prior <flux_prior>` work
+as they do without the option.
 
 ``"multiplicative"``
    Samples the outer states, except those whose ``source`` is in
    ``fixed_sources`` (for example ``("ocean",)``), which are held at their
-   prior mean. A calibrated biosphere prior is passed as the recipe's
-   ``retained_prior`` as usual.
+   prior mean.
 ``"fixed"``
    Holds every outer state at its prior mean.
 ``"additive"``
