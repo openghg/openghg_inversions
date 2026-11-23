@@ -17,7 +17,6 @@ openghg\_inversions.models
    :maxdepth: 4
 
    openghg_inversions.models.additive_sigma
-   openghg_inversions.models.biosphere
    openghg_inversions.models.cached_sigma
    openghg_inversions.models.components
    openghg_inversions.models.coords

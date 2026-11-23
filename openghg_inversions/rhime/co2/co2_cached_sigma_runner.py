@@ -15,10 +15,8 @@ from typing import Any, cast
 import xarray as xr
 from pymc.initial_point import convert_str_to_rv_dict, make_initial_point_fn  # type: ignore[import-untyped]
 
-from openghg_inversions.biosphere_prior import BiospherePrior
 from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
-from openghg_inversions.models.biosphere import resolve_retained_flux_prior
 from openghg_inversions.models.boundary import Choice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
@@ -171,14 +169,12 @@ def _annotate_cached_co2_trace(
     built: RhimeModelBuildResult,
     *,
     concentration_units: str | None,
-    biosphere_prior: BiospherePrior | None = None,
 ) -> xr.DataTree:
     """Add output semantics that belong only to the cached fixed-OU recipe."""
     trace = annotate_co2_trace(
         trace,
         built,
         concentration_units=concentration_units,
-        biosphere_prior=biosphere_prior,
     )
     for group in trace.children.values():
         group.attrs["rhime_recipe"] = built.output_contract.metadata["recipe"]
@@ -220,7 +216,6 @@ def _annotate_cached_co2_trace(
 
 def build_rhime_co2_cached_sigma(
     *,
-    biosphere_prior: BiospherePrior | None = None,
     prepared_inputs: Co2PreparedInputs,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior: PriorArgs,
@@ -232,9 +227,6 @@ def build_rhime_co2_cached_sigma(
     """Materialize and build the matched cached fixed-OU graph without sampling.
 
     Args:
-        biosphere_prior: Optional explicit calibration of the retained prior,
-            checked here against the materialized retained prior; omission
-            preserves existing behavior.
         prepared_inputs: Validated CO2 inputs with observation-aligned site and
             time coordinates and the selected aggregation-error representation.
         tau_hours: Fixed OU decorrelation time in hours, as a scalar or a
@@ -255,8 +247,7 @@ def build_rhime_co2_cached_sigma(
 
     Raises:
         ValueError: If component options contradict one another, prepared
-            arrays are invalid, fixed OU mappings or parameters are invalid, or
-            ``biosphere_prior`` does not calibrate the retained prior.
+            arrays are invalid, or fixed OU mappings or parameters are invalid.
     """
     if offset_prior is None and offset_args:
         raise ValueError("offset_args require offset_prior.")
@@ -275,17 +266,14 @@ def build_rhime_co2_cached_sigma(
         prepared.aggregation_error_mode,
     )
     prior_covariance = model_inputs["alpha_prior_covariance"]
-    flux_prior = resolve_retained_flux_prior(
-        CorrelatedPrior(
-            model_inputs["alpha_prior_mean"],
-            prior_covariance,
-            covariance_dim=str(prior_covariance.dims[-1]),
-        ),
-        biosphere_prior,
+    retained_prior = CorrelatedPrior(
+        model_inputs["alpha_prior_mean"],
+        prior_covariance,
+        covariance_dim=str(prior_covariance.dims[-1]),
     )
     cached_model = _build_co2_cached_sigma_model(
         model_inputs["H"],
-        retained_prior=flux_prior,
+        retained_prior=retained_prior,
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
