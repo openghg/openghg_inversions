@@ -168,14 +168,14 @@ def test_rejects_disagreeing_native_site_references(inputs):
         assemble((co2, o2), prepared)
 
 
-@pytest.mark.parametrize("mode", ["fixed", "multiplicative"])
-def test_control_targets_come_from_the_configured_outer_flux_model(mode):
+@pytest.mark.parametrize("held", ["ocean", "outer"])
+def test_control_targets_come_from_the_configured_outer_flux_model(held):
     import pytensor
     from openghg_inversions.array_ops import select_gathered_data_array
 
     with pytensor.config.change_flags(floatX="float64"):
-        zero = _example.prepare_control(mode=mode)
-        injected = _example.prepare_control(mode=mode, injected_baseline=True)
+        zero = _example.prepare_control(held=held)
+        injected = _example.prepare_control(held=held, injected_baseline=True)
     assert zero.provenance["synthetic_target_generator"] == "configured linked outer-flux model at the declared truth"
     for channel, delta in _example.INJECTED_LEVEL.items():
         def native(array):
@@ -184,7 +184,7 @@ def test_control_targets_come_from_the_configured_outer_flux_model(mode):
         # Unit boundary mass on every row: the level reaches each row once.
         np.testing.assert_allclose(native(injected.observations) - native(zero.observations), delta, rtol=0, atol=1e-10)
         # The raw flux response at the truth differs from the target only by a
-        # per-channel constant: the boundary reference and the centred outer level.
+        # per-channel constant: the boundary reference.
         offset = native(zero.observations) - getattr(zero, f"{channel}_sensitivity").values @ _example.TRUTH
         np.testing.assert_allclose(offset, offset[0], rtol=0, atol=1e-10)
 

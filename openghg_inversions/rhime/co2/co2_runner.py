@@ -498,7 +498,7 @@ def build_co2_from_materialized(
         priors: Materialized prior parameters under their concrete graph names.
         boundary: Jointly materialized bound boundary, or None when disabled.
         outer_flux: Optional outer-flux choice, resolved on the retained flux
-            prior and bound to the materialized ``mf`` rows and ``H`` here.
+            prior here.
 
     Returns:
         Constructed PyMC model with component-declared scientific roles, units
@@ -552,10 +552,7 @@ def build_co2_from_materialized(
         ),
         covariance_dim=str(prior_covariance.dims[-1]),
     )
-    outer = (
-        None if outer_flux is None
-        else outer_flux.resolve_states(retained_prior).bind_rows(model_inputs["mf"], model_inputs["H"])
-    )
+    outer = None if outer_flux is None else outer_flux.resolve_states(retained_prior)
     model = _build_co2_model(
         model_inputs["H"],
         retained_prior=retained_prior,
