@@ -30,8 +30,8 @@ additional overlays and catalogue lineage explicitly.
 
 The result is an ordinary ``Co2O2PreparedInputs``: save it with
 ``co2_o2_handoffs.save_preparation`` and run the configured linked stages as
-usual. To give the boundary mean shift the atmospheric level, label the retained
-prior's states with ``basis_group`` and add the top-level ``[outer_flux]`` table
+usual. To hold outer states at their prior mean, label the retained prior's
+states with ``basis_group`` and add the top-level ``[outer_flux]`` table
 described in :doc:`atmospheric_baseline` and :doc:`configured_co2_priors`.
 
 Offline Python example
@@ -45,18 +45,19 @@ covariance and noiseless truth observations are declared synthetic assumptions.
 
 The prior labels GPP, TER and both ocean states as ``outer``. Each channel uses
 a level-only additive boundary (``anomaly_scale = 0``) with a mean-shift prior,
-and the ``[outer_flux]`` table samples outer GPP and TER while holding the ocean
-states at their prior mean. Concentration targets are the configured model's
+and the ``[outer_flux]`` table holds the outer ocean states at their prior mean
+while outer GPP and TER stay sampled. Concentration targets are the configured model's
 prediction at the declared flux truth, made with ``pymc.do``. The controls use
 either zero atmospheric levels or physical injections of +0.35 ppm CO2 and
--0.45 ppm O2. For ``fixed`` outer mode, fixed prior means equal the known outer
-truth; ``multiplicative`` mode infers departures from the declared prior.
+-0.45 ppm O2. With ``--held outer`` every outer state is held, and the GPP and
+TER prior means are set to their known truth; the default ``--held ocean``
+infers outer GPP and TER from the declared prior.
 
 Run sampling on a compute node, for example::
 
     PYTENSOR_FLAGS=floatX=float64 python examples/atmospheric_baseline/linked_workflow.py \
         --output-dir inversion_outputs/linked-controls \
-        --mode multiplicative --draws 250 --tune 250
+        --held ocean --draws 250 --tune 250
 
 ``--likelihood fixed_ou`` uses fixed site amplitudes. Each control saves the
 preparation, samples from the configuration, reopens the checkpoints for

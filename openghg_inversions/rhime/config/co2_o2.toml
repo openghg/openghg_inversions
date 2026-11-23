@@ -56,12 +56,11 @@ output_format = "basic"
 # (anomalies, mean_by_period; type = "anomaly_scaling" with scale_sd, reference);
 # channels share one calendar.
 
-# Outer-region flux corrections for the joint flux state, outside channels
-# (see docs/usage/atmospheric_baseline.rst). Each channel boundary then needs
-# a mean_shift_prior, and outer ocean states must be held fixed. The retained
+# Hold outer-region flux states of the joint flux state at their prior mean,
+# outside channels (see docs/usage/atmospheric_baseline.rst). The retained
 # prior given to preparation must carry basis_group labels; preparation keeps
 # them but does not add them (issue #1094).
 # [outer_flux]
-# mode = "multiplicative"   # or "fixed"
+# mode = "fixed"
 # outer_groups = ["outer"]
-# fixed_sources = ["ocean"]
+# fixed_sources = ["ocean"]   # optional: hold only these outer sources
