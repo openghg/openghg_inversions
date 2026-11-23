@@ -22,12 +22,15 @@ def precision():
         yield
 
 
-def case(choice=OuterFluxChoice("fixed", ("outer",))):
-    """Resolve one outer selection on a small linked preparation."""
+def case(choice=OuterFluxChoice("fixed", ("outer",)), cross=0.0):
+    """Resolve one outer selection on a small linked preparation, optionally correlating states 0 and 4."""
     base = _prepared()
     state = base.retained_prior.state_dim
     mean = base.retained_prior.mean.assign_coords(basis_group=(state, GROUPS))
-    prior = CorrelatedPrior(mean, base.retained_prior.arithmetic_covariance)
+    covariance = base.retained_prior.arithmetic_covariance.copy(deep=True)
+    scale = float(np.sqrt(covariance.values[0, 0] * covariance.values[4, 4]))
+    covariance.values[0, 4] = covariance.values[4, 0] = cross * scale
+    prior = CorrelatedPrior(mean, covariance)
     inputs = dict(
         observations=base.observations,
         fixed_prior_contribution=base.fixed_prior_contribution,
@@ -66,9 +69,10 @@ def test_fixed_outer_states_are_held_in_the_joint_state():
     np.testing.assert_allclose(prediction, base.fixed_prior_contribution.values + raw, atol=1e-8)
 
 
-@pytest.mark.parametrize("mode", ["fixed", "marginalise"])
-def test_ordinary_and_cached_linked_models_have_the_same_density(mode):
-    _, _, inputs = case(OuterFluxChoice(mode, ("outer",)))
+@pytest.mark.parametrize("mode, cross", [("fixed", 0.0), ("marginalise", 0.0), ("marginalise", 0.3)])
+def test_ordinary_and_cached_linked_models_have_the_same_density(mode, cross):
+    _, _, inputs = case(OuterFluxChoice(mode, ("outer",)), cross)
+    assert (inputs["outer_flux"].regression is not None) == bool(cross)
     ordinary = build_co2_o2_model(**inputs, **NOISE)
     cached = build_co2_o2_cached_sigma_model(**inputs, **NOISE)
     point = ordinary.initial_point()

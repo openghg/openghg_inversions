@@ -203,6 +203,10 @@ def _build_co2_o2_cached_sigma_model(
     )
     joint = _gather_co2_o2_sensitivity(co2_sensitivity, o2_sensitivity, output_dim=output_dim)
     joint = joint.sel({output_dim: observations[output_dim]})
+    if outer_flux is not None:
+        joint, fixed_prior_contribution = outer_flux.condition_sensitivity(
+            joint, fixed_prior_contribution, output_dim=output_dim,
+        )
     prepared_flux = prepare_linear_sensitivity(joint, output_dim=output_dim)
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
     if outer_flux is not None:

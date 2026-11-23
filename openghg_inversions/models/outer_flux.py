@@ -20,19 +20,30 @@ prior uncertainty ``Sigma_OO`` of the held states:
   sampled uncentred. Under the default LogNormal-copula prior it is an
   approximation: ``Sigma_OO`` is the prior's arithmetic covariance, so the
   outer contribution is replaced by a Gaussian with the same first two
-  moments.
+  moments. Correlated outer states are conditioned on the others, below.
 
-Both modes require the held states to have zero prior covariance with every
-other state. With cross-covariance ``Sigma_OI``, integrating ``O`` out exactly
-moves part of the outer response onto the inner design
-(``H_I + H_O Sigma_OI Sigma_II^{-1}``) and leaves only the conditional
-covariance as error. That cannot be written as a fixed term plus an error
-covariance on the unchanged inner design, and under the LogNormal copula the
-conditional mean is not linear, so correlated selections are rejected.
+``"marginalise"`` also accepts outer states correlated with the other states
+``I`` (cross-covariance ``Sigma_OI``). The outer states are then replaced by
+their best linear predictor from ``I`` under the prior's arithmetic moments,
+``x_O = m_O + B (x_I - m_I) + r`` with ``B = Sigma_OI Sigma_II^+``, so
+
+- the inner design becomes ``H_I + H_O B`` (:meth:`OuterStates.condition_sensitivity`);
+- the fixed term gains ``-H_O B m_I``;
+- the error covariance gains ``H_O Sigma_O|I H_O^T`` with
+  ``Sigma_O|I = Sigma_OO - B Sigma_IO``.
+
+The prior of ``I`` is unchanged. For a Gaussian prior this is exact (the
+residual ``r`` is independent of ``x_I``). Under the LogNormal copula ``r`` is
+uncorrelated with ``x_I`` but not independent of it, a moment-level
+approximation of the same kind as the coherent reduction. States held by state
+activity or pruning are part of ``I`` at their fixed values. ``"fixed"`` still
+requires zero cross-covariance, because holding ``O`` at ``m_O`` exactly
+would need the inner prior conditioned on it.
 
 :meth:`OuterFluxChoice.resolve_states` reads the flux prior once, so linked
-CO2/O2 channels share one :class:`OuterStates`, and recipes apply it with
-:meth:`OuterStates.fix_states` after exact-zero pruning and
+CO2/O2 channels share one :class:`OuterStates`. Recipes apply it with
+:meth:`OuterStates.condition_sensitivity` before exact-zero pruning,
+:meth:`OuterStates.fix_states` after it, and
 :meth:`OuterStates.add_marginal_error` before the likelihood is built.
 """
 
@@ -107,8 +118,8 @@ class OuterFluxChoice:
         Raises:
             ValueError: If a selector coordinate is missing or not on the state
                 axis, no state is in ``outer_groups``, no outer state has a
-                source in ``fixed_sources``, or a held state has nonzero prior
-                covariance with any other state.
+                source in ``fixed_sources``, or, in ``"fixed"`` mode, a held
+                state has nonzero prior covariance with any other state.
         """
         mean = flux_prior.mean
 
@@ -121,21 +132,23 @@ class OuterFluxChoice:
             if not bool(fixed.any()):
                 raise ValueError(f"No outer flux state has {self.source_coord} in {self.fixed_sources!r}.")
 
-        # Holding F at its prior mean while sampling the marginal prior of the
-        # other states is exact only when F is uncorrelated with them. For
-        # marginalisation the exact cross-covariance treatment would change the
-        # inner design (see the module docstring), so it is rejected too.
         covariance = flux_prior.arithmetic_covariance.to_numpy()
         fixed_positions = np.flatnonzero(fixed.to_numpy())
         other_positions = np.flatnonzero(~fixed.to_numpy())
-        if np.any(covariance[np.ix_(fixed_positions, other_positions)] != 0):
-            raise ValueError(
-                f"{self.mode.capitalize()} outer flux states must have zero prior covariance with every other state."
-            )
+        cross = covariance[np.ix_(fixed_positions, other_positions)]
+        correlated = bool(np.any(cross != 0))
+        # Holding F at its prior mean while sampling the marginal prior of the
+        # other states is exact only when F is uncorrelated with them.
+        if correlated and self.mode == "fixed":
+            raise ValueError("Fixed outer flux states must have zero prior covariance with every other state.")
 
-        prior_factor = None
+        prior_factor = regression = None
         if self.mode == "marginalise":
-            prior_factor = _psd_factor(covariance[np.ix_(fixed_positions, fixed_positions)])
+            conditional = covariance[np.ix_(fixed_positions, fixed_positions)]
+            if correlated:
+                regression = _regression(covariance[np.ix_(other_positions, other_positions)], cross)
+                conditional = conditional - regression @ cross.T
+            prior_factor = _psd_factor(conditional)
 
         return OuterStates(
             choice=self,
@@ -143,6 +156,7 @@ class OuterFluxChoice:
             fixed=fixed.rename("fixed_outer"),
             prior_mean=mean,
             prior_factor=prior_factor,
+            regression=regression,
         )
 
 
@@ -174,6 +188,17 @@ def _psd_factor(covariance: np.ndarray) -> np.ndarray:
     return eigenvectors[:, keep] * np.sqrt(eigenvalues[keep])
 
 
+def _regression(inner_covariance: np.ndarray, cross: np.ndarray) -> np.ndarray:
+    """Return ``B = Sigma_OI Sigma_II^+``, the best linear predictor of ``O`` from ``I``.
+
+    A Hermitian pseudo-inverse with a scale-relative cutoff keeps
+    zero-variance or collinear other states from dominating.
+    """
+    inner_covariance = 0.5 * (inner_covariance + inner_covariance.T)
+    cutoff = inner_covariance.shape[0] * np.finfo(float).eps
+    return cross @ np.linalg.pinv(inner_covariance, rcond=cutoff, hermitian=True)
+
+
 @dataclass(frozen=True)
 class OuterStates:
     """Held outer states on the flux prior's state axis, shared by every channel.
@@ -184,8 +209,12 @@ class OuterStates:
         fixed: Boolean mask of outer states ``F`` held at their prior mean.
         prior_mean: Labelled baseline arithmetic prior mean ``m``.
         prior_factor: In ``"marginalise"`` mode, a factor ``L_F`` of the held
-            states' arithmetic prior covariance, ``L_F L_F^T = Sigma_FF``, with
+            states' arithmetic prior covariance given the other states,
+            ``L_F L_F^T = Sigma_F|I`` (``Sigma_FF`` when uncorrelated), with
             rows in state order of ``F``; ``None`` in ``"fixed"`` mode.
+        regression: In ``"marginalise"`` mode with correlated held states,
+            ``B = Sigma_FI Sigma_II^+`` with rows in state order of ``F`` and
+            columns in state order of the other states; otherwise ``None``.
     """
 
     choice: OuterFluxChoice
@@ -193,6 +222,50 @@ class OuterStates:
     fixed: xr.DataArray
     prior_mean: xr.DataArray
     prior_factor: np.ndarray | None = field(default=None, compare=False)
+    regression: np.ndarray | None = field(default=None, compare=False)
+
+    def condition_sensitivity(
+        self, flux_sensitivity: xr.DataArray, fixed_prior_contribution: xr.DataArray, *, output_dim: str,
+    ) -> tuple[xr.DataArray, xr.DataArray]:
+        """Move correlated outer response onto the other states' design.
+
+        For held states correlated with the other states, the outer
+        contribution is ``H_F (m_F + B (x_I - m_I))``. Holding ``F`` at ``m_F``
+        then needs ``H_F B`` added to the other states' columns and
+        ``-H_F B m_I`` added to the fixed contribution. Without correlation
+        (or in ``"fixed"`` mode) the inputs are returned unchanged.
+
+        Args:
+            flux_sensitivity: Flux sensitivity on ``(output_dim, state_dim)``,
+                possibly sparse, before exact-zero pruning.
+            fixed_prior_contribution: Fixed contribution on ``output_dim``.
+            output_dim: Observation dimension.
+
+        Returns:
+            The conditioned sensitivity (dense when changed) and fixed
+            contribution.
+
+        Raises:
+            ValueError: If the sensitivity's state labels differ from the prior's.
+        """
+        if self.regression is None:
+            return flux_sensitivity, fixed_prior_contribution
+        sensitivity, fixed, mean = xr.align(
+            flux_sensitivity, self.fixed.reset_coords(drop=True), self.prior_mean.reset_coords(drop=True),
+            join="exact", copy=False,
+        )
+        sensitivity = to_dense(sensitivity).transpose(output_dim, self.state_dim)
+        held = fixed.to_numpy()
+        values = np.array(sensitivity.values, dtype=np.float64)
+        moved = values[:, held] @ self.regression
+        values[:, ~held] += moved
+        shift = -(moved @ mean.to_numpy()[~held])
+        conditioned = sensitivity.copy(data=values)
+        offset = sensitivity.isel({self.state_dim: 0}, drop=True).reset_coords(drop=True).copy(data=shift)
+        contribution = (fixed_prior_contribution + offset).transpose(*fixed_prior_contribution.dims)
+        return conditioned, contribution.assign_attrs(fixed_prior_contribution.attrs).rename(
+            fixed_prior_contribution.name,
+        )
 
     def fix_states(self, activity: ResolvedStateActivity) -> ResolvedStateActivity:
         """Hold fixed outer states at their prior mean in a resolved activity.
@@ -220,8 +293,9 @@ class OuterStates:
     def marginal_error_factor(self, flux_sensitivity: xr.DataArray, *, output_dim: str) -> xr.DataArray:
         """Return the observation-space factor ``H_F L_F`` of the marginalised outer flux.
 
-        Its outer product ``H_F Sigma_FF H_F^T`` is the covariance the held
-        states would add to the observations if they were sampled.
+        Its outer product ``H_F Sigma_F|I H_F^T`` is the covariance the held
+        states would add to the observations if they were sampled, beyond
+        what the other states predict (``Sigma_FF`` when uncorrelated).
 
         Args:
             flux_sensitivity: Eager or lazy flux sensitivity on
@@ -231,7 +305,7 @@ class OuterStates:
 
         Returns:
             Dense factor on ``(output_dim, "agg_rank")``; its column count is
-            the numerical rank of ``Sigma_FF``.
+            the numerical rank of ``Sigma_F|I``.
 
         Raises:
             ValueError: If the mode is not ``"marginalise"``, or the
@@ -260,7 +334,7 @@ class OuterStates:
         In ``"fixed"`` mode the aggregation error is returned unchanged. In
         ``"marginalise"`` mode ``H_F L_F`` is appended to the low-rank factor
         (a ``"none"`` or ``"diagonal"`` error becomes low-rank with that
-        factor) or, for a dense error, ``H_F Sigma_FF H_F^T`` is added to the
+        factor) or, for a dense error, ``H_F Sigma_F|I H_F^T`` is added to the
         dense covariance. The marginal variance grows by the row sums of
         squares of ``H_F L_F``.
 

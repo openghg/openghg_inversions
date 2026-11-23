@@ -456,6 +456,10 @@ def _build_co2_cached_sigma_model(
         initial_site_amplitudes,
         site_coord=site_coord,
     )
+    if outer_flux is not None:
+        flux_sensitivity, fixed_prior_contribution = outer_flux.condition_sensitivity(
+            flux_sensitivity, fixed_prior_contribution, output_dim=output_dim,
+        )
     prepared_flux = prepare_linear_sensitivity(
         flux_sensitivity,
         output_dim=output_dim,

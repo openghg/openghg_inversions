@@ -50,9 +50,11 @@ or absent :math:`A` becomes low-rank. All CO2 recipes that take ``outer_flux``
 term spans both channels, so it also carries the CO2/O2 covariance the shared
 outer states induce. Run metadata records ``outer_marginal_rank``.
 
-For a linear Gaussian model this is exact: the posterior of the other states
-equals their marginal posterior when the outer states are sampled uncentred
-(the default), and it is cheaper because the outer states leave the sampler.
+For a linear Gaussian model with uncorrelated outer states this is exact: the
+posterior of the other states equals their marginal posterior when the outer
+states are sampled uncentred (the default), and it is cheaper because the
+outer states leave the sampler. Correlated outer states are conditioned on the
+others; see below.
 Under the default LogNormal-copula flux prior it is an approximation:
 :math:`\Sigma_{OO}` is the prior's arithmetic covariance, so the outer
 contribution is replaced by the Gaussian with the same mean and covariance.
@@ -63,16 +65,35 @@ zero uncertainty, with ``fixed_sources=("ocean",)``.
 Correlated outer states
 -----------------------
 
-Both modes reject selected outer states with nonzero prior covariance with any
-other state. Holding a state at its prior mean while sampling the marginal
-prior of the others is exact only when they are uncorrelated. Marginalising
-exactly with a cross-covariance :math:`\Sigma_{OI}` would move part of the
-outer response onto the inner design,
-:math:`H_I + H_O\Sigma_{OI}\Sigma_{II}^{-1}`, and leave only the conditional
-covariance :math:`\Sigma_{OO} - \Sigma_{OI}\Sigma_{II}^{-1}\Sigma_{IO}` as
-error. That is not a fixed term plus an error covariance on the unchanged inner
-design, and under the LogNormal copula the conditional mean is not linear in
-the inner state, so such selections are rejected rather than approximated.
+``"fixed"`` rejects selected outer states with nonzero prior covariance with
+any other state: holding a state at its prior mean while sampling the marginal
+prior of the others is exact only when they are uncorrelated.
+
+``"marginalise"`` accepts them. With cross-covariance :math:`\Sigma_{OI}`
+between the selected states and all other states :math:`I`, the outer states
+are replaced by their best linear predictor from :math:`I` under the prior's
+arithmetic moments,
+
+.. math::
+
+   x_O = m_O + B(x_I - m_I) + r, \qquad B = \Sigma_{OI}\Sigma_{II}^{+},
+
+and :math:`r` is integrated out. So
+
+- the design of the other states becomes :math:`H_I + H_O B`;
+- the fixed term gains :math:`-H_O B m_I`;
+- the error term is :math:`H_O\Sigma_{O|I}H_O^T` with
+  :math:`\Sigma_{O|I} = \Sigma_{OO} - B\Sigma_{IO}`.
+
+The prior of the other states is unchanged, so a LogNormal-copula inner prior
+stays positive. For a Gaussian prior this is exact. Under the LogNormal copula
+:math:`r` is uncorrelated with :math:`x_I` but not independent of it, a
+moment-level approximation of the same kind as the coherent reduction. States
+that state activity or exact-zero pruning hold fixed enter at their fixed
+values. A state with no direct response but correlated with the outer states
+gains a column through :math:`H_O B`, so it is sampled rather than pruned.
+The held outer states still report their prior mean in ``flux_scaling``; their
+conditional mean is :math:`m_O + B(x_I - m_I)`.
 
 Building a model
 ----------------

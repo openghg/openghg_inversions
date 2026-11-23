@@ -431,6 +431,10 @@ def _build_co2_o2_model(
         output_dim=output_dim,
     )
     joint_sensitivity = joint_sensitivity.sel({output_dim: observations[output_dim]})
+    if outer_flux is not None:
+        joint_sensitivity, fixed_prior_contribution = outer_flux.condition_sensitivity(
+            joint_sensitivity, fixed_prior_contribution, output_dim=output_dim,
+        )
     prepared_sensitivity = prepare_linear_sensitivity(
         joint_sensitivity,
         output_dim=output_dim,
