@@ -5,10 +5,8 @@ import pytest
 import pytensor
 import xarray as xr
 
-from openghg_inversions.biosphere_prior import calibrate_biosphere_prior
 from openghg_inversions.correlated_state import STATE_MARGINALS, CorrelatedPrior
 from openghg_inversions.models import StateActivity
-from openghg_inversions.models.biosphere import resolve_retained_flux_prior
 from openghg_inversions.models.components import add_correlated_state_with_activity, prepare_active_correlated_prior
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
@@ -21,8 +19,7 @@ from openghg_inversions.rhime.co2 import (
     build_co2_o2_model,
 )
 from boundary_test_utils import bound_model_arguments
-from test_biosphere_models import assert_normalized_density_and_gradient, state_and_mean
-from test_biosphere_prior import case
+from test_correlated_prior_models import assert_normalized_density_and_gradient, correlated_prior, state_and_mean
 from test_co2_o2_fixed_ou import _kwargs, _prepared
 
 SHAPED = ("normal", "weibull", "gamma")
@@ -36,7 +33,7 @@ def precision():
 
 
 def biosphere_marginal(prior, family):
-    """``family`` on the three GPP/TER states of ``case()``, lognormal on fossil and outer."""
+    """``family`` on the three GPP/TER states of ``correlated_prior()``, lognormal on fossil and outer."""
     return prior.mean.copy(data=np.array([family] * 3 + ["lognormal"] * 2, dtype=object))
 
 
@@ -109,7 +106,7 @@ def test_copula_shapes_differ_only_in_skew():
 
 
 def test_all_lognormal_marginals_build_the_lognormal_prior():
-    baseline, _ = case()
+    baseline = correlated_prior()
     explicit = CorrelatedPrior(
         baseline.mean, baseline.arithmetic_covariance, marginal=biosphere_marginal(baseline, "lognormal")
     )
@@ -127,7 +124,7 @@ def test_all_lognormal_marginals_build_the_lognormal_prior():
 
 @pytest.mark.parametrize("family", SHAPED)
 def test_model_state_is_the_copula_map_with_partial_activity(family):
-    baseline, _ = case()
+    baseline = correlated_prior()
     prior = CorrelatedPrior(
         baseline.mean, baseline.arithmetic_covariance, marginal=biosphere_marginal(baseline, family)
     )
@@ -221,7 +218,7 @@ def single_species_kwargs(prior):
 
 @pytest.mark.parametrize("family", SHAPED)
 def test_ordinary_and_cached_co2_builders_share_density_and_gradient(family):
-    baseline, _ = case()
+    baseline = correlated_prior()
     prior = CorrelatedPrior(
         baseline.mean, baseline.arithmetic_covariance, marginal=biosphere_marginal(baseline, family)
     )
@@ -266,22 +263,6 @@ def test_ordinary_and_cached_linked_builders_share_density_and_gradient(family):
     np.testing.assert_allclose(ordinary.compile_logp()(point), cached.model.compile_logp()(point), rtol=1e-12)
     for model in (ordinary, cached.model):
         assert_normalized_density_and_gradient(model, point, prior, kwargs, linked=True)
-
-
-@pytest.mark.parametrize("family", SHAPED)
-def test_biosphere_calibration_keeps_the_retained_marginals(family):
-    baseline, inputs = case()
-    prior = CorrelatedPrior(
-        baseline.mean, baseline.arithmetic_covariance, marginal=biosphere_marginal(baseline, family)
-    )
-    calibrated = resolve_retained_flux_prior(
-        prior, calibrate_biosphere_prior(prior, **inputs, residual_sd_multiplier=1.5)
-    )
-    assert list(calibrated.marginal.values) == list(prior.marginal.values)
-    assert calibrated.lognormal is None
-    mean, covariance = quadrature_moments(calibrated)
-    np.testing.assert_allclose(mean, calibrated.mean.to_numpy(), rtol=1e-10)
-    np.testing.assert_allclose(covariance, calibrated.arithmetic_covariance.to_numpy(), rtol=1e-9, atol=1e-12)
 
 
 def test_unreachable_pair_covariance_fails_clearly():
