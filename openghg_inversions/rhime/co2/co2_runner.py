@@ -18,8 +18,6 @@ from dask.array import Array
 from dask import compute as dask_compute
 from dask.base import unpack_collections
 
-from openghg_inversions.biosphere_prior import BiospherePrior
-from openghg_inversions.models.biosphere import annotate_biosphere_prior, resolve_retained_flux_prior
 from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.array_ops import to_dense_tree
@@ -73,7 +71,6 @@ def annotate_co2_trace(
     built: RhimeModelBuildResult,
     *,
     concentration_units: str | None,
-    biosphere_prior: BiospherePrior | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> xr.DataTree:
@@ -89,7 +86,6 @@ def annotate_co2_trace(
     Args:
         trace: PyMC sample groups represented as a DataTree, annotated in place.
         built: Concrete model with the CO2 variable-role and provenance mapping.
-        biosphere_prior: Optional resolved calibration to persist with the trace.
         concentration_units: Observation concentration units, or ``None`` to
             omit concentration-unit attributes.
         likelihood_builder: Optional component whose identity is descriptive
@@ -165,7 +161,7 @@ def annotate_co2_trace(
                 variable.attrs["units"] = concentration_units
             if name in built.output_contract.metadata.get("boundary_units", {}):
                 variable.attrs["units"] = built.output_contract.metadata["boundary_units"][name]
-    return annotate_biosphere_prior(trace, biosphere_prior)
+    return trace
 
 
 def _state_activity_from_inputs(model_inputs: xr.Dataset) -> StateActivity | None:
@@ -468,7 +464,6 @@ def build_co2_from_materialized(
     model_inputs: xr.Dataset,
     *,
     prepared_inputs: Co2PreparedInputs,
-    biosphere_prior: BiospherePrior | None = None,
     priors: Mapping[str, PriorArgs],
     boundary: Bound | None = None,
     outer_flux: OuterFluxChoice | None = None,
@@ -496,8 +491,6 @@ def build_co2_from_materialized(
     before its likelihood is constructed.
 
     Args:
-        biosphere_prior: Optional explicit calibration of the retained state
-            prior, checked here against the materialized retained prior.
         model_inputs: Selected scientific arrays already materialized together.
         prepared_inputs: Preparation supplying aggregation mode and provenance.
         priors: Materialized prior parameters under their concrete graph names.
@@ -511,8 +504,7 @@ def build_co2_from_materialized(
 
     Raises:
         ValueError: If selected inputs or numerical priors remain lazy, or
-            scientific components reject the supplied choices, or
-            ``biosphere_prior`` does not calibrate the retained prior.
+            scientific components reject the supplied choices.
     """
     prepared = prepared_inputs
     names = co2_model_input_names(
@@ -550,21 +542,18 @@ def build_co2_from_materialized(
         aggregation_error=aggregation_error,
     )
     prior_covariance = model_inputs["alpha_prior_covariance"]
-    flux_prior = resolve_retained_flux_prior(
-        CorrelatedPrior(
-            model_inputs["alpha_prior_mean"],
-            prior_covariance,
-            covariance_dim=str(prior_covariance.dims[-1]),
-        ),
-        biosphere_prior,
+    retained_prior = CorrelatedPrior(
+        model_inputs["alpha_prior_mean"],
+        prior_covariance,
+        covariance_dim=str(prior_covariance.dims[-1]),
     )
     outer = (
         None if outer_flux is None
-        else outer_flux.resolve_states(flux_prior).bind_rows(model_inputs["mf"], model_inputs["H"])
+        else outer_flux.resolve_states(retained_prior).bind_rows(model_inputs["mf"], model_inputs["H"])
     )
     model = _build_co2_model(
         model_inputs["H"],
-        retained_prior=flux_prior,
+        retained_prior=retained_prior,
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
