@@ -355,7 +355,8 @@ def build_co2_cached_sigma_model(
             states. Fixed values are dimensionless flux scalings.
         boundary: Resolved boundary component bound to this fit.
         outer_flux: Optional outer states resolved on ``retained_prior``,
-            whose fixed outer states are held at their prior mean; see
+            whose selected outer states are held at their prior mean (and,
+            when marginalised, add to ``aggregation_error``); see
             :func:`~openghg_inversions.rhime.co2.co2_model.build_co2_model`.
         offset_prior: Optional prior for additive offsets. Its location and
             scale parameters use the observations' concentration units. When
@@ -462,6 +463,7 @@ def _build_co2_cached_sigma_model(
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
     if outer_flux is not None:
         activity = outer_flux.fix_states(activity)
+        aggregation_error = outer_flux.add_marginal_error(flux_sensitivity, aggregation_error, output_dim=output_dim)
     (
         prepared_flux,
         flux_active_design,
