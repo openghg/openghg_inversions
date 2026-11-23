@@ -240,7 +240,7 @@ def build_rhime_co2_cached_sigma(
         boundary: Optional boundary choice, bound once to the prepared
             ``H_bc`` or centered operands. ``None`` omits the boundary.
         outer_flux: Optional outer-flux choice, resolved on the retained flux
-            prior and bound to the materialized rows here.
+            prior here.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added.
         offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
@@ -275,10 +275,7 @@ def build_rhime_co2_cached_sigma(
         prior_covariance,
         covariance_dim=str(prior_covariance.dims[-1]),
     )
-    outer = (
-        None if outer_flux is None
-        else outer_flux.resolve_states(retained_prior).bind_rows(model_inputs["mf"], model_inputs["H"])
-    )
+    outer = None if outer_flux is None else outer_flux.resolve_states(retained_prior)
     cached_model = _build_co2_cached_sigma_model(
         model_inputs["H"],
         retained_prior=retained_prior,
