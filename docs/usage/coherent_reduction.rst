@@ -103,8 +103,11 @@ the :doc:`rhime` workflow::
    co2_inputs = prepare_co2_inputs(canonical_inputs, reduction)
 
 The returned
-:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact uses at most
-512 low-rank modes by default, capped at the observation count. Pass
+:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact uses a
+low-rank-plus-diagonal representation by default, with the rank chosen from the
+unresolved covariance's whitened spectrum
+(:class:`~openghg_inversions.observation_error.WhitenedRankRule`; see
+:doc:`co2_models`) and capped at the observation count. Pass
 ``aggregation_error_rank=None`` to keep
 ``reduction.unresolved_observation_covariance`` as an exact dense aggregation
 covariance. The artifact records one representation, and the CO2 runners use
@@ -112,8 +115,8 @@ it without a separate mode argument.
 This handoff does not alter the prepared-input contracts of the standard,
 or multisector paths.
 
-For larger cases, request an explicit low-rank-plus-diagonal (LRPD) rank at the
-handoff::
+For benchmarking, request an explicit low-rank-plus-diagonal (LRPD) rank at the
+handoff. Preparation warns when it is below the whitened-spectrum rule rank::
 
    co2_inputs = prepare_co2_inputs(
        canonical_inputs,

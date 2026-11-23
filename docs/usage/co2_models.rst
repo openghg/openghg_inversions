@@ -1151,17 +1151,52 @@ covariance. The cached runner can retain every mode above the scale-relative
 numerical tolerance and carry the remaining marginal variance in the diagonal
 tail. This is exact when every positive mode exceeds that tolerance, but it
 generally produces a full numerical-rank factor and is not the intended
-scaling path. The default retains at most 512 modes; override it when a
-different retained rank is scientifically justified::
+scaling path.
 
+By default the rank comes from the whitened spectrum. Preparation solves
+:math:`A u_i = \mu_i R_0 u_i`, where :math:`A` is the unresolved covariance and
+:math:`R_0` is a reference mismatch covariance: the reported observation error
+plus a reference amplitude, optionally with within-site OU correlation. It then
+keeps every mode with :math:`\mu_i > 0.1`, optionally more to meet a
+dropped-mode KL budget. The stored factor is still the leading eigenmodes of
+:math:`A` with a diagonal tail; only the number of modes comes from the rule.
+The required rank varies by more than a factor of five between seasons and
+bases, so a fixed default is either wasteful or too small.
+
+The count depends strongly on :math:`R_0`: larger amplitudes whiten more of
+:math:`A` away. The default reference is an independent 1 ppm amplitude, the
+observation-noise floor used in the VG low-rank investigation. Pass the run's
+floored or prior-median site amplitudes and OU time scale when they are known,
+never zero::
+
+   from openghg_inversions.observation_error import WhitenedRankRule
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
 
    prepared = prepare_co2_inputs(
        canonical_inputs,
        reduction,
-       aggregation_error_rank=40,
+       aggregation_error_rank=WhitenedRankRule(
+           reference_sd={"MHD": 2.0, "TAC": 2.5},  # ppm
+           tau_hours=5.0,
+           mu_threshold=0.1,
+           kl_budget_per_observation=None,
+       ),
    )
    prepared.save("co2-coherent-low-rank.zarr")
+
+Provenance ``aggregation_error_rank_selection`` records the reference
+amplitudes, the count above the threshold, the chosen rank and the dropped-mode
+KL :math:`\tfrac12\sum_{i>k}[\mu_i - \log(1 + \mu_i)]`. That KL describes
+the whitened truncation at :math:`R_0` without the diagonal tail, not the
+stored representation. The rule is a screening heuristic: on VG CO2 cases,
+rank at least the :math:`\mu > 0.1` count gave country totals within about
+0.5 Tg C/month of exact dense :math:`A`. It is not a bound on posterior error.
+
+An integer rank is an explicit override for benchmarking. The spectrum at the
+default reference is still computed and recorded, and preparation issues a
+``UserWarning`` when the integer is below the rule rank::
+
+   prepared = prepare_co2_inputs(canonical_inputs, reduction, aggregation_error_rank=1024)
 
 The approximation preserves the dense covariance diagonal up to accepted
 roundoff and diagonal-tail clipping, recorded by

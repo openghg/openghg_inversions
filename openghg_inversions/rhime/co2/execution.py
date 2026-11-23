@@ -13,6 +13,7 @@ from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import PreparedInputs
+from openghg_inversions.observation_error import WhitenedRankRule
 from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
 
 from .co2_affine_output import _bind_affine_flux_map, prepared_inputs_content_id
@@ -73,7 +74,7 @@ def run_co2(
     output_path: str | Path | None = None, start_date: str | None = None, end_date: str | None = None,
     prepared: Co2PreparedInputs | None = None, canonical_inputs: PreparedInputs | None = None,
     reduction: CoherentGaussianReduction | None = None, affine_artifact: AffineFluxMapArtifact | None = None,
-    aggregation_error_rank: int | None = 512,
+    aggregation_error_rank: int | WhitenedRankRule | None = WhitenedRankRule(),
     bc_centering_weights: xr.DataArray | None = None,
 ) -> Co2Output:
     """Prepare or load CO2 inputs, sample and create requested products.

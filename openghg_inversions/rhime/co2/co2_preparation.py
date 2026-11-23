@@ -24,7 +24,12 @@ from openghg.util import (  # pyright: ignore[reportPrivateImportUsage, reportAt
 )
 
 from openghg_inversions._serialization_codecs import _copy_json_mapping, _decode_json_mapping
-from openghg_inversions.array_ops import require_unique_index, same_index, validate_covariance_coordinates
+from openghg_inversions.array_ops import (
+    materialize_together,
+    require_unique_index,
+    same_index,
+    validate_covariance_coordinates,
+)
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
@@ -33,6 +38,8 @@ from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_SD,
     DIAGONAL_RESIDUAL_VARIANCE,
     LOW_RANK_FACTOR,
+    WhitenedRankRule,
+    choose_whitened_aggregation_rank,
     prepare_low_rank_aggregation_error,
     resolve_aggregation_error,
 )
@@ -520,7 +527,7 @@ def prepare_co2_inputs(
     canonical_inputs: PreparedInputs,
     reduction: CoherentGaussianReduction,
     *,
-    aggregation_error_rank: int | None = 512,
+    aggregation_error_rank: int | WhitenedRankRule | None = WhitenedRankRule(),
     bc_centering_weights: xr.DataArray | None = None,
     provenance: Mapping[str, Any] | None = None,
 ) -> Co2PreparedInputs:
@@ -528,10 +535,14 @@ def prepare_co2_inputs(
 
     The reduction replaces the canonical sensitivity with its effective
     operator and supplies the linked retained prior, affine intercept, and
-    unresolved covariance. By default, the handoff retains at most 512 LRPD
-    modes. ``None`` stores the unresolved covariance exactly; requested ranks
-    larger than the observation count are capped at that count, and the actual
-    factor width may be smaller when the covariance has lower numerical rank.
+    unresolved covariance. By default, the LRPD rank comes from the unresolved
+    covariance's spectrum whitened by a reference mismatch covariance (see
+    :class:`~openghg_inversions.observation_error.WhitenedRankRule`): reported
+    observation error plus an independent 1 ppm reference amplitude, keeping
+    every mode with whitened eigenvalue above 0.1. ``None`` stores the
+    unresolved covariance exactly; ranks larger than the observation count are
+    capped at that count, and the actual factor width may be smaller when the
+    covariance has lower numerical rank.
 
     Inputs are borrowed and are not mutated. The returned artifact retains the
     canonical observations, observation error, optional boundary data, state
@@ -541,19 +552,30 @@ def prepare_co2_inputs(
     values are not converted.
 
     Selecting LRPD storage eagerly materializes the complete unresolved
-    covariance and computes its full dense eigendecomposition. The retained
-    rank reduces the saved payload and downstream structured-likelihood cost,
-    not this preparation cost.
+    covariance and computes its full dense eigendecomposition, plus one dense
+    whitened eigenvalue decomposition for the rank rule. The retained rank
+    reduces the saved payload and downstream structured-likelihood cost, not
+    this preparation cost.
 
     Args:
         canonical_inputs: Canonical RHIME observations and metadata whose
             observation and retained-state labels match ``reduction``.
         reduction: One coherent Gaussian reduction containing all linked
             retained-prior and observation products.
-        aggregation_error_rank: Positive LRPD rank, defaulting to 512. Values
-            larger than the observation count are capped at that count; the
-            actual factor width is further limited by numerical positive rank.
-            Pass ``None`` to store the exact dense covariance.
+        aggregation_error_rank: Whitened-spectrum rank rule, defaulting to
+            ``WhitenedRankRule()``; pass a rule with the run's floored or
+            prior-median site amplitudes and OU time scale where known. A
+            positive integer is an explicit rank for benchmarking, equivalent
+            to ``WhitenedRankRule(rank=...)``: the spectrum at the default
+            reference is still recorded, with a ``UserWarning`` when the rank
+            is below the rule rank. Values larger than the observation count
+            are capped at that count; the actual factor width is further
+            limited by numerical positive rank. Pass ``None`` to store the
+            exact dense covariance. Provenance ``aggregation_error_rank``
+            records the request (the integer, ``"whitened_spectrum"`` or
+            ``None``), and ``aggregation_error_rank_selection`` records the
+            reference amplitudes, the count above the threshold, the chosen
+            rank and the dropped-mode KL.
         bc_centering_weights: Positive dimensionless averaging weights on
             ``(bc_curtain, bc_period)``, with interval start times as period
             labels. Raw transport stays spatial and reusable; binding stacks
@@ -652,17 +674,19 @@ def prepare_co2_inputs(
         f"({observation_units})**2",
         name="Coherent unresolved_observation_covariance",
     )
-    if (
-        aggregation_error_rank is not None
-        and (
-            isinstance(aggregation_error_rank, bool)
-            or not isinstance(aggregation_error_rank, int)
-            or aggregation_error_rank < 1
-        )
+    rank_rule: WhitenedRankRule | None
+    if aggregation_error_rank is None or isinstance(aggregation_error_rank, WhitenedRankRule):
+        rank_rule = aggregation_error_rank
+    elif (
+        isinstance(aggregation_error_rank, bool)
+        or not isinstance(aggregation_error_rank, int)
+        or aggregation_error_rank < 1
     ):
-        raise ValueError("aggregation_error_rank must be a positive integer or None.")
+        raise ValueError("aggregation_error_rank must be a positive integer, a WhitenedRankRule or None.")
+    else:
+        rank_rule = WhitenedRankRule(rank=aggregation_error_rank)
 
-    target_representation_dim = "nmeasure_cov" if aggregation_error_rank is None else "agg_rank"
+    target_representation_dim = "nmeasure_cov" if rank_rule is None else "agg_rank"
     mapped = _without_aggregation_payload(
         inputs,
         target_dim=target_representation_dim,
@@ -713,7 +737,8 @@ def prepare_co2_inputs(
         mapped = RawCenteredSensitivity.with_centering_weights(cast(RawCenteredSensitivity, mapped), weights)
 
     approximation = None
-    if aggregation_error_rank is None:
+    rank_selection: dict[str, Any] = {}
+    if rank_rule is None:
         mode: Co2AggregationErrorMode = "dense"
         mapped[AGGREGATION_ERROR_COVARIANCE] = _borrow_without_axis_coordinates(
             _renamed(
@@ -724,9 +749,30 @@ def prepare_co2_inputs(
             "nmeasure",
         )
     else:
+        if "site" not in observations.coords or (rank_rule.tau_hours is not None and "time" not in observations.coords):
+            raise ValueError("The whitened rank rule requires observation 'site' (and, with OU, 'time') coordinates.")
+        unresolved, observation_error = materialize_together(
+            unresolved,
+            inputs["mf_error"],
+            purpose="aggregation-error covariance and observation error for the rank rule",
+        )
+        rank, rank_selection = choose_whitened_aggregation_rank(
+            np.asarray(unresolved.values, dtype=float),
+            rank_rule,
+            observation_error_sd=np.asarray(observation_error.values, dtype=float),
+            sites=np.asarray(observations["site"].values),
+            observation_times=(
+                None if rank_rule.tau_hours is None else np.asarray(observations["time"].values)
+            ),
+            reference_unit_scale=(
+                mole_fraction_unit_scale(rank_rule.units, context="the whitened-rank reference")
+                / mole_fraction_unit_scale(str(observation_units), context="CO2 observations")
+            ),
+            observation_units=str(observation_units),
+        )
         approximation = prepare_low_rank_aggregation_error(
             unresolved,
-            rank=min(aggregation_error_rank, unresolved.sizes[observation_dim]),
+            rank=rank,
             output_dim=observation_dim,
             covariance_dim=observation_covariance_dim,
         )
@@ -762,9 +808,12 @@ def prepare_co2_inputs(
     if declared_strategy is not None and declared_strategy != reduction.projection_strategy:
         raise ValueError("CO2 provenance projection_strategy conflicts with the coherent reduction.")
     metadata["projection_strategy"] = reduction.projection_strategy
-    metadata["aggregation_error_rank"] = aggregation_error_rank
+    metadata["aggregation_error_rank"] = (
+        "whitened_spectrum" if isinstance(aggregation_error_rank, WhitenedRankRule) else aggregation_error_rank
+    )
     if approximation is not None:
         metadata["aggregation_error"] = dict(approximation.diagnostics)
+        metadata["aggregation_error_rank_selection"] = rank_selection
     return Co2PreparedInputs(
         PreparedInputs(
             inv_inputs=mapped,

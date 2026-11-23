@@ -8,10 +8,14 @@ covariance, or diagnostically as independent standard deviations.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal, TypeAlias
+from numbers import Real
+from typing import Any, Literal, TypeAlias
+import warnings
 
 import numpy as np
+from scipy.linalg import solve_triangular
 import xarray as xr
 
 from openghg_inversions.array_ops import materialize_together, validate_covariance_coordinates
@@ -251,6 +255,415 @@ def aggregation_error_as_low_rank(
         assert aggregation_error.diagonal_variance is not None
         return np.empty((nmeasure, 0)), np.asarray(aggregation_error.diagonal_variance.values, dtype=float)
     return np.empty((nmeasure, 0)), np.zeros(nmeasure)
+
+
+@dataclass(frozen=True)
+class WhitenedRankRule:
+    r"""Choose an LRPD aggregation-error rank from the R-whitened spectrum.
+
+    The rule solves :math:`A u_i = \mu_i R_0 u_i` for the aggregation
+    covariance :math:`A` against a reference mismatch covariance
+
+    .. math::
+
+        R_0 = \mathrm{diag}(e^2) + S_0 C S_0,
+
+    where :math:`e` is the reported observation error, :math:`S_0` holds the
+    reference mismatch amplitudes and :math:`C` is the identity or a
+    within-site OU correlation. :math:`\mu_i` is the variance of mode
+    :math:`i` of :math:`A` in units of reference noise. Dropping the modes
+    after the leading :math:`k` from the whitened representation costs
+
+    .. math::
+
+        \mathrm{KL}\big(N(0, R_0 + A)\,\|\,N(0, R_0 + A_k)\big)
+        = \tfrac12 \sum_{i>k} \big[\mu_i - \log(1 + \mu_i)\big].
+
+    The rank is the larger of the count of :math:`\mu_i` above
+    ``mu_threshold`` and the smallest :math:`k` whose dropped-mode KL per
+    observation is at most ``kl_budget_per_observation``; either criterion
+    may be disabled with ``None``. The stored factor is still the leading
+    eigenmodes of :math:`A` with the discarded marginal variance on the
+    diagonal; only the number of modes comes from the whitened spectrum.
+
+    The count depends strongly on :math:`R_0`: larger amplitudes whiten more
+    of :math:`A` away. Use floored or prior-median amplitudes, never zero.
+    The rule is a screening heuristic validated on VG CO2 cases (rank at
+    least the :math:`\mu > 0.1` count gave country totals within about
+    0.5 Tg C/month of exact dense :math:`A`), not a bound on posterior error.
+
+    Args:
+        reference_sd: Positive reference mismatch amplitude, either one value
+            for every site or a mapping covering every observation site.
+            The default 1 ppm matches the observation-noise floor used in the
+            VG low-rank investigation.
+        units: Mole-fraction units of ``reference_sd``. They are converted to
+            the observation units before whitening.
+        tau_hours: Optional positive OU correlation time scale in hours, one
+            value or a site mapping. ``None`` uses independent reference
+            mismatch.
+        mu_threshold: Positive whitened-eigenvalue threshold for the count
+            criterion, or ``None`` to disable it.
+        kl_budget_per_observation: Positive dropped-mode KL budget in nats per
+            observation, or ``None`` to disable it. This spectral KL ignores
+            the diagonal tail and is much smaller than the KL of the stored
+            representation: on VG CO2 cases a budget of ``1e-3`` kept far too
+            few modes (worst country error 0.6-1.3 Tg C/month), while the
+            ``mu > 0.1`` count corresponded to about ``2e-5``-``1.2e-4``.
+        rank: Optional explicit rank for benchmarking. The spectrum and rule
+            rank are still computed and recorded, and a ``UserWarning`` is
+            issued when ``rank`` is below the rule rank.
+
+    Raises:
+        ValueError: If a value is invalid or no criterion or rank is set.
+    """
+
+    reference_sd: float | Mapping[str, float] = 1.0
+    units: str = "ppm"
+    tau_hours: float | Mapping[str, float] | None = None
+    mu_threshold: float | None = 0.1
+    kl_budget_per_observation: float | None = None
+    rank: int | None = None
+
+    def __post_init__(self) -> None:
+        """Validate rule values at construction."""
+        _positive_site_values(self.reference_sd, "reference_sd")
+        if self.tau_hours is not None:
+            _positive_site_values(self.tau_hours, "tau_hours")
+        if not isinstance(self.units, str) or not self.units.strip():
+            raise ValueError("WhitenedRankRule units must be a non-empty string.")
+        for name in ("mu_threshold", "kl_budget_per_observation"):
+            value = getattr(self, name)
+            if value is not None and not _is_positive_real(value):
+                raise ValueError(f"WhitenedRankRule {name} must be a positive finite number or None.")
+        if self.rank is not None and (
+            isinstance(self.rank, bool) or not isinstance(self.rank, int) or self.rank < 1
+        ):
+            raise ValueError("WhitenedRankRule rank must be a positive integer or None.")
+        if self.rank is None and self.mu_threshold is None and self.kl_budget_per_observation is None:
+            raise ValueError(
+                "WhitenedRankRule needs mu_threshold, kl_budget_per_observation or an explicit rank."
+            )
+
+    def reference_record(self) -> dict[str, Any]:
+        """Return the JSON-safe reference settings as supplied."""
+        return {
+            "reference_sd": _json_site_values(self.reference_sd),
+            "units": self.units,
+            "tau_hours": None if self.tau_hours is None else _json_site_values(self.tau_hours),
+            "correlation": "independent" if self.tau_hours is None else "within-site OU",
+        }
+
+
+def whitened_eigenvalue_kl(eigenvalues: np.ndarray) -> float:
+    r"""Return the Gaussian KL carried by whitened covariance eigenvalues.
+
+    For eigenvalues :math:`\lambda_i > -1` of a covariance difference
+    whitened by the approximate total covariance, or the generalized
+    eigenvalues of dropped modes, the KL divergence is
+    :math:`\tfrac12 \sum_i (\lambda_i - \log(1 + \lambda_i))`. It is
+    non-negative and zero only when every eigenvalue is zero.
+
+    Args:
+        eigenvalues: Whitened eigenvalues, each greater than ``-1``.
+
+    Returns:
+        KL divergence in nats.
+
+    Raises:
+        ValueError: If any eigenvalue is not finite or is at most ``-1``.
+    """
+    values = np.asarray(eigenvalues, dtype=float)
+    if not np.isfinite(values).all() or np.any(values <= -1.0):
+        raise ValueError("Whitened eigenvalues must be finite and greater than -1.")
+    return 0.5 * float(np.sum(values - np.log1p(values)))
+
+
+def whitened_aggregation_spectrum(
+    covariance: np.ndarray,
+    *,
+    observation_error_sd: np.ndarray,
+    reference_sd: np.ndarray,
+    site_index: np.ndarray | None = None,
+    observation_hours: np.ndarray | None = None,
+    tau_hours: np.ndarray | None = None,
+) -> np.ndarray:
+    r"""Return generalized eigenvalues of aggregation error against a reference.
+
+    Solves :math:`A u = \mu R_0 u` with
+    :math:`R_0 = \mathrm{diag}(e^2) + S_0 C S_0`, by whitening :math:`A` with
+    the Cholesky factor of each site block of :math:`R_0` and taking the
+    eigenvalues of the result. Only eigenvalues are computed. Cost is one
+    dense ``n x n`` copy, block triangular solves and one symmetric eigenvalue
+    decomposition, :math:`O(n^3)`.
+
+    Args:
+        covariance: Dense symmetric aggregation covariance :math:`A`.
+        observation_error_sd: Per-row reported observation error :math:`e`.
+        reference_sd: Per-row positive reference mismatch amplitude, in the
+            same units as :math:`e`.
+        site_index: Per-row integer site identifiers. Required with
+            ``tau_hours``.
+        observation_hours: Per-row observation times in hours. Required with
+            ``tau_hours``.
+        tau_hours: Optional per-row OU time scale. ``None`` uses an
+            independent reference mismatch, so :math:`C = I`.
+
+    Returns:
+        Whitened eigenvalues in descending order, with roundoff below zero
+        clipped to zero.
+
+    Raises:
+        ValueError: If shapes disagree, inputs are invalid, or a reference
+            site block is not positive definite.
+    """
+    values = np.asarray(covariance, dtype=float)
+    n = values.shape[0]
+    if values.ndim != 2 or values.shape != (n, n) or n == 0:
+        raise ValueError("Aggregation covariance must be a non-empty square matrix.")
+    error = np.asarray(observation_error_sd, dtype=float)
+    amplitude = np.asarray(reference_sd, dtype=float)
+    for name, vector in (("observation_error_sd", error), ("reference_sd", amplitude)):
+        if vector.shape != (n,) or not np.isfinite(vector).all() or np.any(vector < 0.0):
+            raise ValueError(f"{name} must be finite, non-negative and one per row.")
+    if np.any(amplitude == 0.0):
+        raise ValueError("reference_sd must be positive; a zero reference makes the rank unbounded.")
+
+    if tau_hours is None:
+        scale = np.sqrt(np.square(error) + np.square(amplitude))
+        whitened = values / scale[:, None]
+        whitened /= scale[None, :]
+    else:
+        if site_index is None or observation_hours is None:
+            raise ValueError("An OU reference requires site_index and observation_hours.")
+        sites = np.asarray(site_index)
+        hours = np.asarray(observation_hours, dtype=float)
+        tau = np.asarray(tau_hours, dtype=float)
+        if sites.shape != (n,) or hours.shape != (n,) or tau.shape != (n,):
+            raise ValueError("site_index, observation_hours and tau_hours must be one per row.")
+        if not np.isfinite(hours).all() or not np.isfinite(tau).all() or np.any(tau <= 0.0):
+            raise ValueError("observation_hours must be finite and tau_hours positive.")
+        whitened = values.copy()
+        blocks = []
+        for site in np.unique(sites):
+            rows = np.flatnonzero(sites == site)
+            correlation = np.exp(-np.abs(hours[rows, None] - hours[None, rows]) / tau[rows[0]])
+            block = amplitude[rows, None] * correlation * amplitude[None, rows]
+            block[np.diag_indices(rows.size)] += np.square(error[rows])
+            try:
+                cholesky = np.linalg.cholesky(block)
+            except np.linalg.LinAlgError as exc:
+                raise ValueError(
+                    f"Reference mismatch covariance for site {site!r} is not positive definite; "
+                    "check for repeated times with zero observation error."
+                ) from exc
+            whitened[rows, :] = solve_triangular(cholesky, whitened[rows, :], lower=True)
+            blocks.append((rows, cholesky))
+        for rows, cholesky in blocks:
+            whitened[:, rows] = solve_triangular(cholesky, whitened[:, rows].T, lower=True).T
+        whitened += whitened.T
+        whitened *= 0.5
+
+    eigenvalues = np.linalg.eigvalsh(whitened)[::-1]
+    del whitened
+    tolerance = _covariance_roundoff_tolerance(np.asarray(eigenvalues))
+    if float(eigenvalues[-1]) < -max(tolerance, 1e-10):
+        raise ValueError("Aggregation covariance must be positive semidefinite.")
+    return np.maximum(eigenvalues, 0.0)
+
+
+def select_whitened_rank(
+    eigenvalues: np.ndarray,
+    rule: WhitenedRankRule,
+) -> tuple[int, dict[str, Any]]:
+    """Apply a rank rule to whitened eigenvalues.
+
+    Args:
+        eigenvalues: Non-negative whitened eigenvalues in descending order.
+        rule: Rank criteria and optional explicit override.
+
+    Returns:
+        The chosen rank, at least one and at most the eigenvalue count, and a
+        JSON-safe record of counts, criteria and dropped-mode KL. Issues a
+        ``UserWarning`` when an explicit rank is below the rule rank.
+    """
+    mu = np.asarray(eigenvalues, dtype=float)
+    n = mu.size
+    # tail_kl[k] is the KL of dropping modes k, k + 1, ..., n - 1 (zero-based).
+    terms = 0.5 * (mu - np.log1p(mu))
+    tail_kl = np.append(np.cumsum(terms[::-1])[::-1], 0.0)
+    count = None if rule.mu_threshold is None else int(np.count_nonzero(mu > rule.mu_threshold))
+    kl_rank = None
+    if rule.kl_budget_per_observation is not None:
+        kl_rank = int(np.argmax(tail_kl <= rule.kl_budget_per_observation * n))
+    criteria = [value for value in (count, kl_rank) if value is not None]
+    rule_rank = min(max(*criteria, 1), n) if criteria else None
+    if rule.rank is not None:
+        chosen = min(rule.rank, n)
+    else:
+        assert rule_rank is not None  # the rule requires a criterion without an explicit rank
+        chosen = rule_rank
+    if rule.rank is not None and rule_rank is not None and rule.rank < rule_rank:
+        warnings.warn(
+            f"Explicit aggregation_error rank {rule.rank} is below the whitened-spectrum rule rank "
+            f"{rule_rank} (mu > {rule.mu_threshold}: {count}; KL-budget rank: {kl_rank}). "
+            f"Dropped whitened modes carry {tail_kl[chosen]:.4g} nats "
+            f"({tail_kl[chosen] / n:.3g} per observation) at the reference covariance.",
+            UserWarning,
+            stacklevel=3,
+        )
+    return chosen, {
+        "method": "r_whitened_generalized_eigenvalues",
+        "n_observation": n,
+        "mu_threshold": rule.mu_threshold,
+        "count_mu_above_threshold": count,
+        "kl_budget_per_observation": rule.kl_budget_per_observation,
+        "kl_budget_rank": kl_rank,
+        "rule_rank": rule_rank,
+        "override_rank": rule.rank,
+        "chosen_rank": chosen,
+        "largest_mu": float(mu[0]),
+        "first_dropped_mu": float(mu[chosen]) if chosen < n else 0.0,
+        "dropped_mode_kl": float(tail_kl[chosen]),
+        "dropped_mode_kl_per_observation": float(tail_kl[chosen] / n),
+        "dropped_mode_kl_scope": (
+            "KL(N(0, R0 + A) || N(0, R0 + A_k)) for the leading k R0-whitened modes, without the "
+            "diagonal tail; the stored factor uses the leading eigenmodes of A with a diagonal tail"
+        ),
+    }
+
+
+def choose_whitened_aggregation_rank(
+    covariance: np.ndarray,
+    rule: WhitenedRankRule,
+    *,
+    observation_error_sd: np.ndarray,
+    sites: np.ndarray,
+    observation_times: np.ndarray | None = None,
+    reference_unit_scale: float = 1.0,
+    observation_units: str | None = None,
+) -> tuple[int, dict[str, Any]]:
+    """Choose an LRPD rank from a dense aggregation covariance and a rule.
+
+    This is an eager numerical boundary: it builds the reference covariance
+    from the rule, computes the whitened spectrum with
+    :func:`whitened_aggregation_spectrum` and applies
+    :func:`select_whitened_rank`.
+
+    Args:
+        covariance: Dense symmetric aggregation covariance in observation
+            units squared.
+        rule: Reference covariance, criteria and optional explicit rank.
+        observation_error_sd: Per-row reported observation error in
+            observation units, included in the reference covariance.
+        sites: Per-row site labels used for site mappings and OU blocks.
+        observation_times: Per-row ``datetime64`` times or hours. Required
+            when ``rule.tau_hours`` is set.
+        reference_unit_scale: Multiplier converting ``rule.units`` to the
+            observation units.
+        observation_units: Observation units, recorded in the diagnostics.
+
+    Returns:
+        The chosen rank and a JSON-safe record of the reference covariance
+        (supplied and per-site amplitudes in observation units, the
+        observation-error summary), counts, criteria and dropped-mode KL.
+
+    Raises:
+        ValueError: If inputs are invalid or a site mapping omits a site.
+    """
+    labels = np.asarray(sites).astype(str)
+    amplitude = _site_rows(rule.reference_sd, labels, "reference_sd") * float(reference_unit_scale)
+    error = np.asarray(observation_error_sd, dtype=float)
+    tau = None
+    hours = None
+    site_index = None
+    if rule.tau_hours is not None:
+        if observation_times is None:
+            raise ValueError("An OU whitened-rank reference requires observation times.")
+        tau = _site_rows(rule.tau_hours, labels, "tau_hours")
+        times = np.asarray(observation_times)
+        if np.issubdtype(times.dtype, np.datetime64):
+            nanoseconds = times.astype("datetime64[ns]")
+            hours = (nanoseconds - nanoseconds.min()) / np.timedelta64(1, "h")
+        else:
+            hours = times.astype(float)
+        _, site_index = np.unique(labels, return_inverse=True)
+    eigenvalues = whitened_aggregation_spectrum(
+        covariance,
+        observation_error_sd=error,
+        reference_sd=amplitude,
+        site_index=site_index,
+        observation_hours=hours,
+        tau_hours=tau,
+    )
+    rank, selection = select_whitened_rank(eigenvalues, rule)
+    site_amplitudes = {label: float(amplitude[np.flatnonzero(labels == label)[0]]) for label in np.unique(labels)}
+    reference = {
+        **rule.reference_record(),
+        "observation_units": observation_units,
+        "reference_sd_observation_units_by_site": site_amplitudes,
+        "observation_error": "reported observation-error variance included",
+        "observation_error_sd_min": float(error.min()),
+        "observation_error_sd_median": float(np.median(error)),
+    }
+    return rank, {"reference_covariance": reference, **selection}
+
+
+def _is_positive_real(value: object) -> bool:
+    """Return whether ``value`` is a positive finite real number, not a bool."""
+    return (
+        isinstance(value, Real)
+        and not isinstance(value, bool)
+        and bool(np.isfinite(float(value)))
+        and float(value) > 0.0
+    )
+
+
+def _positive_site_values(value: object, name: str) -> None:
+    """Validate a positive scalar or a non-empty mapping of positive site values."""
+    if isinstance(value, Mapping):
+        if not value or not all(
+            isinstance(site, str) and _is_positive_real(item) for site, item in value.items()
+        ):
+            raise ValueError(
+                f"WhitenedRankRule {name} mapping must be non-empty with string sites and positive values."
+            )
+    elif not _is_positive_real(value):
+        raise ValueError(f"WhitenedRankRule {name} must be a positive finite number or a site mapping.")
+
+
+def _json_site_values(value: float | Mapping[str, float]) -> float | dict[str, float]:
+    """Return a scalar or site mapping as JSON-safe floats."""
+    if isinstance(value, Mapping):
+        return {str(site): float(item) for site, item in value.items()}
+    return float(value)
+
+
+def _site_rows(
+    value: float | Mapping[str, float],
+    sites: np.ndarray,
+    name: str,
+) -> np.ndarray:
+    """Expand a scalar or site mapping to one value per observation row.
+
+    Args:
+        value: One value or a mapping keyed by site label.
+        sites: Per-row site labels.
+        name: Option name used in errors.
+
+    Returns:
+        Float values aligned with ``sites``.
+
+    Raises:
+        ValueError: If the mapping omits an observation site.
+    """
+    labels = np.asarray(sites).astype(str)
+    if not isinstance(value, Mapping):
+        return np.full(labels.size, float(value))
+    missing = sorted(set(labels) - set(value))
+    if missing:
+        raise ValueError(f"WhitenedRankRule {name} is missing observation site(s): {missing!r}.")
+    return np.asarray([float(value[label]) for label in labels])
 
 
 def _diagonal_preserving_spectral_lrpd(
