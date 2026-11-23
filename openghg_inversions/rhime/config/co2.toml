@@ -132,11 +132,6 @@ random_seed = 12345
 #   mean_by_period = true (requires frequency), or type = "anomaly_scaling" with
 #   scale_sd = 0.8 and reference = "whole_window_transport_mean".
 
-# A biosphere calibration (a sensitivity intervention) saved with BiospherePriorConfig
-# (see examples/biosphere_prior/saved_configuration.py).
-# [model.biosphere]
-# path = "biosphere-prior.nc"
-
 # Outer-region flux corrections whose level the boundary mean shift owns
 # (see docs/usage/atmospheric_baseline.rst). Needs a centred boundary with
 # mean_shift_prior and basis_group labels on the prepared retained states,
