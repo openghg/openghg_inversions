@@ -739,8 +739,9 @@ def _site_values(
         raise ValueError(f"{name} must contain finite, {qualifier} values.")
     if isinstance(value, Mapping):
         assert coordinate is not None
-        if not value:
-            raise ValueError(f"{name} site mapping must include the observed sites.")
+        missing = sorted(str(label) for label in np.asarray(coordinate.values) if label not in value)
+        if missing:
+            raise ValueError(f"{name} site mapping is missing observed site(s): {missing!r}.")
         values = np.asarray(expand_mapping(value, coordinate).values, dtype=np.float64)
     if values.ndim == 0:
         values = np.full(n_site, values.item(), dtype=np.float64)
@@ -789,7 +790,12 @@ def fixed_ou_mismatch_covariance(
     dim = str(observations.dims[0])
     index = observations.indexes.get(dim)
     error_index = observation_error.indexes.get(dim)
-    if observation_error.dims != (dim,) or index is None or error_index is None or not error_index.equals(index):
+    if (
+        observation_error.dims != (dim,)
+        or index is None
+        or error_index is None
+        or not error_index.equals(index)
+    ):
         raise ValueError("Observation error must share the indexed observation axis.")
 
     units = observations.attrs.get("units")
@@ -840,11 +846,11 @@ def fixed_ou_mismatch_covariance(
 
     description = {
         "source": "fixed_ou_mismatch_covariance",
-        "reference_sd": _json_site_values(fixed_site_amplitudes),
-        "units": amplitude_units,
+        "fixed_site_amplitudes": _json_site_values(fixed_site_amplitudes),
+        "amplitude_units": amplitude_units,
         "tau_hours": None if tau_hours is None else _json_site_values(tau_hours),
         "correlation": "independent" if tau_hours is None else "within-site OU",
-        "reference_sd_observation_units_by_site": dict(zip(labels, amplitudes.tolist(), strict=True)),
+        "fixed_site_amplitudes_observation_units_by_site": dict(zip(labels, amplitudes.tolist(), strict=True)),
         "observation_error": "independent observation-error variance included",
         "observation_error_sd_min": float(error_values.min()),
         "observation_error_sd_median": float(np.median(error_values)),

@@ -1235,8 +1235,11 @@ frequencies, so its error is magnified there, and ``stored_representation_kl``
 can be an order of magnitude larger than the spectral KL. A white floor
 comparable to the OU amplitudes reduces that gap to a few-fold. If the
 likelihood adds a floor that ``mf_error`` does not carry, such as a minimum
-error or a fixed model-error term, include the effective white variance when
-constructing the reference.
+error or a fixed model-error term, include it in the reference. With
+``fixed_ou_mismatch_covariance``, pass as ``observation_error`` the combined
+white standard deviation, for example
+``np.sqrt(mf_error**2 + floor**2).assign_attrs(units=mf_error.units)``
+(arithmetic drops the ``units`` attribute, which the evaluation requires).
 
 The rule is a screening heuristic, not a bound on posterior error: the rank it
 selects depends on the reference covariance and should be checked for the
