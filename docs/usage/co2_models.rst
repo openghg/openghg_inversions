@@ -6,6 +6,9 @@ seams for the CO₂-only and linked CO₂/O₂ recipes. Start with the
 :doc:`CO₂ model family <co2_model_family>` support matrix before using these
 interfaces.
 
+The retained flux state is sampled from a correlated prior with a marginal
+family per state; see :doc:`flux_prior`.
+
 .. _co2-only-model:
 
 CO2 coherent-reduction model

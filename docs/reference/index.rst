@@ -297,6 +297,7 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.PreparedLinearSensitivity
    openghg_inversions.models.prepare_linear_sensitivity
    openghg_inversions.models.CorrelatedLognormalPrior
+   openghg_inversions.models.CorrelatedPrior
    openghg_inversions.models.parse_prior
    openghg_inversions.models.add_model_data
    openghg_inversions.models.add_linear_component
@@ -330,6 +331,7 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.array_ops.to_dense_tree
    openghg_inversions.models.add_linked_linear_component
    openghg_inversions.models.add_correlated_lognormal_state
+   openghg_inversions.models.add_correlated_state_with_activity
    openghg_inversions.models.add_offset_component
    openghg_inversions.models.add_sigma_component
    openghg_inversions.models.add_site_sigma_gaussian_likelihood

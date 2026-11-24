@@ -1,6 +1,5 @@
 from typing import Any, cast
 
-from numba.core.errors import TypingError
 import numpy as np
 import pymc as pm
 import pytensor
@@ -170,7 +169,6 @@ def test_fixed_error_likelihood_uses_reported_and_aggregation_error_only() -> No
     ],
 )
 def test_aggregation_error_is_preserved_as_labelled_constant_data(
-    double_precision,
     mode: str,
     payload_names: set[str],
 ) -> None:
@@ -202,22 +200,18 @@ def test_aggregation_error_is_preserved_as_labelled_constant_data(
         )
 
 
-@pytest.mark.xfail(
-    strict=False,
-    raises=TypingError,
-    reason=(
-        "PyTensor's Numba MvNormalRV dots a float32 Cholesky factor with float64 normal draws "
-        "when warn_float64 disables its float64 parameter upcast (#770). Newer PyTensor "
-        "releases do not reproduce it, so an unexpected pass is allowed."
-    ),
-)
 def test_float32_numba_multivariate_normal_draw_with_float64_warnings() -> None:
-    """The package's float32 startup policy (floatX=float32, warn_float64=warn) breaks dense predictive draws."""
+    """Dense multivariate-normal draws compile under the package's float32 startup policy.
+
+    PyTensor before 3.3.5 dotted a float32 Cholesky factor with float64 normal
+    draws in Numba when ``warn_float64`` disabled its float64 parameter upcast.
+    """
     with pytensor.config.change_flags(floatX="float32", warn_float64="warn"):
         draw = pt.random.multivariate_normal(
             pt.zeros(3, dtype="float32"), pt.constant(np.eye(3, dtype="float32")),
         )
         assert pytensor.function([], draw, mode="NUMBA")().dtype == np.float32
+
 
 @pytest.mark.parametrize("mode", ["diagonal", "dense", "low_rank"])
 def test_min_error_is_a_floor_on_total_marginal_sd(mode: str) -> None:
@@ -391,7 +385,7 @@ def test_likelihoods_reject_reordered_observation_error_coordinates(
                 )
 
 
-def test_additive_sigma_likelihood_applies_minimum_error_floor() -> None:
+def test_additive_sigma_likelihood_applies_minimum_error_floor(double_precision) -> None:
     """The complete additive likelihood floors total marginal error."""
     data = _base_data()
     data["min_error"] = ("nmeasure", np.array([0.0, 1.0, 0.0]))
