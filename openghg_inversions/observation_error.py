@@ -8,10 +8,12 @@ covariance, or diagnostically as independent standard deviations.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
 import numpy as np
+from scipy.linalg import solve_triangular
 import xarray as xr
 
 from openghg_inversions.array_ops import materialize_together, validate_covariance_coordinates
@@ -251,6 +253,165 @@ def aggregation_error_as_low_rank(
         assert aggregation_error.diagonal_variance is not None
         return np.empty((nmeasure, 0)), np.asarray(aggregation_error.diagonal_variance.values, dtype=float)
     return np.empty((nmeasure, 0)), np.zeros(nmeasure)
+
+
+def dense_aggregation_covariance(aggregation_error: AggregationError) -> np.ndarray:
+    """Materialize any fixed aggregation-error representation as a dense matrix.
+
+    This is a diagnostic and test helper with quadratic memory. Low-rank
+    inputs return ``factor @ factor.T + diag(diagonal_variance)``; diagonal
+    inputs return their diagonal and ``"none"`` returns zeros.
+
+    Args:
+        aggregation_error: Validated fixed aggregation-error representation.
+
+    Returns:
+        Dense covariance with shape ``(nmeasure, nmeasure)``.
+    """
+    if aggregation_error.mode == "dense":
+        assert aggregation_error.covariance is not None
+        return np.asarray(aggregation_error.covariance.values, dtype=float)
+    factor, diagonal = aggregation_error_as_low_rank(aggregation_error)
+    return factor @ factor.T + np.diag(diagonal)
+
+
+def block_ou_correlation(
+    observation_times: np.ndarray,
+    group_index: np.ndarray,
+    tau_hours: float,
+) -> np.ndarray:
+    """Return a dense within-group exponential (OU) correlation matrix.
+
+    Rows in the same group are correlated by ``exp(-|t_i - t_j| / tau)``;
+    rows in different groups are uncorrelated. This is the correlation
+    template of the fixed-OU likelihood, built densely for diagnostics.
+
+    Args:
+        observation_times: One time per row, as ``datetime64`` values or
+            finite hours.
+        group_index: One group label per row, such as a species/site position.
+        tau_hours: Positive finite correlation time scale in hours.
+
+    Returns:
+        Symmetric correlation matrix with unit diagonal.
+
+    Raises:
+        ValueError: If shapes differ or ``tau_hours`` is not positive and finite.
+    """
+    times = np.asarray(observation_times)
+    groups = np.asarray(group_index)
+    if times.ndim != 1 or groups.shape != times.shape:
+        raise ValueError("observation_times and group_index must be one-dimensional and aligned.")
+    if isinstance(tau_hours, bool) or not np.isfinite(tau_hours) or tau_hours <= 0:
+        raise ValueError("tau_hours must be a positive finite number.")
+    if np.issubdtype(times.dtype, np.datetime64):
+        times = (times - times.min()) / np.timedelta64(1, "h")
+    hours = np.asarray(times, dtype=float)
+    if not np.isfinite(hours).all():
+        raise ValueError("observation_times must be finite.")
+    correlation = np.exp(-np.abs(hours[:, None] - hours[None, :]) / float(tau_hours))
+    return np.where(groups[:, None] == groups[None, :], correlation, 0.0)
+
+
+def aggregation_error_kl_per_observation(
+    reference_covariance: np.ndarray | xr.DataArray,
+    approximation: AggregationError,
+    *,
+    sigma: Sequence[float | np.ndarray],
+    independent_error_sd: np.ndarray | None = None,
+    sigma_correlation: np.ndarray | None = None,
+) -> np.ndarray:
+    r"""Gaussian KL per observation lost by approximating aggregation error.
+
+    For each entry of ``sigma`` this evaluates
+
+    .. math::
+
+        \frac{1}{n} \mathrm{KL}\big(N(0, A + D) \,\|\, N(0, \tilde A + D)\big),
+        \qquad D = \mathrm{diag}(e^2) + S C S,
+
+    where :math:`A` is the dense reference aggregation covariance,
+    :math:`\tilde A` the approximation, :math:`e` the independent error,
+    :math:`S = \mathrm{diag}(\sigma)` and :math:`C` the model-data mismatch
+    correlation (identity by default, or e.g. :func:`block_ou_correlation`).
+    With :math:`L L^T = \tilde A + D` and :math:`\lambda` the eigenvalues of
+    :math:`L^{-1}(A - \tilde A)L^{-T}`, the KL is
+    :math:`\tfrac12\sum_i(\lambda_i - \log(1 + \lambda_i))`, which is
+    non-negative and exactly zero when :math:`\tilde A = A`.
+
+    The approximation error matters most when :math:`D` is small, so evaluate
+    it over the posterior range of the mismatch amplitude, not at one value.
+
+    Cost: exact dense algebra, one Cholesky factorization and one symmetric
+    eigendecomposition of an ``n x n`` matrix per sigma value, i.e.
+    :math:`O(n^3)` time and :math:`O(n^2)` memory (a few ``n x n`` float64
+    matrices, about 250 MB each at ``n = 5,500``). Use it for tests,
+    preparation-time checks or one-off checks on a large node, not inside a
+    sampler.
+
+    Args:
+        reference_covariance: Dense reference aggregation covariance
+            :math:`A`; xarray inputs are materialized.
+        approximation: Approximate representation :math:`\tilde A` on the same
+            rows, in any mode.
+        sigma: Mismatch amplitudes to evaluate. Each entry is a scalar applied
+            to every row or a per-row array (for example, for mixed channel units).
+        independent_error_sd: Optional per-row independent standard
+            deviations :math:`e`; omitted means zero.
+        sigma_correlation: Optional dense mismatch correlation :math:`C`;
+            omitted means independent rows (``diag(sigma**2)``).
+
+    Returns:
+        KL per observation in nats, one value per ``sigma`` entry.
+
+    Raises:
+        ValueError: If shapes disagree, inputs are non-finite or negative, or
+            either total covariance is not positive definite.
+    """
+    reference = np.asarray(reference_covariance, dtype=float)
+    n = reference.shape[0]
+    if reference.ndim != 2 or reference.shape != (n, n) or n == 0:
+        raise ValueError("reference_covariance must be a non-empty square matrix.")
+    approximate = dense_aggregation_covariance(approximation)
+    if approximate.shape != reference.shape:
+        raise ValueError("approximation must have the same rows as reference_covariance.")
+    base = np.zeros(n) if independent_error_sd is None else np.asarray(independent_error_sd, dtype=float)
+    if base.shape != (n,) or not np.isfinite(base).all() or np.any(base < 0):
+        raise ValueError("independent_error_sd must be finite, non-negative and one per row.")
+    correlation = None if sigma_correlation is None else np.asarray(sigma_correlation, dtype=float)
+    if correlation is not None and correlation.shape != reference.shape:
+        raise ValueError("sigma_correlation must have the same shape as reference_covariance.")
+    difference = reference - approximate
+    result = []
+    for value in sigma:
+        amplitude = np.broadcast_to(np.asarray(value, dtype=float), (n,))
+        if not np.isfinite(amplitude).all() or np.any(amplitude < 0):
+            raise ValueError("sigma values must be finite and non-negative.")
+        if correlation is None:
+            total = approximate.copy()
+        else:
+            total = amplitude[:, None] * correlation
+            total *= amplitude[None, :]
+            total += approximate
+            amplitude = np.zeros(n)
+        total[np.diag_indices(n)] += np.square(base) + np.square(amplitude)
+        try:
+            cholesky = np.linalg.cholesky(total)
+        except np.linalg.LinAlgError as error:
+            raise ValueError(
+                "Approximate total covariance is not positive definite; add independent error or sigma."
+            ) from error
+        del total
+        whitened = solve_triangular(cholesky, difference, lower=True)
+        whitened = solve_triangular(cholesky, whitened.T, lower=True, overwrite_b=True)
+        del cholesky
+        whitened += whitened.T
+        whitened *= 0.5
+        eigenvalues = np.linalg.eigvalsh(whitened)
+        if eigenvalues.min() <= -1.0:
+            raise ValueError("Reference total covariance is not positive definite.")
+        result.append(0.5 * float(np.sum(eigenvalues - np.log1p(eigenvalues))) / n)
+    return np.asarray(result)
 
 
 def _diagonal_preserving_spectral_lrpd(

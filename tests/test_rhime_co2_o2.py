@@ -119,6 +119,8 @@ def _inputs(*, gathered_state: bool = False) -> dict[str, object]:
         "retained_prior": CorrelatedLognormalPrior(mean, covariance),
         "co2_units": "ppm",
         "o2_units": "per meg",
+        # These contracts exercise the exact dense joint covariance.
+        "aggregation_error_rank": None,
         "provenance": {"verification_games_issue": "OPE-77", "fixture": "co2_o2"},
     }
 
