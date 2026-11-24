@@ -204,7 +204,7 @@ def test_configured_outer_flux_matches_python_option(cached):
         observation_error=inv.mf_error,
         aggregation_error=resolve_aggregation_error(inv, prepared.aggregation_error_mode),
         boundary=AnomalyScalingChoice(mean_shift_prior, 0.3).bind(inv.mf, RawCenteredSensitivity.validate(inv)),
-        outer_flux=OuterFluxChoice("fixed", ("outer",)).resolve_states(prior),
+        outer_flux=OuterFluxChoice("fixed", ("outer",)),
         **(
             {"likelihood_builder": add_fixed_ou_gaussian_likelihood,
              "likelihood_kwargs": {k: v for k, v in likelihood.items() if k != "kind"}}
@@ -263,9 +263,7 @@ def test_linked_configured_outer_flux_matches_python_option(monkeypatch, cached)
         configured = built[0]
     else:
         configured = build_rhime_co2_o2(prepared_inputs=prepared, **choices).model
-    outer_flux = OuterFluxChoice("fixed", ("outer",), ("ocean",)).resolve_states(
-        CorrelatedPrior.from_lognormal(prepared.retained_prior),
-    )
+    outer_flux = OuterFluxChoice("fixed", ("outer",), ("ocean",))
     expected = build_co2_o2_model(**kwargs, boundary=expected_boundary, outer_flux=outer_flux, **(ou if cached else {}))
     _parity(configured, expected)
 
