@@ -1,4 +1,6 @@
-"""Backend-neutral aggregation-error covariance contracts.
+"""Validate observation-error inputs and prepare aggregation-error covariances.
+
+Shared checks cover observations, reported errors and minimum errors.
 
 Aggregation error is fixed input data, separate from measurement error and
 the inferred RHIME model-error term.  Prepared inversion inputs may represent
@@ -161,12 +163,12 @@ def prepare_low_rank_aggregation_error(
         values,
         owner="Low-rank approximation input covariance",
     )
-    return _low_rank_approximation(
+    return _factorize_aggregation_error(
         covariance, values, rank=rank, roundoff_tolerance=roundoff_tolerance, output_dim=output_dim
     )
 
 
-def _low_rank_approximation(
+def _factorize_aggregation_error(
     covariance: xr.DataArray,
     values: np.ndarray,
     *,
@@ -174,7 +176,7 @@ def _low_rank_approximation(
     roundoff_tolerance: float,
     output_dim: str,
 ) -> LowRankAggregationErrorApproximation:
-    """Factorize validated finite symmetric covariance values into labelled LRPD data.
+    """Factorize a validated aggregation-error covariance into a labelled factor and diagonal tail.
 
     Args:
         covariance: Materialized labelled covariance supplying the row labels.
@@ -492,8 +494,8 @@ def _prepare_whitened_low_rank_aggregation_error(
         the reference description, criteria, counts, the spectral
         dropped-mode KL and the KL of the stored representation at
         :math:`R_0`. The stored KL is ``None``, with the reason under
-        ``stored_representation_kl_unavailable``, when roundoff accepted in
-        :math:`A` leaves a total that cannot be factorized.
+        ``stored_representation_kl_unavailable``, when a total cannot be
+        Cholesky factorized, for example because of roundoff.
 
     Raises:
         ValueError: If coordinates or values are invalid, :math:`R_0` is not
@@ -519,7 +521,7 @@ def _prepare_whitened_low_rank_aggregation_error(
     eigenvalues = _whitened_spectrum(values, cholesky)
     del cholesky
     rank, selection = select_whitened_rank(eigenvalues, rule)
-    approximation = _low_rank_approximation(
+    approximation = _factorize_aggregation_error(
         covariance, values, rank=rank, roundoff_tolerance=tolerance, output_dim=output_dim
     )
     stored = approximation.aggregation_error
@@ -540,8 +542,9 @@ def _prepare_whitened_low_rank_aggregation_error(
     }
     if stored_kl is None:
         kl_record["stored_representation_kl_unavailable"] = (
-            "R0 + A or R0 + F F^T + diag(d) could not be Cholesky factorized; A was accepted with negative "
-            "eigenvalues within the LRPD roundoff tolerance, which R0 does not cover"
+            "R0 + A or R0 + F F^T + diag(d) could not be Cholesky factorized. A possible cause is roundoff: "
+            "negative eigenvalues of A accepted within the LRPD tolerance, or R0 too small to change the "
+            "total in floating point"
         )
     return approximation, {
         "reference_covariance": description,
@@ -568,7 +571,8 @@ def _stored_representation_kl(
     Both totals are positive definite when :math:`A` is positive
     semidefinite. :math:`A` is accepted with negative eigenvalues down to the
     LRPD roundoff tolerance, which can exceed the smallest eigenvalue of
-    :math:`R_0`; the caller then records the KL as unavailable. Cost is two
+    :math:`R_0`, and an :math:`R_0` far below the scale of :math:`A` can
+    round away when added. The caller then records the KL as unavailable. Cost is two
     dense Cholesky factorizations and one dense solve, with three extra
     ``n x n`` arrays.
 

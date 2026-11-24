@@ -1213,11 +1213,12 @@ stored representation, which keeps the leading ordinary eigenmodes of
 :math:`\mathrm{KL}(N(0, R_0 + A)\,\|\,N(0, R_0 + F F^\top + \mathrm{diag}(d)))`
 at the same reference; it can be several times the spectral value, most of
 all when :math:`R_0` has little white noise (see below). Computing it costs two more
-dense Cholesky factorizations and a dense solve. LRPD accepts small negative
-eigenvalues of :math:`A` as roundoff; if they exceed what :math:`R_0` covers,
-the totals cannot be factorized and the KL is recorded as ``None`` with the
-reason under ``stored_representation_kl_unavailable``. The low-rank
-approximation is kept.
+dense Cholesky factorizations and a dense solve. If a total cannot be Cholesky
+factorized, the KL is recorded as ``None`` with the reason under
+``stored_representation_kl_unavailable`` and the low-rank approximation is
+kept. Roundoff is a possible cause: LRPD accepts small negative eigenvalues of
+:math:`A` that :math:`R_0` may not cover, and an :math:`R_0` far below the
+scale of :math:`A` can round away when added.
 
 Keep the likelihood's white-noise floor in :math:`R_0`. With
 ``Co2ReferenceCovariance`` the only white part is the reported observation

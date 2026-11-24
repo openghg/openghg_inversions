@@ -356,11 +356,25 @@ def test_stored_kl_is_unavailable_when_accepted_roundoff_exceeds_the_reference()
     assert np.linalg.eigvalsh(reference + covariance).min() < 0.0
     assert record["stored_representation_kl"] is None
     assert record["stored_representation_kl_per_observation"] is None
-    assert "roundoff" in record["stored_representation_kl_unavailable"]
+    assert "could not be Cholesky factorized" in record["stored_representation_kl_unavailable"]
     assert record["chosen_rank"] == 1
     json.dumps(record, allow_nan=False)
     assert approximation.diagnostics == standalone.diagnostics
     xr.testing.assert_identical(approximation.aggregation_error.factor, standalone.aggregation_error.factor)
+
+
+def test_stored_kl_is_unavailable_when_the_reference_rounds_away() -> None:
+    """A PSD A with an R0 below its floating-point resolution keeps the approximation without a KL."""
+    covariance = np.ones((2, 2))
+    reference = 1e-17 * np.eye(2)
+
+    approximation, record = _prepare_whitened_low_rank_aggregation_error(
+        _labelled(covariance), reference, WhitenedRankRule(rank=1), reference_description={"source": "test"}
+    )
+
+    assert record["stored_representation_kl"] is None
+    assert "could not be Cholesky factorized" in record["stored_representation_kl_unavailable"]
+    assert approximation.aggregation_error.factor.shape == (2, 1)
 
 
 def test_default_preparation_records_rank_selection_through_serialization() -> None:
@@ -466,15 +480,19 @@ def test_built_and_supplied_references_are_equivalent() -> None:
 
 
 def test_supplied_reference_is_checked_while_labelled() -> None:
-    """Row and column order and covariance units are checked before materializing."""
+    """Axis labels, canonical row order and covariance units are checked before materializing."""
     canonical = _canonical_inputs()
     good = _labelled_reference(canonical, np.eye(3), "(ppm)^2")
     reversed_columns = good.isel({good.dims[1]: [2, 1, 0]})
     reversed_rows = good.isel({good.dims[0]: [2, 1, 0]})
+    reversed_both = good.isel({good.dims[0]: [2, 1, 0], good.dims[1]: [2, 1, 0]})
+    unindexed = good.drop_indexes(["observation_cov", "site_cov", "time_cov"])
 
     for supplied, match in (
-        (reversed_columns, "columns must match"),
-        (reversed_rows, "rows must match"),
+        (reversed_columns, "same values in the same order"),
+        (reversed_rows, "same values in the same order"),
+        (reversed_both, "rows must match the canonical observation order"),
+        (unindexed, "index on both axes"),
         (good.assign_attrs(units="ppm"), "squared mole-fraction unit"),
         (good.assign_attrs(units="(m)^2"), "squared mole-fraction unit"),
         (good.assign_attrs(units=""), "non-empty units"),

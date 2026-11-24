@@ -13,6 +13,7 @@ import xarray as xr
 
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions._labelled_matrices import matrix_column_dim, square_matrix
+from openghg_inversions.array_ops import validate_covariance_coordinates
 from openghg_inversions.observation_error import _is_positive_real
 
 
@@ -241,29 +242,37 @@ def require_reference_labels(
     *,
     observation_index: Any,
     row_dims: tuple[str, ...],
-) -> str:
+) -> None:
     """Check a supplied labelled :math:`R_0` against the canonical observation order.
+
+    The square shape and the repeated axis labels are checked by
+    :func:`~openghg_inversions.array_ops.validate_covariance_coordinates`, so
+    the companion column dimension may carry renamed MultiIndex levels. Once
+    the axes match each other, checking the rows against the canonical index
+    is sufficient.
 
     Args:
         reference: Supplied observation-by-observation covariance.
         observation_index: Canonical observation index.
         row_dims: Accepted names for the row dimension.
 
-    Returns:
-        The column dimension name.
-
     Raises:
-        ValueError: If the dimensions or either axis do not match.
+        ValueError: If the dimensions are not accepted, an axis is not
+            indexed, the axes differ, or the rows are not in canonical order.
     """
     if reference.ndim != 2 or reference.dims[0] not in row_dims or reference.dims[1] == reference.dims[0]:
         raise ValueError(
             f"reference_covariance must be observation-by-observation with rows on one of {list(row_dims)!r}."
         )
     row_dim, column_dim = (str(dim) for dim in reference.dims)
-    for dim, axis in ((row_dim, "rows"), (column_dim, "columns")):
-        if dim not in reference.indexes or not reference.indexes[dim].equals(observation_index):
-            raise ValueError(f"reference_covariance {axis} must match the canonical observation order.")
-    return column_dim
+    if row_dim not in reference.indexes or column_dim not in reference.indexes:
+        raise ValueError("reference_covariance must carry an index on both axes.")
+    try:
+        validate_covariance_coordinates(reference, dim=row_dim, covariance_dim=column_dim)
+    except ValueError as exc:
+        raise ValueError(f"reference_covariance: {exc}") from exc
+    if not reference.indexes[row_dim].equals(observation_index):
+        raise ValueError("reference_covariance rows must match the canonical observation order.")
 
 
 __all__ = ["Co2ReferenceCovariance"]
