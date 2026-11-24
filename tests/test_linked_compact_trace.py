@@ -355,6 +355,10 @@ def test_compact_sampler_preserves_warmup_and_explicit_likelihood_selection(monk
         assert trace[name].signal.dims == ("chain", "draw", "observation")
 
 
+# A separate PyMC conversion model owns observed data and labels.
+_CONVERSION_MODEL = pm.Model()
+
+
 @pytest.mark.parametrize(
     "backend,idata_options,sample_options,draws,tune,burn",
     [
@@ -363,6 +367,7 @@ def test_compact_sampler_preserves_warmup_and_explicit_likelihood_selection(monk
         pytest.param("pymc", {}, {"trace": object()}, 2, 0, 0, id="explicit-backend"),
         pytest.param("pymc", {}, {"callback": lambda **_: None}, 2, 0, 0, id="callback"),
         pytest.param("pymc", {}, {}, 2, 0, 2, id="empty-posterior"),
+        pytest.param("pymc", {"model": _CONVERSION_MODEL}, {}, 2, 0, 0, id="conversion-model"),
     ],
 )
 def test_compact_request_preserves_alternative_recording_options(
@@ -468,6 +473,20 @@ def test_burn_and_relabel_share_one_group_boundary(burn, independent_draws):
     for name in (*untouched_names, "constant_data"):
         xr.testing.assert_identical(trace[name], original[name])
     xr.testing.assert_identical(raw, original)
+
+
+def test_burn_slices_supplied_predictions_aligned_to_the_posterior():
+    """A posterior_predictive group supplied with the original draws is burned with them."""
+    from openghg_inversions.inference.sampling import _burn_retained_draws
+
+    posterior = xr.Dataset({"state": (("chain", "draw"), [np.arange(5.0)])}, coords={"chain": [0], "draw": np.arange(5)})
+    supplied = xr.Dataset({"y": (("chain", "draw"), [np.arange(5.0)])}, coords={"chain": [0], "draw": np.arange(5)})
+    trace = _burn_retained_draws(
+        xr.DataTree.from_dict({"posterior": posterior, "posterior_predictive": supplied}), burn=2,
+    )
+    np.testing.assert_array_equal(trace.posterior_predictive.y.values, [[2.0, 3.0, 4.0]])
+    np.testing.assert_array_equal(trace.posterior_predictive.draw, [0, 1, 2])
+    assert trace.posterior_predictive.attrs["burn"] == 2
 
 
 def test_burn_keeps_transformed_draws_with_their_posterior_draws():

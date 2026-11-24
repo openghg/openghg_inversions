@@ -342,6 +342,22 @@ def test_toml_outer_flux_choice_is_the_python_choice():
     assert config.outer_flux == OuterFluxChoice("fixed", ("outer",), ("ocean",))
 
 
+def test_partial_outer_flux_overrides_merge_with_the_base_table():
+    base = {"mode": "fixed", "outer_groups": ["outer"]}
+    expected = OuterFluxChoice("fixed", ("outer",), ("ocean",))
+    single = load_co2_params(
+        params={"model": {"outer_flux": dict(base)}, "likelihood": {"kind": "additive_sigma"}},
+        overrides={"model": {"outer_flux": {"fixed_sources": ["ocean"]}}},
+    )
+    assert Co2ModelConfig.from_params(single).outer_flux == expected
+    linked = load_co2_o2_params(
+        params={"outer_flux": dict(base), "channels": {"co2": {"units": "ppm"}, "o2": {"units": "ppm"}}},
+        overrides={"outer_flux": {"fixed_sources": ["ocean"]}},
+    )
+    assert linked["outer_flux"] == {**base, "fixed_sources": ["ocean"]}
+    assert Co2O2ModelConfig.from_params(linked).outer_flux == expected
+
+
 @pytest.mark.parametrize("request_kind", ["params_file", "config_file"])
 @pytest.mark.parametrize("alias", ["direct", "symlink", "hardlink"])
 def test_full_run_protects_consumed_request_before_model_resolution(tmp_path, monkeypatch, request_kind, alias):

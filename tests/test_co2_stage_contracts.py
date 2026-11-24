@@ -413,3 +413,24 @@ def test_staged_prepare_protects_its_request_file(full_run_files, tmp_path, mode
     with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         main(["prepare", "--model", model, "--params-file", str(request), "--output-dir", str(destination)])
     assert request.read_bytes() == before
+
+
+def test_final_sample_write_rechecks_the_request(full_run_files, tmp_path, monkeypatch):
+    """A request hardlinked to the posterior during inference is not overwritten."""
+    _, source, reconstruction, _ = full_run_files
+    request = tmp_path / "request.json"
+    request.write_text("consumed request")
+    destination = tmp_path / "sample"
+    prep = handoffs.prepare(prepared_path=source, affine_path=reconstruction, output_dir=tmp_path / "prepare", **FACTS)
+
+    def infer(*args, **kwargs):
+        destination.mkdir()
+        (destination / "posterior.nc").hardlink_to(request)
+        return object(), {}
+
+    monkeypatch.setattr(handoffs, "sample_co2_inference", infer)
+    monkeypatch.setattr(handoffs, "validate_co2_trace", lambda *a, **kw: None)
+    model = {"likelihood": {"kind": "additive_sigma", "no_model_error": True}}
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+        handoffs.sample(prep, model=model, output_dir=destination, referenced=(request,))
+    assert request.read_text() == "consumed request"
