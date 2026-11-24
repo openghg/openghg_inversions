@@ -792,9 +792,8 @@ class Co2NativePreparationConfig:
         return tuple(Path(path).resolve() for path in paths if path is not None)
 
 
-def _acquisition(value: object) -> dict[str, Any]:
-    """Parse ``[prepared_inputs.acquisition]`` into acquisition keywords."""
-    path = "prepared_inputs.acquisition"
+def _acquisition(value: object, path: str = "prepared_inputs.acquisition", *, species: str = "co2") -> dict[str, Any]:
+    """Parse ``[prepared_inputs.acquisition]`` (or one linked channel's table) into acquisition keywords."""
     options = _table(value, path)
     sites: dict[str, Any] = {name: options.pop(name) for name in _SITE_OPTION_NAMES if name in options}
     for name in SiteOptions.REQUIRED_INPUT_NAMES:
@@ -825,7 +824,7 @@ def _acquisition(value: object) -> dict[str, Any]:
         )
     _reject_unknown(options, path)
     check_surface_request(
-        species="co2", site_options=result["site_options"], flux_sources=result["flux_sources"],
+        species=species, site_options=result["site_options"], flux_sources=result["flux_sources"],
         transport=result["surface_transport"], use_bc=result.get("use_bc", True),
         boundary_reference=result.get("boundary_reference"),
         boundary_reference_units=result.get("boundary_reference_units"),

@@ -142,7 +142,7 @@ def _prepare_command(args: argparse.Namespace) -> None:
         from openghg_inversions.rhime.co2.co2_o2_handoffs import prepare as prepare_linked
 
         print(prepare_linked(
-            **Co2O2PreparationConfig.from_params(_co2_o2_params(args), require_path=True).preparation_arguments(),
+            **Co2O2PreparationConfig.from_params(_co2_o2_params(args), require_source=True).preparation_arguments(),
             output_dir=_stage_output_dir(args),
         ))
     elif args.model == "co2":

@@ -70,8 +70,9 @@ def test_phase_resolution_ignores_inactive_choices_and_keeps_requested_facts(tmp
     assert Co2O2PreparationConfig.from_params({
         "prepared_inputs": {"path": "inputs.nc", "start_date": "2019-12-01", "end_date": "2020-02-01", "domain": "EUROPE"},
         "channels": "invalid", "sampling": "invalid", "outputs": "invalid",
-    }, require_path=True).preparation_arguments() == {
+    }, require_source=True).preparation_arguments() == {
         "prepared_path": tmp_path / "inputs.nc", "start_date": "2019-12-01", "end_date": "2020-02-01", "domain": "EUROPE",
+        "boundary_representation": None, "boundary": {}, "native": None,
     }
     config = {**_config(), "prepared_inputs": "invalid", "sampling": "invalid", "outputs": "invalid"}
     arguments = Co2O2ModelConfig.from_params(config).bind(_prepared())
@@ -82,7 +83,7 @@ def test_phase_resolution_ignores_inactive_choices_and_keeps_requested_facts(tmp
     assert sampler.draws == 8
     assert sampler.nuts_sampler == "numpyro"
     with pytest.raises(ValueError, match="prepared_inputs.path"):
-        Co2O2PreparationConfig.from_params({}, require_path=True).preparation_arguments()
+        Co2O2PreparationConfig.from_params({}, require_source=True).preparation_arguments()
 
 
 def test_model_uses_saved_errors_and_replay_boundary_rejects_conflicting_values():

@@ -373,9 +373,75 @@ own prior, and they are uncorrelated. Nothing is copied from one to the other.
 One coherent reduction over both tracers' rows gives the retained prior, both
 effective sensitivities and the joint unresolved covariance with its CO₂/O₂
 cross block. The O₂ responses must already contain each source's signed O₂
-flux, so no oxidative ratio is applied. Configured acquisition of the two
-channels is not wired yet
-(`#1051 <https://github.com/openghg/openghg_inversions/issues/1051>`_).
+flux, so no oxidative ratio is applied.
+
+``rhime prepare --model co2_o2`` builds this preparation from configuration when
+``[prepared_inputs]`` has ``acquisition`` tables instead of ``path``. Every
+modelling choice is explicit, and nothing is inherited between tracers or
+between the two ocean sources:
+
+.. code-block:: toml
+
+   [prepared_inputs]
+   start_date = "2021-07-01"
+   end_date = "2021-08-01"
+   domain = "EUROPE"
+
+   # One complete table per tracer, with the keys of the CO₂ route's
+   # [prepared_inputs.acquisition]; sites and times may differ.
+   [prepared_inputs.acquisition.co2]
+   flux_sources = ["co2_gpp", "co2_ter", "co2_ff", "co2_ocean"]
+   # sites, inlet, averaging_period, surface_transport, boundary_reference, ...
+   [prepared_inputs.acquisition.o2]
+   flux_sources = ["o2_gpp", "o2_ter", "o2_ff", "o2_ocean"]   # signed O₂ fluxes
+
+   [prepared_inputs.observations.co2]   # optional: filters, averaging_error
+   [prepared_inputs.observations.o2]
+
+   [prepared_inputs.basis]
+   partition_path = "partition.nc"   # one layer per native source on `source`
+
+   [prepared_inputs.native_prior]       # the CO₂ route's per-source table
+   restriction = "absolute_flux_weighted_mean"
+   [prepared_inputs.native_prior.sources.gpp]
+   sigma = 0.5
+   marginal = "weibull"
+   # ... ter, ff
+   [prepared_inputs.native_prior.sources.co2_ocean]
+   sigma = 0.6
+   [prepared_inputs.native_prior.sources.o2_ocean]
+   sigma = 0.8
+
+   [prepared_inputs.source_states.gpp]
+   source = "gpp"
+   tracer_scope = "shared"
+   co2_flux_source = "co2_gpp"
+   o2_flux_source = "o2_gpp"
+   flux_tracer = "co2"
+   # ... ter, ff
+   [prepared_inputs.source_states.co2_ocean]
+   source = "ocean"
+   tracer_scope = "co2"
+   co2_flux_source = "co2_ocean"
+   [prepared_inputs.source_states.o2_ocean]
+   source = "ocean"
+   tracer_scope = "o2"
+   o2_flux_source = "o2_ocean"
+
+- ``source_states`` must map every acquired flux source of each tracer exactly
+  once. A shared native source scales both its CO₂ flux source and its O₂ flux
+  source.
+- ``flux_tracer`` names the tracer whose prior flux weights a shared source.
+  It is required exactly when that flux is used: by
+  ``restriction = "absolute_flux_weighted_mean"``, or by amplitude calibration
+  of a source without ``sigma``. Tracer-scoped sources are weighted by their
+  own tracer's flux.
+- Each channel's boundary representation follows its
+  ``[channels.<channel>.boundary]`` choice, or ``boundary_representation``.
+- Both channels must be ppm-scale mole fractions. Per-meg δ(O₂/N₂) needs
+  OPE-86.
+- The joint aggregation error is stored dense, so ``aggregation_error_rank`` is
+  not accepted.
 
 The packaged ``co2_o2.toml`` template configures these saved phases. It has no
 ``variant`` selector. A minimal request using the saved independent-error vector

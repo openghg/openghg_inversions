@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 import os
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
 import numpy as np
@@ -20,8 +20,10 @@ import xarray as xr
 from dask.array import Array as DaskArray
 
 from openghg_inversions._provenance import installed_ogi_provenance
+from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 from openghg_inversions.inference.sampling import RhimeSampler, describe_recorded_sampler, resolve_sampler
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
+from openghg_inversions.models.boundary import Choice, boundary_preparation
 from openghg_inversions.rhime._stage_artifacts import (
     _output_path, check_checkpoint_targets, finish_checkpoint, read_manifest,
     reference, start_checkpoint, write_json,
@@ -40,6 +42,11 @@ from .co2_o2_outputs import (
     save_co2_o2_products, validate_co2_o2_trace,
 )
 from .co2_o2_preparation import Co2O2PreparedInputs
+
+if TYPE_CHECKING:
+    from openghg_inversions.inversion_data import MergedData
+
+    from .co2_o2_configuration import Co2O2NativePreparationConfig
 from .co2_affine_output import prepared_inputs_content_id
 from .co2_o2_runner import annotate_co2_o2_trace, build_rhime_co2_o2
 from .co2_preparation import requested_co2_facts
@@ -117,17 +124,46 @@ def save_preparation(
 
 
 def prepare(
-    *, prepared_path: str | Path, output_dir: str | Path,
+    *, output_dir: str | Path, prepared_path: str | Path | None = None,
     start_date: str | None = None, end_date: str | None = None, domain: str | None = None,
+    native: Co2O2NativePreparationConfig | None = None,
+    boundary_representation: BoundaryRepresentation | None = None,
+    boundary: Mapping[str, Choice | None] | None = None,
+    merged_data: Mapping[str, MergedData] | None = None,
 ) -> Path:
-    """Reference an existing NetCDF/Zarr linked preparation without copying it.
+    """Build a linked preparation from configured native choices, or reference a saved one.
 
-    The caller keeps the referenced numerical artifact for later phases.
-    Missing original request facts require explicit values; retained observation
-    times cannot recover an interval after filtering. New in-memory preparation
-    uses :func:`openghg_inversions.rhime.co2.prepare_co2_o2_inputs` followed by
+    With ``native``, both tracers are acquired (or taken from ``merged_data``)
+    and prepared by
+    :func:`~openghg_inversions.rhime.co2.co2_o2_native_preparation.prepare_native_co2_o2`,
+    each channel in the boundary representation its ``boundary`` choice (or
+    ``boundary_representation``) needs, then saved with :func:`save_preparation`.
+
+    Otherwise an existing NetCDF/Zarr linked preparation is referenced without
+    copying it; the caller keeps it for later phases. Missing original request
+    facts require explicit values; retained observation times cannot recover
+    an interval after filtering. New in-memory preparation uses
+    :func:`openghg_inversions.rhime.co2.prepare_co2_o2_inputs` followed by
     :func:`save_preparation`.
     """
+    if merged_data is not None and native is None:
+        raise ValueError("merged_data requires configured native preparation choices.")
+    if native is not None:
+        if prepared_path is not None:
+            raise ValueError("Native preparation builds its own artifact; do not pass prepared_path.")
+        if start_date is None or end_date is None or domain is None:
+            raise ValueError("Native preparation requires start_date, end_date and domain.")
+        from .co2_o2_native_preparation import prepare_native_co2_o2
+
+        choices = dict(boundary or {})
+        prepared = prepare_native_co2_o2(
+            native, domain=domain, start_date=start_date, end_date=end_date, merged_data=merged_data,
+            boundaries={channel: boundary_preparation(choices.get(channel), boundary_representation)
+                        for channel in ("co2", "o2")},
+        )
+        return save_preparation(prepared, output_dir=output_dir, start_date=start_date, end_date=end_date, domain=domain)
+    if prepared_path is None:
+        raise ValueError("Pass prepared_path, or native choices to build a preparation.")
     payload = Path(prepared_path).resolve()
     prepared = Co2O2PreparedInputs.load(payload)
     validate_co2_o2_units(prepared)

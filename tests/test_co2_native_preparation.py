@@ -160,8 +160,13 @@ def test_build_route_requires_window_and_linked_route_rejects_it(partition: Path
     del config["prepared_inputs"]["end_date"]
     with pytest.raises(ValueError, match="end_date for a new preparation"):
         Co2PreparationConfig.from_params(config)
-    with pytest.raises(ValueError, match="configured linked preparation is not yet available"):
+    # A CO2-shaped build request is not a linked one (linked tables are per channel and dense).
+    with pytest.raises(ValueError, match="not available for linked preparations"):
         Co2O2PreparationConfig.from_params({"prepared_inputs": request(partition)["prepared_inputs"]})
+    linked = request(partition)["prepared_inputs"]
+    del linked["aggregation_error_rank"]
+    with pytest.raises(ValueError, match="prepared_inputs.acquisition.co2"):
+        Co2O2PreparationConfig.from_params({"prepared_inputs": linked})
 
 
 def test_one_merged_dataset_feeds_both_representations(tmp_path: Path, merged: MergedData, partition: Path) -> None:
