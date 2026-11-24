@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import cast
+from typing import Literal, cast
 
 import numpy as np
 import pymc as pm
@@ -34,7 +34,7 @@ from openghg_inversions.observation_error import (
 class RegisteredAggregationError:
     """Aggregation-error tensors registered with the active PyMC model."""
 
-    mode: str
+    mode: Literal["none", "dense", "low_rank"]
     marginal_variance: TensorVariable
     covariance: TensorVariable | None = None
     factor: TensorVariable | None = None

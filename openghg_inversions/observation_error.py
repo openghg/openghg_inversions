@@ -24,6 +24,9 @@ import xarray as xr
 from openghg_inversions._linalg import cholesky_with_condition
 from openghg_inversions.array_ops import materialize_together, validate_covariance_coordinates
 
+#: ``"auto"`` selects the supplied dense or low-rank covariance, or ``"none"``
+#: when there is no aggregation-error input. It raises if both covariances
+#: are present or only marginal standard deviations are supplied.
 AggregationErrorMode: TypeAlias = Literal["auto", "none", "dense", "low_rank"]
 
 AGGREGATION_ERROR_SD = "aggregation_error_sd"
@@ -31,10 +34,6 @@ AGGREGATION_ERROR_COVARIANCE = "aggregation_error_covariance"
 LOW_RANK_FACTOR = "low_rank_factor"
 DIAGONAL_RESIDUAL_VARIANCE = "diagonal_residual_variance"
 OBSERVATION_ERROR_INPUT_NAMES = ("mf", "mf_error", "min_error")
-_DIAGONAL_MODE_REMOVED = (
-    "Standalone diagonal aggregation error has been removed. Supply a dense or low-rank "
-    "aggregation covariance, or select 'none' to omit aggregation error explicitly."
-)
 
 
 @dataclass(frozen=True)
@@ -64,11 +63,6 @@ class AggregationError:
     covariance: xr.DataArray | None = None
     factor: xr.DataArray | None = None
     diagonal_variance: xr.DataArray | None = None
-
-    def __post_init__(self) -> None:
-        """Reject unsupported representations from direct callers."""
-        if self.mode == "diagonal":
-            raise ValueError(_DIAGONAL_MODE_REMOVED)
 
 
 @dataclass(frozen=True)
@@ -908,8 +902,6 @@ def select_aggregation_error_mode(
         ValueError: If ``requested`` is invalid or ``"auto"`` finds both dense
             and low-rank representations or a standalone standard deviation.
     """
-    if requested == "diagonal":
-        raise ValueError(_DIAGONAL_MODE_REMOVED)
     if requested not in ("auto", "none", "dense", "low_rank"):
         raise ValueError(
             "`aggregation_error_mode` must be one of 'auto', 'none', 'dense', "
@@ -930,7 +922,10 @@ def select_aggregation_error_mode(
     if low_rank:
         return "low_rank"
     if AGGREGATION_ERROR_SD in data:
-        raise ValueError(_DIAGONAL_MODE_REMOVED)
+        raise ValueError(
+            f"Prepared inputs contain {AGGREGATION_ERROR_SD!r} without an aggregation-error covariance. "
+            "Supply a covariance or select 'none' explicitly."
+        )
     return "none"
 
 
@@ -975,8 +970,10 @@ def resolve_aggregation_error(
     """Validate and select an aggregation-error covariance representation.
 
     In ``"auto"`` mode, ``aggregation_error_sd`` is a marginal diagnostic beside
-    a dense or low-rank covariance. Supplying it alone raises a migration error.
-    Supplying both dense and low-rank forms requires an explicit selection.
+    a dense or low-rank covariance. Automatic selection chooses the only
+    covariance present, or ``"none"`` when there is no aggregation-error input.
+    Supplying both covariances or a standalone standard deviation requires an
+    explicit selection.
 
     Args:
         data: Prepared inversion inputs containing the requested aggregation-

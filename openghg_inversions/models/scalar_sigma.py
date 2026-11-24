@@ -578,11 +578,6 @@ def load_scalar_sigma_eigenbasis(
     if len(digest_bytes) != 32 or len(digest) != 64:
         raise ValueError("Scalar-sigma base covariance fingerprint must be SHA-256.")
     aggregation_error_mode = dataset.attrs.get("aggregation_error_mode", "")
-    if aggregation_error_mode == "diagonal":
-        raise ValueError(
-            "This scalar-sigma eigenbasis uses retired standalone diagonal aggregation error. "
-            "Rebuild it from migrated aggregation-error inputs."
-        )
     if aggregation_error_mode not in ("none", "dense", "low_rank"):
         raise ValueError("Scalar-sigma cache requires a concrete aggregation-error mode.")
     eigenbasis = ScalarSigmaEigenbasis(

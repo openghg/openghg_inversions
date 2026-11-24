@@ -314,7 +314,7 @@ def test_cache_round_trip_checks_schema_labels_units_and_covariance(tmp_path: Pa
         legacy = dataset.load().assign_attrs(aggregation_error_mode="diagonal")
     legacy_path = tmp_path / "legacy-diagonal.nc"
     legacy.to_netcdf(legacy_path)
-    with pytest.raises(ValueError, match="Rebuild it from migrated aggregation-error inputs"):
+    with pytest.raises(ValueError, match="requires a concrete aggregation-error mode"):
         load_scalar_sigma_eigenbasis(
             legacy_path,
             observations=observations,

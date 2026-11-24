@@ -9,7 +9,6 @@ import xarray as xr
 
 import openghg_inversions.observation_error as observation_error_module
 from openghg_inversions.observation_error import (
-    AggregationError,
     aggregation_error_as_low_rank,
     prepare_low_rank_aggregation_error,
     resolve_aggregation_error,
@@ -189,13 +188,16 @@ def test_structured_covariance_rejects_inconsistent_sd_diagnostic() -> None:
         resolve_aggregation_error(data)
 
 
-@pytest.mark.parametrize("mode", ["auto", "diagonal"])
-def test_retired_diagonal_mode_requires_explicit_migration(mode: str) -> None:
+@pytest.mark.parametrize(
+    ("mode", "message"),
+    [("auto", "without an aggregation-error covariance"), ("diagonal", "must be one of")],
+)
+def test_standalone_aggregation_error_sd_requires_explicit_selection(mode: str, message: str) -> None:
     """Reject legacy inputs instead of silently discarding their variance."""
     data = _inputs()
     data["aggregation_error_sd"] = ("nmeasure", np.array([0.1, 0.2, 0.3]))
 
-    with pytest.raises(ValueError, match="Standalone diagonal aggregation error has been removed"):
+    with pytest.raises(ValueError, match=message):
         resolve_aggregation_error(data, mode)
 
     variance = data["aggregation_error_sd"].values**2
@@ -203,12 +205,6 @@ def test_retired_diagonal_mode_requires_explicit_migration(mode: str) -> None:
     migrated = resolve_aggregation_error(data, "dense")
     assert migrated.covariance is not None
     np.testing.assert_allclose(migrated.covariance, np.diag(variance))
-
-
-def test_direct_construction_rejects_retired_diagonal_mode() -> None:
-    """Direct callers receive the same migration guidance as the resolver."""
-    with pytest.raises(ValueError, match="Standalone diagonal aggregation error has been removed"):
-        AggregationError(mode="diagonal", marginal_variance=np.ones(3))  # type: ignore[arg-type]
 
 
 def test_explicit_none_ignores_available_diagnostic() -> None:
