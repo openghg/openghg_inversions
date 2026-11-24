@@ -79,8 +79,12 @@ both channels:
 Both modes hold the selected outer states at their prior mean.
 ``"marginalise"`` keeps their prior uncertainty by adding
 :math:`H_O\Sigma_{OO}H_O^T` to the fixed aggregation-error covariance;
-``"fixed"`` drops it, a what-if for a known outer prior rather than a way to
-leave the outer flux unsampled. ``outer_groups`` selects outer
+``"fixed"`` drops it (zero uncertainty), a what-if for a known outer prior
+rather than a way to leave the outer flux unsampled. ``"marginalise"`` also
+accepts outer states correlated with the others, conditioning them by their
+best linear predictor: exact for a Gaussian prior, a moment approximation
+under the LogNormal copula (see :doc:`atmospheric_baseline` for the size of
+that approximation). ``outer_groups`` selects outer
 states by the ``basis_group`` coordinate of the prepared retained prior;
 ``fixed_sources``, when given, selects only those with a matching ``source``
 coordinate and leaves the other outer states sampled. Model construction
