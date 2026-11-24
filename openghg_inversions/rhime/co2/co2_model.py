@@ -35,7 +35,7 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
-from openghg_inversions.models.outer_flux import OuterStates
+from openghg_inversions.models.outer_flux import OuterFluxChoice, OuterStates
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import (
     StateActivity,
@@ -147,7 +147,7 @@ def build_co2_model(
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
-    outer_flux: OuterStates | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> pm.Model:
@@ -218,9 +218,9 @@ def build_co2_model(
         state_activity: Optional labelled activity policy for retained flux
             states.
         boundary: Resolved boundary component bound to this fit.
-        outer_flux: Optional outer states resolved on ``retained_prior``.
-            Its fixed outer states are held at their prior mean with zero
-            uncertainty after exact-zero pruning. See
+        outer_flux: Optional outer-flux choice, resolved here on
+            ``retained_prior``. Its fixed outer states are held at their prior
+            mean with zero uncertainty after exact-zero pruning. See
             :mod:`openghg_inversions.models.outer_flux`.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added. Site codes are derived from the ``site`` coordinate
@@ -249,9 +249,12 @@ def build_co2_model(
         sigma_prior=sigma_prior,
         fixed_model_mismatch=fixed_model_mismatch,
     )
-    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, outer_flux, priors = dask_compute(
+    # Resolve the choice on the prior this model samples, so the held states
+    # and the covariance check always refer to it.
+    outer = None if outer_flux is None else outer_flux.resolve_states(retained_prior)
+    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, outer, priors = dask_compute(
         *to_dense_tree((
-            (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, outer_flux,
+            (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, outer,
             {"sigma": sigma_prior, "offset": offset_prior, "fixed_mismatch": fixed_model_mismatch},
         ))
     )
@@ -271,7 +274,7 @@ def build_co2_model(
         fixed_model_mismatch=fixed_model_mismatch,
         state_activity=state_activity,
         boundary=boundary,
-        outer_flux=outer_flux,
+        outer_flux=outer,
         offset_prior=offset_prior,
         offset_args=offset_args,
     )

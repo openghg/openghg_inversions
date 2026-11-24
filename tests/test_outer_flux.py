@@ -93,6 +93,12 @@ def resolved(choice=FIXED, cross=0.0):
     return obs, flux_prior, h, choice.resolve_states(flux_prior)
 
 
+def inputs(cross=0.0):
+    obs = observations()
+    flux_prior = prior(cross)
+    return obs, flux_prior, sensitivity(obs, flux_prior.mean)
+
+
 def model_inputs(obs, flux_prior):
     return dict(
         retained_prior=flux_prior,
@@ -126,6 +132,11 @@ def test_selectors_need_their_coordinates_and_matching_outer_states():
         OuterFluxChoice("fixed", ("missing",)).resolve_states(prior())
     with pytest.raises(ValueError, match="No outer flux state"):
         OuterFluxChoice("fixed", ("outer",), ("FF",)).resolve_states(prior())
+    # A partly matching selector names every unmatched label.
+    with pytest.raises(ValueError, match=r"\['missing', 'other'\]"):
+        OuterFluxChoice("fixed", ("outer", "missing", "other")).resolve_states(prior())
+    with pytest.raises(ValueError, match=r"source \['Ggp'\]"):
+        OuterFluxChoice("fixed", ("outer",), ("ocean", "Ggp")).resolve_states(prior())
     with pytest.raises(ValueError, match="at least one outer basis group"):
         OuterFluxChoice("fixed", ())
 
@@ -146,6 +157,22 @@ def test_fix_states_holds_fixed_outer_states_at_their_prior_mean():
     np.testing.assert_allclose(activity.fixed_value, [1.0, 1.0, 1.0, 1.0, 0.9])
 
 
+def test_fix_states_rejects_conflicting_explicit_fixed_values():
+    _, _, h, states = resolved(FIXED_OCEAN)
+    prepared = prepare_linear_sensitivity(h, output_dim="nmeasure")
+    explicit_ocean = h.region != "r4"
+    with pytest.raises(ValueError, match=r"\['r4'\] at values other than their prior mean"):
+        states.fix_states(resolve_state_activity(prepared.removed, StateActivity(explicit_ocean, fixed_value=2.0)))
+    # An explicit fix at the prior mean agrees with the option.
+    matching = xr.where(h.region == "r4", 0.9, 1.0)
+    activity = states.fix_states(resolve_state_activity(prepared.removed, StateActivity(explicit_ocean, matching)))
+    np.testing.assert_allclose(activity.fixed_value, [1.0, 1.0, 1.0, 1.0, 0.9])
+    # A held state inactive only through exact-zero pruning is not an explicit fix.
+    pruned = prepare_linear_sensitivity(h.where(h.region != "r4", 0.0), output_dim="nmeasure")
+    activity = states.fix_states(resolve_state_activity(pruned.removed, StateActivity(fixed_value=1.0)))
+    np.testing.assert_allclose(activity.fixed_value, [1.0, 1.0, 1.0, 1.0, 0.9])
+
+
 def evaluate(model, names, point):
     function = model.compile_fn(
         model.replace_rvs_by_values([model[name] for name in names]), inputs=model.value_vars, on_unused_input="ignore",
@@ -155,9 +182,9 @@ def evaluate(model, names, point):
 
 @pytest.mark.parametrize("with_boundary", [True, False])
 def test_fixed_outer_states_keep_the_raw_forward_model(with_boundary):
-    obs, flux_prior, h, states = resolved()
+    obs, flux_prior, h = inputs()
     bc = boundary(obs) if with_boundary else None
-    model = build_co2_model(h, **model_inputs(obs, flux_prior), boundary=bc, outer_flux=states)
+    model = build_co2_model(h, **model_inputs(obs, flux_prior), boundary=bc, outer_flux=FIXED)
 
     # Only r0 is sampled: r1 has no response and r2..r4 are fixed outer states.
     point = model.initial_point()
@@ -170,13 +197,13 @@ def test_fixed_outer_states_keep_the_raw_forward_model(with_boundary):
 
 
 def test_ordinary_and_cached_models_have_the_same_density():
-    obs, flux_prior, h, states = resolved(FIXED_OCEAN)
-    inputs = model_inputs(obs, flux_prior)
+    obs, flux_prior, h = inputs()
+    common = model_inputs(obs, flux_prior)
     ordinary = build_co2_model(
-        h, **inputs, boundary=boundary(obs), outer_flux=states,
+        h, **common, boundary=boundary(obs), outer_flux=FIXED_OCEAN,
         likelihood_builder=add_fixed_ou_gaussian_likelihood, likelihood_kwargs=NOISE,
     )
-    cached = build_co2_cached_sigma_model(h, **inputs, boundary=boundary(obs), outer_flux=states, **NOISE)
+    cached = build_co2_cached_sigma_model(h, **common, boundary=boundary(obs), outer_flux=FIXED_OCEAN, **NOISE)
     point = ordinary.initial_point()
     assert point["flux_scaling_active_latent"].shape == (3,)  # r0, r2, r3
     for name in point:
@@ -199,6 +226,19 @@ def test_ordinary_and_cached_models_have_the_same_density():
     )(point)
     for actual, expected in zip(cached_outputs, direct_outputs):
         np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-7)
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_builders_resolve_the_choice_on_the_prior_they_sample(cached):
+    # The choice is valid on an uncorrelated prior but not on this one, so
+    # the builder must check it against the prior it is given.
+    obs, flux_prior, h = inputs(cross=0.01)
+    FIXED_OCEAN.resolve_states(prior())
+    with pytest.raises(ValueError, match="zero prior covariance"):
+        if cached:
+            build_co2_cached_sigma_model(h, **model_inputs(obs, flux_prior), outer_flux=FIXED_OCEAN, **NOISE)
+        else:
+            build_co2_model(h, **model_inputs(obs, flux_prior), outer_flux=FIXED_OCEAN)
 
 
 def test_outputs_record_the_mode_and_selectors():
