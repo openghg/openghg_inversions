@@ -632,7 +632,8 @@ Without an export destination, the validated preparations are reused directly.
 <code class="docutils literal notranslate"><span class="pre">landsea_path</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_landsea_path</span></code> select each grid’s class map when
 weighted generation needs one; support-map selection fails for missing files
 or unsupported domains before acquisition. If no inner basis file or algorithm
-is specified, the inner grid uses the quadtree algorithm.</p>
+is specified, the inner grid uses the quadtree algorithm. <code class="docutils literal notranslate"><span class="pre">basis_seed</span></code> seeds
+both generated grids, so a generated inner basis must then use quadtree.</p>
 <p>The returned <code class="docutils literal notranslate"><span class="pre">NestedOutput</span></code> exposes an outer and an inner <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>
 view. They borrow one sampled trace and retain their separate native bases:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">result</span><span class="o">.</span><span class="n">outer</span><span class="o">.</span><span class="n">trace</span><span class="o">.</span><span class="n">posterior</span><span class="p">[[</span><span class="s2">"x_outer"</span><span class="p">,</span> <span class="s2">"x_inner"</span><span class="p">]]</span>

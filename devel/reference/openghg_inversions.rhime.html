@@ -1435,6 +1435,7 @@ BC inputs available. Flat options retain their established precedence.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_input</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">basis_algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'weighted'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">nbasis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">filters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">filter_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">fix_basis_outer_regions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
@@ -1466,6 +1467,10 @@ observation errors and basis construction.</p></li>
 <li><p><strong>filter_options</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><em>Any</em><em>]</em><em>] </em><em>| </em><em>None</em>) – Keyword options for named filters, such as
 <code class="docutils literal notranslate"><span class="pre">{&quot;local_influence&quot;:</span> <span class="pre">{&quot;window_size&quot;:</span> <span class="pre">5,</span> <span class="pre">&quot;threshold&quot;:</span> <span class="pre">0.15}}</span></code>.
 Omitted options keep each filter’s defaults.</p></li>
+<li><p><strong>basis_seed</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><em>None</em>) – Non-negative integer seed for a generated quadtree basis.
+Without it, the quadtree search is random and each run fits a
+different basis. Rejected when another algorithm is generated;
+inactive when a saved basis or partition is selected.</p></li>
 </ul>
 </dd>
 </dl>
@@ -1919,15 +1924,20 @@ leaves the actual mask bounds unknown, including for supplied inputs.</p></li>
 basis defaults to quadtree, has independent resources and no boundary
 component. Relative resource paths resolve from the current directory.
 An omitted <code class="docutils literal notranslate"><span class="pre">inner_nbasis</span></code> still means automatic total-budget allocation
-when passed to <a class="reference internal" href="#openghg_inversions.rhime.prepare_nested_rhime_inputs" title="openghg_inversions.rhime.prepare_nested_rhime_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_nested_rhime_inputs()</span></code></a>.</p>
+when passed to <a class="reference internal" href="#openghg_inversions.rhime.prepare_nested_rhime_inputs" title="openghg_inversions.rhime.prepare_nested_rhime_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_nested_rhime_inputs()</span></code></a>. The inner basis also
+inherits <code class="docutils literal notranslate"><span class="pre">basis_seed</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>A new configuration without mutating <code class="docutils literal notranslate"><span class="pre">outer_data</span></code> or opening files.
 Use <a class="reference internal" href="openghg_inversions.rhime.preparation.html#openghg_inversions.rhime.preparation.resolve_basis_inputs" title="openghg_inversions.rhime.preparation.resolve_basis_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">resolve_basis_inputs()</span></code></a>
 to load its selected resources.</p>
 </dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.DataConfig" title="openghg_inversions.rhime.params.DataConfig"><em>DataConfig</em></a></p>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">basis_seed</span></code> is set and the inner basis is generated
+    with an algorithm other than quadtree.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.DataConfig" title="openghg_inversions.rhime.params.DataConfig"><em>DataConfig</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -2293,6 +2303,7 @@ without producer provenance are also accepted.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">basis_inputs</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_basis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;function</span> <span class="pre">nesw_basis&gt;</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">filter_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.prepare_multisector" title="Link to this definition">#</a></dt>
@@ -2308,6 +2319,7 @@ without producer provenance are also accepted.</p>
 <li><p><strong>filter_options</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em><em>] </em><em>| </em><em>None</em>) – Keyword options for named observation filters.</p></li>
 <li><p><strong>basis_algorithm</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Selected basis-generation algorithm.</p></li>
 <li><p><strong>nbasis</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a>) – Requested generated basis size.</p></li>
+<li><p><strong>basis_seed</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><em>None</em>) – Seed for a generated quadtree basis; None leaves it random.</p></li>
 <li><p><strong>fix_basis_outer_regions</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Keep the supplied outer partition fixed.</p></li>
 <li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Construct boundary-condition sensitivities.</p></li>
 <li><p><strong>merged_data</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.MergedData" title="openghg_inversions.inversion_data.acquisition.MergedData"><em>MergedData</em></a>) – Borrowed acquired observations, transport and current flux.</p></li>
@@ -3014,6 +3026,7 @@ unknown names use the first retained site as the coordinate reference.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_basis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;function</span> <span class="pre">nesw_basis&gt;</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">time_tolerance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">filter_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.prepare_nested_rhime_inputs" title="Link to this definition">#</a></dt>
@@ -3041,6 +3054,8 @@ resources are supplied by the runner, which also owns optional basis exports.</p
 and inner_nbasis is omitted.</p></li>
 <li><p><strong>inner_nbasis</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><em>None</em>) – Independent inner target; omission enables automatic
 allocation when neither grid uses a saved basis.</p></li>
+<li><p><strong>basis_seed</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><em>None</em>) – Seed used for each generated quadtree fit, outer and
+inner; None leaves both random.</p></li>
 <li><p><strong>fix_basis_outer_regions</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Retain the supplied fixed outer partition.</p></li>
 <li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Include boundary sensitivities from the outer domain only.</p></li>
 <li><p><strong>outer_basis_inputs</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Selected outer operator or partition and support maps.</p></li>

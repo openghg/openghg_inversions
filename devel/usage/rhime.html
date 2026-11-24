@@ -1027,6 +1027,19 @@ optional exact <code class="docutils literal notranslate"><span class="pre">.nc<
 exposed through RHIME config remain <code class="docutils literal notranslate"><span class="pre">&quot;quadtree&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;weighted&quot;</span></code>. See
 <a class="reference internal" href="rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a> for support maps and migration from historical
 case/directory options.</p>
+<p>The quadtree algorithm searches for its region layout with simulated
+annealing, so by default each run fits a different basis from the same inputs.
+Set <code class="docutils literal notranslate"><span class="pre">basis_seed</span></code> to a non-negative integer to fit the same basis every time,
+for example in a test case or when comparing runs:</p>
+<div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span class="na">basis_algorithm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"quadtree"</span>
+<span class="na">nbasis</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">250</span>
+<span class="na">basis_seed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">42</span>
+</pre></div>
+</div>
+<p>The seed also applies to the inner fit when <code class="docutils literal notranslate"><span class="pre">fix_basis_outer_regions</span></code> is
+set. The weighted algorithm is deterministic, so <code class="docutils literal notranslate"><span class="pre">basis_seed</span></code> is rejected
+with it. A saved basis (<code class="docutils literal notranslate"><span class="pre">basis_path</span></code> or a partition) involves no fitting,
+and any <code class="docutils literal notranslate"><span class="pre">basis_seed</span></code> is then unused.</p>
 <p>The lower-level Python basis API also supports <code class="docutils literal notranslate"><span class="pre">&quot;region_constrained&quot;</span></code> when a
 caller supplies an already loaded <code class="docutils literal notranslate"><span class="pre">region_classes</span></code> <code class="docutils literal notranslate"><span class="pre">DataArray</span></code>. That path
 keeps generated labels from crossing land/sea, country, inner/outer, or other

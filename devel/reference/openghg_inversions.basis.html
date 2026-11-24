@@ -945,6 +945,7 @@ dimension, and integer region labels.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">contrast_sigma_design</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">contrast_s_diag</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">allow_empty_inner_region</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.fixed_outer_regions_basis_from_data" title="Link to this definition">#</a></dt>
@@ -996,6 +997,8 @@ coefficient. If omitted, <code class="docutils literal notranslate"><span class=
 <li><p><strong>allow_empty_inner_region</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – If true, keep the inner label unsplit when
 its masked weights contain finite values but all are zero. Intended
 for nested outer-domain preparation.</p></li>
+<li><p><strong>seed</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><em>None</em>) – Optional seed for the inner quadtree fit; see
+<code class="xref py py-func docutils literal notranslate"><span class="pre">basis_from_weights()</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1520,6 +1523,7 @@ to runtime flux with source and, where applicable, artifact-path metadata.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">contrast_sigma_design</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">contrast_s_diag</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">allow_empty_inner_region</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.prepare_basis" title="Link to this definition">#</a></dt>
@@ -1575,6 +1579,9 @@ attribute selects the inner label, falling back to the maximum label.</p></li>
 <li><p><strong>contrast_s_diag</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional diagonal design covariance entries.</p></li>
 <li><p><strong>allow_empty_inner_region</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Keep a finite, all-zero inner region unsplit
 during fixed-outer fitting; intended for nested outer domains.</p></li>
+<li><p><strong>seed</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><em>None</em>) – Seed for a generated quadtree fit, making the basis reproducible.
+Other algorithms reject it; saved inputs ignore it because nothing
+is fitted.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
