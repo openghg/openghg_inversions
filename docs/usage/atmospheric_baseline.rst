@@ -69,12 +69,13 @@ Linked CO2/O2
 -------------
 
 The linked recipes share one flux state and prior between the CO2 and O2
-channels, so they take the same resolved outer states, and the held states
-are fixed in the joint state after joint exact-zero pruning:
+channels, so each builder resolves the choice once on that shared prior. The
+held states are fixed in the joint state after joint exact-zero pruning, with
+the same meaning as above: zero uncertainty and nothing added to the error
+covariance, in the ordinary and cached linked recipes alike:
 
 .. code-block:: python
 
    from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
 
-   outer_flux = OuterFluxChoice("fixed", ("outer",)).resolve_states(flux_prior)
-   model = build_co2_o2_model(..., outer_flux=outer_flux)
+   model = build_co2_o2_model(..., outer_flux=OuterFluxChoice("fixed", ("outer",)))
