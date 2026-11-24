@@ -48,7 +48,8 @@ factor of :math:`A`; a dense :math:`A` gets the full term added, and a diagonal
 or absent :math:`A` becomes low-rank. All CO2 recipes that take ``outer_flux``
 (ordinary, cached fixed-OU and linked CO2/O2) use it. In linked recipes one
 term spans both channels, so it also carries the CO2/O2 covariance the shared
-outer states induce. Run metadata records ``outer_marginal_rank``.
+outer states induce. :meth:`~openghg_inversions.models.outer_flux.OuterStates.outputs`
+records its rank as ``outer_marginal_rank``.
 
 For a linear Gaussian model with uncorrelated outer states this is exact: the
 posterior of the other states equals their marginal posterior when the outer
@@ -111,14 +112,16 @@ conditional mean is :math:`m_O + B(x_I - m_I)`.
 Building a model
 ----------------
 
-The state selection is done once per flux prior:
+The builder resolves the choice on the ``retained_prior`` it is given, so the
+held states and the covariance check always refer to the prior the model
+samples:
 
 .. code-block:: python
 
    from openghg_inversions.models.outer_flux import OuterFluxChoice
    from openghg_inversions.rhime.co2.co2_cached_sigma_model import build_co2_cached_sigma_model
 
-   outer_flux = OuterFluxChoice("marginalise", ("outer",)).resolve_states(flux_prior)
+   outer_flux = OuterFluxChoice("marginalise", ("outer",))
 
    cached = build_co2_cached_sigma_model(
        flux_sensitivity, retained_prior=flux_prior,
@@ -133,19 +136,23 @@ The state selection is done once per flux prior:
 ``outer_flux`` argument. Any boundary, or none, may be used with it. Exact-zero
 columns of :math:`H` are pruned first, as in the ordinary recipe, and the held
 states are then made inactive at their prior mean; in ``"marginalise"`` mode
-their error term is then added to ``aggregation_error``. Run metadata records
-the mode and selectors.
+their error term is then added to ``aggregation_error``. Every label in
+``outer_groups`` and ``fixed_sources`` must match a state, and a
+``state_activity`` policy that explicitly fixes a held state at a value other
+than its prior mean is rejected. Run metadata records the
+mode and selectors.
 
 Linked CO2/O2
 -------------
 
 The linked recipes share one flux state and prior between the CO2 and O2
-channels, so they take the same resolved outer states, and the held states
-are fixed in the joint state after joint exact-zero pruning:
+channels, so each builder resolves the choice once on that shared prior. The
+held states are fixed in the joint state after joint exact-zero pruning, with
+the same meaning as above: zero uncertainty and nothing added to the error
+covariance, in the ordinary and cached linked recipes alike:
 
 .. code-block:: python
 
    from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
 
-   outer_flux = OuterFluxChoice("fixed", ("outer",)).resolve_states(flux_prior)
-   model = build_co2_o2_model(..., outer_flux=outer_flux)
+   model = build_co2_o2_model(..., outer_flux=OuterFluxChoice("fixed", ("outer",)))

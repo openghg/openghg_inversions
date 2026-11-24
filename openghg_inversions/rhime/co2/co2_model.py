@@ -37,7 +37,7 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
-from openghg_inversions.models.outer_flux import OuterStates
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import (
     StateActivity,
@@ -165,7 +165,7 @@ def build_co2_model(
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
-    outer_flux: OuterStates | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> pm.Model:
@@ -236,10 +236,11 @@ def build_co2_model(
         state_activity: Optional labelled activity policy for retained flux
             states.
         boundary: Resolved boundary component bound to this fit.
-        outer_flux: Optional outer states resolved on ``retained_prior``.
-            Its selected outer states are held at their prior mean after
-            exact-zero pruning; in ``"marginalise"`` mode their prior
-            covariance is added to ``aggregation_error``. See
+        outer_flux: Optional outer-flux choice, resolved here on
+            ``retained_prior``. Its selected outer states are held at their
+            prior mean after exact-zero pruning: with zero uncertainty in
+            ``"fixed"`` mode, or with their prior covariance added to
+            ``aggregation_error`` in ``"marginalise"`` mode. See
             :mod:`openghg_inversions.models.outer_flux`.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added. Site codes are derived from the ``site`` coordinate
@@ -268,9 +269,9 @@ def build_co2_model(
         sigma_prior=sigma_prior,
         fixed_model_mismatch=fixed_model_mismatch,
     )
-    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, outer_flux, priors = dask_compute(
+    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, priors = dask_compute(
         *to_dense_tree((
-            (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, outer_flux,
+            (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary,
             {"sigma": sigma_prior, "offset": offset_prior, "fixed_mismatch": fixed_model_mismatch},
         ))
     )
@@ -311,10 +312,11 @@ def _build_co2_model(
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
-    outer_flux: OuterStates | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
     gaussian_prior: GaussianStatePrior | None = None,
+    outer_flux_prior: CorrelatedPrior | None = None,
 ) -> pm.Model:
     """Validate choices and construct the CO2 graph from eager inputs.
 
@@ -326,9 +328,17 @@ def _build_co2_model(
     Gaussian state. That graph is linear-Gaussian when
     every other prior is Normal and the likelihood has fixed error; the
     Gaussian estimator solves it exactly instead of sampling it.
+
+    With ``gaussian_prior``, ``outer_flux`` is resolved on
+    ``outer_flux_prior``: the retained prior whose arithmetic moments the
+    Gaussian prior takes. Its mean must equal the Gaussian prior's mean.
+    Rebuilding the covariance from the Gaussian factor would add round-off to
+    the exact zero cross-covariance check.
     """
     if (gaussian_prior is None) == (retained_prior is None):
         raise ValueError("Pass exactly one of retained_prior or gaussian_prior.")
+    if outer_flux_prior is not None and gaussian_prior is None:
+        raise ValueError("outer_flux_prior applies only with gaussian_prior.")
     _check_co2_model_options(
         boundary=boundary,
         likelihood_builder=likelihood_builder,
@@ -343,15 +353,31 @@ def _build_co2_model(
         offset_prior = dict(offset_prior)
     offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
+    outer_states = None
     if outer_flux is not None:
-        flux_sensitivity, fixed_prior_contribution = outer_flux.condition_sensitivity(
+        # Resolve the choice on the prior this model samples, so the held
+        # states and the covariance check always refer to it.
+        selection_prior = retained_prior
+        if gaussian_prior is not None:
+            if outer_flux_prior is None:
+                raise ValueError("An outer-flux choice with gaussian_prior needs outer_flux_prior.")
+            try:
+                xr.testing.assert_equal(
+                    outer_flux_prior.mean.reset_coords(drop=True), gaussian_prior.mean.reset_coords(drop=True),
+                )
+            except AssertionError as error:
+                raise ValueError("outer_flux_prior must have the Gaussian prior's mean.") from error
+            selection_prior = outer_flux_prior
+        assert selection_prior is not None
+        outer_states = outer_flux.resolve_states(selection_prior)
+        flux_sensitivity, fixed_prior_contribution = outer_states.condition_sensitivity(
             flux_sensitivity, fixed_prior_contribution, output_dim="nmeasure",
         )
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
-    if outer_flux is not None:
-        activity = outer_flux.fix_states(activity)
-        aggregation_error = outer_flux.add_marginal_error(flux_sensitivity, aggregation_error, output_dim="nmeasure")
+    if outer_states is not None:
+        activity = outer_states.fix_states(activity)
+        aggregation_error = outer_states.add_marginal_error(flux_sensitivity, aggregation_error, output_dim="nmeasure")
 
     with registered_model() as model:
         if gaussian_prior is not None:

@@ -43,7 +43,7 @@ from .co2_cached_sigma_model import (
     _site_values,
 )
 from .co2_o2_fixed_ou import linked_fixed_ou_alignment
-from openghg_inversions.models.outer_flux import OuterStates
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from .co2_o2_model import (
     _add_co2_o2_baseline_components,
     _gather_co2_o2_sensitivity,
@@ -64,7 +64,7 @@ def build_co2_o2_cached_sigma_model(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
-    outer_flux: OuterStates | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -109,7 +109,8 @@ def build_co2_o2_cached_sigma_model(
         state_activity: Optional labelled policy fixing or activating retained
             states.
         boundary: Resolved boundary component, keyed by channel.
-        outer_flux: Optional outer states shared by both channels; see
+        outer_flux: Optional outer-flux choice, resolved here once on the
+            shared ``retained_prior`` for both channels; see
             :func:`~openghg_inversions.rhime.co2.co2_o2_model.build_co2_o2_model`.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
@@ -133,10 +134,10 @@ def build_co2_o2_cached_sigma_model(
         ValueError: If channel options, labels, units, activity, covariance,
             positive amplitudes or explicit double precision are invalid.
     """
-    (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd), boundary, outer_flux, priors = (
+    (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd), boundary, priors = (
         dask_compute(*to_dense_tree((
             (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd),
-            dict(boundary or {}), outer_flux,
+            dict(boundary or {}),
             {"amplitude": site_amplitude_prior, "offset": offset_prior},
         )))
     )
@@ -175,7 +176,7 @@ def _build_co2_o2_cached_sigma_model(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
-    outer_flux: OuterStates | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -203,15 +204,16 @@ def _build_co2_o2_cached_sigma_model(
     )
     joint = _gather_co2_o2_sensitivity(co2_sensitivity, o2_sensitivity, output_dim=output_dim)
     joint = joint.sel({output_dim: observations[output_dim]})
-    if outer_flux is not None:
-        joint, fixed_prior_contribution = outer_flux.condition_sensitivity(
+    outer_states = outer_flux.resolve_states(retained_prior) if outer_flux is not None else None
+    if outer_states is not None:
+        joint, fixed_prior_contribution = outer_states.condition_sensitivity(
             joint, fixed_prior_contribution, output_dim=output_dim,
         )
     prepared_flux = prepare_linear_sensitivity(joint, output_dim=output_dim)
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
-    if outer_flux is not None:
-        activity = outer_flux.fix_states(activity)
-        aggregation_error = outer_flux.add_marginal_error(joint, aggregation_error, output_dim=output_dim)
+    if outer_states is not None:
+        activity = outer_states.fix_states(activity)
+        aggregation_error = outer_states.add_marginal_error(joint, aggregation_error, output_dim=output_dim)
     prepared_flux, active_design, fixed_flux = _materialize_cached_linear_projection(
         prepared_flux,
         activity,
