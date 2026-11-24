@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import warnings
 
+import dask.array as da
 import numpy as np
 import pytest
 from scipy.linalg import eigh
 import xarray as xr
 
+from openghg_inversions.models.fixed_ou import fixed_ou_mismatch_covariance
 from openghg_inversions.observation_error import (
     WhitenedRankRule,
     _prepare_whitened_low_rank_aggregation_error,
@@ -19,8 +21,8 @@ from openghg_inversions.observation_error import (
     select_whitened_rank,
     whitened_eigenvalue_kl,
 )
-from openghg_inversions.rhime.co2 import Co2PreparedInputs, Co2ReferenceCovariance, handoffs, prepare_co2_inputs
-from openghg_inversions.rhime.co2 import co2_preparation, execution
+from openghg_inversions.rhime.co2 import Co2PreparedInputs, handoffs, prepare_co2_inputs
+from openghg_inversions.rhime.co2 import execution
 
 from test_co2_handoffs import FACTS, _model
 from test_co2_preparation import _canonical_inputs, _reduction
@@ -46,9 +48,19 @@ def _observations(sites: np.ndarray, hours: np.ndarray, error: np.ndarray) -> tu
     return observations, xr.DataArray(error, dims="nmeasure", coords=coords, attrs={"units": "ppm"})
 
 
-def _reference(settings: Co2ReferenceCovariance, sites, hours, error) -> np.ndarray:
-    """Return dense R0 values built by the CO2 settings."""
-    return np.asarray(settings.covariance(*_observations(sites, hours, error)).values)
+def _reference(sites, hours, error, **settings) -> np.ndarray:
+    """Evaluate the mismatch covariance for the synthetic observations."""
+    return np.asarray(fixed_ou_mismatch_covariance(*_observations(sites, hours, error), **settings).values)
+
+
+def _canonical_reference(canonical, fixed_site_amplitudes=1.0, *, tau_hours=None) -> xr.DataArray:
+    """Evaluate the mismatch covariance on canonical observation labels."""
+    return fixed_ou_mismatch_covariance(
+        canonical.inv_inputs["mf"],
+        canonical.inv_inputs["mf_error"],
+        fixed_site_amplitudes=fixed_site_amplitudes,
+        tau_hours=tau_hours,
+    )
 
 
 def _dense_ou_reference(sites, hours, error, amplitude: dict[str, float], tau: dict[str, float]) -> np.ndarray:
@@ -86,7 +98,7 @@ def test_dropped_mode_kl_matches_dense_gaussian_kl_for_ou_reference() -> None:
     covariance, sites, hours, error = _smooth_case()
     amplitude = {"MHD": 0.8, "TAC": 1.3}
     dense = _dense_ou_reference(sites, hours, error, amplitude, {"MHD": 5.0, "TAC": 5.0})
-    built = _reference(Co2ReferenceCovariance(reference_sd=amplitude, tau_hours=5.0), sites, hours, error)
+    built = _reference(sites, hours, error, fixed_site_amplitudes=amplitude, tau_hours=5.0)
     np.testing.assert_allclose(built, dense, rtol=1e-12)
 
     mu = _spectrum(covariance, built)
@@ -108,7 +120,7 @@ def test_independent_reference_spectrum_matches_scaled_covariance() -> None:
     """Without OU the reference is diagonal and the spectrum matches the scaled covariance."""
     covariance, sites, hours, error = _smooth_case()
 
-    built = _reference(Co2ReferenceCovariance(reference_sd=1.0), sites, hours, error)
+    built = _reference(sites, hours, error, fixed_site_amplitudes=1.0)
 
     np.testing.assert_array_equal(built, np.diag(error**2 + 1.0))
     expected = eigh(covariance, np.diag(error**2 + 1.0), eigvals_only=True)[::-1]
@@ -173,11 +185,11 @@ def test_reference_rank_check_uses_the_condition_estimate(monkeypatch: pytest.Mo
 def test_ou_reference_is_independent_of_row_order() -> None:
     """Per-site OU settings are resolved by label, so permuting rows only permutes the reference."""
     covariance, sites, hours, error = _smooth_case()
-    settings = Co2ReferenceCovariance(reference_sd={"MHD": 0.8, "TAC": 1.3}, tau_hours={"MHD": 0.1, "TAC": 10.0})
+    settings = dict(fixed_site_amplitudes={"MHD": 0.8, "TAC": 1.3}, tau_hours={"MHD": 0.1, "TAC": 10.0})
     order = np.random.default_rng(3).permutation(sites.size)
 
-    forward = _reference(settings, sites, hours, error)
-    shuffled = _reference(settings, sites[order], hours[order], error[order])
+    forward = _reference(sites, hours, error, **settings)
+    shuffled = _reference(sites[order], hours[order], error[order], **settings)
 
     np.testing.assert_allclose(shuffled, forward[np.ix_(order, order)], rtol=1e-12)
     dense = _dense_ou_reference(sites, hours, error, {"MHD": 0.8, "TAC": 1.3}, {"MHD": 0.1, "TAC": 10.0})
@@ -192,9 +204,10 @@ def test_co2_reference_returns_the_labelled_covariance_contract() -> None:
     """The built reference is labelled like a supplied one, with squared units and a JSON description."""
     _, sites, hours, error = _smooth_case()
     observations, observation_error = _observations(sites, hours, error)
-    settings = Co2ReferenceCovariance(reference_sd={"MHD": 800.0, "TAC": 1300.0}, units="ppb", tau_hours=5.0)
-
-    reference = settings.covariance(observations, observation_error)
+    reference = fixed_ou_mismatch_covariance(
+        observations, observation_error,
+        fixed_site_amplitudes={"MHD": 800.0, "TAC": 1300.0}, amplitude_units="ppb", tau_hours=5.0,
+    )
 
     assert reference.dims == ("nmeasure", "nmeasure_cov")
     assert reference.indexes["nmeasure"].equals(observations.indexes["nmeasure"])
@@ -204,22 +217,44 @@ def test_co2_reference_returns_the_labelled_covariance_contract() -> None:
     assert description["reference_sd"] == {"MHD": 800.0, "TAC": 1300.0}
     assert description["units"] == "ppb"
     assert description["reference_sd_observation_units_by_site"] == pytest.approx({"MHD": 0.8, "TAC": 1.3})
-    in_ppm = Co2ReferenceCovariance(reference_sd={"MHD": 0.8, "TAC": 1.3}, tau_hours=5.0)
-    np.testing.assert_allclose(reference.values, _reference(in_ppm, sites, hours, error), rtol=1e-12)
+    in_ppm = _reference(sites, hours, error, fixed_site_amplitudes={"MHD": 0.8, "TAC": 1.3}, tau_hours=5.0)
+    np.testing.assert_allclose(reference.values, in_ppm, rtol=1e-12)
 
 
 def test_co2_reference_names_missing_sites_and_coordinates() -> None:
     """Incomplete site mappings and missing coordinates raise ValueError naming the problem."""
     _, sites, hours, error = _smooth_case()
     observations, observation_error = _observations(sites, hours, error)
-    with pytest.raises(ValueError, match=r"reference_sd site mapping is missing observation site\(s\): \['TAC'\]"):
-        Co2ReferenceCovariance(reference_sd={"MHD": 1.0}).covariance(observations, observation_error)
-    with pytest.raises(ValueError, match=r"tau_hours site mapping is missing observation site\(s\): \['TAC'\]"):
-        Co2ReferenceCovariance(reference_sd=1.0, tau_hours={"MHD": 5.0}).covariance(observations, observation_error)
-    with pytest.raises(ValueError, match="'time'"):
-        Co2ReferenceCovariance(reference_sd=1.0, tau_hours=5.0).covariance(
-            observations.drop_vars("time"), observation_error
+    with pytest.raises(ValueError, match="no value for every coordinate label"):
+        fixed_ou_mismatch_covariance(observations, observation_error, fixed_site_amplitudes={"MHD": 1.0})
+    with pytest.raises(ValueError, match="no value for every coordinate label"):
+        fixed_ou_mismatch_covariance(
+            observations, observation_error, fixed_site_amplitudes=1.0, tau_hours={"MHD": 5.0}
         )
+    with pytest.raises(ValueError, match="'time'"):
+        fixed_ou_mismatch_covariance(
+            observations.drop_vars("time"), observation_error, fixed_site_amplitudes=1.0, tau_hours=5.0
+        )
+
+
+def test_reference_evaluates_lazy_error_and_auxiliary_coordinates() -> None:
+    """Dask-backed site and time coordinates follow the same covariance calculation."""
+    _, sites, hours, error = _smooth_case()
+    observations, observation_error = _observations(sites, hours, error)
+    lazy_observations = observations.assign_coords(
+        site=("nmeasure", da.from_array(sites, chunks=3)),
+        time=("nmeasure", da.from_array(hours, chunks=3)),
+    )
+
+    evaluated = fixed_ou_mismatch_covariance(
+        lazy_observations, observation_error.chunk({"nmeasure": 3}), fixed_site_amplitudes=1.0, tau_hours=5.0
+    )
+
+    expected = _reference(sites, hours, error, fixed_site_amplitudes=1.0, tau_hours=5.0)
+    np.testing.assert_array_equal(evaluated.values, expected)
+    assert isinstance(lazy_observations.coords["site"].data, da.Array)
+
+
 
 
 def test_rank_selection_on_synthetic_spectrum() -> None:
@@ -299,25 +334,26 @@ def test_rule_carries_only_rank_criteria() -> None:
 
 
 @pytest.mark.parametrize(
-    "kwargs",
+    ("amplitudes", "settings", "match"),
     [
-        {"reference_sd": 0.0},
-        {"reference_sd": {"MHD": -1.0}},
-        {"reference_sd": {}},
-        {"reference_sd": 1.0, "tau_hours": 0.0},
-        {"reference_sd": 1.0, "units": ""},
+        (-1.0, {}, "fixed_site_amplitudes"),
+        ({"MHD": -1.0}, {}, "fixed_site_amplitudes"),
+        ({}, {}, "fixed_site_amplitudes site mapping"),
+        (1.0, {"tau_hours": 0.0}, "tau_hours"),
+        (1.0, {"amplitude_units": ""}, "mole-fraction units"),
     ],
 )
-def test_co2_reference_rejects_invalid_settings(kwargs: dict[str, object]) -> None:
-    """Zero amplitudes, empty mappings, non-positive time scales and empty units are rejected."""
-    with pytest.raises(ValueError, match="Co2ReferenceCovariance"):
-        Co2ReferenceCovariance(**kwargs)  # type: ignore[arg-type]
+def test_co2_reference_rejects_invalid_settings(amplitudes, settings, match) -> None:
+    """Invalid amplitudes, time scales and units fail before evaluation."""
+    _, sites, hours, error = _smooth_case()
+    with pytest.raises(ValueError, match=match):
+        _reference(sites, hours, error, fixed_site_amplitudes=amplitudes, **settings)
 
 
 def test_integrated_path_matches_standalone_selection_and_factorization() -> None:
     """The integrated path chooses the spectrum's rank and stores the standalone factorization."""
     covariance, sites, hours, error = _smooth_case()
-    reference = _reference(Co2ReferenceCovariance(reference_sd=0.5, tau_hours=5.0), sites, hours, error)
+    reference = _reference(sites, hours, error, fixed_site_amplitudes=0.5, tau_hours=5.0)
     rule = WhitenedRankRule(mu_threshold=0.5)
 
     rank, selection = select_whitened_rank(_spectrum(covariance, reference), rule)
@@ -380,7 +416,7 @@ def test_stored_kl_is_unavailable_when_the_reference_rounds_away() -> None:
 def test_default_preparation_records_rank_selection_through_serialization() -> None:
     """CO2 preparation records the reference description with the criteria and survives a round trip."""
     canonical = _canonical_inputs()
-    reference = Co2ReferenceCovariance(reference_sd={"MHD": 1.5, "TAC": 2.0}, tau_hours=24.0)
+    reference = _canonical_reference(canonical, {"MHD": 1.5, "TAC": 2.0}, tau_hours=24.0)
 
     prepared = prepare_co2_inputs(canonical, _reduction(canonical), reference_covariance=reference)
     restored = Co2PreparedInputs.from_datatree(prepared.to_datatree())
@@ -397,7 +433,7 @@ def test_default_preparation_records_rank_selection_through_serialization() -> N
     assert recorded["unit_scale_to_observation_units_squared"] == 1.0
     assert recorded["representation"] == "dense"
     settings = recorded["description"]
-    assert settings["source"] == "Co2ReferenceCovariance"
+    assert settings["source"] == "fixed_ou_mismatch_covariance"
     assert settings["reference_sd"] == {"MHD": 1.5, "TAC": 2.0}
     assert settings["tau_hours"] == 24.0
     assert settings["correlation"] == "within-site OU"
@@ -408,8 +444,6 @@ def test_rank_rule_requires_a_caller_chosen_reference() -> None:
     canonical = _canonical_inputs()
     with pytest.raises(ValueError, match="needs reference_covariance"):
         prepare_co2_inputs(canonical, _reduction(canonical))
-    with pytest.raises(TypeError, match="reference_sd"):
-        Co2ReferenceCovariance()  # type: ignore[call-arg]
 
 
 def test_explicit_rank_without_reference_is_used_as_given() -> None:
@@ -434,14 +468,14 @@ def test_explicit_preparation_rank_below_count_warns() -> None:
             canonical,
             _reduction(canonical),
             aggregation_error_rank=1,
-            reference_covariance=Co2ReferenceCovariance(reference_sd=1.0),
+            reference_covariance=_canonical_reference(canonical),
         )
 
     selection = prepared.provenance["aggregation_error_rank_selection"]
     assert prepared.provenance["aggregation_error_rank"] == 1
     assert (selection["override_rank"], selection["chosen_rank"]) == (1, 1)
     assert selection["rule_rank"] == 3
-    assert selection["reference_covariance"]["description"]["source"] == "Co2ReferenceCovariance"
+    assert selection["reference_covariance"]["description"]["source"] == "fixed_ou_mismatch_covariance"
     assert prepared.inv_inputs.sizes["agg_rank"] == 1
 
 
@@ -453,25 +487,24 @@ def _labelled_reference(canonical, values: np.ndarray, units: str) -> xr.DataArr
 def test_built_and_supplied_references_are_equivalent() -> None:
     """An equivalent supplied R0 in squared ppb selects the same rank and stores the same factor."""
     canonical = _canonical_inputs()
-    settings = Co2ReferenceCovariance(reference_sd={"MHD": 1.5, "TAC": 2.0}, tau_hours=24.0)
-    built = settings.covariance(canonical.inv_inputs["mf"], canonical.inv_inputs["mf_error"])
+    built = _canonical_reference(canonical, {"MHD": 1.5, "TAC": 2.0}, tau_hours=24.0)
 
-    from_settings = prepare_co2_inputs(canonical, _reduction(canonical), reference_covariance=settings)
+    from_evaluation = prepare_co2_inputs(canonical, _reduction(canonical), reference_covariance=built)
     supplied = prepare_co2_inputs(
         canonical,
         _reduction(canonical),
         reference_covariance=_labelled_reference(canonical, built.values * 1e6, "(ppb)^2").rename("R0"),
     )
 
-    expected = from_settings.provenance["aggregation_error_rank_selection"]
+    expected = from_evaluation.provenance["aggregation_error_rank_selection"]
     actual = supplied.provenance["aggregation_error_rank_selection"]
     for key in ("chosen_rank", "count_mu_above_threshold", "rule_rank"):
         assert actual[key] == expected[key]
     np.testing.assert_allclose(actual["dropped_mode_kl"], expected["dropped_mode_kl"], rtol=1e-10)
-    xr.testing.assert_allclose(supplied.inv_inputs["low_rank_factor"], from_settings.inv_inputs["low_rank_factor"])
+    xr.testing.assert_allclose(supplied.inv_inputs["low_rank_factor"], from_evaluation.inv_inputs["low_rank_factor"])
 
     assert expected["reference_covariance"]["unit_scale_to_observation_units_squared"] == 1.0
-    assert expected["reference_covariance"]["description"]["source"] == "Co2ReferenceCovariance"
+    assert expected["reference_covariance"]["description"]["source"] == "fixed_ou_mismatch_covariance"
     recorded = actual["reference_covariance"]
     assert recorded["name"] == "R0"
     assert recorded["units"] == "(ppb)^2"
@@ -508,30 +541,24 @@ def test_supplied_reference_is_checked_while_labelled() -> None:
             canonical,
             _reduction(canonical),
             aggregation_error_rank=None,
-            reference_covariance=Co2ReferenceCovariance(reference_sd=1.0),
+            reference_covariance=_canonical_reference(canonical),
         )
 
 
-def test_observation_error_units_are_checked_before_whitening(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The default route checks mf_error before the rank calculation uses it."""
+def test_reference_evaluation_requires_matching_observation_error_units() -> None:
+    """The mismatch evaluation checks independent error units before squaring."""
     canonical = _canonical_inputs()
     canonical.inv_inputs["mf_error"].attrs["units"] = "ppb"
 
-    def unreachable(*args, **kwargs):
-        raise AssertionError("the rank calculation ran before mf_error was checked")
-
-    monkeypatch.setattr(co2_preparation, "_prepare_whitened_low_rank_aggregation_error", unreachable)
-    with pytest.raises(ValueError, match="CO2 mf_error units"):
-        prepare_co2_inputs(
-            canonical, _reduction(canonical), reference_covariance=Co2ReferenceCovariance(reference_sd=1.0)
-        )
+    with pytest.raises(ValueError, match="Observation error units"):
+        _canonical_reference(canonical)
 
 
 def test_dense_re_preparation_drops_inherited_rank_diagnostics() -> None:
     """Aggregation-error diagnostics belong to the preparation that wrote them."""
     canonical = _canonical_inputs()
     low_rank = prepare_co2_inputs(
-        canonical, _reduction(canonical), reference_covariance=Co2ReferenceCovariance(reference_sd=1.0)
+        canonical, _reduction(canonical), reference_covariance=_canonical_reference(canonical)
     )
     assert "aggregation_error_rank_selection" in low_rank.provenance
 
@@ -548,7 +575,7 @@ def test_dense_re_preparation_drops_inherited_rank_diagnostics() -> None:
 def test_staged_preparation_uses_the_supplied_reference(tmp_path) -> None:
     """The staged prepare handoff passes the reference to a new preparation and saves its description."""
     canonical = _canonical_inputs()
-    reference = Co2ReferenceCovariance(reference_sd={"MHD": 1.5, "TAC": 2.0}, tau_hours=24.0)
+    reference = _canonical_reference(canonical, {"MHD": 1.5, "TAC": 2.0}, tau_hours=24.0)
 
     handoffs.prepare(
         canonical_inputs=canonical,
@@ -576,7 +603,7 @@ def test_staged_preparation_uses_the_supplied_reference(tmp_path) -> None:
 def test_full_run_passes_the_supplied_reference(monkeypatch: pytest.MonkeyPatch) -> None:
     """run_co2 forwards the reference to a new preparation and rejects it otherwise."""
     canonical = _canonical_inputs()
-    reference = Co2ReferenceCovariance(reference_sd=2.0)
+    reference = _canonical_reference(canonical, 2.0)
     seen = {}
 
     class Reached(Exception):

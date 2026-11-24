@@ -97,13 +97,18 @@ and site metadata. Load the canonical inputs from a checkpoint produced by
 the :doc:`rhime` workflow::
 
    from openghg_inversions.inversion_data import PreparedInputs
-   from openghg_inversions.rhime.co2 import Co2ReferenceCovariance, prepare_co2_inputs
+   from openghg_inversions.models.fixed_ou import fixed_ou_mismatch_covariance
+   from openghg_inversions.rhime.co2 import prepare_co2_inputs
 
    canonical_inputs = PreparedInputs.load("base-prepared-inputs.zarr")
+   observations = canonical_inputs.inv_inputs
+   reference = fixed_ou_mismatch_covariance(
+       observations["mf"], observations["mf_error"], fixed_site_amplitudes=2.0, amplitude_units="ppm",
+   )
    co2_inputs = prepare_co2_inputs(
        canonical_inputs,
        reduction,
-       reference_covariance=Co2ReferenceCovariance(reference_sd=2.0),  # ppm
+       reference_covariance=reference,
    )
 
 The returned

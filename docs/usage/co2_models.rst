@@ -1167,38 +1167,40 @@ The selected rank depends strongly on :math:`R_0`: larger amplitudes whiten
 more of :math:`A` away. The rank criteria live on
 :class:`~openghg_inversions.observation_error.WhitenedRankRule`
 (``aggregation_error_rank``); the reference is a separate
-``reference_covariance`` input, which the rule requires. There is no
-universal default: choose it for the intended likelihood, for example with
-:class:`~openghg_inversions.rhime.co2.Co2ReferenceCovariance` and the run's
-floored or prior-median site amplitudes and OU time scales, never zero. A
-site mapping must cover every site in the preparation::
+``reference_covariance`` input, which the rule requires. Choose it for the
+intended likelihood. For example, evaluate the fixed-OU mismatch covariance
+at the run's representative site amplitudes and OU time scales. A site
+mapping must cover every site in the preparation::
 
+   from openghg_inversions.models.fixed_ou import fixed_ou_mismatch_covariance
    from openghg_inversions.observation_error import WhitenedRankRule
-   from openghg_inversions.rhime.co2 import Co2ReferenceCovariance, prepare_co2_inputs
+   from openghg_inversions.rhime.co2 import prepare_co2_inputs
 
+   observations = canonical_inputs.inv_inputs
+   reference = fixed_ou_mismatch_covariance(
+       observations["mf"],
+       observations["mf_error"],
+       fixed_site_amplitudes={"BSD": 2.0, "TAC": 2.5},
+       amplitude_units="ppm",
+       tau_hours={"BSD": 24.0, "TAC": 18.0},
+   )
    prepared = prepare_co2_inputs(
        canonical_inputs,
        reduction,
        aggregation_error_rank=WhitenedRankRule(mu_threshold=0.1),
-       reference_covariance=Co2ReferenceCovariance(
-           reference_sd={"BSD": 2.0, "TAC": 2.5},  # ppm
-           tau_hours={"BSD": 24.0, "TAC": 18.0},
-       ),
+       reference_covariance=reference,
    )
    prepared.save("co2-coherent-low-rank.zarr")
 
-``reference_covariance`` may instead be a labelled observation-by-observation
-covariance, for example a mismatch model evaluated at fixed parameter values.
-Its rows and columns must follow the canonical observation order, and its
+Supply ``reference_covariance`` as a labelled observation-by-observation
+covariance, whether evaluated as above or obtained from another mismatch
+model. Its rows and columns must follow the canonical observation order, and its
 units must be a squared mole-fraction unit such as ``(ppb)^2``; it is
 converted to the observation units. An optional ``description`` attribute (a
 JSON object or text) is recorded in provenance.
-:meth:`Co2ReferenceCovariance.covariance
-<openghg_inversions.rhime.co2.Co2ReferenceCovariance.covariance>` builds its
-reference in exactly this form, and preparation treats built and supplied
-references the same way: as one dense matrix that must be numerically
-positive definite. At about 5,300 observations this costs a few seconds and
-about 230 MB. ``run_co2``
+Preparation uses it as one dense matrix that must be numerically positive
+definite. At about 5,300 observations this costs a few seconds and about
+230 MB. ``run_co2``
 and the staged ``prepare`` handoff accept the same ``aggregation_error_rank``
 and ``reference_covariance`` when they create a preparation.
 
@@ -1220,9 +1222,9 @@ kept. Roundoff is a possible cause: LRPD accepts small negative eigenvalues of
 :math:`A` that :math:`R_0` may not cover, and an :math:`R_0` far below the
 scale of :math:`A` can round away when added.
 
-Keep the likelihood's white-noise floor in :math:`R_0`. With
-``Co2ReferenceCovariance`` the only white part is the reported observation
-error. If that is near zero, an OU reference is weak in high-frequency
+Keep the likelihood's white-noise floor in :math:`R_0`. In the example above
+the white part comes from the reported observation error. If that is near
+zero, an OU reference is weak in high-frequency
 directions: with hourly data and a 5 h time scale, adjacent hours have
 correlation 0.82 and those directions get only about 10% of the site
 variance. The stored diagonal tail spreads discarded variance evenly across
@@ -1230,8 +1232,8 @@ frequencies, so its error is magnified there, and ``stored_representation_kl``
 can be an order of magnitude larger than the spectral KL. A white floor
 comparable to the OU amplitudes reduces that gap to a few-fold. If the
 likelihood adds a floor that ``mf_error`` does not carry, such as a minimum
-error or a fixed model-error term, supply ``reference_covariance`` as a
-labelled covariance that includes it.
+error or a fixed model-error term, include the effective white variance when
+constructing the reference.
 
 The rule is a screening heuristic, not a bound on posterior error: the rank it
 selects depends on the reference covariance and should be checked for the

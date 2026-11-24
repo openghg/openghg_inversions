@@ -16,7 +16,6 @@ from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.observation_error import WhitenedRankRule
 from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
 
-from .rank_reference import Co2ReferenceCovariance
 from .co2_affine_output import _bind_affine_flux_map, prepared_inputs_content_id
 from .co2_outputs import (
     Co2Output, Co2OutputOptions, calculate_co2_products, save_co2_products, make_co2_output,
@@ -76,7 +75,7 @@ def run_co2(
     prepared: Co2PreparedInputs | None = None, canonical_inputs: PreparedInputs | None = None,
     reduction: CoherentGaussianReduction | None = None, affine_artifact: AffineFluxMapArtifact | None = None,
     aggregation_error_rank: int | WhitenedRankRule | None = WhitenedRankRule(),
-    reference_covariance: Co2ReferenceCovariance | xr.DataArray | None = None,
+    reference_covariance: xr.DataArray | None = None,
     bc_centering_weights: xr.DataArray | None = None,
 ) -> Co2Output:
     """Prepare or load CO2 inputs, sample and create requested products.
@@ -96,8 +95,7 @@ def run_co2(
     a :class:`~openghg_inversions.observation_error.WhitenedRankRule` (the
     default), an integer override, or ``None`` for exact storage. So does
     ``reference_covariance``, the rank rule's reference, which the rule
-    requires: a :class:`~openghg_inversions.rhime.co2.Co2ReferenceCovariance`
-    or a labelled covariance in the canonical observation order.
+    requires a labelled covariance in the canonical observation order.
 
     Returns:
         Scientific result containing the trace, concentration components and
