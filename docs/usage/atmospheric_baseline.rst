@@ -48,8 +48,7 @@ factor of :math:`A`; a dense :math:`A` gets the full term added, and a diagonal
 or absent :math:`A` becomes low-rank. All CO2 recipes that take ``outer_flux``
 (ordinary, cached fixed-OU and linked CO2/O2) use it. In linked recipes one
 term spans both channels, so it also carries the CO2/O2 covariance the shared
-outer states induce. :meth:`~openghg_inversions.models.outer_flux.OuterStates.outputs`
-records its rank as ``outer_marginal_rank``.
+outer states induce.
 
 For a linear Gaussian model with uncorrelated outer states this is exact: the
 posterior of the other states equals their marginal posterior when the outer

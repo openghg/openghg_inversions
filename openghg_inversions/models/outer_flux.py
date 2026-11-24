@@ -51,7 +51,7 @@ shared linked CO2/O2 state). They apply the result with
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal, get_args
+from typing import Literal, get_args
 
 import numpy as np
 import xarray as xr
@@ -441,23 +441,6 @@ class OuterStates:
             factor=factor,
             diagonal_variance=diagonal.rename(DIAGONAL_RESIDUAL_VARIANCE),
         )
-
-    def outputs(self, prefix: str = "") -> Outputs:
-        """Record the resolved choice's mode and selectors as run metadata.
-
-        Args:
-            prefix: Graph-name prefix of the recipe's variables.
-
-        Returns:
-            The choice's metadata (:meth:`OuterFluxChoice.outputs`) and, when
-            marginalised, ``outer_marginal_rank``, the rank of the added error
-            term.
-        """
-        outputs = self.choice.outputs()
-        if self.prior_factor is None:
-            return outputs.prefixed(prefix)
-        metadata: dict[str, Any] = {**outputs.metadata, "outer_marginal_rank": int(self.prior_factor.shape[1])}
-        return Outputs({}, {}, metadata).prefixed(prefix)
 
 
 __all__ = ["OuterFluxChoice", "OuterMode", "OuterStates"]

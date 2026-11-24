@@ -272,7 +272,6 @@ def test_builders_resolve_the_choice_on_the_prior_they_sample(cached):
 
 def test_outputs_record_the_mode_and_selectors():
     outputs = FIXED_OCEAN.outputs()
-    assert FIXED_OCEAN.resolve_states(prior()).outputs() == outputs
     assert outputs.roles == {} and outputs.units == {}
     assert outputs.metadata == {
         "outer_flux_mode": "fixed", "outer_groups": ["outer"], "outer_fixed_sources": ["ocean"],
@@ -395,9 +394,3 @@ def test_marginalised_model_likelihood_uses_the_widened_error(cross):
         model.logp(vars=model.observed_RVs), inputs=model.value_vars, on_unused_input="ignore",
     )(point)
     np.testing.assert_allclose(likelihood, expected, rtol=1e-9)
-
-
-def test_marginalised_outputs_record_the_added_rank():
-    outputs = MARGINAL_OCEAN.resolve_states(prior()).outputs()
-    assert outputs.metadata["outer_flux_mode"] == "marginalise"
-    assert outputs.metadata["outer_marginal_rank"] == 1
