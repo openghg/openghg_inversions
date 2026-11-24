@@ -141,7 +141,12 @@ def prepare(
     projections belong to the coherent preparation, never an inference override.
     ``bc_centering_weights`` is stored with new centered preparations, as in
     :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`;
-    weighted additive boundaries require it.
+    weighted additive boundaries require it. ``aggregation_error_rank``
+    applies only when creating a preparation from ``canonical_inputs`` and
+    ``reduction``, with the rank contract of
+    :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`:
+    a :class:`~openghg_inversions.observation_error.WhitenedRankRule` (the
+    default), an integer override, or ``None`` for exact storage.
     """
     if (canonical_inputs is None) != (reduction is None):
         raise ValueError("Pass canonical_inputs and reduction together.")

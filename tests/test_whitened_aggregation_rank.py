@@ -7,10 +7,14 @@ import warnings
 import numpy as np
 import pytest
 from scipy.linalg import eigh
+import xarray as xr
 
 from openghg_inversions.observation_error import (
+    ReferenceMismatchCovariance,
     WhitenedRankRule,
     choose_whitened_aggregation_rank,
+    prepare_low_rank_aggregation_error,
+    reference_mismatch_covariance,
     select_whitened_rank,
     whitened_aggregation_spectrum,
     whitened_eigenvalue_kl,
@@ -43,6 +47,21 @@ def _ou_reference(
     return np.diag(error**2) + sd[:, None] * correlation * sd[None, :]
 
 
+def _ou_reference_by_site(
+    sites: np.ndarray,
+    hours: np.ndarray,
+    error: np.ndarray,
+    amplitude: dict[str, float],
+    tau: dict[str, float],
+) -> np.ndarray:
+    """Build a dense OU reference with one time scale per site."""
+    same_site = sites[:, None] == sites[None, :]
+    sd = np.asarray([amplitude[site] for site in sites])
+    scale = np.asarray([tau[site] for site in sites])
+    correlation = np.where(same_site, np.exp(-np.abs(hours[:, None] - hours[None, :]) / scale[:, None]), 0.0)
+    return np.diag(error**2) + sd[:, None] * correlation * sd[None, :]
+
+
 def _gaussian_kl(p: np.ndarray, q: np.ndarray) -> float:
     """Return KL(N(0, p) || N(0, q)) from the textbook trace/log-det formula."""
     n = p.shape[0]
@@ -57,14 +76,10 @@ def test_dropped_mode_kl_matches_dense_gaussian_kl_for_ou_reference() -> None:
     amplitude = {"MHD": 0.8, "TAC": 1.3}
     reference = _ou_reference(sites, hours, error, amplitude, tau=5.0)
 
-    mu = whitened_aggregation_spectrum(
-        covariance,
-        observation_error_sd=error,
-        reference_sd=np.asarray([amplitude[site] for site in sites]),
-        site_index=(sites == "TAC").astype(int),
-        observation_hours=hours,
-        tau_hours=np.full(sites.size, 5.0),
+    built = reference_mismatch_covariance(
+        error, sites, reference_sd=amplitude, tau_hours=5.0, observation_hours=hours
     )
+    mu = whitened_aggregation_spectrum(covariance, built)
     values, vectors = eigh(covariance, reference)
     np.testing.assert_allclose(mu, values[::-1], rtol=1e-9, atol=1e-12)
 
@@ -81,13 +96,103 @@ def test_dropped_mode_kl_matches_dense_gaussian_kl_for_ou_reference() -> None:
 
 def test_independent_reference_spectrum_matches_scaled_covariance() -> None:
     """Without OU the reference is diagonal and whitening is a row/column scaling."""
-    covariance, _, _, error, _ = _smooth_case()
-    reference_sd = np.full(error.size, 1.0)
+    covariance, sites, _, error, _ = _smooth_case()
 
-    mu = whitened_aggregation_spectrum(covariance, observation_error_sd=error, reference_sd=reference_sd)
+    reference = reference_mismatch_covariance(error, sites, reference_sd=1.0)
+    mu = whitened_aggregation_spectrum(covariance, reference)
+
+    assert reference.site_rows == ()
 
     expected = eigh(covariance, np.diag(error**2 + 1.0), eigvals_only=True)[::-1]
     np.testing.assert_allclose(mu, expected, rtol=1e-9, atol=1e-12)
+
+
+def test_spectrum_keeps_covariance_scale_roundoff_tolerance() -> None:
+    """Negative roundoff accepted by the LRPD factorization is clipped, not rejected, after whitening."""
+    covariance = np.diag([100.0, 0.0, -9e-9])
+    error = np.asarray([100.0, 0.0, 0.0])
+    sites = np.asarray(["MHD", "TAC", "BSD"])
+    reference = reference_mismatch_covariance(error, sites, reference_sd=1.0)
+
+    mu = whitened_aggregation_spectrum(covariance, reference)
+
+    assert np.all(mu >= 0.0)
+    np.testing.assert_allclose(mu, [100.0 / 10001.0, 0.0, 0.0], atol=1e-15)
+    labelled = xr.DataArray(
+        covariance, dims=("nmeasure", "nmeasure_cov"), coords={"nmeasure": np.arange(3), "nmeasure_cov": np.arange(3)}
+    )
+    prepare_low_rank_aggregation_error(labelled, rank=1)
+    with pytest.raises(ValueError, match="positive semidefinite"):
+        whitened_aggregation_spectrum(np.diag([1.0, -1e-3, 0.5]), reference)
+
+
+@pytest.mark.parametrize(
+    ("covariance", "match"),
+    [
+        (np.asarray(1.0), "square matrix"),
+        (np.ones((3, 2)), "square matrix"),
+        (np.eye(4), "4 rows"),
+        (np.diag([1.0, np.nan, 1.0]), "finite"),
+        (np.asarray([[1.0, 0.5, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]), "symmetric"),
+    ],
+)
+def test_spectrum_validates_the_aggregation_covariance(covariance: np.ndarray, match: str) -> None:
+    """Scalars, wrong shapes, non-finite and asymmetric inputs are rejected before the eigenvalues."""
+    reference = reference_mismatch_covariance(np.full(3, 0.1), np.asarray(["A", "A", "B"]), reference_sd=1.0)
+    with pytest.raises(ValueError, match=match):
+        whitened_aggregation_spectrum(covariance, reference)
+
+
+def test_ou_reference_is_independent_of_row_order() -> None:
+    """Per-site OU settings are resolved by label, so permuting rows only permutes the reference."""
+    covariance, sites, hours, error, _ = _smooth_case()
+    amplitude = {"MHD": 0.8, "TAC": 1.3}
+    tau = {"MHD": 0.1, "TAC": 10.0}
+    order = np.random.default_rng(3).permutation(sites.size)
+
+    forward = reference_mismatch_covariance(error, sites, reference_sd=amplitude, tau_hours=tau, observation_hours=hours)
+    shuffled = reference_mismatch_covariance(
+        error[order], sites[order], reference_sd=amplitude, tau_hours=tau, observation_hours=hours[order]
+    )
+    mu_forward = whitened_aggregation_spectrum(covariance, forward)
+    mu_shuffled = whitened_aggregation_spectrum(covariance[np.ix_(order, order)], shuffled)
+
+    np.testing.assert_allclose(mu_shuffled, mu_forward, rtol=1e-9, atol=1e-12)
+    expected = eigh(covariance, _ou_reference_by_site(sites, hours, error, amplitude, tau), eigvals_only=True)[::-1]
+    np.testing.assert_allclose(mu_forward, expected, rtol=1e-9, atol=1e-12)
+    rule = WhitenedRankRule(reference_sd=amplitude, tau_hours=tau, mu_threshold=1.0)
+    rank_forward, _ = choose_whitened_aggregation_rank(
+        covariance, rule, observation_error_sd=error, sites=sites, observation_times=hours
+    )
+    rank_shuffled, _ = choose_whitened_aggregation_rank(
+        covariance[np.ix_(order, order)], rule, observation_error_sd=error[order], sites=sites[order],
+        observation_times=hours[order],
+    )
+    assert rank_forward == rank_shuffled
+
+
+def test_explicit_reference_covariance_is_validated() -> None:
+    """A supplied R0 must be positive, partition the rows, and match its diagonal."""
+    with pytest.raises(ValueError, match="positive finite"):
+        ReferenceMismatchCovariance(variance=np.asarray([1.0, 0.0]))
+    with pytest.raises(ValueError, match="partition"):
+        ReferenceMismatchCovariance(
+            variance=np.ones(3), site_rows=(np.asarray([0, 1]),), blocks=(np.eye(2),)
+        )
+    with pytest.raises(ValueError, match="diagonal equal to variance"):
+        ReferenceMismatchCovariance(variance=np.ones(2), site_rows=(np.asarray([0, 1]),), blocks=(2.0 * np.eye(2),))
+    with pytest.raises(ValueError, match="not positive definite"):
+        ReferenceMismatchCovariance(
+            variance=np.ones(2), site_rows=(np.asarray([0, 1]),), blocks=(np.ones((2, 2)),)
+        )
+    reference = ReferenceMismatchCovariance(
+        variance=np.asarray([2.0, 2.0]), site_rows=(np.asarray([0, 1]),), blocks=(np.asarray([[2.0, 1.0], [1.0, 2.0]]),)
+    )
+    assert reference.minimum_eigenvalue == pytest.approx(1.0)
+    np.testing.assert_allclose(
+        whitened_aggregation_spectrum(np.eye(2), reference),
+        eigh(np.eye(2), np.asarray([[2.0, 1.0], [1.0, 2.0]]), eigvals_only=True)[::-1],
+    )
 
 
 def test_rank_selection_on_synthetic_spectrum() -> None:

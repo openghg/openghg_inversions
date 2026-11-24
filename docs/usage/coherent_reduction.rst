@@ -128,16 +128,21 @@ This factorization is downstream of coherent reduction: it does not make the
 reduction approximate or change the retained prior and effective operator.
 Let :math:`n` be the observation count and :math:`r` the retained rank. The
 current preparation path first materializes the complete dense
-:math:`n \times n` covariance and computes a full dense eigendecomposition,
-requiring :math:`O(n^2)` peak storage and :math:`O(n^3)` decomposition work.
+:math:`n \times n` covariance, computes the dense whitened eigenvalues for the
+rank rule, and then computes a full dense eigendecomposition. Both are
+:math:`O(n^3)` and need :math:`O(n^2)` peak storage. The whitened eigenvalue
+calculation also runs when an integer rank is passed, so the override is still
+checked and recorded.
 The saved factor and diagonal use :math:`O(nr+n)` storage. For an ordinary
 diagonal-plus-factor likelihood, Woodbury evaluation uses
 :math:`O(nr^2+r^3)` work. Reducing :math:`r` therefore shrinks the artifact and
 downstream structured-likelihood work; it does not make preparation
 matrix-free or avoid the dense eigendecomposition.
 
-The default 512-mode cap is not an adequacy claim; selecting or overriding the
-LRPD rank remains a caller-owned numerical and scientific decision. LRPD
+The default rank rule is a screening heuristic, not an adequacy claim. The
+rank it selects depends on the reference covariance, and choosing the
+reference or overriding the rank remains a caller-owned numerical and
+scientific decision. LRPD
 preparation preserves the dense covariance diagonal up to accepted roundoff
 and diagonal-tail clipping, reported by ``diagonal_preservation_error``. It
 does not automatically certify that a rank is adequate for a particular

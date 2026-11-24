@@ -87,7 +87,12 @@ def run_co2(
     and domain explicitly or retain them in preparation provenance.
     ``bc_centering_weights`` is stored with a new centered preparation, as in
     :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`;
-    weighted additive boundaries require it.
+    weighted additive boundaries require it. ``aggregation_error_rank``
+    applies only when creating a preparation from ``canonical_inputs`` and
+    ``reduction``, with the rank contract of
+    :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`:
+    a :class:`~openghg_inversions.observation_error.WhitenedRankRule` (the
+    default), an integer override, or ``None`` for exact storage.
 
     Returns:
         Scientific result containing the trace, concentration components and
