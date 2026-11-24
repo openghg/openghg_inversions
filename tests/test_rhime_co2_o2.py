@@ -194,7 +194,9 @@ def test_metadata_tracks_unavailable_native_ratio_values() -> None:
     )
 
     prepared = prepare_co2_o2_inputs(**inputs)
-    ratio = _co2_o2_metadata(prepared, observations=prepared.observations)["o2_sensitivity_ratio"]
+    ratio = _co2_o2_metadata(
+        prepared, observations=prepared.observations, flux_prior=CorrelatedPrior.from_lognormal(prepared.retained_prior)
+    )["o2_sensitivity_ratio"]
 
     assert ratio["status"] == "unavailable"
     assert ratio["unavailable_reason"].startswith("Native paired O2 flux")

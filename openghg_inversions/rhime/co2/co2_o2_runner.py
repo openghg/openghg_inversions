@@ -13,6 +13,7 @@ import xarray as xr
 from dask import compute as dask_compute
 
 from openghg_inversions.array_ops import select_gathered_data_array, to_dense_tree
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.boundary import Bound, Choice, bind_prepared
@@ -132,6 +133,7 @@ def _co2_o2_metadata(
     prepared: Co2O2PreparedInputs,
     *,
     observations: xr.DataArray,
+    flux_prior: CorrelatedPrior,
 ) -> dict[str, object]:
     """Return JSON-safe scientific identity for the sampled result."""
     channel_units = {
@@ -143,7 +145,7 @@ def _co2_o2_metadata(
     ratio_provenance = json.loads(prepared.o2_sensitivity.attrs["oxidation_ratio_provenance"])
     return {
         "recipe": "co2_o2",
-        "prior": "correlated arithmetic-moment lognormal",
+        **flux_prior.metadata(),
         "likelihood": "joint Gaussian with fixed independent channel error",
         "independent_error": "fixed labelled standard deviation resolved from prepared or explicit inputs",
         "o2_sensitivity_ratio": {
@@ -316,13 +318,20 @@ def build_rhime_co2_o2(
     observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = (
         materialized
     )
+    flux_prior = CorrelatedPrior(
+        prepared.retained_prior.mean,
+        prepared.retained_prior.arithmetic_covariance,
+        marginal="lognormal" if prepared.retained_prior_marginal is None else prepared.retained_prior_marginal,
+        covariance_dim=prepared.retained_prior.covariance_dim,
+        latent_correlation_floor=prepared.latent_correlation_floor,
+    )
     model = _build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
         co2_sensitivity=co2_sensitivity,
         o2_sensitivity=o2_sensitivity,
         aggregation_error=prepared.aggregation_error,
-        retained_prior=prepared.retained_prior,
+        retained_prior=flux_prior,
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
         tau_hours=tau_hours,
@@ -340,7 +349,7 @@ def build_rhime_co2_o2(
         variable_roles["offset_concentration"] = "offset_concentration"
     if bound or offset_prior:
         variable_roles["baseline_concentration"] = "baseline_concentration"
-    metadata = {**_co2_o2_metadata(prepared, observations=observations), **boundary_metadata}
+    metadata = {**_co2_o2_metadata(prepared, observations=observations, flux_prior=flux_prior), **boundary_metadata}
     if tau_hours is not None:
         variable_roles.update(
             {

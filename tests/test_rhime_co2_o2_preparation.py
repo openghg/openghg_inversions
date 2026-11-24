@@ -716,7 +716,7 @@ def test_linked_save_computes_shared_payloads_together(tmp_path: Path, suffix: s
     )
     tree = prepared.to_datatree()
     assert executions == []
-    assert tree.attrs["schema_version"] == 5
+    assert tree.attrs["schema_version"] == 6
     path = tmp_path / f"shared{suffix}"
     prepared.save(path)
     assert executions == ["payload"]
@@ -983,7 +983,7 @@ def test_centered_mass_and_nonseparable_weights_survive_prepared_roundtrip(tmp_p
         unmarked.to_datatree()
 
 
-@pytest.mark.parametrize("version", [1, 2, 3])
+@pytest.mark.parametrize("version", [1, 2, 3, 4, 5])
 def test_linked_rejects_old_prepared_formats_with_repreparation_message(version):
     prepared = prepare_co2_o2_inputs(**_durable_inputs())
     tree = prepared.to_datatree()

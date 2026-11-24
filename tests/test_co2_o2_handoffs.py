@@ -8,6 +8,7 @@ import pytest
 import xarray as xr
 
 from examples.co2_o2_handoffs import FACTS, synthetic_inputs
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inference.sampling import RhimeSampler
 from openghg_inversions.rhime.co2 import co2_o2_handoffs as handoffs, co2_o2_runner
 from openghg_inversions.rhime.co2.co2_o2_model import _gather_co2_o2_sensitivity
@@ -69,7 +70,8 @@ def constructed_joint_trace(prepared=None, *, chains: int = 1, draws: int = 4) -
             "rhime_boundary_format_version": 2,
             "rhime_variable_roles": json.dumps(co2_o2_runner._CO2_O2_VARIABLE_ROLES),
             "rhime_model_metadata": json.dumps(co2_o2_runner._co2_o2_metadata(
-                prepared, observations=prepared.observations)),
+                prepared, observations=prepared.observations,
+                flux_prior=CorrelatedPrior.from_lognormal(prepared.retained_prior))),
         }),
         "posterior": posterior, "prior": prior,
         "posterior_predictive": xr.Dataset({"y": posterior.modelled_concentration - 0.25}),

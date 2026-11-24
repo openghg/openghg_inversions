@@ -8,8 +8,12 @@ arithmetic mean :math:`m` and covariance :math:`B` from preparation, with a
 marginal family per state. The ordinary and cached CO₂ builders and the linked
 CO₂/O₂ builders take one ``retained_prior`` value. They also accept a validated
 :class:`~openghg_inversions.correlated_state.CorrelatedLognormalPrior` directly.
-The CO₂ runners build the prior from the prepared mean and covariance. The
-linked runners use the lognormal prior from their prepared inputs.
+The runners build the prior from the prepared mean and covariance and any
+stored marginals and latent-correlation floor: ``alpha_prior_marginal`` in CO₂
+preparations, and ``retained_prior_marginal`` and ``latent_correlation_floor``
+in linked :class:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs`, which
+:func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs` sets from its
+``prior_marginal`` and ``latent_correlation_floor`` arguments.
 
 .. _sampled-marginals:
 
@@ -99,7 +103,7 @@ most :math:`3.0\times10^{-4}` and implied state correlations by at most
 records the floor, whether it was applied, the minimum eigenvalue before the
 repair, the number of eigenvalues raised, and the largest changes in the latent
 correlation and in the implied state covariance and correlation. The CO2
-runners write it, the marginal family counts and the prior description into
+and linked CO2/O2 runners write it, the marginal family counts and the prior description into
 the trace's ``rhime_model_metadata`` as ``prior_latent_correlation_repair``,
 ``prior_marginals`` and ``prior``. Partial activity uses the block of the
 repaired correlation, so the active prior is still the marginal of the full
