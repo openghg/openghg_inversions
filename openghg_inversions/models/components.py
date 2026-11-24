@@ -34,6 +34,7 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 from pymc.pytensorf import floatX
+from pytensor.gradient import zero_grad
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
@@ -920,6 +921,29 @@ def _negative_log_normal_sf(u: TensorVariable) -> TensorVariable:
     return pt.maximum(value, np.finfo(np.asarray(floatX(0.0)).dtype).tiny)
 
 
+def _gamma_standard_quantile(u: TensorVariable, k: TensorVariable) -> TensorVariable:
+    """Return the unit-scale gamma quantile ``G_k^-1(Phi(u))`` with a log-space gradient.
+
+    PyTensor's gradient of the inverse incomplete gamma is
+    ``exp(y) * Gamma(k) * y**(1 - k)``, which overflows when ``Gamma(k)`` does:
+    for ``k`` above about 35 (coefficient of variation below about 0.17) in
+    float32 and above 171 in float64. The value here is the same quantile,
+    but its derivative is ``exp(log phi(u) - log g_k(y))``, with ``g_k`` the
+    gamma density evaluated through ``gammaln``, so it stays finite. Where the
+    quantile is zero to working precision the derivative is zero.
+    Second derivatives are not provided.
+    """
+    lower = 0.5 * pt.erfc(-pt.minimum(u, 0) / np.sqrt(2.0))
+    upper = 0.5 * pt.erfc(pt.maximum(u, 0) / np.sqrt(2.0))
+    value = zero_grad(pt.switch(u > 0, pt.gammainccinv(k, upper), pt.gammaincinv(k, lower)))
+    tiny = np.finfo(np.asarray(floatX(0.0)).dtype).tiny
+    positive = value > tiny
+    safe = pt.switch(positive, value, 1.0)
+    log_density = (k - 1.0) * pt.log(safe) - safe - pt.gammaln(k)
+    slope = pt.switch(positive, pt.exp(-0.5 * pt.square(u) - 0.5 * np.log(2.0 * np.pi) - log_density), 0.0)
+    return value + zero_grad(slope) * (u - zero_grad(u))
+
+
 def _copula_marginal_map(
     latent: TensorVariable,
     family: np.ndarray,
@@ -944,10 +968,7 @@ def _copula_marginal_map(
         elif name == "normal":
             value = pt.as_tensor_variable(floatX(mean[index])) + theta * u
         elif name == "gamma":
-            u = pt.minimum(u, GAMMA_LATENT_CAP)
-            lower = 0.5 * pt.erfc(-pt.minimum(u, 0) / np.sqrt(2.0))
-            upper = 0.5 * pt.erfc(pt.maximum(u, 0) / np.sqrt(2.0))
-            value = theta * pt.switch(u > 0, pt.gammainccinv(k, upper), pt.gammaincinv(k, lower))
+            value = theta * _gamma_standard_quantile(pt.minimum(u, GAMMA_LATENT_CAP), k)
         else:
             value = theta * pt.exp(pt.log(_negative_log_normal_sf(u)) / k)
         pieces.append((index, value))
