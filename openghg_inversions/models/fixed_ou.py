@@ -18,9 +18,9 @@ from pytensor.graph.basic import Apply, Variable
 from pytensor.graph.op import Op, OutputStorageType
 from pytensor.tensor.variable import TensorVariable
 from scipy.linalg import cho_solve, eigh, solve_triangular
-from scipy.linalg.lapack import dpocon
 from scipy.sparse import csr_matrix
 
+from openghg_inversions._linalg import cholesky_logdet, conditioned_cholesky
 from openghg_inversions.array_ops import expand_mapping
 from openghg_inversions.models.components import add_model_data
 from openghg_inversions.models.priors import parse_prior
@@ -82,16 +82,12 @@ def _solve_full_width_factor(
     """
     core = factor @ factor.T
     core.flat[:: core.shape[0] + 1] += 1.0
-    try:
-        cholesky = np.linalg.cholesky(core)
-    except np.linalg.LinAlgError:
-        return None
     # Forming the Gram matrix can erase the identity even if Cholesky succeeds.
-    reciprocal_condition, info = dpocon(cholesky, np.linalg.norm(core, 1), uplo="L")
-    if info or not reciprocal_condition > np.sqrt(np.finfo(np.float64).eps):
+    cholesky = conditioned_cholesky(core, np.sqrt(np.finfo(np.float64).eps))
+    if cholesky is None:
         return None
     solution = cho_solve((cholesky, True), rhs, check_finite=False)
-    logdet = float(2.0 * np.log(np.diag(cholesky)).sum())
+    logdet = cholesky_logdet(cholesky)
     return cast(FloatArray, solution), logdet
 
 
@@ -340,16 +336,10 @@ class FixedOuLowRank:
                     whitened_factor.T @ whitened_factor
                 )
                 core = (core + core.T) * 0.5
-            use_cholesky = bool(np.isfinite(core).all())
-            if use_cholesky:
-                try:
-                    cholesky = np.linalg.cholesky(core)
-                except np.linalg.LinAlgError:
-                    use_cholesky = False
-                else:
-                    reciprocal_condition, info = dpocon(cholesky, np.linalg.norm(core, 1), uplo="L")
-                    use_cholesky = bool(not info and reciprocal_condition > tolerance)
-            if use_cholesky:
+            conditioned = conditioned_cholesky(core, tolerance)
+            use_cholesky = conditioned is not None
+            if conditioned is not None:
+                cholesky = conditioned
                 projected = whitened_factor.T @ whitened_residual
                 latent_mode = cho_solve((cholesky, True), projected, check_finite=False)
                 solved_residual = whitened_residual - whitened_factor @ latent_mode
@@ -381,7 +371,7 @@ class FixedOuLowRank:
                 )
             if use_cholesky:
                 quadratic = float(solved_residual @ solved_residual + latent_mode @ latent_mode)
-                logdet += float(2.0 * np.log(np.diag(cholesky)).sum())
+                logdet += cholesky_logdet(cholesky)
             else:
                 quadratic, logdet, solved_residual, precision_diagonal = _evaluate_whitened_fallback(
                     whitened_factor, whitened_residual, logdet
@@ -590,7 +580,7 @@ def prepare_fixed_ou_low_rank(
             raise ValueError(
                 f"OU correlation template for site {labels[site]!r} must be positive definite."
             ) from error
-        base_logdet += float(2.0 * np.log(np.diag(correlation_cholesky)).sum())
+        base_logdet += cholesky_logdet(correlation_cholesky)
 
         raw_values, vectors = eigh(
             np.diag(diagonal[indices]), correlation, check_finite=False
