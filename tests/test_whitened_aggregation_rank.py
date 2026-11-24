@@ -342,6 +342,27 @@ def test_integrated_path_matches_standalone_selection_and_factorization() -> Non
         )
 
 
+def test_stored_kl_is_unavailable_when_accepted_roundoff_exceeds_the_reference() -> None:
+    """Accepted roundoff in A that R0 does not cover keeps the approximation and records no KL."""
+    covariance = np.diag([100.0, -9e-9])
+    reference = np.diag([0.01, 5e-9])
+    rule = WhitenedRankRule(rank=1)
+    standalone = prepare_low_rank_aggregation_error(_labelled(covariance), rank=1)
+
+    approximation, record = _prepare_whitened_low_rank_aggregation_error(
+        _labelled(covariance), reference, rule, reference_description={"source": "test"}
+    )
+
+    assert np.linalg.eigvalsh(reference + covariance).min() < 0.0
+    assert record["stored_representation_kl"] is None
+    assert record["stored_representation_kl_per_observation"] is None
+    assert "roundoff" in record["stored_representation_kl_unavailable"]
+    assert record["chosen_rank"] == 1
+    json.dumps(record, allow_nan=False)
+    assert approximation.diagnostics == standalone.diagnostics
+    xr.testing.assert_identical(approximation.aggregation_error.factor, standalone.aggregation_error.factor)
+
+
 def test_default_preparation_records_rank_selection_through_serialization() -> None:
     """CO2 preparation records the reference description with the criteria and survives a round trip."""
     canonical = _canonical_inputs()

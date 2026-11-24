@@ -134,13 +134,14 @@ the whitened-spectrum rule rank::
 This factorization is downstream of coherent reduction: it does not make the
 reduction approximate or change the retained prior and effective operator.
 Let :math:`n` be the observation count and :math:`r` the retained rank. The
-current preparation path first materializes the complete dense
-:math:`n \times n` covariance and a dense reference covariance for the rank
-rule, factorizes the reference and computes the dense whitened eigenvalues, and
-then computes a full dense eigendecomposition. These steps are :math:`O(n^3)`
-and need :math:`O(n^2)` peak storage. The whitened eigenvalue
-calculation also runs when an integer rank is passed, so the override is still
-checked and recorded.
+current preparation path materializes the complete dense :math:`n \times n`
+covariance and computes a full dense eigendecomposition. When a
+``reference_covariance`` is also supplied, it first materializes the dense
+reference, factorizes it and computes the dense whitened eigenvalues; this runs
+for an integer rank too, so the override is checked against the rule and
+recorded. A bare integer rank, as in the example above, skips the reference,
+the whitened eigenvalues and the rank-selection record. These steps are
+:math:`O(n^3)` and need :math:`O(n^2)` peak storage.
 The saved factor and diagonal use :math:`O(nr+n)` storage. For an ordinary
 diagonal-plus-factor likelihood, Woodbury evaluation uses
 :math:`O(nr^2+r^3)` work. Reducing :math:`r` therefore shrinks the artifact and

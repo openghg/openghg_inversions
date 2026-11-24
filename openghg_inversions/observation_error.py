@@ -491,7 +491,9 @@ def _prepare_whitened_low_rank_aggregation_error(
         :func:`prepare_low_rank_aggregation_error`, and a JSON-safe record of
         the reference description, criteria, counts, the spectral
         dropped-mode KL and the KL of the stored representation at
-        :math:`R_0`.
+        :math:`R_0`. The stored KL is ``None``, with the reason under
+        ``stored_representation_kl_unavailable``, when roundoff accepted in
+        :math:`A` leaves a total that cannot be factorized.
 
     Raises:
         ValueError: If coordinates or values are invalid, :math:`R_0` is not
@@ -522,18 +524,29 @@ def _prepare_whitened_low_rank_aggregation_error(
     )
     stored = approximation.aggregation_error
     assert stored.factor is not None and stored.diagonal_variance is not None
-    stored_kl = _stored_representation_kl(
-        values,
-        np.asarray(reference_covariance, dtype=float),
-        np.asarray(stored.factor.values, dtype=float),
-        np.asarray(stored.diagonal_variance.values, dtype=float),
-    )
     n = values.shape[0]
+    try:
+        stored_kl: float | None = _stored_representation_kl(
+            values,
+            np.asarray(reference_covariance, dtype=float),
+            np.asarray(stored.factor.values, dtype=float),
+            np.asarray(stored.diagonal_variance.values, dtype=float),
+        )
+    except np.linalg.LinAlgError:
+        stored_kl = None
+    kl_record: dict[str, Any] = {
+        "stored_representation_kl": stored_kl,
+        "stored_representation_kl_per_observation": None if stored_kl is None else stored_kl / n,
+    }
+    if stored_kl is None:
+        kl_record["stored_representation_kl_unavailable"] = (
+            "R0 + A or R0 + F F^T + diag(d) could not be Cholesky factorized; A was accepted with negative "
+            "eigenvalues within the LRPD roundoff tolerance, which R0 does not cover"
+        )
     return approximation, {
         "reference_covariance": description,
         **selection,
-        "stored_representation_kl": stored_kl,
-        "stored_representation_kl_per_observation": stored_kl / n,
+        **kl_record,
         "stored_representation_kl_scope": (
             "KL(N(0, R0 + A) || N(0, R0 + F F^T + diag(d))) for the stored factor F (leading eigenmodes of A) "
             "and diagonal tail d, at the reference covariance R0"
@@ -552,9 +565,15 @@ def _stored_representation_kl(
     Computes :math:`\mathrm{KL}(N(0, R_0 + A)\,\|\,N(0, R_0 + A_s))` with
     :math:`A_s = F F^\top + \mathrm{diag}(d)`, as
     :math:`\tfrac12[\mathrm{tr}((R_0 + A_s)^{-1}(A - A_s)) + \log|R_0 + A_s| - \log|R_0 + A|]`.
-    Both totals are positive definite because :math:`R_0` is and :math:`A`
-    and :math:`A_s` are positive semidefinite. Cost is two dense Cholesky
-    factorizations and one dense solve, with three extra ``n x n`` arrays.
+    Both totals are positive definite when :math:`A` is positive
+    semidefinite. :math:`A` is accepted with negative eigenvalues down to the
+    LRPD roundoff tolerance, which can exceed the smallest eigenvalue of
+    :math:`R_0`; the caller then records the KL as unavailable. Cost is two
+    dense Cholesky factorizations and one dense solve, with three extra
+    ``n x n`` arrays.
+
+    Raises:
+        numpy.linalg.LinAlgError: If either total is not positive definite.
     """
     stored = factor @ factor.T
     stored[np.diag_indices_from(stored)] += diagonal
