@@ -36,7 +36,7 @@ def case(choice=OuterFluxChoice("fixed", ("outer",))):
         aggregation_error=base.aggregation_error,
         retained_prior=prior,
         independent_error_sd=_independent_error(base),
-        outer_flux=choice.resolve_states(prior),
+        outer_flux=choice,
     )
     return base, prior, inputs
 
@@ -96,7 +96,22 @@ def test_fixed_sources_hold_only_matching_outer_states():
     _, prior, _ = case()
     sources = prior.mean["source"].values
     held = (np.array(GROUPS) == "outer") & (sources == sources[-1])
-    _, _, inputs = case(OuterFluxChoice("fixed", ("outer",), (str(sources[-1]),)))
-    np.testing.assert_array_equal(inputs["outer_flux"].fixed, held)
+    _, prior, inputs = case(OuterFluxChoice("fixed", ("outer",), (str(sources[-1]),)))
+    np.testing.assert_array_equal(inputs["outer_flux"].resolve_states(prior).fixed, held)
     model = build_co2_o2_model(**inputs, **NOISE)
     assert model.initial_point()["flux_scaling_active_latent"].shape == (int((~held).sum()),)
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_linked_builders_resolve_the_choice_on_the_shared_prior(cached):
+    """A choice valid on another prior is checked again on the one the model samples."""
+    _, prior, inputs = case()
+    covariance = prior.arithmetic_covariance.to_numpy().copy()
+    covariance[0, -1] = covariance[-1, 0] = 0.01 * np.sqrt(covariance[0, 0] * covariance[-1, -1])
+    correlated = CorrelatedPrior(prior.mean, prior.arithmetic_covariance.copy(data=covariance))
+    inputs["outer_flux"].resolve_states(prior)
+    with pytest.raises(ValueError, match="zero prior covariance"):
+        if cached:
+            build_co2_o2_cached_sigma_model(**{**inputs, "retained_prior": correlated}, **NOISE)
+        else:
+            build_co2_o2_model(**{**inputs, "retained_prior": correlated}, **NOISE)

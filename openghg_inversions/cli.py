@@ -143,7 +143,7 @@ def _prepare_command(args: argparse.Namespace) -> None:
 
         print(prepare_linked(
             **Co2O2PreparationConfig.from_params(_co2_o2_params(args), require_path=True).preparation_arguments(),
-            output_dir=_stage_output_dir(args),
+            output_dir=_stage_output_dir(args), referenced=_request_files(args),
         ))
     elif args.model == "co2":
         from openghg_inversions.rhime.co2.execution import load_co2_params
@@ -151,7 +151,10 @@ def _prepare_command(args: argparse.Namespace) -> None:
         from openghg_inversions.rhime.co2.handoffs import prepare as prepare_co2
 
         params = load_co2_params(config_file=args.config, params_file=args.params_file, overrides=args.kwargs)
-        print(prepare_co2(**Co2PreparationConfig.from_params(params, require_source=True).preparation_arguments(), output_dir=_stage_output_dir(args)))
+        print(prepare_co2(
+            **Co2PreparationConfig.from_params(params, require_source=True).preparation_arguments(),
+            output_dir=_stage_output_dir(args), referenced=_request_files(args),
+        ))
 
 
 def _check_saved_family(args: argparse.Namespace) -> dict[str, Any] | None:
