@@ -271,7 +271,7 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
     """
     roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
     observations = prepared.inv_inputs["mf"]
-    fixed = prepared.inv_inputs["fixed_prior_contribution"]
+    fixed = prepared.fitted_inputs["fixed_prior_contribution"]
     result = {"observed": observations, "affine": fixed}
     boundary_facts = decode_saved_boundaries(trace, roles=roles)
     component_roles = {

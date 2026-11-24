@@ -241,7 +241,7 @@ def prepare_co2_scalar_sigma_eigenbasis(
             prepared.aggregation_error_mode,
         ),
     )
-    model_inputs = materialize_pymc_inputs(prepared.rhime_inputs, variable_names=names)
+    model_inputs = materialize_pymc_inputs(prepared.fitted_rhime_inputs, variable_names=names)
     aggregation_error = resolve_aggregation_error(
         model_inputs,
         prepared.aggregation_error_mode,
@@ -434,10 +434,11 @@ def materialize_co2_inputs(
         prepared,
         preserve_prepared_fixed_mismatch=(likelihood_builder is None and fixed_model_mismatch is None),
     )
-    backend_inputs = prepared.rhime_inputs
+    # The fit uses the operator, intercept and A with marginalised states integrated out.
+    backend_inputs = prepared.fitted_rhime_inputs
     if isinstance(fixed_model_mismatch, xr.DataArray):
         fixed_model_mismatch, _ = xr.align(fixed_model_mismatch, prepared.inv_inputs["mf"], join="exact")
-        backend_inputs = replace(backend_inputs, inv_inputs=prepared.inv_inputs.assign(
+        backend_inputs = replace(backend_inputs, inv_inputs=backend_inputs.inv_inputs.assign(
             fixed_model_mismatch=fixed_model_mismatch,
         ))
         names = (*names, "fixed_model_mismatch")

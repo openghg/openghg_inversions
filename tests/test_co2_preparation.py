@@ -378,19 +378,51 @@ def test_prepare_co2_inputs_records_information_threshold(tmp_path: Path) -> Non
     )
     np.testing.assert_array_equal(selection.marginalised.values, [False, True])
 
+    assert selection.reduction is reduction
     prepared = prepare_co2_inputs(
-        canonical, selection.reduction, aggregation_error_rank=None, information_selection=selection
+        canonical, reduction, aggregation_error_rank=None, information_selection=selection
     )
     inputs = prepared.inv_inputs
     np.testing.assert_allclose(inputs["state_information"], selection.information)
     np.testing.assert_array_equal(inputs["state_information_marginalised"], [False, True])
     np.testing.assert_array_equal(inputs["state_is_active"], [True, False])
     np.testing.assert_allclose(inputs["state_fixed_value"], [1.0, 0.9])
-    np.testing.assert_array_equal(inputs["H"].values[:, 1], 0.0)
+    # The artifact stores the full-restriction reduction ...
+    np.testing.assert_array_equal(inputs["H"].values, reduction.effective_observation_operator.values)
+    np.testing.assert_array_equal(
+        inputs["aggregation_error_covariance"].values, reduction.unresolved_observation_covariance.values
+    )
+    # ... and the fit's view integrates the marginalised state out of H, the intercept and A.
+    fitted = prepared.fitted_inputs
+    view = selection.marginalised_reduction
+    np.testing.assert_array_equal(fitted["H"].values[:, 1], 0.0)
+    np.testing.assert_allclose(fitted["H"].values, view.effective_observation_operator.values, rtol=1e-12)
     np.testing.assert_allclose(
-        np.diag(inputs["aggregation_error_covariance"].values)
+        fitted["fixed_prior_contribution"].values, view.observation_intercept.values, rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        fitted["aggregation_error_covariance"].values,
+        view.unresolved_observation_covariance.values,
+        rtol=1e-12,
+    )
+    np.testing.assert_allclose(
+        np.diag(fitted["aggregation_error_covariance"].values)
         - np.diag(reduction.unresolved_observation_covariance.values),
         inputs["aggregation_error_variance_increase"].values,
+    )
+    # A low-rank artifact gains the marginalisation term as exact extra factor columns.
+    low_rank = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=2, information_selection=selection)
+    stored = low_rank.inv_inputs
+    widened = low_rank.fitted_inputs
+    assert widened.sizes["agg_rank"] == stored.sizes["agg_rank"] + 1
+    def low_rank_a(dataset):
+        factor = dataset["low_rank_factor"].transpose("nmeasure", "agg_rank").values
+        return factor @ factor.T + np.diag(dataset["diagonal_residual_variance"].values)
+    np.testing.assert_allclose(
+        low_rank_a(widened) - low_rank_a(stored),
+        view.unresolved_observation_covariance.values - reduction.unresolved_observation_covariance.values,
+        rtol=1e-10,
+        atol=1e-15,
     )
     record = prepared.provenance["information_threshold"]
     assert record["n_marginalised"] == 1
@@ -403,7 +435,7 @@ def test_prepare_co2_inputs_records_information_threshold(tmp_path: Path) -> Non
     xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
 
     with pytest.raises(ValueError, match="supplied coherent reduction"):
-        prepare_co2_inputs(canonical, reduction, information_selection=selection)
+        prepare_co2_inputs(canonical, selection.marginalised_reduction, information_selection=selection)
 
 
 def test_prepare_co2_inputs_rejects_conflicting_projection_strategy() -> None:

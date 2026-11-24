@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import numpy as np
 import pytest
 import xarray as xr
 
 from openghg_inversions.basis.affine_flux_map import AffineFluxMap
 from openghg_inversions.basis.covariance_products import (
-    RetainedProjection,
+    PreserveBucketProlongation,
+    SuppliedRestriction,
     project_native_covariance,
 )
 from openghg_inversions.coherent_reduction import (
@@ -78,7 +77,7 @@ def _problem(*, correlated: bool) -> dict:
     native_mean = _grid(np.array([[0.8, 1.1, 1.3, 0.9], [1.2, 0.7, 1.0, 1.4]]), units="1")
     reduction = reduce_native_gaussian(
         covariance=covariance,
-        basis_prolongation=prolongation,
+        strategy=PreserveBucketProlongation(prolongation),
         state_dim="state",
         native_mean=native_mean,
         native_sensitivity=sensitivity,
@@ -95,17 +94,6 @@ def _problem(*, correlated: bool) -> dict:
         "reduction": reduction,
         "variance": variance,
     }
-
-
-@dataclass(frozen=True)
-class _FixedRestriction:
-    """Return a supplied restriction, used to re-reduce with ``Pi_K``."""
-
-    restriction: xr.DataArray
-
-    def projection(self, covariance, basis_prolongation, *, native_dims, state_dim) -> RetainedProjection:
-        """Return the stored rows of the full restriction."""
-        return RetainedProjection(restriction=self.restriction, strategy="rows-of-full-restriction")
 
 
 def test_information_matches_definition() -> None:
@@ -160,12 +148,15 @@ def test_marginalised_state_variance_moves_into_unresolved_covariance(correlated
     )
     dropped = selection.marginalised.values
     np.testing.assert_array_equal(dropped, [False, False, True, True])
-    marginalised = selection.reduction
+    # The selection keeps the full-restriction reduction; the fitted view is derived.
+    assert selection.reduction is reduction
+    marginalised = selection.marginalised_reduction
+    assert marginalised.native_identity == reduction.native_identity
 
     # Oracle: the coherent reduction restricted to the kept rows of Pi.
     full = project_native_covariance(
         covariance=problem["covariance"],
-        basis_prolongation=problem["prolongation"],
+        strategy=PreserveBucketProlongation(problem["prolongation"]),
         state_dim="state",
         native_sensitivity=problem["sensitivity"],
         observation_dim="observation",
@@ -173,12 +164,11 @@ def test_marginalised_state_variance_moves_into_unresolved_covariance(correlated
     keep = ~dropped
     oracle = reduce_native_gaussian(
         covariance=problem["covariance"],
-        basis_prolongation=problem["prolongation"].isel(state=keep),
+        strategy=SuppliedRestriction(full.restriction.isel(state=keep)),
         state_dim="state",
         native_mean=problem["native_mean"],
         native_sensitivity=problem["sensitivity"],
         observation_dim="observation",
-        strategy=_FixedRestriction(full.restriction.isel(state=keep)),
     )
     np.testing.assert_allclose(
         marginalised.unresolved_observation_covariance.values,

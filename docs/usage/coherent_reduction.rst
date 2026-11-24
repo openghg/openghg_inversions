@@ -364,9 +364,28 @@ It uses only the prior and the operator, never observed values. States with
 This is the coherent reduction with restriction :math:`\Pi_K`; when the
 marginalised states are prior-uncorrelated with the kept ones it equals
 reducing again with the smaller bucket basis. The prior predictive covariance
-of :math:`y` is unchanged. The returned reduction keeps the full state axis
-and sets the marginalised effective-operator columns to zero, so model
-construction removes them in the same way as zero-sensitivity states::
+of :math:`y` is unchanged.
+
+The selection keeps the full-restriction reduction, and the prepared artifact
+stores that reduction's :math:`C_\alpha`, :math:`H_\alpha` and :math:`A`
+together with the marginalised mask. Only :math:`C_\alpha`,
+:math:`H_\alpha` and the mask are needed to integrate the states out, so
+:func:`~openghg_inversions.coherent_reduction.marginalisation_terms` derives
+the fitted :math:`H'` (with zero marginalised columns, which model
+construction removes like zero-sensitivity states) and the factor
+:math:`F = H_D S^{1/2}` of the increase :math:`A' - A = F F^\mathsf{T}`
+after loading.
+:attr:`~openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.fitted_inputs`
+applies them: it replaces ``H``, ``fixed_prior_contribution`` and the
+aggregation error, adding :math:`F F^\mathsf{T}` to a dense :math:`A` or
+:math:`F` as extra columns of a low-rank factor. The CO2 runners, the
+concentration reconstruction and the complete-country observation solve read
+that view. Keeping the full arrays under their usual names preserves the
+invariant that ``alpha_prior_covariance`` and ``H`` are the full-restriction
+:math:`C_\alpha` and :math:`H_\alpha`, and keeps the artifact's
+``reduction_identity`` equal to the country products'.
+:attr:`~openghg_inversions.coherent_reduction.InformationSelection.marginalised_reduction`
+gives the same fitted view of a reduction in memory::
 
    from openghg_inversions.coherent_reduction import marginalise_low_information_states
    from openghg_inversions.models import StateActivity
@@ -378,16 +397,16 @@ construction removes them in the same way as zero-sensitivity states::
    )
    co2_inputs = prepare_co2_inputs(
        canonical_inputs,
-       selection.reduction,
+       reduction,  # the full-restriction reduction, which is selection.reduction
        information_selection=selection,
    )
+   fit_view = co2_inputs.fitted_inputs  # H', H m - H' Pi m and A + F F.T
 
 ``min_information`` is either one number, applied to every state, or a
 mapping from labels of ``group_coord`` to thresholds. A mapping applies the
 threshold only to those groups. For example, it can screen only ocean states,
 with separate CO2-ocean and O2-ocean groups in linked CO2/O2 models. The
-default ``None`` keeps every state, and the input reduction is returned
-unchanged. :func:`~openghg_inversions.models.resolve_state_activity` rejects
+default ``None`` keeps every state. :func:`~openghg_inversions.models.resolve_state_activity` rejects
 a policy that still carries a threshold, because fixing a state at model time
 would discard its variance instead of moving it into :math:`A`.
 
@@ -411,8 +430,9 @@ prior-correlated with kept states, the exact conditional mean would also
 regress them on the kept states, and the reconstruction leaves that term out.
 Country uncertainty computed only from retained states omits the
 marginalised states' variance, because that variance is now in :math:`A`.
-Use :math:`A`-based functionals when the uncertainty of those regions
-matters. Calibrate :math:`I_{\min}` on synthetic observations: an information of
+Complete country outputs (see `Staged CO2 outputs`_) include it exactly: the
+full-restriction country products are marginalised with the same mask, and
+the observation solve uses the fitted :math:`A'`. Calibrate :math:`I_{\min}` on synthetic observations: an information of
 ``0.1`` means one prior standard deviation of the state changes the
 observations by about a third of one noise standard deviation in total.
 

@@ -233,6 +233,7 @@ def test_cached_input_names_do_not_auto_select_prepared_boundary() -> None:
     class PreparedInputsStub:
         inv_inputs = inputs
         rhime_inputs = None
+        fitted_rhime_inputs = None
         aggregation_error_mode = "dense"
 
     names = co2_cached_sigma_runner.co2_cached_sigma_input_names(
@@ -1048,6 +1049,7 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     class PreparedInputsStub:
         inv_inputs = inputs
         rhime_inputs = None
+        fitted_rhime_inputs = None
         aggregation_error_mode = "dense"
 
     selected: list[tuple[str, ...]] = []
@@ -1220,6 +1222,7 @@ def test_cached_runner_rejects_generic_target_accept() -> None:
 
     prepared = PreparedInputsStub()
     prepared.rhime_inputs = cast(Any, prepared)
+    prepared.fitted_rhime_inputs = cast(Any, prepared)
 
     with pytest.raises(
         ValueError,
@@ -1352,6 +1355,7 @@ def test_cached_runner_reuses_raw_boundary_periods(monkeypatch, frequency, expec
     class PreparedInputsStub:
         inv_inputs = inputs
         rhime_inputs = None
+        fitted_rhime_inputs = None
         aggregation_error_mode = "dense"
 
     monkeypatch.setattr(
@@ -1378,6 +1382,7 @@ def test_cached_runner_ignores_disabled_centered_boundary(monkeypatch):
     class PreparedInputsStub:
         inv_inputs = inputs
         rhime_inputs = None
+        fitted_rhime_inputs = None
         aggregation_error_mode = "dense"
 
     monkeypatch.setattr(
@@ -1527,6 +1532,7 @@ def test_centered_stock_and_cached_boundary_match_dense_likelihood(reference, an
     class PreparedStub:
         inv_inputs = stock_inputs
         rhime_inputs = None
+        fitted_rhime_inputs = None
         aggregation_error_mode = "dense"
 
     prepared = cast(Any, PreparedStub())
