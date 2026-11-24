@@ -248,13 +248,16 @@ def load_preparation(manifest: str | Path, *, expected_generation: str | None = 
 
 def save_samples(
     preparation_manifest: str | Path, trace: xr.DataTree, *, actual_inference: Mapping[str, Any],
-    preparation_generation: str, output_dir: str | Path,
+    preparation_generation: str, output_dir: str | Path, referenced: tuple[str | Path, ...] = (),
 ) -> Path:
     """Save annotated samples and inference provenance bound to a preparation generation.
 
     The scientific trace owns model roles and used prior descriptions. Current
     configuration identity and callable representations do not gate reuse. Model
     choices are live inference inputs; replay uses only saved scientific meaning.
+    ``referenced`` names further inputs, such as consumed request files, that
+    the final write must not overwrite; it is checked again here because the
+    outputs may have changed during inference.
     """
     preparation_path, preparation = _preparation_record(preparation_manifest)
     if preparation["generation"] != preparation_generation:
@@ -270,7 +273,8 @@ def save_samples(
     )
     destination = start_checkpoint(
         output_dir, "sample", payloads=("posterior.nc",),
-        referenced=(preparation_path, prepared_path) + ((affine_path,) if affine_path is not None else ()),
+        referenced=(preparation_path, prepared_path) + ((affine_path,) if affine_path is not None else ())
+        + tuple(Path(path).resolve() for path in referenced),
     )
     save_trace(trace, destination / "posterior.nc")
     return finish_checkpoint(destination, "sample", {
@@ -304,11 +308,11 @@ def sample(
     model_choices = {item.name: getattr(model_config, item.name) for item in fields(model_config)}
     (check_co2_gaussian_model if choices.method == "gaussian" else check_co2_nuts_mismatch)(model_choices)
     preparation = load_preparation(preparation_manifest)
+    protected = model_config.artifact_paths() + tuple(Path(path).resolve() for path in referenced)
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
         referenced=(Path(preparation_manifest).resolve(), preparation.payload)
-        + ((preparation.affine_payload,) if preparation.affine_payload else ()) + model_config.artifact_paths()
-        + tuple(Path(path).resolve() for path in referenced),
+        + ((preparation.affine_payload,) if preparation.affine_payload else ()) + protected,
     )
     check_prepared_boundary(preparation.prepared.inv_inputs, model_config.boundary)
     model_options = model_config.model_arguments()
@@ -319,7 +323,7 @@ def sample(
     )
     return save_samples(
         preparation_manifest, trace, actual_inference=actual, preparation_generation=preparation.generation,
-        output_dir=output_dir,
+        output_dir=output_dir, referenced=protected,
     )
 
 
