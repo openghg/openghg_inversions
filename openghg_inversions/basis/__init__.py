@@ -22,10 +22,10 @@ the centred reduced likelihood or unresolved covariance.
 
 from .boundary import BoundaryBasis, boundary_basis, nesw_basis, twelve_region_basis
 from ._functions import (
+    BasisWeightRule,
     basis_weights_from_data,
     bucket_basis_from_weights,
     fixed_outer_regions_basis_from_data,
-    paired_abs_response_weights,
     quadtree_basis_from_weights,
     region_constrained_basis_from_weights,
     region_constrained_fixed_outer_basis_from_weights,
@@ -66,6 +66,7 @@ __all__ = [
     "boundary_basis",
     "nesw_basis",
     "twelve_region_basis",
+    "BasisWeightRule",
     "basis_weights_from_data",
     "basis_functions_from_flat_basis",
     "AffineFluxMap",
@@ -91,7 +92,6 @@ __all__ = [
     "load_basis_support_map",
     "load_basis_partition",
     "save_affine_flux_map",
-    "paired_abs_response_weights",
     "project_basis_prior_stdev",
     "project_native_covariance",
     "quadtree_basis_from_weights",

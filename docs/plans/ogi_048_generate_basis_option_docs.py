@@ -27,7 +27,6 @@ from matplotlib.colors import BoundaryNorm, ListedColormap, LogNorm
 from matplotlib.figure import Figure
 from openghg.retrieve import get_flux, get_footprint
 
-from openghg_inversions.basis._functions import _mean_fp_times_mean_flux
 from openghg_inversions.basis.algorithms import (
     AllocationMode,
     AxisParallelSplitStep,
@@ -582,8 +581,15 @@ def select_training_footprint(
 
 
 def build_combined_fp_x_flux(*, footprints: list[xr.DataArray], flux: xr.DataArray) -> xr.DataArray:
-    """Build wrapper-equivalent mean footprint times mean flux from all training footprints."""
-    return _mean_fp_times_mean_flux(flux, footprints).fillna(0.0).rename("fp_x_flux")
+    """Build the historical wrapper's mean footprint times mean flux from all training footprints.
+
+    This reproduces the weighting retired by #1045 for this dated study.
+    """
+    n_measure = sum(len(fp.time) for fp in footprints)
+    aligned = xr.align(*footprints, join="outer", fill_value=0.0)
+    mean_fp = sum(aligned).sum("time") / n_measure
+    mean_fp, mean_flux = xr.align(mean_fp, flux.mean("time"), join="override")
+    return (mean_fp * mean_flux).fillna(0.0).rename("fp_x_flux")
 
 
 def normalize_weights(fp_x_flux: xr.DataArray) -> xr.DataArray:

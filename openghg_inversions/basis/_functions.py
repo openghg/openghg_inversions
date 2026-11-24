@@ -35,183 +35,142 @@ openghginv_path = Paths.openghginv
 _INNER_REGION_LABEL_ATTR = "inner_region_label"
 
 
-def _mean_fp_times_mean_flux(
-    flux: xr.DataArray,
-    footprints: list[xr.DataArray],
-    abs_flux: bool = False,
-    mask: xr.DataArray | None = None,
-) -> xr.DataArray:
-    """Multiply mean flux by mean of footprints, optionally restricted to a Boolean mask.
+BasisWeightRule = Literal["abs_of_sum", "sum_of_abs"]
+"""How sector responses reduce to one weight field.
 
-    Args:
-        flux: Flux field with a ``time`` dimension and spatial grid dimensions.
-        footprints: Footprint fields for each site. Their time coordinates are
-            outer-aligned before summing so every measurement contributes once.
-        abs_flux: If true, use the absolute value of ``flux`` before averaging.
-        mask: Optional Boolean spatial mask. When supplied, weights outside the
-            mask are dropped from the returned field.
-
-    Returns:
-        Spatial weight field equal to temporal mean flux multiplied by the
-        measurement-weighted temporal mean footprint.
-    """
-    if abs_flux is True:
-        print("Using absolute value of flux array.")
-        flux = abs(flux)
-
-    mean_flux = flux.mean("time")
-
-    # get total times before aligning
-    n_measure = sum(len(fp.time) for fp in footprints)
-
-    # align so that all times are used
-    footprints = xr.align(*footprints, join="outer", fill_value=0.0)  # type: ignore  the docs say scalars are accepted as fill values, but type hints don't
-    fp_total = sum(footprints)  # this seems to be faster than concatentating and summing over new axis
-
-    fp_total = cast(xr.DataArray, fp_total)  # otherwise mypy complains about the next line
-    mean_fp = fp_total.sum("time") / n_measure
-
-    if mask is not None:
-        # align to footprint lat/lon
-        mean_fp, mean_flux, mask = xr.align(mean_fp, mean_flux, mask, join="override")
-        return (mean_fp * mean_flux).where(mask, drop=True)
-
-    mean_fp, mean_flux = xr.align(mean_fp, mean_flux, join="override")
-    return mean_fp * mean_flux
+``"abs_of_sum"`` is ``mean_o(abs(sum_s R_s(o)))`` and ``"sum_of_abs"`` is
+``sum_s mean_o(abs(R_s(o)))``. Both take the absolute value per observation.
+"""
 
 
-def paired_abs_response_weights(
-    flux: xr.DataArray,
-    footprints: list[xr.DataArray],
-    *,
-    mask: xr.DataArray | None = None,
-) -> xr.DataArray:
-    """Build weights from retained footprint observations paired with prior flux.
-
-    Each retained footprint time is multiplied by the prior flux at the same
-    timestamp, and absolute responses are averaged over retained observations:
-    ``mean_o(abs(fp_o * flux_at_o))``. This helper is intentionally pure and
-    lower-level; callers are responsible for passing footprints after any
-    observation filters have been applied.
-
-    Args:
-        flux: Prior flux field with ``time`` plus spatial dimensions.
-        footprints: Retained footprint fields for each site.
-        mask: Optional Boolean spatial mask. When supplied, weights outside the
-            mask are dropped from the returned field.
-
-    Returns:
-        Two-dimensional response weight field with spatial coordinates
-        preserved.
-
-    Raises:
-        ValueError: If no footprints are supplied, required ``time`` dimensions
-            are absent, or a retained footprint time cannot be paired with a
-            flux time. Also raised when paired arrays do not have exactly two
-            matching spatial dimensions and coordinates, or when a mask is not
-            Boolean and defined on those spatial dimensions.
-    """
-    if "time" not in flux.dims:
-        raise ValueError("flux must have a time dimension for paired response weights.")
-    spatial_dims = tuple(dim for dim in flux.dims if dim != "time")
-    if len(spatial_dims) != 2:
-        raise ValueError("flux must have exactly two spatial dimensions for paired response weights.")
-    if any(dim not in flux.indexes for dim in spatial_dims):
-        raise ValueError("flux spatial dimensions must have coordinates for paired response weights.")
-    if not footprints:
-        raise ValueError("at least one retained footprint is required for paired response weights.")
-
-    response_sums: list[xr.DataArray] = []
-    n_measure = 0
-    flux_times = flux.get_index("time")
-
-    for footprint in footprints:
-        if "time" not in footprint.dims:
-            raise ValueError("footprints must have a time dimension for paired response weights.")
-        if set(footprint.dims) != set(flux.dims):
-            raise ValueError(
-                "footprints and flux must have the same time and spatial dimensions "
-                "for paired response weights."
-            )
-        if any(dim not in footprint.indexes for dim in spatial_dims):
-            raise ValueError(
-                "footprint spatial dimensions must have coordinates for paired response weights."
-            )
-        footprint = footprint.transpose(*flux.dims)
-        missing_times = footprint.get_index("time").difference(flux_times)
-        if not missing_times.empty:
-            raise ValueError(
-                "footprint times must be present in flux time coordinates for paired response weights."
-            )
-
-        paired_flux = flux.sel(time=footprint.time)
-        try:
-            footprint, paired_flux = xr.align(footprint, paired_flux, join="exact")
-        except xr.AlignmentError as exc:
-            raise ValueError(
-                "footprints and flux must share exact time and spatial coordinates for paired response weights."
-            ) from exc
-        response_sums.append(abs(footprint * paired_flux).sum("time"))
-        n_measure += footprint.sizes["time"]
-
-    if n_measure == 0:
-        raise ValueError("at least one retained footprint time is required for paired response weights.")
-
-    try:
-        response_sums = list(xr.align(*response_sums, join="exact"))
-    except xr.AlignmentError as exc:
+def _resolve_weight_rule(weight_rule: BasisWeightRule | None, *, multisector: bool) -> BasisWeightRule:
+    """Return the explicit rule, or the state-layout default, rejecting unknown or unusable rules."""
+    if weight_rule is None:
+        return "sum_of_abs" if multisector else "abs_of_sum"
+    if weight_rule not in ("abs_of_sum", "sum_of_abs"):
+        raise ValueError("weight_rule must be 'abs_of_sum', 'sum_of_abs' or None.")
+    if weight_rule == "sum_of_abs" and not multisector:
         raise ValueError(
-            "retained footprints must share exact spatial coordinates for paired response weights."
-        ) from exc
-    weights = cast(xr.DataArray, sum(response_sums)) / n_measure
+            "weight_rule='sum_of_abs' needs source-resolved responses; use it with multisector=True."
+        )
+    return weight_rule
 
-    if mask is not None:
-        if set(mask.dims) != set(spatial_dims):
-            raise ValueError("mask must have the same spatial dimensions as paired response weights.")
-        if mask.dtype.kind != "b":
-            raise ValueError("mask must be Boolean for paired response weights.")
-        mask = mask.transpose(*spatial_dims)
-        try:
-            weights, mask = xr.align(weights, mask, join="exact")
-        except xr.AlignmentError as exc:
-            raise ValueError(
-                "mask must share exact spatial coordinates with paired response weights."
-            ) from exc
-        return weights.where(mask, drop=True)
 
-    return weights
+def _summed_response_magnitude(
+    response: xr.DataArray, weight_rule: BasisWeightRule, *, sector_dim: str | None,
+) -> xr.DataArray:
+    """Sum absolute observation responses over ``time``, reducing sectors by ``weight_rule``.
+
+    A grouped basis can call this with its group's sectors selected from the
+    source-resolved response and its own rule.
+
+    Args:
+        response: One site's response with ``time``, spatial dimensions and,
+            when ``sector_dim`` is given, a sector dimension.
+        weight_rule: Sum sectors before (``"abs_of_sum"``) or after
+            (``"sum_of_abs"``) the per-observation absolute value.
+        sector_dim: Sector dimension of ``response``, or None for a total response.
+
+    Returns:
+        Lazy spatial field of summed per-observation magnitudes.
+    """
+    if sector_dim is not None and weight_rule == "abs_of_sum":
+        response = response.sum(sector_dim)
+    magnitude = abs(response)
+    if sector_dim is not None and weight_rule == "sum_of_abs":
+        magnitude = magnitude.sum(sector_dim)
+    return magnitude.sum("time")
 
 
 def basis_weights_from_data(
     site_data: Mapping[str, xr.Dataset],
-    weighting_flux: xr.DataArray,
     *,
-    abs_flux: bool = False,
+    multisector: bool = False,
+    weight_rule: BasisWeightRule | None = None,
     mask: xr.DataArray | None = None,
 ) -> xr.DataArray:
-    """Materialize mean-footprint times mean-flux weights for basis fitting.
+    """Materialize response-magnitude weights for generated basis fitting.
 
-    All site footprint times contribute to the measurement-weighted footprint
-    mean. Flux is averaged over its own native time axis; it is not paired to
-    individual observation times. This named eager algorithm boundary leaves
-    borrowed inputs unchanged.
+    Weights come from the observation-indexed responses already formed by the
+    transport provider, so raw footprints (``fp`` or a history-resolved
+    ``fp_time_resolved``) and native flux are not read. The absolute value is
+    taken for each retained observation before averaging, so temporal sign
+    changes cannot cancel. Observations are pooled across sites by count: each
+    retained observation contributes once, and sites are not given equal
+    weight.
+
+    Two rules reduce sector responses ``R_s``:
+
+    * ``"abs_of_sum"``: ``W = mean_o(abs(sum_s R_s))``. Sectors are summed
+      before the absolute value, so opposing sector responses cancel and
+      resolution follows the net signal.
+    * ``"sum_of_abs"``: ``W = sum_s mean_o(abs(R_s))``. Each sector contributes
+      its own magnitude, so cancellation between sectors does not remove
+      resolution.
+
+    By default the state layout selects the rule. Sectors sharing one scaling
+    state (standard RHIME) use ``"abs_of_sum"`` on the selected-source total
+    ``fp_x_flux``. Sectors with separate scaling states sharing one partition
+    (multisector) use ``"sum_of_abs"`` on ``fp_x_flux_sectoral``. A
+    multisector caller may choose ``"abs_of_sum"`` instead, for example when
+    positively correlated sector scalings (such as GPP and TER) make the net
+    response the informative signal.
+
+    This named eager algorithm boundary computes the reduced two-dimensional
+    field once, densifying sparse payloads. Borrowed inputs are unchanged.
 
     Args:
-        site_data: Non-empty mapping of site datasets containing ``fp`` with
-            ``time`` and spatial dimensions. Spatial cells must already match
-            the flux grid in size and order; footprint coordinates are adopted.
-        weighting_flux: One selected source flux with ``time`` and the same
-            spatial dimensions as the footprints. Callers implementing the
-            standard RHIME policy select the first requested source.
-        abs_flux: Take absolute flux values before temporal averaging.
-        mask: Optional Boolean spatial mask; cells outside it are dropped.
+        site_data: Non-empty mapping of filtered site datasets. Each contains
+            ``fp_x_flux`` (or ``fp_x_flux_sectoral`` with a ``source``
+            dimension when ``multisector``) with ``time`` and the same spatial
+            coordinates at every site. Sites may have no retained observations,
+            provided at least one observation remains overall.
+        multisector: Weight source-resolved responses for sectors with separate
+            scaling states instead of the shared total response.
+        weight_rule: ``"abs_of_sum"`` or ``"sum_of_abs"``; None selects the
+            state-layout default. ``"sum_of_abs"`` requires ``multisector``.
+        mask: Optional Boolean spatial mask with the weights' spatial sizes;
+            its coordinates are overridden by the response grid. Cells outside
+            it are dropped.
 
     Returns:
-        Eager spatial weights equal to mean footprint times mean selected flux.
+        Eager spatial weights on the response grid, in ``lat``/``lon`` order
+        when those dimensions are present.
+
+    Raises:
+        ValueError: If the rule is invalid for the layout, no site or retained
+            observation is supplied, a response is missing, or site response
+            grids differ.
     """
-    flux = weighting_flux
-    footprints = [dataset["fp"] for dataset in site_data.values()]
-    return _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
+    weight_rule = _resolve_weight_rule(weight_rule, multisector=multisector)
+    name = "fp_x_flux_sectoral" if multisector else "fp_x_flux"
+    if not site_data:
+        raise ValueError("Generated basis weights require at least one site dataset.")
+    magnitude_sums: list[xr.DataArray] = []
+    n_observations = 0
+    for site, dataset in site_data.items():
+        if name not in dataset:
+            raise ValueError(f"site_data[{site!r}] requires {name!r} for generated basis weights.")
+        response = dataset[name]
+        magnitude_sums.append(
+            _summed_response_magnitude(response, weight_rule, sector_dim="source" if multisector else None)
+        )
+        n_observations += response.sizes["time"]
+    if n_observations == 0:
+        raise ValueError("Generated basis weights require at least one retained observation.")
+
+    try:
+        magnitude_sums = list(xr.align(*magnitude_sums, join="exact"))
+    except ValueError as error:
+        raise ValueError(f"Site {name!r} responses must share exact spatial coordinates.") from error
+    weights = cast(xr.DataArray, sum(magnitude_sums)) / n_observations
+    weights = weights.transpose("lat", "lon", ..., missing_dims="ignore")
+    weights = to_dense(weights).compute()
+
+    if mask is not None:
+        weights, mask = xr.align(weights, mask.transpose(*weights.dims), join="override")
+        weights = weights.where(mask, drop=True)
+    return weights
 
 
 def _validate_basis_algorithm(basis_algorithm: str) -> None:
@@ -836,13 +795,14 @@ def _region_constrained_split_strategy(
 
 def fixed_outer_regions_basis_from_data(
     site_data: Mapping[str, xr.Dataset],
-    weighting_flux: xr.DataArray,
+    flux: xr.DataArray,
     start_date: str,
     basis_algorithm: str,
     domain: str,
     nbasis: int = 100,
-    abs_flux: bool = False,
     *,
+    multisector: bool = False,
+    weight_rule: BasisWeightRule | None = None,
     outer_regions: xr.DataArray,
     landsea_classes: xr.DataArray | None = None,
     region_classes: xr.DataArray | None = None,
@@ -866,7 +826,8 @@ def fixed_outer_regions_basis_from_data(
     This inner mask is passed to ``basis_algorithm`` and then inserted back
     into the fixed outer map. This fitting boundary materializes a dense local
     geometry map after coordinate alignment; borrowed Dask/sparse inputs remain
-    unchanged. Weight preparation has its existing eager fitting boundary.
+    unchanged. Inner weights come from :func:`basis_weights_from_data`, with
+    its eager fitting boundary and state-layout weighting rule.
 
     For nested outer-domain preparation, ``allow_empty_inner_region=True``
     keeps the inner label unsplit when its masked weights contain finite values
@@ -874,15 +835,21 @@ def fixed_outer_regions_basis_from_data(
     weights normally.
 
     Args:
-        site_data: Borrowed site datasets containing footprints.
-        weighting_flux: Borrowed singular source flux used to fit weights.
+        site_data: Borrowed filtered site datasets containing ``fp_x_flux``,
+            or ``fp_x_flux_sectoral`` when ``multisector``.
+        flux: Borrowed native flux whose spatial grid is authoritative for the
+            outer-region map. Its values are not used for weighting.
         start_date: Start date of the inversion period.
         basis_algorithm: Algorithm used to fit the inner region. Supported
             values are ``"quadtree"``, ``"weighted"``, and
             ``"region_constrained"``.
         domain: Domain across which to calculate basis functions.
         nbasis: Desired number of inner-region basis labels.
-        abs_flux: If true, use absolute flux values when constructing weights.
+        multisector: Weight source-resolved responses for sectors with
+            separate scaling states instead of the shared total response.
+        weight_rule: ``"abs_of_sum"`` or ``"sum_of_abs"`` sector reduction;
+            None selects the state-layout default. See
+            :func:`basis_weights_from_data`.
         outer_regions: Borrowed resolved fixed outer-region map.
         landsea_classes: Borrowed resolved land/sea classes for weighted fitting.
         region_classes: Region or country class field used only with
@@ -914,10 +881,10 @@ def fixed_outer_regions_basis_from_data(
         zero, its label is kept unsplit.
     """
     _validate_basis_algorithm(basis_algorithm)
+    _resolve_weight_rule(weight_rule, multisector=multisector)
     intem_regions = outer_regions
 
     # Validate the physical grid before adopting the authoritative flux coordinates.
-    flux = weighting_flux
     flux_grid = flux.isel(
         {dimension: 0 for dimension in flux.dims if dimension not in intem_regions.dims},
         drop=True,
@@ -936,9 +903,7 @@ def fixed_outer_regions_basis_from_data(
 
     mask = intem_regions == inner_index
 
-    weights = basis_weights_from_data(
-        site_data, weighting_flux, abs_flux=abs_flux, mask=mask,
-    )
+    weights = basis_weights_from_data(site_data, multisector=multisector, weight_rule=weight_rule, mask=mask)
     if allow_empty_inner_region:
         finite_inner_weights = weights.to_numpy()
         finite_inner_weights = finite_inner_weights[np.isfinite(finite_inner_weights)]

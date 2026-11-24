@@ -46,7 +46,7 @@ def _indexed_coordinates(dataset: xr.Dataset, names: Sequence[str]) -> None:
 
 
 def merged_site_schema(
-    *, split_by_sectors: bool = False, require_footprints: bool = False,
+    *, split_by_sectors: bool = False,
     use_bc: bool = False, grid_dims: tuple[str, str] = ("lat", "lon"),
     concentration_units: str | None = None, flux_sources: Sequence[str] | None = None,
     boundary_representation: str | None = None,
@@ -65,7 +65,6 @@ def merged_site_schema(
 
     Args:
         split_by_sectors: Select a source-resolved response instead of a total response.
-        require_footprints: Require raw footprints for generated basis weights.
         use_bc: Require all four directional boundary contributions.
         grid_dims: Native spatial axis names, latitude then longitude.
         concentration_units: Optional reference scale for mf. None checks the
@@ -80,7 +79,7 @@ def merged_site_schema(
         Metadata schema accepting extra variables, attributes and coordinates.
     """
     # Truth-testing a malformed lazy scalar here would execute its graph.
-    for name, flag in (("split_by_sectors", split_by_sectors), ("require_footprints", require_footprints), ("use_bc", use_bc)):
+    for name, flag in (("split_by_sectors", split_by_sectors), ("use_bc", use_bc)):
         if type(flag) is not bool:
             raise ValueError(f"{name} must be a Python bool.")
     response = "fp_x_flux_sectoral" if split_by_sectors else "fp_x_flux"
@@ -95,8 +94,6 @@ def merged_site_schema(
         "time": DataArraySchema(dtype=np.datetime64, dims=("time",)),
         **{dim: DataArraySchema(dtype=_REAL_DTYPES, dims=(dim,)) for dim in grid_dims},
     }
-    if require_footprints:
-        data_vars["fp"] = DataArraySchema(dtype=_REAL_DTYPES, dims=DimsSchema((*grid_dims, "time"), ordered=False))
     if split_by_sectors:
         coordinate_schemas["source"] = DataArraySchema(dims=("source",))
     centered_bc = use_bc and isinstance(boundary_representation, str) and boundary_representation == "centered-v1"

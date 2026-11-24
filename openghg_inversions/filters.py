@@ -412,7 +412,8 @@ def _local_ratio_series(dataset: xr.Dataset, window_size: int) -> xr.DataArray:
             return legacy[next(iter(legacy.data_vars))]
     if "fp" not in dataset.data_vars:
         raise ValueError(
-            f"The local_influence filter needs a cached {name!r} variable or a raw footprint 'fp'."
+            f"The local_influence filter needs a cached {name!r} variable or a raw footprint 'fp'; "
+            "retain 'fp' in merged site data when selecting this filter."
         )
     return local_ratios(dataset, (window_size,))[name]
 
@@ -428,7 +429,8 @@ def local_influence(
     footprint. The filter reads a cached ``local_ratio_{n}x{n}`` series when
     present (or, for 5×5, a variable with ``standard_name="local_ratio"``), and
     otherwise computes it with :func:`local_ratios`. Only the ratio series is
-    computed; other variables keep their storage.
+    computed; other variables keep their storage. Response-only merged inputs,
+    which retain ``fp_x_flux`` but not ``fp``, need the cached ratio.
 
     Args:
         dataset: dataset to filter

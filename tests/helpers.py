@@ -241,7 +241,7 @@ def prepare_inputs(**params):
     basis = prepare_basis(
         site_data=filtered,
         runtime_flux=runtime_flux,
-        weighting_flux=merged.flux_data[data.flux_sources[0]]["flux"],
+        multisector=merged.split_by_sectors,
         **data.select(
             "domain", "start_date", "basis_algorithm", "nbasis",
         ),

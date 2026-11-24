@@ -36,7 +36,7 @@ Use ``schema-reference`` to document a live ``xarray-validate`` schema factory:
 .. code-block:: rst
 
    .. schema-reference:: openghg_inversions.inversion_data._merged_schema:merged_site_schema
-      :kwargs: {"split_by_sectors": false, "require_footprints": false, "use_bc": false}
+      :kwargs: {"split_by_sectors": false, "use_bc": false}
 
 The import path uses ``module:factory`` syntax. Class-owned factories use
 ``module:Contract.schema`` with the same JSON keyword options. This directive

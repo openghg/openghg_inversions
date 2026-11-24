@@ -91,12 +91,9 @@ def run_custom_rhime(
     runtime_flux = resolve_runtime_flux(
         merged.flux_data, split_by_sectors=merged.split_by_sectors,
     )
-    weighting_source = config.data.flux_sources[0] if config.data.flux_sources else next(iter(merged.flux_data))
-    weighting_flux = merged.flux_data[weighting_source]["flux"]
     basis_functions = prepare_basis(
         site_data=filtered,
         runtime_flux=runtime_flux,
-        weighting_flux=weighting_flux,
         **config.data.select(
             "domain", "start_date", "basis_algorithm", "nbasis",
         ),

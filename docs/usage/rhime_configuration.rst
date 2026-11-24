@@ -191,8 +191,9 @@ outside a preparation checkpoint directory.
 A selected retained artifact supplies its operator and metadata to new
 preparation. The runner resolves current native prior flux once after filtering
 and binds it with ``BasisFunctions.reuse_operator``; the saved flux payload is
-not read. Generated-basis weights use only the first requested source (or the
-first source mapping entry), while retained flux includes all runtime sources.
+not read. Generated-basis weights come from the filtered sites' responses
+(see :ref:`generated-basis-weights`), while retained flux includes all runtime
+sources.
 These resolved arrays are local scientific inputs, not configuration fields.
 ``BasisFunctions.load`` has a separate reconstruction contract: it restores the
 complete saved basis with its saved prior, without acquisition. See the

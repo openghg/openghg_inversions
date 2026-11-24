@@ -10,7 +10,6 @@ from sparse import SparseArray
 import openghg_inversions.basis as basis_package
 import openghg_inversions.basis._functions as basis_module
 from openghg_inversions.basis.algorithms import ConnectedComponentSplitStrategy
-from openghg_inversions.basis._functions import _mean_fp_times_mean_flux
 from openghg_inversions.basis.compatibility import basis
 from openghg_inversions.basis import (
     basis_weights_from_data,
@@ -26,7 +25,6 @@ from openghg_inversions.basis import (
     bucket_basis_from_weights,
     load_country_region_classes,
     load_intem_outer_regions,
-    paired_abs_response_weights,
     quadtree_basis_from_weights,
     region_constrained_basis_from_weights,
     region_constrained_fixed_outer_basis_from_weights,
@@ -71,39 +69,21 @@ def tac_basis_data(tac_ch4_data_args):
     return MergedData.from_options(site_options=site_options, **options)
 
 
-def test_fp_x_flux(tac_basis_data):
-    """Test that mean(fp) * mean(flux) is invariant to duplicating sites and shifting time coords.
+def test_response_weights_invariant_to_duplicate_sites_and_time_shifts(tac_basis_data):
+    """Response weights are unchanged by duplicating a site or shifting its time coordinates.
 
-    This exercises `_mean_fp_times_mean_flux` on canonical provider arrays: changing site membership or time coordinates (without changing
-    values) should not change the mean footprint×flux product.
+    Pooling by observation count means an identical second site leaves the mean
+    over observations unchanged, whatever its time labels.
     """
-    sites, fluxes = tac_basis_data.site_data, tac_basis_data.flux_data
+    sites = dict(tac_basis_data.site_data)
+    weights1 = basis_weights_from_data(sites)
 
-    emissions_name = [next(iter(fluxes.keys()))]
-
-    flux1 = fluxes[emissions_name[0]].flux
-    fp1 = [sites["TAC"].fp]
-    mean_fp_flux1 = _mean_fp_times_mean_flux(flux1, fp1)
-
-    # add new site with same footprint -- this should not change the mean over time
     sites["ABC"] = sites["TAC"]
+    xr.testing.assert_allclose(weights1, basis_weights_from_data(sites))
 
-    flux2 = flux1
-    fp2 = [sites["TAC"].fp, sites["ABC"].fp]
-    mean_fp_flux2 = _mean_fp_times_mean_flux(flux2, fp2)
-
-    xr.testing.assert_allclose(mean_fp_flux1, mean_fp_flux2)
-
-    # shift time of second site -- this should not change the mean over time
     max_time = pd.Timedelta(sites["TAC"].time.max().values - sites["TAC"].time.min().values)
-    new_time = sites["TAC"].time + max_time
-    sites["ABC"] = sites["ABC"].assign_coords(time=new_time)
-
-    flux3 = flux1
-    fp3 = [sites["TAC"].fp, sites["ABC"].fp]
-    mean_fp_flux3 = _mean_fp_times_mean_flux(flux3, fp3)
-
-    xr.testing.assert_allclose(mean_fp_flux1, mean_fp_flux3)
+    sites["ABC"] = sites["ABC"].assign_coords(time=sites["TAC"].time + max_time)
+    xr.testing.assert_allclose(weights1, basis_weights_from_data(sites))
 
 
 def _simple_inputs_for_basis_weights() -> tuple[dict, dict]:
@@ -127,7 +107,8 @@ def _simple_inputs_for_basis_weights() -> tuple[dict, dict]:
         coords=coords,
         name="fp",
     )
-    return {"TAC": xr.Dataset({"fp": footprint})}, {"test-source": xr.Dataset({"flux": flux})}
+    sites = {"TAC": xr.Dataset({"fp": footprint, "fp_x_flux": footprint * flux})}
+    return sites, {"test-source": xr.Dataset({"flux": flux})}
 
 
 def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMetadata:
@@ -137,180 +118,30 @@ def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMe
     return metadata
 
 
-def test_basis_weights_from_inputs_matches_current_weight_definition():
-    """Weight helper matches the current mean-footprint times mean-flux convention."""
+def test_basis_weights_from_inputs_use_mean_absolute_response():
+    """Weights are the mean absolute retained response; native flux is not read."""
+    sites, _fluxes = _simple_inputs_for_basis_weights()
+
+    weights = basis_weights_from_data(sites)
+
+    xr.testing.assert_allclose(weights, abs(sites["TAC"].fp_x_flux).mean("time"))
+
+
+def test_basis_weights_from_inputs_apply_mask():
+    """Weights outside a Boolean mask are dropped."""
     sites, fluxes = _simple_inputs_for_basis_weights()
-
     flux = fluxes["test-source"].flux
-
-    weights = basis_weights_from_data(sites, fluxes["test-source"].flux)
-
-    xr.testing.assert_allclose(weights, flux.mean("time"))
-
-
-def test_basis_weights_from_inputs_applies_abs_flux_and_mask():
-    """Weight helper preserves legacy absolute-flux and mask handling."""
-    sites, fluxes = _simple_inputs_for_basis_weights()
-
-    flux = fluxes["test-source"].flux
-    fluxes["test-source"] = xr.Dataset({"flux": -flux})
+    sites["TAC"] = sites["TAC"].assign(fp_x_flux=-sites["TAC"].fp_x_flux)
     mask = xr.DataArray(
         np.array([[True, False], [False, True]]),
         dims=("lat", "lon"),
         coords={"lat": flux.lat, "lon": flux.lon},
     )
 
-    weights = basis_weights_from_data(sites, fluxes["test-source"].flux, abs_flux=True, mask=mask)
+    weights = basis_weights_from_data(sites, mask=mask)
 
     expected = flux.mean("time").where(mask, drop=True)
     xr.testing.assert_allclose(weights, expected)
-
-
-def test_paired_abs_response_weights_use_retained_footprint_times_only():
-    """Paired response weights use only the footprint observations supplied."""
-    times = pd.to_datetime(["2020-01-01", "2020-01-02"])
-    coords = {"time": times, "lat": [0.0], "lon": [10.0, 20.0]}
-    flux = xr.DataArray(
-        np.array([[[1.0, -4.0]], [[100.0, 200.0]]]),
-        dims=("time", "lat", "lon"),
-        coords=coords,
-        name="flux",
-    )
-    retained_footprint = xr.DataArray(
-        np.array([[[2.0, 3.0]]]),
-        dims=("time", "lat", "lon"),
-        coords={"time": [times[0]], "lat": coords["lat"], "lon": coords["lon"]},
-        name="fp",
-    )
-
-    weights = paired_abs_response_weights(flux, [retained_footprint])
-
-    expected = abs(retained_footprint.isel(time=0, drop=True) * flux.isel(time=0, drop=True))
-    xr.testing.assert_allclose(weights, expected)
-    mean_product = _mean_fp_times_mean_flux(flux, [retained_footprint])
-    assert not np.allclose(weights.values, mean_product.values)
-
-
-def test_paired_abs_response_weights_applies_mask():
-    """Paired response weights preserve the lower-level mask convention."""
-    sites, fluxes = _simple_inputs_for_basis_weights()
-
-    flux = fluxes["test-source"].flux
-    footprint = sites["TAC"].fp
-    mask = xr.DataArray(
-        np.array([[True, False], [False, True]]),
-        dims=("lat", "lon"),
-        coords={"lat": flux.lat, "lon": flux.lon},
-    )
-
-    weights = paired_abs_response_weights(flux, [footprint], mask=mask)
-
-    expected = abs(footprint * flux).sum("time") / footprint.sizes["time"]
-    xr.testing.assert_allclose(weights, expected.where(mask, drop=True))
-
-
-def test_paired_abs_response_weights_weights_sites_by_retained_observation_count():
-    """Paired response weights average over retained observations, not sites."""
-    times = pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"])
-    coords = {"time": times, "lat": [0.0], "lon": [10.0, 20.0]}
-    flux = xr.DataArray(
-        np.array([[[1.0, 2.0]], [[10.0, 20.0]], [[100.0, 200.0]]]),
-        dims=("time", "lat", "lon"),
-        coords=coords,
-        name="flux",
-    )
-    one_observation_site = xr.DataArray(
-        np.array([[[2.0, 3.0]]]),
-        dims=("time", "lat", "lon"),
-        coords={"time": [times[0]], "lat": coords["lat"], "lon": coords["lon"]},
-        name="fp",
-    )
-    two_observation_site = xr.DataArray(
-        np.array([[[1.0, 2.0]], [[3.0, 4.0]]]),
-        dims=("time", "lat", "lon"),
-        coords={"time": times[1:], "lat": coords["lat"], "lon": coords["lon"]},
-        name="fp",
-    )
-
-    weights = paired_abs_response_weights(flux, [one_observation_site, two_observation_site])
-
-    expected = (
-        abs(one_observation_site * flux.sel(time=one_observation_site.time)).sum("time")
-        + abs(two_observation_site * flux.sel(time=two_observation_site.time)).sum("time")
-    ) / 3
-    xr.testing.assert_allclose(weights, expected)
-
-
-def test_paired_abs_response_weights_rejects_unpaired_times():
-    """Paired response weights fail fast when retained observations lack flux."""
-    sites, fluxes = _simple_inputs_for_basis_weights()
-
-    flux = fluxes["test-source"].flux
-    footprint = sites["TAC"].fp.assign_coords(time=pd.to_datetime(["2021-01-01", "2021-01-02"]))
-
-    with pytest.raises(ValueError, match="footprint times must be present"):
-        paired_abs_response_weights(flux, [footprint])
-
-
-def test_paired_abs_response_weights_rejects_reordered_spatial_coordinates():
-    """Paired response weights fail fast instead of multiplying grids positionally."""
-    sites, fluxes = _simple_inputs_for_basis_weights()
-
-    flux = fluxes["test-source"].flux
-    footprint = sites["TAC"].fp.sortby("lon", ascending=False)
-
-    with pytest.raises(ValueError, match="exact time and spatial coordinates"):
-        paired_abs_response_weights(flux, [footprint])
-
-
-def test_paired_abs_response_weights_rejects_reordered_mask_coordinates():
-    """Paired response masks must be on the same coordinate grid."""
-    sites, fluxes = _simple_inputs_for_basis_weights()
-
-    flux = fluxes["test-source"].flux
-    footprint = sites["TAC"].fp
-    mask = xr.DataArray(
-        np.array([[False, True], [True, False]]),
-        dims=("lat", "lon"),
-        coords={"lat": flux.lat, "lon": list(reversed(flux.lon.values))},
-    )
-
-    with pytest.raises(ValueError, match="mask must share exact spatial coordinates"):
-        paired_abs_response_weights(flux, [footprint], mask=mask)
-
-
-def test_paired_abs_response_weights_rejects_mismatched_spatial_dimensions():
-    """Paired responses reject arrays that would broadcast across renamed dimensions."""
-    sites, fluxes = _simple_inputs_for_basis_weights()
-
-    flux = fluxes["test-source"].flux
-    footprint = sites["TAC"].fp.rename(lat="latitude", lon="longitude")
-
-    with pytest.raises(ValueError, match="same time and spatial dimensions"):
-        paired_abs_response_weights(flux, [footprint])
-
-
-def test_paired_abs_response_weights_rejects_extra_flux_dimensions():
-    """Paired responses remain two-dimensional when callers pass source-stacked flux."""
-    sites, fluxes = _simple_inputs_for_basis_weights()
-
-    flux = fluxes["test-source"].flux.expand_dims(source=["test-source"])
-    footprint = sites["TAC"].fp
-
-    with pytest.raises(ValueError, match="exactly two spatial dimensions"):
-        paired_abs_response_weights(flux, [footprint])
-
-
-def test_paired_abs_response_weights_rejects_non_boolean_mask():
-    """Paired response masks reject numeric values with ambiguous truth semantics."""
-    sites, fluxes = _simple_inputs_for_basis_weights()
-
-    flux = fluxes["test-source"].flux
-    footprint = sites["TAC"].fp
-    mask = xr.ones_like(flux.isel(time=0), dtype=float)
-
-    with pytest.raises(ValueError, match="mask must be Boolean"):
-        paired_abs_response_weights(flux, [footprint], mask=mask)
 
 
 def test_flux_from_inputs_sanitizes_nonfinite_single_source():
@@ -739,11 +570,10 @@ def test_quadtree_basis_function(tac_basis_data, raw_data_path):
     This is to check against changes in the code from when this test was made
     (13 Feb 2024)
     """
-    sites, fluxes = tac_basis_data.site_data, tac_basis_data.flux_data
+    sites = tac_basis_data.site_data
 
-    emissions_name = next(iter(fluxes.keys()))
     basis_func = quadtree_basis_from_weights(
-        basis_weights_from_data(sites, fluxes[emissions_name].flux),
+        basis_weights_from_data(sites),
         start_date="2019-01-01",
         seed=42,
         domain="EUROPE",
@@ -765,11 +595,10 @@ def test_bucket_basis_function(tac_basis_data, raw_data_path):
     This is to check against changes in the code from when this test was made
     (13 Feb 2024)
     """
-    sites, fluxes = tac_basis_data.site_data, tac_basis_data.flux_data
+    sites = tac_basis_data.site_data
 
-    emissions_name = next(iter(fluxes.keys()))
     basis_func = bucket_basis_from_weights(
-        basis_weights_from_data(sites, fluxes[emissions_name].flux),
+        basis_weights_from_data(sites),
         start_date="2019-01-01",
         domain="EUROPE",
         nbasis=98,
@@ -792,7 +621,7 @@ def test_fixed_outer_region_basis_function(tac_basis_data):
     emissions_name = next(iter(fluxes.keys()))
     basis_func = fixed_outer_regions_basis_from_data(
         site_data=sites,
-        weighting_flux=fluxes[emissions_name].flux,
+        flux=fluxes[emissions_name].flux,
         start_date="2019-01-01",
         domain="EUROPE",
         basis_algorithm="weighted",
@@ -840,7 +669,7 @@ def _tiny_region_constrained_inputs() -> tuple[dict, dict, xr.DataArray]:
         coords={"lat": lat, "lon": lon},
         name="region_class",
     )
-    sites = {"SITE": xr.Dataset({"fp": fp})}
+    sites = {"SITE": xr.Dataset({"fp": fp, "fp_x_flux": fp * flux})}
     fluxes = {"total": xr.Dataset({"flux": flux})}
 
     return sites, fluxes, region_classes
@@ -858,10 +687,10 @@ def _assert_basis_labels_do_not_cross_classes(labels: xr.DataArray, classes: xr.
 
 def test_region_constrained_basis_function_uses_supplied_region_classes():
     """Region-constrained basis generation uses caller-supplied class fields."""
-    sites, fluxes, region_classes = _tiny_region_constrained_inputs()
+    sites, _fluxes, region_classes = _tiny_region_constrained_inputs()
 
     basis_func = region_constrained_basis_from_weights(
-        basis_weights_from_data(sites, fluxes["total"].flux),
+        basis_weights_from_data(sites),
         start_date="2020-01-01",
         domain="TEST",
         nbasis=4,
@@ -875,7 +704,7 @@ def test_region_constrained_basis_function_uses_supplied_region_classes():
 
 def test_region_constrained_basis_function_can_use_contrast_score_acceptance():
     """Contrast-score acceptance is opt-in and can stop low-contrast wrapper splits."""
-    sites, fluxes, region_classes = _tiny_region_constrained_inputs()
+    sites, _fluxes, region_classes = _tiny_region_constrained_inputs()
 
     contrast_contribution = xr.DataArray(
         np.ones((2, *region_classes.shape), dtype=float),
@@ -885,7 +714,7 @@ def test_region_constrained_basis_function_can_use_contrast_score_acceptance():
     )
 
     basis_func = region_constrained_basis_from_weights(
-        basis_weights_from_data(sites, fluxes["total"].flux),
+        basis_weights_from_data(sites),
         start_date="2020-01-01",
         domain="TEST",
         nbasis=4,
@@ -902,9 +731,9 @@ def test_region_constrained_basis_function_can_use_contrast_score_acceptance():
 
 def test_region_constrained_basis_from_weights_preserves_contrast_score_acceptance():
     """Weight-first constrained helper keeps the contrast-score acceptance option."""
-    sites, fluxes, region_classes = _tiny_region_constrained_inputs()
+    sites, _fluxes, region_classes = _tiny_region_constrained_inputs()
 
-    weights = basis_weights_from_data(sites, fluxes["total"].flux)
+    weights = basis_weights_from_data(sites)
     contrast_contribution = xr.DataArray(
         np.ones((2, *region_classes.shape), dtype=float),
         dims=("design_obs", *region_classes.dims),
@@ -982,7 +811,7 @@ def test_fixed_outer_regions_can_use_region_constrained_algorithm(tmp_path):
 
     basis_func = fixed_outer_regions_basis_from_data(
         site_data=sites,
-        weighting_flux=fluxes["total"].flux,
+        flux=fluxes["total"].flux,
         start_date="2020-01-01",
         basis_algorithm="region_constrained",
         domain="TEST",
@@ -1024,7 +853,7 @@ def test_fixed_outer_regions_accepts_direct_outer_map_path(tmp_path):
 
     basis_func = fixed_outer_regions_basis_from_data(
         site_data=sites,
-        weighting_flux=fluxes["total"].flux,
+        flux=fluxes["total"].flux,
         start_date="2020-01-01",
         basis_algorithm="region_constrained",
         domain="TEST",
@@ -1078,7 +907,7 @@ def test_fixed_outer_regions_rejects_misaligned_custom_map_grid(tmp_path, latitu
     with pytest.raises(xr.AlignmentError, match="not physically compatible"):
         fixed_outer_regions_basis_from_data(
             site_data=sites,
-            weighting_flux=fluxes["total"].flux,
+            flux=fluxes["total"].flux,
             start_date="2020-01-01",
             basis_algorithm="region_constrained",
             domain="TEST",
@@ -1099,7 +928,7 @@ def _zeroed_inner_response_inputs(
     mask = xr.DataArray(inner_mask, dims=("lat", "lon"), coords=region_classes.coords)
     fp = sites["SITE"]["fp"].where(~mask, 0.0)
     flux = fluxes["total"]["flux"].where(~mask, 0.0)
-    return {"SITE": xr.Dataset({"fp": fp})}, {"total": xr.Dataset({"flux": flux})}
+    return {"SITE": xr.Dataset({"fp": fp, "fp_x_flux": fp * flux})}, {"total": xr.Dataset({"flux": flux})}
 
 
 def test_fixed_outer_regions_empty_inner_raises_by_default(tmp_path):
@@ -1127,7 +956,7 @@ def test_fixed_outer_regions_empty_inner_raises_by_default(tmp_path):
     with pytest.raises(ValueError, match="no non-zero finite values"):
         fixed_outer_regions_basis_from_data(
             site_data=zeroed_sites,
-            weighting_flux=zeroed_fluxes["total"].flux,
+            flux=zeroed_fluxes["total"].flux,
             start_date="2020-01-01",
             basis_algorithm="quadtree",
             domain="TEST",
@@ -1165,7 +994,7 @@ def test_fixed_outer_regions_keeps_empty_inner_region_fixed_when_allowed(tmp_pat
 
     basis_func = fixed_outer_regions_basis_from_data(
         site_data=zeroed_sites,
-        weighting_flux=zeroed_fluxes["total"].flux,
+        flux=zeroed_fluxes["total"].flux,
         start_date="2020-01-01",
         basis_algorithm="quadtree",
         domain="TEST",
@@ -1219,9 +1048,7 @@ def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, 
 
     def fake_quadtree_basis(weights, start_date, domain, nbasis=100):
         del domain, nbasis
-        expected_weights = basis_weights_from_data(
-            sites, fluxes["total"].flux, mask=outer_regions["region"] == 1
-        )
+        expected_weights = basis_weights_from_data(sites, mask=outer_regions["region"] == 1)
         xr.testing.assert_equal(weights, expected_weights)
         seen["weights"] = weights
         inner = xr.DataArray([[1, 1], [2, 2]], dims=weights.dims, coords=weights.coords)
@@ -1231,7 +1058,7 @@ def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, 
 
     result = fixed_outer_regions_basis_from_data(
         site_data=sites,
-        weighting_flux=fluxes["total"].flux,
+        flux=fluxes["total"].flux,
         start_date="2020-01-01",
         basis_algorithm="quadtree",
         domain="TEST",
@@ -1332,7 +1159,7 @@ def test_fixed_outer_weighted_basis_crops_landsea_mask_to_inner_region(monkeypat
 
     result = fixed_outer_regions_basis_from_data(
         site_data=sites,
-        weighting_flux=fluxes["total"].flux,
+        flux=fluxes["total"].flux,
         start_date="2020-01-01",
         basis_algorithm="weighted",
         domain="TEST",
@@ -2724,7 +2551,7 @@ def test_make_basis_functions_records_saved_generated_basis_path(tmp_path):
     basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
     flux = xr.ones_like(basis_flat.isel(time=0, drop=True), dtype=float).rename("flux")
     flux = flux.expand_dims(time=[np.datetime64("2019-01-01")])
-    sites = {"TEST": xr.ones_like(flux).rename("fp").to_dataset()}
+    sites = {"TEST": xr.ones_like(flux).rename("fp_x_flux").to_dataset()}
     fluxes = {"emissions": flux.to_dataset(name="flux")}
     split_by_sectors = False
 

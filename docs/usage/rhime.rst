@@ -648,8 +648,8 @@ custom country map remain distinct classes. Small float storage differences are
 accepted; incompatible coordinate values, units, or CRS definitions are rejected,
 and null outer cells remain label ``0``. The weights-first helper is not yet
 routed through RHIME configuration. It is separate from
-``fixed_outer_regions_basis_from_data``, which receives site datasets and a
-singular explicit ``weighting_flux`` array.
+``fixed_outer_regions_basis_from_data``, which receives site datasets, whose
+retained responses weight the inner region, and native flux for its grid.
 
 This groundwork composes a transient class field and still passes one weight
 field to the downstream algorithm. Separate source weights, sensitivities, and
