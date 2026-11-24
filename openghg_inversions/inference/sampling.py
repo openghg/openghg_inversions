@@ -191,7 +191,10 @@ def _burn_retained_draws(trace: xr.DataTree, *, burn: int) -> xr.DataTree:
 
     Args:
         trace: Owned trace tree whose posterior-aligned groups are sliced
-            in place; warmup and prior/predictive groups keep their own axes.
+            in place. Other groups, such as a ``posterior_predictive`` group
+            supplied through ``idata_kwargs``, are sliced too when their chain
+            and draw indexes match the original posterior's; warmup and prior
+            groups keep their own axes.
         burn: Number of post-tuning draws to discard and record in metadata.
 
     Returns:
@@ -202,7 +205,19 @@ def _burn_retained_draws(trace: xr.DataTree, *, burn: int) -> xr.DataTree:
     trace.attrs["burn"] = burn
     # PyMC computes both log-density groups from the same posterior states, and
     # ZarrTrace(include_transformed=True) records those states' transformed values.
-    for group_name in ("posterior", "unconstrained_posterior", "sample_stats", "log_likelihood", "log_prior"):
+    aligned = ["posterior", "unconstrained_posterior", "sample_stats", "log_likelihood", "log_prior"]
+    if "posterior" in trace.children:
+        posterior = trace["posterior"].to_dataset()
+        indexes = {name: posterior.indexes[name] for name in ("chain", "draw") if name in posterior.indexes}
+        for name, child in trace.children.items():
+            group = child.to_dataset()
+            if (
+                name not in aligned and not name.startswith(("warmup_", "prior"))
+                and len(indexes) == 2 and all(dim in group.indexes and group.indexes[dim].equals(index)
+                                               for dim, index in indexes.items())
+            ):
+                aligned.append(name)
+    for group_name in aligned:
         if group_name not in trace.children:
             continue
         group = trace[group_name].to_dataset()
@@ -399,7 +414,8 @@ class RhimeSampler:
                 variables and restore every deterministic from the unchanged
                 graph after sampling returns. Evaluation retains final output
                 arrays plus one state's intermediate values. Other backends,
-                explicit traces or callbacks, transformed-variable requests
+                explicit traces or callbacks, a separate ``idata_kwargs`` conversion
+                model, transformed-variable requests
                 and empty retained groups use the ordinary recording path.
 
         Returns:
@@ -424,6 +440,8 @@ class RhimeSampler:
             and sample_kwargs.get("trace") is None
             and sample_kwargs.get("callback") is None
             and self.burn < self.draws
+            # A different conversion model owns observed data and labels.
+            and idata_kwargs.get("model", model) is model
         )
         log_likelihood = idata_kwargs["log_likelihood"]
         if compact:
