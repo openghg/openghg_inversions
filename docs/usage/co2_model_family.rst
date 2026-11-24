@@ -249,7 +249,11 @@ The retained flux state then has a Gaussian prior with the prepared arithmetic
 moments ``alpha_prior_mean`` and ``alpha_prior_covariance`` (the moments the
 default correlated LogNormal prior matches), and the likelihood covariance is
 the fixed ``mf_error**2 + fixed_model_mismatch**2`` on the diagonal plus the
-prepared aggregation covariance. The posterior is solved by Paige's generalised
+prepared aggregation covariance. With ``[model.outer_flux] mode = "marginalise"``
+it also includes the marginalised outer states' term
+:math:`H_O\Sigma_{O|I}H_O^T` (see :doc:`atmospheric_baseline`). Because the
+prior here is Gaussian, marginalising is then exact: the posterior of the other
+states equals the one obtained by solving for the outer states too. The posterior is solved by Paige's generalised
 least squares (:func:`~openghg_inversions.inference.gls.paige_gls`) from a
 factor of that covariance, which it never inverts or whitens, so a very small
 mismatch on a nearly singular aggregation covariance stays accurate. ``draws`` independent
