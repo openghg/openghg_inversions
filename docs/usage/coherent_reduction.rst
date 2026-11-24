@@ -200,14 +200,19 @@ reduced model is the moment-matched approximation described in
 posterior of a LogNormal native field.
 :func:`openghg_inversions.postprocessing.unresolved_functionals.complete_functional_draws`
 adds the conditional mean and one conditional draw to each retained draw. It
-takes :math:`(A + R)^{-1}` as a labelled solve whose observation order is
-checked against the residuals:
+takes :math:`(A + R)^{-1}` as a labelled solve whose observation labels
+must equal the residuals':
 :func:`~openghg_inversions.postprocessing.unresolved_functionals.dense_solve`
-for one fixed dense covariance, or
+for one fixed dense covariance, whose labelled columns are aligned to its rows
+and checked for symmetry, or
 :func:`~openghg_inversions.postprocessing.unresolved_functionals.fixed_ou_solve`
 for the fit's low-rank-plus-diagonal :math:`A` with each draw's fixed-OU
-amplitudes, selected by chain and draw label. Residuals must carry the units
-of :math:`H`.
+amplitudes, selected by chain and draw label. ``FixedOuLowRank`` keeps no
+observation labels, so ``fixed_ou_solve`` trusts the supplied
+``observation_index`` for row order: it checks the row count and each row's
+site (from ``site_index``, such as the fit's ``ou_site_index``, or the index's
+``site`` level) against the covariance, but not the time order within a site. Residuals
+must carry the units of :math:`H`.
 
 For CO2 country totals, build :math:`Q` with
 :func:`~openghg_inversions.postprocessing.co2_flux_outputs.co2_country_functionals`
@@ -216,16 +221,31 @@ and pass an
 to :func:`~openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs`.
 Its outputs then carry ``uncertainty_scope="complete_native"`` and the
 conditioning description; without it they remain
-``"retained_state_conditional"`` and omit the unresolved native state. The
-products' :math:`D` must equal the map's own :math:`A F U_*`, which rejects
-products prepared for another partition or covariance.
+``"retained_state_conditional"`` and omit the unresolved native state.
+
+The products record the
+:func:`~openghg_inversions.coherent_reduction.reduction_identity` of their
+reduction, a hash of :math:`C_\alpha`, :math:`H_\alpha` and the exact
+:math:`A`, so it changes with :math:`H`, :math:`B` or :math:`\Pi`. The
+conditioning must carry the identity recorded when the fit was prepared, and
+the two must be equal. :math:`Q m` and :math:`D` do not depend on :math:`H`,
+so products built with another observation operator are caught only by the
+identity. The identity is an exact hash, not a tolerance: take it from the
+same ``reduce_native_gaussian(functionals=...)`` call that produced the
+products, rather than recomputing it from another reduction. In addition, the
+products' :math:`Q m` and :math:`D` must equal the map's own :math:`A F m` and
+:math:`A F U_*`, which rejects products prepared for another functional,
+partition or covariance.
 
 Use the same :math:`A` in the solve as in the products. The products use the
 exact :math:`B_\perp`, so pairing them with a truncated low-rank :math:`A`
 mixes two covariance models: the conditional mean update can be inflated and
 the conditional covariance can lose positive semidefiniteness. Negative
-eigenvalues are clipped before drawing and the most negative relative
-eigenvalue is recorded as ``conditional_covariance_min_eigenvalue``. A
+eigenvalues up to ``clipping_tolerance`` (default ``1e-6``) relative to the
+largest are treated as roundoff and clipped before drawing, and the most
+negative is recorded as ``conditional_covariance_min_eigenvalue``. A larger
+negative eigenvalue raises an error instead of producing ``complete_native``
+output. A
 :class:`~openghg_inversions.models.fixed_ou.FixedOuLowRank` prepared with a
 full-width factor of the exact :math:`A` gives the exact update with sampled
 OU amplitudes.
@@ -237,7 +257,9 @@ reduction with the kept rows of :math:`\Pi`. For CO2 country outputs, pass
 full-restriction products and declare the marginalised states on the
 conditioning; they must be exactly the fit's inactive states, which are
 otherwise held fixed without their variance and make complete uncertainty
-undefined.
+undefined. Activity is read from the ``<flux_scale>_is_active`` mask that the
+fitted model records for every activity policy, including all-active; a trace
+without it is rejected.
 
 Assumptions and limitations
 ---------------------------

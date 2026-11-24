@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 from openghg.util import cf_ureg  # pyright: ignore[reportPrivateImportUsage]
 import pandas as pd
 from scipy.linalg import cho_factor, cho_solve
@@ -83,6 +83,10 @@ class UnresolvedFunctionalConditioning:
             ``H``.
         solve: ``(A + R)^-1`` for each posterior draw, with the ``A`` and
             noise model of the fit's likelihood.
+        reduction_identity: The
+            :func:`~openghg_inversions.coherent_reduction.reduction_identity`
+            of the reduction the fit was prepared from, as recorded at
+            preparation. It must equal the products' identity.
         marginalised: Boolean state mask of states the fit integrated into
             ``A`` and holds fixed, or ``None`` when the fit samples every
             state. It must equal the fit's inactive states.
@@ -92,6 +96,7 @@ class UnresolvedFunctionalConditioning:
     products: NativeFunctionalProducts
     residual: xr.DataArray
     solve: ObservationCovarianceSolve
+    reduction_identity: str
     marginalised: xr.DataArray | None = None
     seed: int = 0
 
@@ -100,8 +105,9 @@ def dense_solve(covariance: xr.DataArray, *, description: str = "dense A + R") -
     """Return a draw-independent solve with one dense observation covariance.
 
     Args:
-        covariance: Positive-definite ``A + R`` whose first dimension is the
-            labelled observation axis.
+        covariance: Positive-definite ``A + R`` on a labelled observation row
+            axis and a distinct column axis carrying the same labels, in any
+            order. Columns are aligned to the row order before factorizing.
         description: Account of the covariance for output metadata.
 
     Returns:
@@ -109,11 +115,25 @@ def dense_solve(covariance: xr.DataArray, *, description: str = "dense A + R") -
 
     Raises:
         numpy.linalg.LinAlgError: If ``covariance`` is not positive definite.
-        ValueError: If the observation axis is unlabelled or not unique.
+        ValueError: If either axis is unlabelled or not unique, the column
+            labels are not the row labels, or the aligned matrix is not
+            symmetric.
     """
-    observation_dim = str(covariance.dims[0])
-    index = require_unique_index(covariance, observation_dim, name="Observation covariance")
-    factor = cho_factor(np.asarray(covariance.values, dtype=np.float64), lower=True)
+    if covariance.ndim != 2:
+        raise ValueError("The observation covariance must be a two-dimensional matrix.")
+    observation_dim, column_dim = (str(dim) for dim in covariance.dims)
+    index = require_unique_index(covariance, observation_dim, name="Observation covariance rows")
+    columns = require_unique_index(covariance, column_dim, name="Observation covariance columns")
+    order = columns.get_indexer(index)
+    if len(columns) != len(index) or np.any(order < 0):
+        raise ValueError("Observation covariance columns must carry exactly the row labels.")
+    values = np.asarray(covariance.isel({column_dim: order}).values, dtype=np.float64)
+    scale = float(np.max(np.abs(values), initial=0.0))
+    if np.max(np.abs(values - values.T), initial=0.0) > 1e-10 * scale:
+        raise ValueError(
+            "The observation covariance must be symmetric after aligning its columns to its rows."
+        )
+    factor = cho_factor((values + values.T) * 0.5, lower=True)
 
     def solve(rhs: FloatArray, chain: Hashable, draw: Hashable) -> FloatArray:
         """Solve with the shared factor."""
@@ -128,6 +148,7 @@ def fixed_ou_solve(
     *,
     site_dim: str,
     observation_index: pd.Index,
+    site_index: ArrayLike | None = None,
     description: str = "low-rank-plus-diagonal A + fixed-OU noise at each draw's amplitudes",
 ) -> ObservationCovarianceSolve:
     """Return a per-draw solve with the fit's fixed-OU covariance.
@@ -145,6 +166,10 @@ def fixed_ou_solve(
         site_dim: Site dimension of ``site_amplitude``.
         observation_index: Labels of the observation rows ``covariance`` was
             prepared with, in its row order.
+        site_index: Integer site of each row of ``observation_index``,
+            numbered like ``covariance.site_labels``, for example the fit's
+            ``ou_site_index`` constant data. Defaults to the codes of the
+            index's ``site`` level when it is a MultiIndex.
         description: Account of the covariance for output metadata.
 
     Returns:
@@ -152,13 +177,29 @@ def fixed_ou_solve(
 
     Raises:
         ValueError: If the sites or the number of observations differ from
-            the covariance's.
+            the covariance's, or the per-row sites differ from the
+            covariance's row sites. Within-site row order cannot be checked
+            because the covariance does not keep observation times.
     """
     labels = [str(label) for label in site_amplitude[site_dim].values]
     if sorted(labels) != sorted(covariance.site_labels):
         raise ValueError("Site amplitudes must use the fixed-OU covariance's site labels.")
     if len(observation_index) != covariance.n_observation or not observation_index.is_unique:
         raise ValueError("observation_index must label each fixed-OU covariance row once.")
+    if site_index is not None:
+        rows = np.asarray(site_index)
+    elif isinstance(observation_index, pd.MultiIndex) and "site" in observation_index.names:
+        codes = {label: code for code, label in enumerate(covariance.site_labels)}
+        try:
+            rows = np.array([codes[str(site)] for site in observation_index.get_level_values("site")])
+        except KeyError as error:
+            raise ValueError(
+                f"Observation site {error.args[0]!r} is not a fixed-OU covariance site."
+            ) from error
+    else:
+        raise ValueError("Pass site_index, or an observation_index with a 'site' level.")
+    if rows.shape != covariance.site_index.shape or not np.array_equal(rows, covariance.site_index):
+        raise ValueError("The observation rows' sites differ from the fixed-OU covariance's row sites.")
     ordered = site_amplitude.sel({site_dim: list(covariance.site_labels)}).transpose(*SAMPLE_DIMS, site_dim)
     amplitudes = np.asarray(ordered.values, dtype=np.float64)
     chains = {label: position for position, label in enumerate(ordered["chain"].values.tolist())}
@@ -182,6 +223,7 @@ def complete_functional_draws(
     residual: xr.DataArray | None = None,
     solve: ObservationCovarianceSolve | None = None,
     rng: np.random.Generator | None = None,
+    clipping_tolerance: float = 1e-6,
 ) -> xr.DataArray:
     """Reconstruct complete native functional draws from retained-state draws.
 
@@ -203,17 +245,22 @@ def complete_functional_draws(
         rng: Generator for one draw from each conditional covariance. With
             ``None`` only conditional means are added, so the result's spread
             omits the unresolved conditional variance.
+        clipping_tolerance: Largest magnitude of a negative eigenvalue,
+            relative to the largest absolute eigenvalue of the same
+            covariance, that is clipped to zero before drawing. Roundoff is
+            far smaller; a larger negative eigenvalue means the solve's ``A``
+            is not the ``A`` of the products, and raises.
 
     Returns:
         Draws of ``Q x`` on ``(chain, draw, functional_dim)`` in the
         functional's units. ``attrs["conditional_covariance_min_eigenvalue"]``
-        records the most negative eigenvalue clipped before drawing,
-        relative to the largest; values well below zero mean the solve's
-        ``A`` is not the ``A`` of the products.
+        records the most negative relative eigenvalue clipped before drawing
+        (zero when none was negative).
 
     Raises:
-        ValueError: If labels, units or sample axes differ, or ``residual``
-            is given without ``solve``.
+        ValueError: If labels, units or sample axes differ, ``residual`` is
+            given without ``solve``, or a covariance to draw from has a
+            relative negative eigenvalue beyond ``clipping_tolerance``.
     """
     functional_dim = products.functional_dim
     state_dim = products.state_dim
@@ -230,7 +277,7 @@ def complete_functional_draws(
 
     if residual is None:
         if rng is not None:
-            root, min_eigenvalue = _covariance_root(unresolved)
+            root, min_eigenvalue = _covariance_root(unresolved, clipping_tolerance, "Q B_perp Q.T")
             values += rng.standard_normal(values.shape) @ root.T
     else:
         if solve is None:
@@ -261,7 +308,11 @@ def complete_functional_draws(
                 values[chain, draw] += cross_values @ solution[:, 0]
                 if need_covariance:
                     conditional = unresolved - cross_values @ solution[:, 1:]
-                    root, eigenvalue = _covariance_root(conditional)
+                    root, eigenvalue = _covariance_root(
+                        conditional,
+                        clipping_tolerance,
+                        f"the conditional covariance of draw {draw_labels[draw]!r}",
+                    )
                     min_eigenvalue = min(min_eigenvalue, eigenvalue)
                 if rng is not None and root is not None:
                     values[chain, draw] += root @ rng.standard_normal(count)
@@ -293,14 +344,23 @@ def _require_residual_units(residual: xr.DataArray, effective_operator: xr.DataA
         raise ValueError(f"Residual units {actual!r} differ in scale from H units {expected!r}.")
 
 
-def _covariance_root(covariance: FloatArray) -> tuple[FloatArray, float]:
-    """Return a square root of a symmetric covariance, clipping negative eigenvalues.
+def _covariance_root(covariance: FloatArray, tolerance: float, name: str) -> tuple[FloatArray, float]:
+    """Return a square root of a symmetric covariance, clipping roundoff-sized negative eigenvalues.
 
     Returns:
         ``S`` with ``S S.T`` the clipped covariance, and the most negative
         eigenvalue relative to the largest absolute eigenvalue (zero if none).
+
+    Raises:
+        ValueError: If a relative negative eigenvalue exceeds ``tolerance``.
     """
     eigenvalues, vectors = np.linalg.eigh((covariance + covariance.T) * 0.5)
     scale = float(np.max(np.abs(eigenvalues))) if eigenvalues.size else 0.0
     relative = float(min(0.0, eigenvalues.min() / scale)) if scale > 0.0 else 0.0
+    if relative < -tolerance:
+        raise ValueError(
+            f"{name} has a negative eigenvalue of {relative:.3e} relative to its largest, beyond the "
+            f"clipping tolerance {tolerance:.1e}; the observation-covariance solve probably uses a "
+            "different A from the functional products."
+        )
     return vectors * np.sqrt(np.clip(eigenvalues, 0.0, None)), relative

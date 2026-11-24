@@ -566,7 +566,9 @@ def test_linear_component_preserves_plain_graph_when_all_states_are_retained() -
             var_name="x",
             output_name="mu",
         )
-    assert set(linear_model.named_vars) == {"hx", "x", "mu"}
+    # The only addition to the plain graph is the recorded all-active mask.
+    assert set(linear_model.named_vars) == {"hx", "x", "mu", "x_is_active"}
+    np.testing.assert_array_equal(linear_model["x_is_active"].get_value(), True)
     assert [rv.name for rv in linear_model.free_RVs] == ["x"]
     assert result.state is linear_model.named_vars["x"]
     assert result.output is linear_model.named_vars["mu"]
@@ -590,7 +592,7 @@ def test_state_linear_component_full_activity_preserves_reparameterised_names() 
             output_name="mu",
         )
 
-    assert set(model.named_vars) == {"hx", "x_latent", "x", "mu"}
+    assert set(model.named_vars) == {"hx", "x_latent", "x", "mu", "x_is_active"}
     assert [rv.name for rv in model.free_RVs] == ["x_latent"]
     assert result.output is model.named_vars["mu"]
     assert result.latent is model.named_vars["x_latent"]

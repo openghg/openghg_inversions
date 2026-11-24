@@ -433,6 +433,7 @@ def _fixed_ou(reduction, amplitude: xr.DataArray):
         amplitude,
         site_dim="site",
         observation_index=reduction.effective_observation_operator.indexes["observation"],
+        site_index=SITES,
     )
 
 
@@ -577,13 +578,14 @@ def _co2_setup(partition: str, countries: Countries | None = None, functional_pa
     countries = _countries() if countries is None else countries
 
     def products_for(name: str):
-        """Return covariance products of one partition."""
+        """Return covariance products of one partition, batched like ``_reduce`` so identities agree."""
         return project_native_covariance(
             covariance=problem["covariance"],
             strategy=SuppliedRestriction(_restriction(name)),
             state_dim="state",
             native_sensitivity=problem["sensitivity"],
             observation_dim="observation",
+            observation_batch_size=3,
         )
 
     covariance_products = products_for(partition)
@@ -614,8 +616,9 @@ def _co2_trace(
     """Return a CO2 trace with exact reduced posterior draws and their residuals (no boundary).
 
     ``reduction`` is the reduction the fit used. With ``fixed``, the trace
-    holds those states at their prior mean and, with ``record_activity``,
-    records them as inactive in constant data.
+    holds those states at their prior mean. Like a fitted model, the trace
+    records the activity mask in constant data, including an all-active one,
+    unless ``record_activity`` is false.
     """
     state_labels = reduction.retained_mean.state
     active = (
@@ -638,7 +641,7 @@ def _co2_trace(
             units="1"
         )
         groups[group] = xr.Dataset({"flux_scaling": draws})
-    if fixed is not None and record_activity:
+    if record_activity:
         groups["constant_data"] = xr.Dataset(
             {"flux_scaling_is_active": xr.DataArray(active, dims="state", coords={"state": state_labels})}
         )
@@ -682,7 +685,11 @@ def test_co2_country_outputs_report_complete_native_country_totals() -> None:
     native_mean, native_covariance = _native_posterior(_without_boundary(problem), q)
     labels = functionals.get_index("country_functional")
     unresolved = UnresolvedFunctionalConditioning(
-        products=products, residual=residual, solve=_exact_solve(problem, reduction), seed=4
+        products=products,
+        residual=residual,
+        solve=_exact_solve(problem, reduction),
+        reduction_identity=reduction.identity,
+        seed=4,
     )
 
     result = co2_country_flux_outputs(trace, bound, countries, unresolved=unresolved)
@@ -723,7 +730,10 @@ def test_co2_complete_outputs_agree_across_partitions() -> None:
         problem, reduction, bound, countries, _, products = _co2_setup(partition)
         trace, residual = _co2_trace(problem, reduction, 20_000)
         unresolved = UnresolvedFunctionalConditioning(
-            products=products, residual=residual, solve=_exact_solve(problem, reduction)
+            products=products,
+            residual=residual,
+            solve=_exact_solve(problem, reduction),
+            reduction_identity=reduction.identity,
         )
         summaries.append(co2_country_flux_outputs(trace, bound, countries, unresolved=unresolved))
     first, second = summaries
@@ -739,8 +749,13 @@ def test_co2_country_outputs_reject_products_for_another_functional_or_partition
 
     def conditioning(candidate):
         """Wrap candidate products with this fit's residual and solve."""
+        # The candidate's own identity, as if it had been recorded for this fit,
+        # so the map-based checks are what must catch it.
         return UnresolvedFunctionalConditioning(
-            products=candidate, residual=residual, solve=_exact_solve(problem, reduction)
+            products=candidate,
+            residual=residual,
+            solve=_exact_solve(problem, reduction),
+            reduction_identity=candidate.reduction_identity,
         )
 
     wrong_mean = replace(products, functional_mean=products.functional_mean * 2.0)
@@ -757,12 +772,8 @@ def test_co2_country_outputs_reject_products_for_another_functional_or_partition
         co2_country_flux_outputs(trace, bound, countries, unresolved=conditioning(marginalised))
 
 
-@pytest.mark.parametrize("record_activity", [True, False])
-def test_co2_inactive_states_require_and_use_declared_marginalisation(record_activity: bool) -> None:
-    """A fit that marginalised states into A gives the native posterior only when they are declared.
-
-    Without a recorded activity mask, fixed states are found from constant posterior draws.
-    """
+def test_co2_inactive_states_require_and_use_declared_marginalisation() -> None:
+    """A fit that marginalised states into A gives the native posterior only when they are declared."""
     problem, full, bound, countries, functionals, products = _co2_setup("rows")
     marginalised = full.retained_mean.state.isin(MARGINALISED)
     # The fit used the kept-row reduction: its A absorbed the marginalised states.
@@ -775,19 +786,23 @@ def test_co2_inactive_states_require_and_use_declared_marginalisation(record_act
         unresolved_observation_covariance=kept.unresolved_observation_covariance,
     )
     count = 20_000
-    trace, residual = _co2_trace(problem, fit, count, fixed=marginalised, record_activity=record_activity)
-    assert ("constant_data" in trace.children) is record_activity
+    trace, residual = _co2_trace(problem, fit, count, fixed=marginalised)
     solve = _exact_solve(problem, kept)
 
     with pytest.raises(ValueError, match="inactive states must be exactly the states marginalised"):
         co2_country_flux_outputs(
-            trace, bound, countries, unresolved=UnresolvedFunctionalConditioning(products, residual, solve)
+            trace,
+            bound,
+            countries,
+            unresolved=UnresolvedFunctionalConditioning(products, residual, solve, full.identity),
         )
     result = co2_country_flux_outputs(
         trace,
         bound,
         countries,
-        unresolved=UnresolvedFunctionalConditioning(products, residual, solve, marginalised=marginalised),
+        unresolved=UnresolvedFunctionalConditioning(
+            products, residual, solve, full.identity, marginalised=marginalised
+        ),
     )
 
     assert result.attrs["marginalised_state_count"] == "2"
@@ -826,7 +841,9 @@ def test_country_membership_may_vary_by_source() -> None:
         trace,
         bound,
         by_source,
-        unresolved=UnresolvedFunctionalConditioning(products, residual, _exact_solve(problem, reduction)),
+        unresolved=UnresolvedFunctionalConditioning(
+            products, residual, _exact_solve(problem, reduction), reduction.identity
+        ),
     )
     assert (
         retained.country_total_posterior_mean.dims
@@ -883,12 +900,20 @@ def test_single_source_country_functionals_have_one_row_per_country() -> None:
             dims=("observation", "state"),
             coords={"observation": ["obs"], "state": ["a", "b"]},
         ),
+        reduction_identity="sha256:fixture",
     )
     state = _samples(1.0 + 0.1 * np.arange(6.0).reshape(1, 3, 2), "state", ["a", "b"]).assign_attrs(units="1")
     trace = xr.DataTree.from_dict(
         {
             "posterior": xr.Dataset({"flux_scaling": state}),
             "prior": xr.Dataset({"flux_scaling": state}),
+            "constant_data": xr.Dataset(
+                {
+                    "flux_scaling_is_active": xr.DataArray(
+                        [True, True], dims="state", coords={"state": ["a", "b"]}
+                    )
+                }
+            ),
             "/": xr.Dataset(
                 attrs={
                     "rhime_model_metadata": json.dumps({"recipe": "co2"}),
@@ -898,10 +923,14 @@ def test_single_source_country_functionals_have_one_row_per_country() -> None:
         }
     )
     solve = dense_solve(
-        xr.DataArray(np.eye(1), dims=("observation", "observation_cov"), coords={"observation": ["obs"]})
+        xr.DataArray(
+            np.eye(1),
+            dims=("observation", "observation_cov"),
+            coords={"observation": ["obs"], "observation_cov": ["obs"]},
+        )
     )
     residual = _samples(np.zeros((1, 3, 1)), "observation", ["obs"])
-    unresolved = UnresolvedFunctionalConditioning(products, residual, solve)
+    unresolved = UnresolvedFunctionalConditioning(products, residual, solve, "sha256:fixture")
     complete = co2_country_flux_outputs(trace, bound, countries, unresolved=unresolved)
     retained = co2_country_flux_outputs(trace, bound, countries)
     assert complete.country_total_posterior_mean.dims == ("country",)
@@ -940,10 +969,13 @@ def test_co2_identity_checks_accept_float32_inputs_but_not_another_partition() -
         float32_trace,
         float32_bound,
         countries,
-        unresolved=UnresolvedFunctionalConditioning(products, residual, solve),
+        unresolved=UnresolvedFunctionalConditioning(products, residual, solve, reduction.identity),
     )
     expected = co2_country_flux_outputs(
-        trace, bound, countries, unresolved=UnresolvedFunctionalConditioning(products, residual, solve)
+        trace,
+        bound,
+        countries,
+        unresolved=UnresolvedFunctionalConditioning(products, residual, solve, reduction.identity),
     )
 
     assert result.attrs["uncertainty_scope"] == "complete_native"
@@ -957,18 +989,184 @@ def test_co2_identity_checks_accept_float32_inputs_but_not_another_partition() -
             float32_trace,
             float32_bound,
             countries,
-            unresolved=UnresolvedFunctionalConditioning(other_partition, residual, solve),
+            unresolved=UnresolvedFunctionalConditioning(
+                other_partition, residual, solve, other_partition.reduction_identity
+            ),
         )
 
 
-def test_fixed_states_cannot_be_detected_from_one_draw_without_a_mask() -> None:
-    """A single posterior draw without an activity mask cannot show which states are fixed."""
+def test_activity_comes_from_the_recorded_mask_not_the_draws() -> None:
+    """Identical or single all-active draws are accepted with a mask; a trace without one is rejected."""
     problem, reduction, bound, countries, _, products = _co2_setup("rows")
+    solve = _exact_solve(problem, reduction)
     trace, residual = _co2_trace(problem, reduction, 1)
-    with pytest.raises(ValueError, match="cannot be detected from one posterior draw"):
+    single = co2_country_flux_outputs(
+        trace,
+        bound,
+        countries,
+        unresolved=UnresolvedFunctionalConditioning(products, residual, solve, reduction.identity),
+    )
+    assert single.attrs["marginalised_state_count"] == "0"
+
+    # Two identical draws, as after a rejected MCMC proposal.
+    trace, residual = _co2_trace(problem, reduction, 2)
+    repeated = trace.copy()
+    for group in ("prior", "posterior"):
+        draws = trace[group]["flux_scaling"]
+        repeated[group]["flux_scaling"] = draws.copy(data=np.repeat(draws.values[:, :1], 2, axis=1))
+    residual = residual.copy(data=np.repeat(residual.values[:, :1], 2, axis=1))
+    co2_country_flux_outputs(
+        repeated,
+        bound,
+        countries,
+        unresolved=UnresolvedFunctionalConditioning(products, residual, solve, reduction.identity),
+    )
+
+    unrecorded, residual = _co2_trace(problem, reduction, 4, record_activity=False)
+    with pytest.raises(ValueError, match="activity mask in constant_data"):
+        co2_country_flux_outputs(
+            unrecorded,
+            bound,
+            countries,
+            unresolved=UnresolvedFunctionalConditioning(products, residual, solve, reduction.identity),
+        )
+
+
+def test_dense_solve_aligns_labelled_columns_and_requires_symmetry() -> None:
+    """Reordered labelled columns give the same solve; an asymmetric matrix is rejected."""
+    labels = ["obs-a", "obs-b"]
+    matrix = np.array([[2.0, 1.0], [1.0, 3.0]])
+    covariance = xr.DataArray(
+        matrix,
+        dims=("observation", "observation_cov"),
+        coords={"observation": labels, "observation_cov": labels},
+    )
+    rhs = np.array([[1.0], [0.0]])
+    expected = np.linalg.solve(matrix, rhs)
+
+    reordered = covariance.isel(observation_cov=[1, 0])
+    np.testing.assert_allclose(dense_solve(reordered).solve(rhs, 0, 0), expected)
+    np.testing.assert_allclose(expected[0, 0], 0.6)
+    with pytest.raises(ValueError, match="symmetric"):
+        dense_solve(covariance.copy(data=np.array([[2.0, 1.0], [0.5, 3.0]])))
+    with pytest.raises(ValueError, match="carry exactly the row labels"):
+        dense_solve(covariance.assign_coords(observation_cov=["obs-a", "obs-c"]))
+
+
+def test_fixed_ou_solve_rejects_rows_in_a_different_site_order() -> None:
+    """A site-major covariance paired with time-major observation rows is rejected."""
+    problem = _problem()
+    reduction = _reduce(problem, _restriction("rows"), _generic_functionals(problem))
+    amplitude = xr.DataArray(
+        np.ones((1, 1, 2)),
+        dims=("chain", "draw", "site"),
+        coords={"chain": [0], "draw": [0], "site": list(TAU)},
+    )
+    covariance = prepare_fixed_ou_low_rank(
+        np.zeros((N_OBSERVATION, 0)),
+        NOISE_DIAGONAL,
+        np.datetime64("2021-01-01T00", "ns") + (HOURS * 3600e9).astype("timedelta64[ns]"),
+        SITES,
+        TAU,
+        site_labels=list(TAU),
+    )
+
+    with pytest.raises(ValueError, match="row sites"):
+        fixed_ou_solve(
+            covariance,
+            amplitude,
+            site_dim="site",
+            observation_index=reduction.effective_observation_operator.indexes["observation"],
+            site_index=np.array([0, 1, 0, 1, 0, 1, 1]),
+        )
+    with pytest.raises(ValueError, match="'site' level"):
+        fixed_ou_solve(
+            covariance,
+            amplitude,
+            site_dim="site",
+            observation_index=reduction.effective_observation_operator.indexes["observation"],
+        )
+
+
+def test_reduction_identity_ties_products_to_the_observation_operator() -> None:
+    """Products built with a different H pass the map checks but not the reduction identity."""
+    problem, reduction, bound, countries, functionals, products = _co2_setup("rows")
+    assert (
+        products.reduction_identity == reduction.identity == reduction.functional_products.reduction_identity
+    )
+    renamed = reduction.retained_covariance.rename(state_cov="other_state_cov")
+    assert replace(reduction, retained_covariance=renamed).identity == reduction.identity
+
+    negated = {**problem, "sensitivity": -problem["sensitivity"]}
+    negated_products = project_native_functionals(
+        covariance=problem["covariance"],
+        products=project_native_covariance(
+            covariance=problem["covariance"],
+            strategy=SuppliedRestriction(_restriction("rows")),
+            state_dim="state",
+            native_sensitivity=negated["sensitivity"],
+            observation_dim="observation",
+            observation_batch_size=3,
+        ),
+        functionals=functionals,
+        functional_dim="country_functional",
+        native_mean=problem["mean"],
+        native_sensitivity=negated["sensitivity"],
+        observation_dim="observation",
+    )
+    assert negated_products.reduction_identity != reduction.identity
+    trace, residual = _co2_trace(problem, reduction, 50)
+    solve = _exact_solve(problem, reduction)
+    # Q m and D do not depend on H, so only the identity distinguishes these products.
+    co2_country_flux_outputs(
+        trace,
+        bound,
+        countries,
+        unresolved=UnresolvedFunctionalConditioning(
+            negated_products, residual, solve, negated_products.reduction_identity
+        ),
+    )
+    with pytest.raises(ValueError, match="different reduction than the fit"):
         co2_country_flux_outputs(
             trace,
             bound,
             countries,
-            unresolved=UnresolvedFunctionalConditioning(products, residual, _exact_solve(problem, reduction)),
+            unresolved=UnresolvedFunctionalConditioning(
+                negated_products, residual, solve, reduction.identity
+            ),
         )
+
+
+def test_negative_conditional_covariance_beyond_tolerance_raises() -> None:
+    """A solve whose A differs from the products' A gives an indefinite covariance, which is refused."""
+    problem = _problem()
+    reduction = _reduce(problem, _restriction("rows"), _generic_functionals(problem))
+    products = reduction.functional_products
+    state = _samples(
+        np.zeros((1, 2, products.retained_response.sizes["state"])), "state", products.retained_response.state
+    )
+    residual = _residual(np.zeros((1, 2, N_OBSERVATION)))
+    # Ignoring A and using a tiny noise subtracts far more than Q B_perp Q.T holds.
+    wrong = dense_solve(_observation_covariance(1e-3 * np.eye(N_OBSERVATION)), description="no A")
+
+    with pytest.raises(ValueError, match="negative eigenvalue .* different A"):
+        complete_functional_draws(
+            state, products, residual=residual, solve=wrong, rng=np.random.default_rng(0)
+        )
+    clipped = complete_functional_draws(
+        state,
+        products,
+        residual=residual,
+        solve=wrong,
+        rng=np.random.default_rng(0),
+        clipping_tolerance=np.inf,
+    )
+    assert clipped.attrs["conditional_covariance_min_eigenvalue"] < -1e-6
+    exact = complete_functional_draws(
+        state,
+        products,
+        residual=residual,
+        solve=_exact_solve(problem, reduction),
+        rng=np.random.default_rng(0),
+    )
+    assert exact.attrs["conditional_covariance_min_eigenvalue"] >= -1e-6

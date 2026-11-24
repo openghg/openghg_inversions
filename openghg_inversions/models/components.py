@@ -498,7 +498,9 @@ def add_state_vector(
     """Construct an active/fixed state graph from a resolved activity contract.
 
     When every state is active, this creates the same base prior graph as
-    ``add_linear_component``. Partial activity creates an active-only prior and
+    ``add_linear_component``. The ``<var_name>_is_active`` mask is registered as
+    model data for every policy, including all-active, so postprocessing can
+    read which states were sampled from the trace. Partial activity creates an active-only prior and
     restores it into a full deterministic state vector. An all-fixed policy
     creates no random variable and exposes the fixed values as the full
     deterministic state.
@@ -536,6 +538,12 @@ def add_state_vector(
         for name, value in active_prior_args(prior_args, activity, select_active=False).items()
     }
 
+    # The activity mask is recorded for every policy, including all-active, so
+    # postprocessing reads which states were sampled from the fitted model.
+    add_model_data(
+        component_coords(activity.active, coordinate_owner).rename(f"{var_name}_is_active"),
+        f"{var_name}_is_active",
+    )
     if activity.n_active == activity.n_state:
         state = parse_prior(var_name, parameters, dims=state_dim)
         return StateVectorResult(
@@ -544,10 +552,6 @@ def add_state_vector(
             activity=activity,
         )
 
-    add_model_data(
-        component_coords(activity.active, coordinate_owner).rename(f"{var_name}_is_active"),
-        f"{var_name}_is_active",
-    )
     fixed_value = add_model_data(
         component_coords(activity.fixed_value, coordinate_owner).rename(f"{var_name}_fixed_value"),
         f"{var_name}_fixed_value",
@@ -633,10 +637,10 @@ def _add_multisource_state_vector(
         )
         draws.append((positions[active_indices], draw))
 
+    add_model_data(zero_sensitivity.copy(data=active).rename(f"{var_name}_is_active"))
     if active.all():
         state = pt.zeros(len(state_index))
     else:
-        add_model_data(zero_sensitivity.copy(data=active).rename(f"{var_name}_is_active"))
         state = add_model_data(zero_sensitivity.copy(data=fixed_values).rename(f"{var_name}_fixed_value"))
     for positions, draw in draws:
         state = pt.set_subtensor(state[positions], draw)
@@ -763,6 +767,10 @@ def _add_prepared_correlated_lognormal_state_with_activity(
     """Construct a state from the package-prepared active prior."""
     state_dim = activity.state_dim
     add_coords(activity.zero_sensitivity.coords, model_dims=(state_dim,))
+    add_model_data(
+        activity.active.rename(f"{var_name}_is_active"),
+        f"{var_name}_is_active",
+    )
 
     if activity.n_active == activity.n_state:
         assert active_prior is not None
@@ -776,10 +784,6 @@ def _add_prepared_correlated_lognormal_state_with_activity(
             activity=activity,
         )
 
-    add_model_data(
-        activity.active.rename(f"{var_name}_is_active"),
-        f"{var_name}_is_active",
-    )
     fixed_value = add_model_data(
         activity.fixed_value.rename(f"{var_name}_fixed_value"),
         f"{var_name}_fixed_value",

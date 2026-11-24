@@ -22,6 +22,7 @@ products needed to condition ``Q x_perp`` on the data as well as on
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from hashlib import sha256
 
 from dask.base import compute
 import numpy as np
@@ -84,6 +85,10 @@ class NativeFunctionalProducts:
             needed to marginalise states later.
         effective_observation_operator: ``H_alpha`` of that reduction, with
             the sensitivity units the residuals must use.
+        reduction_identity: :func:`reduction_identity` of that reduction. It
+            depends on the native observation operator ``H``, the covariance
+            ``B`` and the restriction ``Pi``, which ``Q m`` and ``D`` alone do
+            not identify.
         marginalised: Boolean state mask of states already moved into the
             unresolved part by :func:`marginalise_functional_states`, or
             ``None`` for full-restriction products.
@@ -95,6 +100,7 @@ class NativeFunctionalProducts:
     unresolved_covariance: xr.DataArray
     retained_covariance: xr.DataArray
     effective_observation_operator: xr.DataArray
+    reduction_identity: str
     marginalised: xr.DataArray | None = None
 
     @property
@@ -141,6 +147,56 @@ class CoherentGaussianReduction:
     unresolved_observation_covariance: xr.DataArray
     projection_strategy: str
     functional_products: NativeFunctionalProducts | None = None
+
+    @property
+    def identity(self) -> str:
+        """Return the :func:`reduction_identity` of this reduction."""
+        return reduction_identity(
+            retained_covariance=self.retained_covariance,
+            effective_observation_operator=self.effective_observation_operator,
+            unresolved_observation_covariance=self.unresolved_observation_covariance,
+        )
+
+
+def reduction_identity(
+    *,
+    retained_covariance: xr.DataArray,
+    effective_observation_operator: xr.DataArray,
+    unresolved_observation_covariance: xr.DataArray,
+) -> str:
+    """Return a content identity of one coherent reduction.
+
+    ``C_alpha``, ``H_alpha = H U_*`` and ``A = H B_perp H.T`` together depend
+    on the native observation operator, the native covariance and the
+    restriction. The identity hashes their float64 values in their stored
+    axis order together with their index labels (not dimension names), so it
+    survives dimension renaming but changes with any change to ``H``, ``B``
+    or ``Pi``. Compute it once, from the exact reduction, and carry it as a
+    string; it is not a tolerance-based comparison.
+
+    Args:
+        retained_covariance: ``C_alpha``.
+        effective_observation_operator: ``H_alpha``.
+        unresolved_observation_covariance: The exact dense ``A``.
+
+    Returns:
+        ``"sha256:<hex digest>"``.
+    """
+    digest = sha256()
+    for name, array in (
+        ("C_alpha", retained_covariance),
+        ("H_alpha", effective_observation_operator),
+        ("A", unresolved_observation_covariance),
+    ):
+        digest.update(name.encode())
+        for dim in array.dims:
+            labels = array.indexes[dim].tolist() if dim in array.indexes else list(range(array.sizes[dim]))
+            digest.update("\x1f".join(map(str, labels)).encode())
+            digest.update(b"\x1e")
+        values = np.ascontiguousarray(np.asarray(array.values, dtype=np.float64))
+        digest.update(np.asarray(values.shape, dtype=np.int64).tobytes())
+        digest.update(values.tobytes())
+    return f"sha256:{digest.hexdigest()}"
 
 
 def reduce_native_gaussian(
@@ -233,6 +289,25 @@ def reduce_native_gaussian(
         batch_size=observation_batch_size,
     )
     return replace(reduction, functional_products=functional_products)
+
+
+def _unresolved_observation_values(products: NativeCovarianceProducts) -> np.ndarray:
+    """Return the exact symmetrized ``A = H B H.T - H_alpha C_alpha H_alpha.T`` values.
+
+    The reduction kernel and the functional products both use this, so their
+    identities are computed from bit-identical ``A``.
+    """
+    # Formed positionally in NumPy: H_alpha's state columns and both C_alpha
+    # axes follow Pi's state index, so their orders already agree.
+    effective = np.asarray(products.effective_observation_operator.values, dtype=np.float64)
+    values = (
+        np.asarray(products.native_observation_covariance.values, dtype=np.float64)
+        - effective @ np.asarray(products.state_covariance.values, dtype=np.float64) @ effective.T
+    )
+    # The two algebraically symmetric terms can differ at roundoff after the
+    # retained solve. Symmetrization defines the numerical covariance returned
+    # by this eager kernel; scientific PSD identities remain covered by tests.
+    return (values + values.T) * 0.5
 
 
 def project_native_functionals(
@@ -378,6 +453,13 @@ def project_native_functionals(
         ),
         retained_covariance=products.state_covariance,
         effective_observation_operator=effective,
+        reduction_identity=reduction_identity(
+            retained_covariance=products.state_covariance.rename("retained_covariance"),
+            effective_observation_operator=products.effective_observation_operator,
+            unresolved_observation_covariance=products.native_observation_covariance.copy(
+                data=_unresolved_observation_values(products)
+            ),
+        ),
     )
 
 
@@ -508,19 +590,7 @@ def _reduce_native_covariance_products(
         **linear_units,
     )
 
-    # A = H B H.T - H_alpha C_alpha H_alpha.T, formed positionally in NumPy.
-    # H_alpha's state columns and both C_alpha axes follow Pi's state index,
-    # so their orders already agree.
-    unresolved_values = (
-        np.asarray(native_observation_covariance.values, dtype=np.float64)
-        - np.asarray(effective_operator.values, dtype=np.float64)
-        @ np.asarray(state_covariance.values, dtype=np.float64)
-        @ np.asarray(effective_operator.values, dtype=np.float64).T
-    )
-    # The two algebraically symmetric terms can differ at roundoff after the
-    # retained solve. Symmetrization defines the numerical covariance returned
-    # by this eager kernel; scientific PSD identities remain covered by tests.
-    unresolved_values = (unresolved_values + unresolved_values.T) * 0.5
+    unresolved_values = _unresolved_observation_values(products)
     unresolved_covariance = native_observation_covariance.copy(
         data=unresolved_values
     ).rename("unresolved_observation_covariance")

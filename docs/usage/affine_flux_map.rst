@@ -184,10 +184,18 @@ non-sample blocks and return computed summaries, retaining complete required
 samples within each block.
 Neither function mutates the trace or reconstruction inputs.
 
-Both products retain prepared-artifact identity, reconstruction provenance and
-``uncertainty_scope="retained_state_conditional"``. Their intervals exclude
+Both products retain prepared-artifact identity and reconstruction provenance.
+By default they carry ``uncertainty_scope="retained_state_conditional"``: their
+means and intervals describe :math:`Q m + D(\alpha - \Pi m)` only, and exclude
 unresolved native-state uncertainty and its observation-conditioned mean
-update. These functions return labelled summary datasets. The
+update. Native flux output is always retained-state conditional. Country output
+includes the unresolved native contribution only when
+``co2_country_flux_outputs`` receives ``unresolved=``, functional products and
+per-draw conditioning inputs for the reduction the fit used. It then carries
+``uncertainty_scope="complete_native"`` and records which observation
+covariance conditioned the draws. See "Complete native functionals" in the
+:doc:`coherent reduction guide <coherent_reduction>` for the conditional
+moments, the checks on the products and the choice of :math:`A`. These functions return labelled summary datasets. The
 :doc:`CO₂ staged output adapter <co2_model_family>` uses them for conditional
 native-flux and country products and supported PARIS exports. Linked CO2/O2
 traces need a

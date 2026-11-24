@@ -279,13 +279,15 @@ def co2_country_flux_outputs(
             :func:`co2_country_functionals` for the same ``bound`` and
             ``countries``. When given, country totals are complete native
             functionals rather than retained-state-conditional ones. The
-            products must be full-restriction products whose ``Q m`` and
+            products must come from the reduction the fit was prepared
+            from, identified by ``reduction_identity``, and must be
+            full-restriction products whose ``Q m`` and
             ``D`` equal this map's ``A F m`` and ``A F U*`` within a
             tolerance set by the input precision. The fit's inactive states
             must be exactly the declared marginalised states; those are then
             moved into the unresolved part. Inactive states come from the
-            trace's ``<flux_scale>_is_active`` constant data or, when it is
-            absent, from posterior draws that are all identical.
+            ``<flux_scale>_is_active`` mask the fitted model records in the
+            trace's constant data; a trace without it is rejected.
 
     Returns:
         xarray.Dataset:
@@ -365,6 +367,12 @@ def _complete_country_outputs(
         raise ValueError(
             "Pass full-restriction functional products and declare marginalised states on the conditioning."
         )
+    # The identity covers H, B and Pi; the Q m and D checks below do not depend on H.
+    if unresolved.reduction_identity != products.reduction_identity:
+        raise ValueError(
+            "Unresolved functional products were prepared from a different reduction than the fit "
+            "(native observation operator, covariance or restriction)."
+        )
     functionals = co2_country_functionals(bound, countries, source_dim=source_dim)
     if not same_index(
         products.functional_mean.indexes[COUNTRY_FUNCTIONAL_DIM], functionals.indexes[COUNTRY_FUNCTIONAL_DIM]
@@ -401,7 +409,7 @@ def _complete_country_outputs(
             f"(beyond a relative tolerance of {tolerance:.1e} for the input precision)."
         )
 
-    marginalised = _marginalised_states(trace, samples["posterior"], response, unresolved)
+    marginalised = _marginalised_states(trace, response, unresolved)
     if marginalised.any():
         reference_scale = max(1.0, float(np.max(np.abs(bound.reference_state.values))))
         state_tolerance = _identity_tolerance(bound.reference_state, *samples.values()) * reference_scale
@@ -469,7 +477,6 @@ def _same_contraction(
 
 def _marginalised_states(
     trace: xr.DataTree,
-    posterior_state: xr.DataArray,
     response: xr.DataArray,
     unresolved: UnresolvedFunctionalConditioning,
 ) -> xr.DataArray:
@@ -477,28 +484,23 @@ def _marginalised_states(
 
     A fixed state contributes nothing to the retained draws. Its functional
     contribution is complete only if the fit moved its variance into ``A``,
-    which the conditioning must declare. Inactive states come from the
-    trace's ``<flux_scale>_is_active`` constant data, which models record
-    only when some state is fixed. Without it, states whose posterior draws
-    are all identical are treated as fixed.
+    which the conditioning must declare. Activity is read from the
+    ``<flux_scale>_is_active`` mask that the fitted model records for every
+    activity policy, including all-active.
     """
     state_dim = str(response.dims[1])
     index = response.indexes[state_dim]
     roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
     name = f"{roles['flux_scale']}_is_active"
-    if "constant_data" in trace.children and name in trace_group(trace, "constant_data"):
-        active = trace_group(trace, "constant_data")[name]
-        if active.dims != (state_dim,) or not same_index(active.indexes[state_dim], index):
-            raise ValueError(f"{name!r} must use the retained-state labels of the functional products.")
-        inactive = ~np.asarray(active.values, dtype=bool)
-    else:
-        draws = np.asarray(posterior_state.transpose("chain", "draw", state_dim).values)
-        draws = draws.reshape(-1, draws.shape[-1])
-        if draws.shape[0] < 2:
-            raise ValueError(
-                f"Fixed states cannot be detected from one posterior draw; record {name!r} in constant_data."
-            )
-        inactive = np.all(draws == draws[:1], axis=0)
+    if "constant_data" not in trace.children or name not in trace_group(trace, "constant_data"):
+        raise ValueError(
+            f"Complete country outputs need the fitted model's {name!r} activity mask in constant_data; "
+            "traces from earlier versions do not record it for all-active fits, so fit again."
+        )
+    active = trace_group(trace, "constant_data")[name]
+    if active.dims != (state_dim,) or not same_index(active.indexes[state_dim], index):
+        raise ValueError(f"{name!r} must use the retained-state labels of the functional products.")
+    inactive = ~np.asarray(active.values, dtype=bool)
     declared: np.ndarray = np.zeros(len(index), dtype=bool)
     if unresolved.marginalised is not None:
         if unresolved.marginalised.dims != (state_dim,) or not same_index(
