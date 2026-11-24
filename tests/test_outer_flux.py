@@ -141,6 +141,21 @@ def test_selectors_need_their_coordinates_and_matching_outer_states():
         OuterFluxChoice("fixed", ())
 
 
+def test_selectors_accept_lazy_labels():
+    pytest.importorskip("dask")
+    eager = prior()
+    state = eager.mean.dims[0]
+    mean = eager.mean.assign_coords(
+        basis_group=(state, eager.mean.basis_group.data.astype(object)),
+        source=(state, eager.mean.source.data.astype(object)),
+    )
+    mean = mean.assign_coords(basis_group=mean.basis_group.chunk(), source=mean.source.chunk())
+    lazy = CorrelatedPrior(mean, eager.arithmetic_covariance, covariance_dim="region_cov")
+    np.testing.assert_array_equal(FIXED_OCEAN.resolve_states(lazy).fixed, [False, False, False, False, True])
+    with pytest.raises(ValueError, match=r"source \['Ggp'\]"):
+        OuterFluxChoice("fixed", ("outer",), ("ocean", "Ggp")).resolve_states(lazy)
+
+
 def test_fixed_outer_states_must_be_uncorrelated_with_the_rest():
     with pytest.raises(ValueError, match="zero prior covariance"):
         FIXED_OCEAN.resolve_states(prior(cross=0.01))
@@ -171,6 +186,9 @@ def test_fix_states_rejects_conflicting_explicit_fixed_values():
     pruned = prepare_linear_sensitivity(h.where(h.region != "r4", 0.0), output_dim="nmeasure")
     activity = states.fix_states(resolve_state_activity(pruned.removed, StateActivity(fixed_value=1.0)))
     np.testing.assert_allclose(activity.fixed_value, [1.0, 1.0, 1.0, 1.0, 0.9])
+    # An explicit fix still conflicts when the state's column is also zero.
+    with pytest.raises(ValueError, match=r"\['r4'\] at values other than their prior mean"):
+        states.fix_states(resolve_state_activity(pruned.removed, StateActivity(explicit_ocean, fixed_value=2.0)))
 
 
 def evaluate(model, names, point):
