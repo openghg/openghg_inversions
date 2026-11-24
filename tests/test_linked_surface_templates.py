@@ -79,6 +79,17 @@ def test_physical_unit_conversion_once_preserves_original_reference(inputs):
     assert original.bc_reference.item() == 400.
 
 
+def test_rejects_per_meg_o2_observations(inputs):
+    """Report the native O2 site and field when its observations are in per meg."""
+    (co2, o2), prepared = inputs
+    original = o2.site_data["SYNTH"]
+    site = original.assign(mf=original.mf.assign_attrs(units="per meg"))
+    o2 = replace(o2, site_data={"SYNTH": site})
+
+    with pytest.raises(ValueError, match=r"'per meg'.*o2/SYNTH/mf"):
+        assemble((co2, o2), prepared)
+
+
 @pytest.mark.parametrize("failure", ["missing_source", "extra_source", "unknown_state", "missing_state", "opposite_ocean"])
 def test_source_state_rejects_incomplete_or_unavailable_mapping(inputs, failure):
     channels, prepared = inputs

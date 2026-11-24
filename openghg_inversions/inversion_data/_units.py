@@ -23,8 +23,13 @@ def mole_fraction_unit_scale(raw_units: str, *, context: str) -> float:
         The numeric scale relative to ``mol/mol``.
 
     Raises:
-        ValueError: If the units cannot be converted to ``mol/mol``.
+        ValueError: If the units label a ratio anomaly or cannot be converted
+            to ``mol/mol``.
     """
+    normalized = "".join(character for character in raw_units.casefold() if character.isalnum())
+    if normalized in {"permeg", "permil", "permill", "permille"} or "‰" in raw_units:
+        raise ValueError(f"Cannot use ratio anomaly units {raw_units!r} for {context} as a mole fraction.")
+
     try:
         quantity = cf_ureg.parse_expression(raw_units)
         if not hasattr(quantity, "to"):

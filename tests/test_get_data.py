@@ -54,11 +54,22 @@ def test_interpolate_flux_to_footprint_grid_uses_nearest_without_mutation() -> N
     assert result["inventory"].metadata == {"domain": "europe"}
 @pytest.mark.parametrize(
     ("raw_units", "expected"),
-    [("1", 1.0), ("mol/mol", 1.0), ("ppb", 1e-9), ("1e-09 mol/mol", 1e-9)],
+    [("1", 1.0), ("mol/mol", 1.0), ("ppm", 1e-6), ("ppb", 1e-9), ("1e-6", 1e-6), ("1e-09 mol/mol", 1e-9)],
 )
 def test_mole_fraction_unit_scale_uses_openghg_registry(raw_units: str, expected: float) -> None:
     """OpenGHG unit expressions map directly to their mol/mol scale."""
     assert mole_fraction_unit_scale(raw_units, context="test observations") == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    "raw_units",
+    ["per meg", "permeg", " PER_MEG ", "per-meg", "per mil", "permil", "per mill", "per mille", "‰"],
+)
+def test_mole_fraction_unit_scale_rejects_ratio_anomalies(raw_units: str) -> None:
+    """Reject ratio-anomaly labels before the unit registry can interpret them as scales."""
+    with pytest.raises(ValueError, match="ratio anomaly.*test observations") as exc_info:
+        mole_fraction_unit_scale(raw_units, context="test observations")
+    assert repr(raw_units) in str(exc_info.value)
 
 
 def test_acquire_merged_data(tac_ch4_data_args, merged_data_file_name, raw_data_path):
