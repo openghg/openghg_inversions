@@ -205,8 +205,11 @@ def test_co2_reference_returns_the_labelled_covariance_contract() -> None:
     _, sites, hours, error = _smooth_case()
     observations, observation_error = _observations(sites, hours, error)
     reference = fixed_ou_mismatch_covariance(
-        observations, observation_error,
-        fixed_site_amplitudes={"MHD": 800.0, "TAC": 1300.0}, amplitude_units="ppb", tau_hours=5.0,
+        observations,
+        observation_error,
+        fixed_site_amplitudes={"MHD": 800.0, "TAC": 1300.0},
+        amplitude_units="ppb",
+        tau_hours=5.0,
     )
 
     assert reference.dims == ("nmeasure", "nmeasure_cov")
@@ -214,9 +217,11 @@ def test_co2_reference_returns_the_labelled_covariance_contract() -> None:
     assert reference.indexes["nmeasure_cov"].equals(observations.indexes["nmeasure"])
     assert reference.attrs["units"] == "(ppm)**2"
     description = json.loads(reference.attrs["description"])
-    assert description["reference_sd"] == {"MHD": 800.0, "TAC": 1300.0}
-    assert description["units"] == "ppb"
-    assert description["reference_sd_observation_units_by_site"] == pytest.approx({"MHD": 0.8, "TAC": 1.3})
+    assert description["fixed_site_amplitudes"] == {"MHD": 800.0, "TAC": 1300.0}
+    assert description["amplitude_units"] == "ppb"
+    assert description["fixed_site_amplitudes_observation_units_by_site"] == pytest.approx(
+        {"MHD": 0.8, "TAC": 1.3}
+    )
     in_ppm = _reference(sites, hours, error, fixed_site_amplitudes={"MHD": 0.8, "TAC": 1.3}, tau_hours=5.0)
     np.testing.assert_allclose(reference.values, in_ppm, rtol=1e-12)
 
@@ -225,9 +230,10 @@ def test_co2_reference_names_missing_sites_and_coordinates() -> None:
     """Incomplete site mappings and missing coordinates raise ValueError naming the problem."""
     _, sites, hours, error = _smooth_case()
     observations, observation_error = _observations(sites, hours, error)
-    with pytest.raises(ValueError, match="no value for every coordinate label"):
+    missing_tac = r"site mapping is missing observed site\(s\): \['TAC'\]"
+    with pytest.raises(ValueError, match="fixed_site_amplitudes " + missing_tac):
         fixed_ou_mismatch_covariance(observations, observation_error, fixed_site_amplitudes={"MHD": 1.0})
-    with pytest.raises(ValueError, match="no value for every coordinate label"):
+    with pytest.raises(ValueError, match="tau_hours " + missing_tac):
         fixed_ou_mismatch_covariance(
             observations, observation_error, fixed_site_amplitudes=1.0, tau_hours={"MHD": 5.0}
         )
@@ -253,8 +259,6 @@ def test_reference_evaluates_lazy_error_and_auxiliary_coordinates() -> None:
     expected = _reference(sites, hours, error, fixed_site_amplitudes=1.0, tau_hours=5.0)
     np.testing.assert_array_equal(evaluated.values, expected)
     assert isinstance(lazy_observations.coords["site"].data, da.Array)
-
-
 
 
 def test_rank_selection_on_synthetic_spectrum() -> None:
@@ -434,7 +438,7 @@ def test_default_preparation_records_rank_selection_through_serialization() -> N
     assert recorded["representation"] == "dense"
     settings = recorded["description"]
     assert settings["source"] == "fixed_ou_mismatch_covariance"
-    assert settings["reference_sd"] == {"MHD": 1.5, "TAC": 2.0}
+    assert settings["fixed_site_amplitudes"] == {"MHD": 1.5, "TAC": 2.0}
     assert settings["tau_hours"] == 24.0
     assert settings["correlation"] == "within-site OU"
 
