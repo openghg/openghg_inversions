@@ -217,8 +217,14 @@ def _add_co2_o2_baseline_components(
     _validate_channel_offset_options(offset_prior, offset_args)
     if not boundary and not offset_prior:
         return []
-    if len(np.unique(observations["observation_units"].values)) != 1:
-        raise ValueError("Linked boundary and offset components currently require identical channel units.")
+    # Offsets are channel-native: each prior is in its channel's units and the
+    # padded design is zero on the other channel, so mixed units are well defined.
+    # Linked boundaries keep the identical-unit contract until their per-channel
+    # scaling is defined.
+    if any(bound is not None for bound in (boundary or {}).values()) and (
+        len(np.unique(observations["observation_units"].values)) != 1
+    ):
+        raise ValueError("Linked boundary components currently require identical channel units.")
     output_dim = str(observations.dims[0])
     components = []
     boundaries = []
@@ -345,8 +351,10 @@ def build_co2_o2_model(
         boundary: Resolved boundary component, keyed by channel.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
-            with the same meanings as the CO2 offset component. Baseline terms
-            require identical channel units and are zero on the other channel.
+            with the same meanings as the CO2 offset component. Each channel's
+            offset is in that channel's units and is zero on the other channel,
+            so offsets allow mixed units (for example ppm CO2 and per-meg O2).
+            Boundary terms still require identical channel units.
         output_dim: Joint observation dimension used by the likelihood.
         tau_hours: Optional fixed OU timescale in hours, scalar or mapping keyed
             by ``co2:SITE``/``o2:SITE``. Requires common channel units.
