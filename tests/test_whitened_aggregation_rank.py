@@ -185,6 +185,16 @@ def test_explicit_reference_covariance_is_validated() -> None:
         ReferenceMismatchCovariance(
             variance=np.ones(2), site_rows=(np.asarray([0, 1]),), blocks=(np.ones((2, 2)),)
         )
+    with pytest.raises(ValueError, match="integer array"):
+        ReferenceMismatchCovariance(variance=np.ones(2), site_rows=(np.asarray([0.4, 1.4]),), blocks=(np.eye(2),))
+    with pytest.raises(ValueError, match="non-empty one-dimensional"):
+        ReferenceMismatchCovariance(
+            variance=np.ones(2),
+            site_rows=(np.asarray([0, 1]), np.asarray([], dtype=int)),
+            blocks=(np.eye(2), np.empty((0, 0))),
+        )
+    with pytest.raises(ValueError, match="non-empty one-dimensional"):
+        ReferenceMismatchCovariance(variance=np.ones(2), site_rows=(np.asarray([[0, 1]]),), blocks=(np.eye(2),))
     reference = ReferenceMismatchCovariance(
         variance=np.asarray([2.0, 2.0]), site_rows=(np.asarray([0, 1]),), blocks=(np.asarray([[2.0, 1.0], [1.0, 2.0]]),)
     )
@@ -275,6 +285,18 @@ def test_reference_site_mapping_and_units_are_resolved_per_row() -> None:
     with pytest.raises(ValueError, match="missing observation site"):
         choose_whitened_aggregation_rank(
             covariance, WhitenedRankRule(reference_sd={"MHD": 1.0}), observation_error_sd=error, sites=sites
+        )
+    with pytest.raises(ValueError, match=r"tau_hours site mapping is missing observation site\(s\): \['TAC'\]"):
+        reference_mismatch_covariance(
+            error, sites, reference_sd=1.0, tau_hours={"MHD": 5.0}, observation_hours=hours
+        )
+    with pytest.raises(ValueError, match=r"missing observation site\(s\): \['TAC'\]"):
+        choose_whitened_aggregation_rank(
+            covariance,
+            WhitenedRankRule(tau_hours={"MHD": 5.0}),
+            observation_error_sd=error,
+            sites=sites,
+            observation_times=hours,
         )
 
 

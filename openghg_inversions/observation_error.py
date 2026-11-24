@@ -438,20 +438,27 @@ class ReferenceMismatchCovariance:
             )
         if len(self.site_rows) != len(self.blocks):
             raise ValueError("Reference mismatch covariance needs one block per site row set.")
+        site_rows = tuple(np.asarray(rows) for rows in self.site_rows)
+        for rows in site_rows:
+            if rows.ndim != 1 or rows.size == 0 or not np.issubdtype(rows.dtype, np.integer):
+                raise ValueError(
+                    "Each reference mismatch block's row indices must be a non-empty one-dimensional "
+                    "integer array."
+                )
         minimum = float(variance.min())
-        if self.site_rows:
-            covered = np.sort(np.concatenate([np.asarray(rows, dtype=int) for rows in self.site_rows]))
+        if site_rows:
+            covered = np.sort(np.concatenate(site_rows))
             if not np.array_equal(covered, np.arange(variance.size)):
                 raise ValueError(
                     "Reference mismatch site blocks must partition every observation row exactly once."
                 )
             minimum = np.inf
-            for rows, block in zip(self.site_rows, self.blocks, strict=True):
+            for rows, block in zip(site_rows, self.blocks, strict=True):
                 values = np.asarray(block, dtype=float)
                 if values.shape != (len(rows), len(rows)) or not np.isfinite(values).all():
                     raise ValueError("Each reference mismatch block must be finite and match its rows.")
                 if not np.allclose(values, values.T, rtol=1e-12, atol=0.0) or not np.allclose(
-                    np.diag(values), variance[np.asarray(rows, dtype=int)], rtol=1e-12, atol=0.0
+                    np.diag(values), variance[rows], rtol=1e-12, atol=0.0
                 ):
                     raise ValueError(
                         "Each reference mismatch block must be symmetric with diagonal equal to variance."
@@ -463,6 +470,7 @@ class ReferenceMismatchCovariance:
                     "times with zero observation error."
                 )
         object.__setattr__(self, "variance", variance)
+        object.__setattr__(self, "site_rows", site_rows)
         object.__setattr__(self, "minimum_eigenvalue", minimum)
 
 
@@ -523,6 +531,7 @@ def reference_mismatch_covariance(
         return ReferenceMismatchCovariance(variance=variance, record=record)
 
     _positive_site_values(tau_hours, "tau_hours", owner="Reference mismatch covariance")
+    tau = _site_rows(tau_hours, labels, "tau_hours")
     if observation_hours is None:
         raise ValueError("An OU reference mismatch covariance requires observation_hours.")
     hours = np.asarray(observation_hours, dtype=float)
@@ -532,8 +541,9 @@ def reference_mismatch_covariance(
     blocks = []
     for label in np.unique(labels):
         rows = np.flatnonzero(labels == label)
-        tau = float(tau_hours[label]) if isinstance(tau_hours, Mapping) else float(tau_hours)
-        block = np.square(amplitude[rows[0]]) * np.exp(-np.abs(hours[rows, None] - hours[None, rows]) / tau)
+        block = np.square(amplitude[rows[0]]) * np.exp(
+            -np.abs(hours[rows, None] - hours[None, rows]) / tau[rows[0]]
+        )
         block[np.diag_indices(rows.size)] = variance[rows]
         site_rows.append(rows)
         blocks.append(block)
@@ -805,7 +815,7 @@ def _site_rows(
     labels = np.asarray(sites).astype(str)
     if not isinstance(value, Mapping):
         return np.full(labels.size, float(value))
-    missing = sorted(set(labels) - set(value))
+    missing = sorted(str(label) for label in set(labels) - set(value))
     if missing:
         raise ValueError(f"{name} site mapping is missing observation site(s): {missing!r}.")
     return np.asarray([float(value[label]) for label in labels])
