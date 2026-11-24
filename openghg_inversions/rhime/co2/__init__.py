@@ -13,6 +13,7 @@ from .co2_affine_output import (
     produce_bucket_affine_flux_map,
 )
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs
+from .rank_reference import Co2ReferenceCovariance
 from .co2_runner import (
     annotate_co2_trace,
     materialize_co2_inputs,
@@ -75,6 +76,7 @@ __all__ = [
     "evaluate_co2_o2_prior_forward_mean",
     "prepare_co2_o2_inputs",
     "prepare_co2_inputs",
+    "Co2ReferenceCovariance",
     "load_co2_family_config",
     "load_and_bind_affine_flux_map",
     "import_explicit_affine_flux_map",

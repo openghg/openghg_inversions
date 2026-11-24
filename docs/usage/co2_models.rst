@@ -1164,42 +1164,49 @@ leading ordinary eigenmodes of :math:`A`, with the remaining marginal variance
 on the diagonal tail.
 
 The selected rank depends strongly on :math:`R_0`: larger amplitudes whiten
-more of :math:`A` away. The default reference is an independent 1 ppm
-amplitude. Pass the run's floored or prior-median site amplitudes and OU time
-scale when they are known, never zero. A site mapping must cover every site in
-the preparation::
+more of :math:`A` away. The rank criteria live on
+:class:`~openghg_inversions.observation_error.WhitenedRankRule`
+(``aggregation_error_rank``); the reference is a separate
+``reference_covariance`` input. By default CO2 preparation builds it with
+:class:`~openghg_inversions.rhime.co2.Co2ReferenceCovariance`: an independent
+1 ppm amplitude. Pass the run's floored or prior-median site amplitudes and OU
+time scales when they are known, never zero. A site mapping must cover every
+site in the preparation::
 
    from openghg_inversions.observation_error import WhitenedRankRule
-   from openghg_inversions.rhime.co2 import prepare_co2_inputs
+   from openghg_inversions.rhime.co2 import Co2ReferenceCovariance, prepare_co2_inputs
 
    prepared = prepare_co2_inputs(
        canonical_inputs,
        reduction,
-       aggregation_error_rank=WhitenedRankRule(
+       aggregation_error_rank=WhitenedRankRule(mu_threshold=0.1),
+       reference_covariance=Co2ReferenceCovariance(
            reference_sd={"BSD": 2.0, "TAC": 2.5},  # ppm
            tau_hours={"BSD": 24.0, "TAC": 18.0},
-           mu_threshold=0.1,
-           kl_budget_per_observation=None,
        ),
    )
    prepared.save("co2-coherent-low-rank.zarr")
 
-Provenance ``aggregation_error_rank_selection`` records the reference
-amplitudes, the count above the threshold, the chosen rank and the dropped-mode
+``reference_covariance`` may instead be a labelled observation-by-observation
+covariance, for example a mismatch model evaluated at fixed parameter values.
+Its rows and columns must follow the canonical observation order, and its
+units must be a squared mole-fraction unit such as ``(ppb)^2``; it is
+converted to the observation units and treated as one dense block. ``run_co2``
+and the staged ``prepare`` handoff accept the same ``aggregation_error_rank``
+and ``reference_covariance`` when they create a preparation.
+
+Provenance ``aggregation_error_rank_selection`` records the reference's own
+description (settings as supplied and amplitudes converted to observation
+units, or the supplied covariance's units and conversion) together with the
+criteria, the count above the threshold, the chosen rank and the dropped-mode
 KL :math:`\tfrac12\sum_{i>k}[\mu_i - \log(1 + \mu_i)]`. That KL describes
 the whitened truncation at :math:`R_0` without the diagonal tail, not the
 stored representation. The rule is a screening heuristic, not a bound on
 posterior error: the rank it selects depends on the reference covariance and
 should be checked for the intended likelihood.
-To screen against another reference, build a
-:class:`~openghg_inversions.observation_error.ReferenceMismatchCovariance`
-and pass it to
-:func:`~openghg_inversions.observation_error.whitened_aggregation_spectrum`,
-then apply
-:func:`~openghg_inversions.observation_error.select_whitened_rank`.
 
 An integer rank is an explicit override for benchmarking. The spectrum at the
-default reference is still computed and recorded, and preparation issues a
+reference is still computed and recorded, and preparation issues a
 ``UserWarning`` when the integer is below the rule rank::
 
    prepared = prepare_co2_inputs(canonical_inputs, reduction, aggregation_error_rank=1024)

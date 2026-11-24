@@ -35,6 +35,7 @@ from openghg_inversions.serialization import load_trace, save_trace
 
 from .execution import load_co2_params
 
+from .rank_reference import Co2ReferenceCovariance
 from .co2_affine_output import (
     _bind_affine_flux_map, load_and_bind_affine_flux_map, prepared_inputs_content_id,
 )
@@ -129,6 +130,7 @@ def prepare(
     canonical_inputs: PreparedInputs | None = None,
     reduction: CoherentGaussianReduction | None = None,
     aggregation_error_rank: int | WhitenedRankRule | None = WhitenedRankRule(),
+    reference_covariance: Co2ReferenceCovariance | xr.DataArray | None = None,
     bc_centering_weights: xr.DataArray | None = None,
     affine_artifact: AffineFluxMapArtifact | None = None, affine_path: str | Path | None = None,
 ) -> Path:
@@ -146,7 +148,10 @@ def prepare(
     ``reduction``, with the rank contract of
     :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`:
     a :class:`~openghg_inversions.observation_error.WhitenedRankRule` (the
-    default), an integer override, or ``None`` for exact storage.
+    default), an integer override, or ``None`` for exact storage. So does
+    ``reference_covariance``, the rank rule's reference: ``None`` for the
+    default, a :class:`~openghg_inversions.rhime.co2.Co2ReferenceCovariance`,
+    or a labelled covariance in the canonical observation order.
     """
     if (canonical_inputs is None) != (reduction is None):
         raise ValueError("Pass canonical_inputs and reduction together.")
@@ -156,12 +161,15 @@ def prepare(
         raise ValueError("Pass either affine_artifact or affine_path.")
     if bc_centering_weights is not None and canonical_inputs is None:
         raise ValueError("bc_centering_weights apply only to a new preparation from canonical_inputs.")
+    if reference_covariance is not None and canonical_inputs is None:
+        raise ValueError("reference_covariance applies only to a new preparation from canonical_inputs.")
     if canonical_inputs is not None:
         if affine_path is not None:
             raise ValueError("A new preparation requires affine_artifact, not an imported companion path.")
         prepared = prepare_co2_inputs(
             canonical_inputs, cast(CoherentGaussianReduction, reduction),
-            aggregation_error_rank=aggregation_error_rank, bc_centering_weights=bc_centering_weights,
+            aggregation_error_rank=aggregation_error_rank, reference_covariance=reference_covariance,
+            bc_centering_weights=bc_centering_weights,
         )
         return save_preparation(
             prepared, output_dir=output_dir, start_date=start_date, end_date=end_date, domain=domain,

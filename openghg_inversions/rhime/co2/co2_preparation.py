@@ -38,14 +38,20 @@ from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_SD,
     DIAGONAL_RESIDUAL_VARIANCE,
     LOW_RANK_FACTOR,
+    ReferenceMismatchCovariance,
     WhitenedRankRule,
-    choose_whitened_aggregation_rank,
-    prepare_low_rank_aggregation_error,
+    prepare_whitened_low_rank_aggregation_error,
     resolve_aggregation_error,
 )
 from openghg_inversions.serialization import open_datatree_loaded, save_datatree
 
 from .co2_o2_preparation import Co2O2PreparedInputs
+from .rank_reference import (
+    Co2ReferenceCovariance,
+    require_reference_labels,
+    squared_mole_fraction_scale,
+    supplied_reference_covariance,
+)
 
 
 CO2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_prepared_inputs"
@@ -523,11 +529,72 @@ def requested_co2_facts(
     return facts
 
 
+_PREPARATION_AGGREGATION_KEYS = ("aggregation_error", "aggregation_error_rank_selection")
+
+
+def _rank_reference(
+    reference_covariance: Co2ReferenceCovariance | xr.DataArray | None,
+    *,
+    unresolved: xr.DataArray,
+    inputs: xr.Dataset,
+    observation_index: Any,
+    observation_dim: str,
+    observation_units: str,
+) -> tuple[xr.DataArray, ReferenceMismatchCovariance]:
+    """Check the rank reference while labelled, materialize it with A, and build R0.
+
+    Returns:
+        The materialized unresolved covariance and the reference covariance.
+    """
+    if isinstance(reference_covariance, xr.DataArray):
+        require_reference_labels(
+            reference_covariance,
+            observation_index=observation_index,
+            row_dims=("nmeasure", observation_dim),
+        )
+        reference_units = reference_covariance.attrs.get("units")
+        unit_scale = squared_mole_fraction_scale(reference_units, observation_units, name="reference_covariance")
+        unresolved, supplied = materialize_together(
+            unresolved,
+            reference_covariance,
+            purpose="aggregation-error and reference covariances for the rank rule",
+        )
+        return unresolved, supplied_reference_covariance(
+            np.asarray(supplied.values),
+            units=str(reference_units),
+            observation_units=observation_units,
+            unit_scale=unit_scale,
+            name=None if supplied.name is None else str(supplied.name),
+        )
+
+    settings = Co2ReferenceCovariance() if reference_covariance is None else reference_covariance
+    observations = inputs["mf"]
+    error = inputs["mf_error"]
+    if error.dims != ("nmeasure",):
+        raise ValueError("CO2 mf_error must have dimensions ('nmeasure',).")
+    _require_same_axis(error, "nmeasure", observation_index, name="CO2 mf_error")
+    _require_equivalent_units(error.attrs.get("units"), observation_units, name="CO2 mf_error")
+    if "site" not in observations.coords or (settings.tau_hours is not None and "time" not in observations.coords):
+        raise ValueError("The rank reference requires observation 'site' (and, with OU, 'time') coordinates.")
+    unresolved, error = materialize_together(
+        unresolved,
+        error,
+        purpose="aggregation-error covariance and observation error for the rank rule",
+    )
+    return unresolved, settings.build(
+        np.asarray(error.values, dtype=float),
+        np.asarray(observations["site"].values),
+        observation_units=observation_units,
+        observation_times=None if settings.tau_hours is None else np.asarray(observations["time"].values),
+    )
+
+
 def prepare_co2_inputs(
     canonical_inputs: PreparedInputs,
     reduction: CoherentGaussianReduction,
     *,
     aggregation_error_rank: int | WhitenedRankRule | None = WhitenedRankRule(),
+    reference_covariance: Co2ReferenceCovariance | xr.DataArray | None = None,
     bc_centering_weights: xr.DataArray | None = None,
     provenance: Mapping[str, Any] | None = None,
 ) -> Co2PreparedInputs:
@@ -537,9 +604,10 @@ def prepare_co2_inputs(
     operator and supplies the linked retained prior, affine intercept, and
     unresolved covariance. By default, the LRPD rank comes from the unresolved
     covariance's spectrum whitened by a reference mismatch covariance (see
-    :class:`~openghg_inversions.observation_error.WhitenedRankRule`): reported
-    observation error plus an independent 1 ppm reference amplitude, keeping
-    every mode with whitened eigenvalue above 0.1. ``None`` stores the
+    :class:`~openghg_inversions.observation_error.WhitenedRankRule`), keeping
+    every mode with whitened eigenvalue above 0.1. The default reference is
+    the reported observation error plus an independent 1 ppm amplitude
+    (:class:`~openghg_inversions.rhime.co2.Co2ReferenceCovariance`). ``None`` stores the
     unresolved covariance exactly; ranks larger than the observation count are
     capped at that count, and the actual factor width may be smaller when the
     covariance has lower numerical rank.
@@ -553,7 +621,8 @@ def prepare_co2_inputs(
 
     Selecting LRPD storage eagerly materializes the complete unresolved
     covariance and computes its full dense eigendecomposition, plus one dense
-    whitened eigenvalue decomposition for the rank rule. The retained rank
+    whitened eigenvalue decomposition for the rank rule; a supplied dense
+    reference adds its Cholesky factorization and smallest eigenvalue. The retained rank
     reduces the saved payload and downstream structured-likelihood cost, not
     this preparation cost.
 
@@ -562,20 +631,29 @@ def prepare_co2_inputs(
             observation and retained-state labels match ``reduction``.
         reduction: One coherent Gaussian reduction containing all linked
             retained-prior and observation products.
-        aggregation_error_rank: Whitened-spectrum rank rule, defaulting to
-            ``WhitenedRankRule()``; pass a rule with the run's floored or
-            prior-median site amplitudes and OU time scale where known. A
-            positive integer is an explicit rank for benchmarking, equivalent
-            to ``WhitenedRankRule(rank=...)``: the spectrum at the default
-            reference is still recorded, with a ``UserWarning`` when the rank
-            is below the rule rank. Values larger than the observation count
-            are capped at that count; the actual factor width is further
-            limited by numerical positive rank. Pass ``None`` to store the
-            exact dense covariance. Provenance ``aggregation_error_rank``
-            records the request (the integer, ``"whitened_spectrum"`` or
-            ``None``), and ``aggregation_error_rank_selection`` records the
-            reference amplitudes, the count above the threshold, the chosen
-            rank and the dropped-mode KL.
+        aggregation_error_rank: Whitened-spectrum rank rule (threshold, KL
+            budget and optional explicit rank), defaulting to
+            ``WhitenedRankRule()``. A positive integer is an explicit rank for
+            benchmarking, equivalent to ``WhitenedRankRule(rank=...)``: the
+            spectrum at ``reference_covariance`` is still recorded, with a
+            ``UserWarning`` when the rank is below the rule rank. Values
+            larger than the observation count are capped at that count; the
+            actual factor width is further limited by numerical positive
+            rank. Pass ``None`` to store the exact dense covariance.
+            Provenance ``aggregation_error_rank`` records the request (the
+            integer, ``"whitened_spectrum"`` or ``None``), and
+            ``aggregation_error_rank_selection`` records the reference
+            description, the count above the threshold, the chosen rank and
+            the dropped-mode KL.
+        reference_covariance: Reference mismatch covariance :math:`R_0` for
+            the rank rule. ``None`` uses ``Co2ReferenceCovariance()``;
+            pass a :class:`~openghg_inversions.rhime.co2.Co2ReferenceCovariance`
+            with the run's floored or prior-median site amplitudes and OU
+            time scales where known, or a labelled observation-by-observation
+            covariance whose rows and columns follow the canonical
+            observation order, with squared mole-fraction units (converted to
+            the observation units). A supplied covariance is treated as one
+            dense block. Only valid with low-rank storage.
         bc_centering_weights: Positive dimensionless averaging weights on
             ``(bc_curtain, bc_period)``, with interval start times as period
             labels. Raw transport stays spatial and reusable; binding stacks
@@ -685,6 +763,11 @@ def prepare_co2_inputs(
         raise ValueError("aggregation_error_rank must be a positive integer, a WhitenedRankRule or None.")
     else:
         rank_rule = WhitenedRankRule(rank=aggregation_error_rank)
+    if reference_covariance is not None:
+        if not isinstance(reference_covariance, Co2ReferenceCovariance | xr.DataArray):
+            raise TypeError("reference_covariance must be a Co2ReferenceCovariance, a labelled DataArray or None.")
+        if rank_rule is None:
+            raise ValueError("reference_covariance applies only to low-rank storage, not aggregation_error_rank=None.")
 
     target_representation_dim = "nmeasure_cov" if rank_rule is None else "agg_rank"
     mapped = _without_aggregation_payload(
@@ -749,30 +832,18 @@ def prepare_co2_inputs(
             "nmeasure",
         )
     else:
-        if "site" not in observations.coords or (rank_rule.tau_hours is not None and "time" not in observations.coords):
-            raise ValueError("The whitened rank rule requires observation 'site' (and, with OU, 'time') coordinates.")
-        unresolved, observation_error = materialize_together(
-            unresolved,
-            inputs["mf_error"],
-            purpose="aggregation-error covariance and observation error for the rank rule",
-        )
-        rank, rank_selection = choose_whitened_aggregation_rank(
-            np.asarray(unresolved.values, dtype=float),
-            rank_rule,
-            observation_error_sd=np.asarray(observation_error.values, dtype=float),
-            sites=np.asarray(observations["site"].values),
-            observation_times=(
-                None if rank_rule.tau_hours is None else np.asarray(observations["time"].values)
-            ),
-            reference_unit_scale=(
-                mole_fraction_unit_scale(rank_rule.units, context="the whitened-rank reference")
-                / mole_fraction_unit_scale(str(observation_units), context="CO2 observations")
-            ),
+        unresolved, reference = _rank_reference(
+            reference_covariance,
+            unresolved=unresolved,
+            inputs=inputs,
+            observation_index=observation_index,
+            observation_dim=observation_dim,
             observation_units=str(observation_units),
         )
-        approximation = prepare_low_rank_aggregation_error(
+        approximation, rank_selection = prepare_whitened_low_rank_aggregation_error(
             unresolved,
-            rank=rank,
+            reference,
+            rank_rule,
             output_dim=observation_dim,
             covariance_dim=observation_covariance_dim,
         )
@@ -804,6 +875,9 @@ def prepare_co2_inputs(
         mode = "low_rank"
 
     metadata = dict(provenance or {})
+    # These keys describe this preparation's aggregation-error representation; never inherit them.
+    for key in _PREPARATION_AGGREGATION_KEYS:
+        metadata.pop(key, None)
     declared_strategy = metadata.get("projection_strategy")
     if declared_strategy is not None and declared_strategy != reduction.projection_strategy:
         raise ValueError("CO2 provenance projection_strategy conflicts with the coherent reduction.")
