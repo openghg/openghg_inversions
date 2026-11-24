@@ -5,8 +5,12 @@ for a linear-Gaussian version of the ordinary CO2 graph:
 
 - the retained flux state has a Gaussian prior with the prepared arithmetic
   moments ``alpha_prior_mean`` and ``alpha_prior_covariance`` (the same
-  moments the default correlated LogNormal prior matches), built as a
-  whitened state from a PSD factor of the covariance;
+  moments every copula marginal matches), built as a whitened state from a
+  PSD factor of the covariance. States whose ``alpha_prior_marginal`` is
+  ``"normal"`` keep their prior exactly; LogNormal states (the default) are
+  replaced by their moment-matched Normal; Weibull and gamma states are
+  refused unless ``substitute_marginals`` is set, and every replaced family
+  is recorded (:func:`gaussian_marginal_substitution`);
 - boundary and offset states keep their configured priors, which must be
   Normal;
 - the likelihood is the additive-Gaussian likelihood with fixed error,
@@ -53,7 +57,7 @@ from openghg_inversions.observation_error import (
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 
 from .co2_model import GaussianStatePrior
-from .co2_preparation import Co2PreparedInputs
+from .co2_preparation import ALPHA_PRIOR_MARGINAL, LATENT_CORRELATION_FLOOR, Co2PreparedInputs
 from .co2_runner import annotate_co2_trace, build_co2_from_materialized, materialize_co2_inputs
 from .model_mismatch import (
     EmpiricalBayesMismatch, empirical_bayes_mismatch, observation_sites, per_site_mismatch, type2_ml_mismatch,
@@ -63,6 +67,12 @@ logger = logging.getLogger(__name__)
 
 STATE_PRIOR_SUBSTITUTION = "lognormal→normal (moment-matched)"
 """Recorded when the default correlated LogNormal flux prior is replaced by its moment-matched Normal."""
+
+NO_STATE_PRIOR_SUBSTITUTION = "none"
+"""Recorded when every flux state already has a Normal marginal."""
+
+_SUBSTITUTED_ON_REQUEST = ("weibull", "gamma")
+"""Marginal families replaced only with ``substitute_marginals``; LogNormal is replaced by default."""
 
 GAUSSIAN_ALGORITHM = "gaussian_paige_gls"
 """``rhime_actual_inference`` algorithm name of the exact Gaussian estimator."""
@@ -172,6 +182,63 @@ def check_co2_gaussian_model(model: Mapping[str, Any]) -> None:
         _require_normal(boundary.prior, "boundary")
     elif isinstance(boundary, AdditiveChoice | AnomalyScalingChoice):
         _require_normal(boundary.mean_prior, "boundary mean-shift")
+
+
+def gaussian_marginal_substitution(
+    inputs: Mapping[Any, Any], *, substitute_marginals: bool = False,
+) -> dict[str, Any]:
+    """Decide which flux marginals the Gaussian estimator replaces, and record it.
+
+    Every marginal matches the prepared arithmetic moments, so the Gaussian
+    prior is the same for all of them; what differs is whether that prior is
+    the configured one. ``"normal"`` states are exact; ``"lognormal"`` states
+    (the default when no ``alpha_prior_marginal`` is stored) are replaced by
+    their moment-matched Normal, which ``method = "gaussian"`` implies;
+    ``"weibull"`` and ``"gamma"`` states are refused unless
+    ``substitute_marginals`` is true.
+
+    Args:
+        inputs: Prepared or materialized CO2 inputs.
+        substitute_marginals: Replace Weibull and gamma marginals too.
+
+    Returns:
+        ``label`` (``"none"``, or ``"<family>→normal (moment-matched)"`` per
+        replaced family joined by ``"; "``; exactly
+        :data:`STATE_PRIOR_SUBSTITUTION` when only LogNormal states are
+        replaced), ``marginals`` (state counts per configured family),
+        ``substituted`` (state counts per replaced family) and
+        ``latent_correlation_floor`` (the prepared copula repair floor, which
+        the Gaussian prior does not use, or ``None``).
+
+    Raises:
+        ValueError: For Weibull or gamma states without ``substitute_marginals``.
+    """
+    if ALPHA_PRIOR_MARGINAL in inputs:
+        stored = inputs[ALPHA_PRIOR_MARGINAL]
+        families = np.asarray(stored.values).astype(str)
+        floor = stored.attrs.get(LATENT_CORRELATION_FLOOR)
+    else:
+        families = np.full(inputs["alpha_prior_mean"].size, "lognormal")
+        floor = None
+    names, counts = np.unique(families, return_counts=True)
+    marginals = {str(name): int(count) for name, count in zip(names, counts, strict=True)}
+    order = ("lognormal", *_SUBSTITUTED_ON_REQUEST)
+    unknown = sorted(set(marginals) - {"normal", *order})
+    if unknown:
+        raise ValueError(f"CO2 {ALPHA_PRIOR_MARGINAL} has unsupported marginal(s) {unknown!r}.")
+    refused = {name: count for name, count in marginals.items() if name in _SUBSTITUTED_ON_REQUEST}
+    if refused and not substitute_marginals:
+        raise ValueError(
+            'method = "gaussian" would replace non-LogNormal flux marginals by their moment-matched Normal '
+            f"({', '.join(f'{name}: {count} states' for name, count in refused.items())}). Set "
+            f"sampling.substitute_marginals = true to accept and record that substitution, {_ALTERNATIVE}."
+        )
+    substituted = {name: marginals[name] for name in order if name in marginals}
+    label = "; ".join(f"{name}→normal (moment-matched)" for name in substituted) or NO_STATE_PRIOR_SUBSTITUTION
+    return {
+        "label": label, "marginals": marginals, "substituted": substituted,
+        "latent_correlation_floor": None if floor is None else float(floor),
+    }
 
 
 def _gaussian_state_prior(inputs: xr.Dataset) -> tuple[GaussianStatePrior, dict[str, Any]]:
@@ -389,7 +456,8 @@ def _empirical_bayes(
 
 
 def sample_co2_gaussian(
-    prepared: Co2PreparedInputs, model: Mapping[str, Any], sampler: RhimeSampler,
+    prepared: Co2PreparedInputs, model: Mapping[str, Any], sampler: RhimeSampler, *,
+    substitute_marginals: bool = False,
 ) -> tuple[xr.DataTree, dict[str, Any]]:
     """Solve the exact fixed-noise Gaussian posterior and return a NUTS-layout trace.
 
@@ -397,8 +465,9 @@ def sample_co2_gaussian(
     ``DataArray`` or an :class:`~openghg_inversions.rhime.co2.model_mismatch.EmpiricalBayesMismatch`
     (see :mod:`~openghg_inversions.rhime.co2.model_mismatch`); an explicit
     value wins over a prepared ``fixed_model_mismatch`` field, which wins over
-    none. Replacing the default LogNormal flux prior by its moment-matched
-    Normal, and an empirical-Bayes mismatch, each log one warning.
+    none. Replacing flux marginals by their moment-matched Normal (see
+    :func:`gaussian_marginal_substitution`), and an empirical-Bayes mismatch,
+    each log one warning.
 
     Args:
         prepared: CO2 preparation.
@@ -407,17 +476,21 @@ def sample_co2_gaussian(
             chain), the ``random_seed`` in ``sample_kwargs``, and the prior and
             posterior predictive choices. A fresh seed is drawn and recorded
             when none is configured.
+        substitute_marginals: Replace Weibull and gamma flux marginals by
+            their moment-matched Normal instead of refusing them.
 
     Returns:
         The annotated trace, including a ``gaussian_posterior`` group, and the
         recorded inference description.
 
     Raises:
-        ValueError: If the model is not linear-Gaussian with fixed noise, or a
-            per-site mismatch does not name exactly the observed sites.
+        ValueError: If the model is not linear-Gaussian with fixed noise, a
+            per-site mismatch does not name exactly the observed sites, or a
+            flux marginal is Weibull or gamma without ``substitute_marginals``.
     """
     require_gaussian_precision()
     check_co2_gaussian_model(model)
+    substitution = gaussian_marginal_substitution(prepared.inv_inputs, substitute_marginals=substitute_marginals)
     mismatch = model.get("fixed_model_mismatch")
     # Labelled and table forms are installed below as bare values on the existing index.
     direct = mismatch if mismatch is None or _is_scalar(mismatch) else None
@@ -430,12 +503,14 @@ def sample_co2_gaussian(
         offset_args=model.get("offset_args"),
     )
     gaussian_prior, prior_record = _gaussian_state_prior(inputs)
-    logger.warning(
-        'method = "gaussian" replaces the correlated LogNormal flux prior with the Normal prior of '
-        "the same arithmetic moments (%s): %s.",
-        "alpha_prior_mean, alpha_prior_covariance",
-        STATE_PRIOR_SUBSTITUTION,
-    )
+    if substitution["substituted"]:
+        logger.warning(
+            'method = "gaussian" replaces flux marginals with the Normal prior of the same arithmetic '
+            "moments (%s): %s (%s).",
+            "alpha_prior_mean, alpha_prior_covariance",
+            substitution["label"],
+            ", ".join(f"{name}: {count} states" for name, count in substitution["substituted"].items()),
+        )
 
     def build(model_inputs: xr.Dataset, fixed: Any) -> RhimeModelBuildResult:
         return build_co2_from_materialized(
@@ -556,7 +631,15 @@ def sample_co2_gaussian(
         "model_mismatch": json.dumps(mismatch_record, sort_keys=True),
         "sampled_variables": json.dumps(list(variables.names)),
     }
-    actual["state_prior_substitution"] = attrs["state_prior_substitution"] = STATE_PRIOR_SUBSTITUTION
+    actual["state_prior_substitution"] = attrs["state_prior_substitution"] = substitution["label"]
+    actual["state_prior_marginals"] = substitution["marginals"]
+    actual["state_prior_substituted"] = substitution["substituted"]
+    attrs["state_prior_marginals"] = json.dumps(substitution["marginals"], sort_keys=True)
+    attrs["state_prior_substituted"] = json.dumps(substitution["substituted"], sort_keys=True)
+    if substitution["latent_correlation_floor"] is not None:
+        # The copula repair changes the NUTS prior's covariance; the Gaussian prior keeps the prepared one.
+        actual["state_prior_unused_latent_correlation_floor"] = substitution["latent_correlation_floor"]
+        attrs["state_prior_unused_latent_correlation_floor"] = substitution["latent_correlation_floor"]
     trace[GAUSSIAN_POSTERIOR_GROUP] = _gaussian_posterior_group(
         built, variables, posterior, trace, rng=report_rng, attrs=attrs,
     )
@@ -565,6 +648,7 @@ def sample_co2_gaussian(
 
 
 __all__ = [
-    "GAUSSIAN_ALGORITHM", "GAUSSIAN_POSTERIOR_GROUP", "STATE_PRIOR_SUBSTITUTION", "check_co2_nuts_mismatch", "check_co2_gaussian_likelihood", "check_co2_gaussian_model",
-    "require_gaussian_precision", "sample_co2_gaussian",
+    "GAUSSIAN_ALGORITHM", "GAUSSIAN_POSTERIOR_GROUP", "NO_STATE_PRIOR_SUBSTITUTION", "STATE_PRIOR_SUBSTITUTION",
+    "check_co2_nuts_mismatch", "check_co2_gaussian_likelihood", "check_co2_gaussian_model",
+    "gaussian_marginal_substitution", "require_gaussian_precision", "sample_co2_gaussian",
 ]

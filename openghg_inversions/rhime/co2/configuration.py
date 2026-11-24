@@ -267,7 +267,9 @@ def _validate_co2_option_names(*requests: Mapping[str, object]) -> None:
         "likelihood": _LIKELIHOOD_OPTION_NAMES,
         "likelihood.sigma_prior": _PRIOR_OPTION_NAMES,
         "likelihood.site_amplitude_prior": _PRIOR_OPTION_NAMES,
-        "sampling": _SAMPLING_OPTION_NAMES | {"method", "sigma_target_accept", "state_target_accept"},
+        "sampling": _SAMPLING_OPTION_NAMES | {
+            "method", "sigma_target_accept", "state_target_accept", "substitute_marginals",
+        },
         "outputs": frozenset(Co2OutputOptions.__dataclass_fields__) | {"source_to_sector"},
         "outputs.paris_postprocessing_kwargs": frozenset(ParisOptions.__dataclass_fields__),
     })
@@ -1384,12 +1386,15 @@ class _Co2Sampling:
     Fixed OU amplitudes have no amplitude step. The state step uses
     ``sampling.target_accept`` or the PyMC default when no state target is
     set. The Gaussian method uses draws, random seed and predictive choices.
+    ``substitute_marginals`` allows replacement of Weibull and Gamma flux
+    marginals by their moment-matched Normal.
     """
 
     sampler: RhimeSampler
     sigma_target_accept: float | None = 0.8
     state_target_accept: float | None = 0.9
     method: Literal["nuts", "gaussian"] = "nuts"
+    substitute_marginals: bool = False
 
 
 def _resolve_co2_sampling(config: Mapping[str, object], *, model: Mapping[str, Any]) -> _Co2Sampling:
@@ -1415,6 +1420,11 @@ def _resolve_co2_sampling(config: Mapping[str, object], *, model: Mapping[str, A
     method = _string(sampling.pop("method", "nuts"), "sampling.method")
     if method not in CO2_INFERENCE_METHODS:
         raise ValueError(f"sampling.method must be one of {list(CO2_INFERENCE_METHODS)!r}, not {method!r}.")
+    substitute = sampling.pop("substitute_marginals", False)
+    if not isinstance(substitute, bool):
+        raise ValueError("sampling.substitute_marginals must be true or false.")
+    if substitute and method != "gaussian":
+        raise ValueError("sampling.substitute_marginals applies only to sampling.method = 'gaussian'.")
     if method == "gaussian":
         from .co2_gaussian import check_co2_gaussian_likelihood, require_gaussian_precision
 
@@ -1426,7 +1436,7 @@ def _resolve_co2_sampling(config: Mapping[str, object], *, model: Mapping[str, A
                 f"sampling.method = 'gaussian' draws exact independent samples; remove NUTS-only "
                 f"option(s) {', '.join(f'sampling.{name}' for name in unused)}."
             )
-        return _Co2Sampling(sampler=_sampling(sampling), method="gaussian")
+        return _Co2Sampling(sampler=_sampling(sampling), method="gaussian", substitute_marginals=substitute)
     cached = uses_cached_ou(model)
     fixed = uses_fixed_ou_amplitudes(model)
     targets: dict[str, float | None] = {}

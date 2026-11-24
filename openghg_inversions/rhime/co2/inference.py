@@ -137,12 +137,15 @@ def sample_co2_inference(
     prepared: Co2PreparedInputs, model: Mapping[str, Any], sampler: RhimeSampler, *,
     sigma_target_accept: float | None = None, state_target_accept: float | None = None,
     method: Literal["nuts", "gaussian"] = "nuts",
+    substitute_marginals: bool = False,
 ) -> tuple[xr.DataTree, dict[str, Any]]:
     """Build the selected graph, sample its matched steps and record their settings.
 
     ``method="gaussian"`` instead solves the exact fixed-noise Gaussian
     posterior with :func:`~openghg_inversions.rhime.co2.co2_gaussian.sample_co2_gaussian`
-    and returns independent draws in the same trace layout.
+    and returns independent draws in the same trace layout;
+    ``substitute_marginals`` lets it replace Weibull and gamma flux marginals
+    by their moment-matched Normal instead of refusing them.
 
     Inferred OU amplitudes default to 0.8 (amplitude step) and 0.9 (state
     step). Fixed OU amplitudes have only the state step: ``sigma_target_accept``
@@ -152,9 +155,11 @@ def sample_co2_inference(
     if method == "gaussian":
         from .co2_gaussian import sample_co2_gaussian
 
-        return sample_co2_gaussian(prepared, model, sampler)
+        return sample_co2_gaussian(prepared, model, sampler, substitute_marginals=substitute_marginals)
     if method != "nuts":
         raise ValueError(f"Unknown CO2 inference method {method!r}; use 'nuts' or 'gaussian'.")
+    if substitute_marginals:
+        raise ValueError("substitute_marginals applies only to method = 'gaussian'.")
     from .co2_gaussian import check_co2_nuts_mismatch
 
     check_co2_nuts_mismatch(model)

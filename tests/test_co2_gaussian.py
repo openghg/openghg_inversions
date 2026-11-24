@@ -337,6 +337,100 @@ def test_specified_mismatch_logs_only_the_prior_substitution(case, caplog, doubl
     assert len(caplog.messages) == 1 and "lognormal→normal (moment-matched)" in caplog.messages[0]
 
 
+def _with_marginals(prepared, families, floor=None):
+    """Store per-state marginal families as #1100's preparation does."""
+    inputs = prepared.inv_inputs
+    marginal = inputs.alpha_prior_mean.copy(data=np.asarray(families).astype(str)).rename("alpha_prior_marginal")
+    marginal.attrs = {} if floor is None else {"latent_correlation_floor": floor}
+    rhime_inputs = replace(prepared.rhime_inputs, inv_inputs=inputs.assign(alpha_prior_marginal=marginal))
+    return replace(prepared, rhime_inputs=rhime_inputs)
+
+
+def _marginal_inputs(families, floor=None):
+    mean = xr.DataArray(np.ones(len(families)), dims=("region",), coords={"region": np.arange(len(families))})
+    marginal = mean.copy(data=np.asarray(families, dtype=object))
+    marginal.attrs = {} if floor is None else {"latent_correlation_floor": floor}
+    return xr.Dataset({"alpha_prior_mean": mean, "alpha_prior_marginal": marginal})
+
+
+def test_marginal_substitution_record_by_family():
+    record = co2_gaussian.gaussian_marginal_substitution
+    unlabelled = xr.Dataset({"alpha_prior_mean": ("region", np.ones(3))})
+    assert record(unlabelled) == {"label": "lognormal→normal (moment-matched)", "marginals": {"lognormal": 3},
+                                  "substituted": {"lognormal": 3}, "latent_correlation_floor": None}
+    assert record(unlabelled)["label"] == co2_gaussian.STATE_PRIOR_SUBSTITUTION
+    normal = record(_marginal_inputs(["normal"] * 3))
+    assert normal["label"] == co2_gaussian.NO_STATE_PRIOR_SUBSTITUTION == "none" and normal["substituted"] == {}
+    mixed = record(_marginal_inputs(["normal", "lognormal", "normal"]))
+    assert mixed["label"] == "lognormal→normal (moment-matched)"
+    assert mixed["marginals"] == {"lognormal": 1, "normal": 2} and mixed["substituted"] == {"lognormal": 1}
+    for families in (["weibull", "normal"], ["normal", "gamma"], ["lognormal", "gamma", "weibull"]):
+        with pytest.raises(ValueError, match="substitute_marginals"):
+            record(_marginal_inputs(families))
+    every = record(_marginal_inputs(["gamma", "weibull", "lognormal", "normal", "weibull"], floor=1e-6),
+                   substitute_marginals=True)
+    assert every["label"] == ("lognormal→normal (moment-matched); weibull→normal (moment-matched); "
+                              "gamma→normal (moment-matched)")
+    assert every["substituted"] == {"lognormal": 1, "weibull": 2, "gamma": 1}
+    assert every["marginals"] == {"gamma": 1, "lognormal": 1, "normal": 1, "weibull": 2}
+    assert every["latent_correlation_floor"] == 1e-6
+    with pytest.raises(ValueError, match="unsupported marginal"):
+        record(_marginal_inputs(["normal", "beta"]), substitute_marginals=True)
+
+
+def test_substitute_marginals_is_a_gaussian_only_boolean(double_precision):
+    model = {}
+    assert not _resolve_co2_sampling({"sampling": dict(GAUSSIAN_SAMPLING)}, model=model).substitute_marginals
+    chosen = _resolve_co2_sampling({"sampling": {**GAUSSIAN_SAMPLING, "substitute_marginals": True}}, model=model)
+    assert chosen.method == "gaussian" and chosen.substitute_marginals
+    with pytest.raises(ValueError, match="true or false"):
+        _resolve_co2_sampling({"sampling": {**GAUSSIAN_SAMPLING, "substitute_marginals": "yes"}}, model=model)
+    with pytest.raises(ValueError, match="only to sampling.method = 'gaussian'"):
+        _resolve_co2_sampling({"sampling": {"draws": 10, "substitute_marginals": True}}, model=model)
+    with pytest.raises(ValueError, match="only to method = 'gaussian'"):
+        co2_inference.sample_co2_inference(None, {}, None, method="nuts", substitute_marginals=True)
+
+
+def test_mixed_marginal_gaussian_route_records_the_replaced_families(case, caplog, double_precision):
+    """Weibull + Normal flux marginals through the configured Gaussian route (#1092 with #1100)."""
+    prepared, _, params = case
+    normal_trace, normal_actual = _run_gaussian(_with_marginals(prepared, ["normal", "normal"]), params)
+    assert normal_actual["state_prior_substitution"] == "none"
+    assert normal_actual["state_prior_marginals"] == {"normal": 2} and normal_actual["state_prior_substituted"] == {}
+    mixed = _with_marginals(prepared, ["weibull", "normal"], floor=1e-6)
+    with pytest.raises(ValueError, match="weibull: 1 states.*substitute_marginals = true"):
+        _run_gaussian(mixed, params)
+    opted = deepcopy(params)
+    opted["sampling"]["substitute_marginals"] = True
+    model = Co2ModelConfig.from_params(opted).model_arguments()
+    sampling = _resolve_co2_sampling(opted, model=model)
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        trace, actual = co2_inference.sample_co2_inference(
+            mixed, model, sampling.sampler, method=sampling.method, substitute_marginals=sampling.substitute_marginals,
+        )
+    attrs = trace["gaussian_posterior"].dataset.attrs
+    assert actual["state_prior_substitution"] == attrs["state_prior_substitution"] == "weibull→normal (moment-matched)"
+    assert actual["state_prior_marginals"] == {"normal": 1, "weibull": 1}
+    assert actual["state_prior_substituted"] == json.loads(attrs["state_prior_substituted"]) == {"weibull": 1}
+    assert actual["state_prior_unused_latent_correlation_floor"] == 1e-6
+    assert "lognormal" not in attrs["state_prior_substitution"]
+    substitution_logs = [message for message in caplog.messages if "moment-matched" in message]
+    assert len(substitution_logs) == 1 and "weibull: 1 states" in substitution_logs[0]
+    # Every marginal matches the same arithmetic moments, so the posterior moments are the all-Normal ones.
+    for name in ("posterior_mean", "posterior_covariance", "prior_mean"):
+        np.testing.assert_array_equal(
+            trace["gaussian_posterior"].dataset[name].values, normal_trace["gaussian_posterior"].dataset[name].values,
+        )
+
+
+def test_all_normal_marginals_log_no_substitution(case, caplog, double_precision):
+    prepared, _, params = case
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        _, actual = _run_gaussian(_with_marginals(prepared, ["normal", "normal"]), params)
+    assert actual["state_prior_substitution"] == "none"
+    assert not [message for message in caplog.messages if "moment-matched" in message]
+
+
 def test_prior_residual_moment_recovers_a_known_mismatch():
     """Two sites with 20000 synthetic prior residuals each; the moment estimate is within sampling error."""
     rng = np.random.default_rng(12)
