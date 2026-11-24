@@ -36,14 +36,16 @@ option rejects held outer states with nonzero prior covariance.
 Building a model
 ----------------
 
-The state selection is done once per flux prior:
+The builder resolves the choice on the ``retained_prior`` it is given, so the
+held states and the covariance check always refer to the prior the model
+samples:
 
 .. code-block:: python
 
    from openghg_inversions.models.outer_flux import OuterFluxChoice
    from openghg_inversions.rhime.co2.co2_cached_sigma_model import build_co2_cached_sigma_model
 
-   outer_flux = OuterFluxChoice("fixed", ("outer",)).resolve_states(flux_prior)
+   outer_flux = OuterFluxChoice("fixed", ("outer",))
 
    cached = build_co2_cached_sigma_model(
        flux_sensitivity, retained_prior=flux_prior,
@@ -57,7 +59,10 @@ The state selection is done once per flux prior:
 :func:`~openghg_inversions.rhime.co2.co2_model.build_co2_model` takes the same
 ``outer_flux`` argument. Any boundary, or none, may be used with it. Exact-zero
 columns of :math:`H` are pruned first, as in the ordinary recipe, and the held
-states are then made inactive at their prior mean. Run metadata records the
+states are then made inactive at their prior mean. Every label in
+``outer_groups`` and ``fixed_sources`` must match a state, and a
+``state_activity`` policy that explicitly fixes a held state at a value other
+than its prior mean is rejected. Run metadata records the
 mode and selectors.
 
 Linked CO2/O2
