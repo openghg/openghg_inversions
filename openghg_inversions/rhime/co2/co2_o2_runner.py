@@ -416,17 +416,23 @@ def run_rhime_co2_o2_from_prepared_inputs(
             ``co2:SITE``/``o2:SITE``, in hours.
         fixed_site_amplitudes: Fixed additive species/site standard deviations
             in each group's channel units, scalar or mapping using the same keys.
-            With mixed channel units a nonzero value must be a mapping.
+            With mixed channel units a nonzero value must be a mapping. These
+            fits are sampled by the cached fixed-OU sampler: the state
+            quadratic is built once and only the state NUTS step runs.
         site_amplitude_prior: Prior for inferred species/site amplitudes,
             mutually exclusive with fixed amplitudes. Requires common channel units.
         sampler: Sampler configuration or ``"default"``; explicit ``None`` is invalid. Fixed OU requires and
-            defaults to PyMC; the fixed-error default uses NumPyro.
+            defaults to PyMC; the fixed-error default uses NumPyro. The default
+            ``target_accept`` is 0.95; with fixed OU amplitudes it (or a
+            supplied ``sample_kwargs['target_accept']``) tunes the cached state
+            step, and caller-supplied steps are rejected.
 
     Returns:
         Restored DataTree with observed concentrations in
         ``observed_data["y"]``, fixed independent standard deviations in
         ``constant_data["fixed_independent_error_sd"]`` (``error`` for fixed
-        OU), labelled coordinates,
+        OU; fixed OU amplitudes are ``constant_data["ou_site_amplitude"]``),
+        labelled coordinates,
         data-dependent concentration units, scientific-role annotations, and
         JSON model metadata.
 
@@ -444,6 +450,23 @@ def run_rhime_co2_o2_from_prepared_inputs(
     )
     if tau_hours is not None and sampler.nuts_sampler != "pymc":
         raise ValueError("Linked fixed-OU requires nuts_sampler='pymc'.")
+    if tau_hours is not None and site_amplitude_prior is None:
+        # Fixed OU amplitudes are the cached sampler's specialisation.
+        from .co2_o2_cached_sigma_runner import _sample_linked_cached
+
+        trace, _ = _sample_linked_cached(
+            prepared_inputs=prepared_inputs,
+            sampler=sampler,
+            independent_error_sd=independent_error_sd,
+            tau_hours=tau_hours,
+            fixed_site_amplitudes=fixed_site_amplitudes,
+            state_activity=state_activity,
+            boundary=boundary,
+            offset_prior=offset_prior,
+            offset_args=offset_args,
+            recipe="co2_o2",
+        )
+        return trace
     built = build_rhime_co2_o2(
         prepared_inputs=prepared_inputs,
         independent_error_sd=independent_error_sd,

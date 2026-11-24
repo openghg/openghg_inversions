@@ -325,15 +325,11 @@ def test_linked_ou_with_mixed_units_matches_dense_oracle():
 @pytest.mark.parametrize("cached", [False, True])
 def test_linked_ou_with_mixed_units_requires_per_channel_amplitudes(options, message, cached):
     kwargs = bound_linked_model_arguments({**_kwargs(_per_meg_prepared()), "tau_hours": 6.0, **options})
-    if cached:
-        if "site_amplitude_prior" not in options:
-            pytest.skip("The cached linked sampler infers amplitudes.")
-        builder = build_co2_o2_cached_sigma_model
-    else:
-        builder = build_co2_o2_model
+    # The cached linked builder also accepts fixed amplitudes (state-only sampler).
+    builder = build_co2_o2_cached_sigma_model if cached else build_co2_o2_model
     with pytest.raises(ValueError, match=message):
         builder(**kwargs)
-    if not cached and "fixed_site_amplitudes" in options:
+    if "fixed_site_amplitudes" in options:
         builder(**{**kwargs, "fixed_site_amplitudes": 0.0})
 
 

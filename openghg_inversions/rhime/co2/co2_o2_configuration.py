@@ -326,7 +326,9 @@ def resolve_co2_o2_sampler(config: Mapping[str, object], *, model: Co2O2ModelCon
     """Resolve live sampling controls and the backend required by the likelihood.
 
     Fixed OU requires PyMC; fixed independent error defaults to NumPyro.
-    Channel, prepared-input and output choices remain unused.
+    ``target_accept`` defaults to 0.95; for fixed OU it tunes the state NUTS
+    step of the cached fixed-OU sampler. Channel, prepared-input and output
+    choices remain unused.
     """
     options = _table(config, "config")
     fixed_ou = model.tau_hours is not None

@@ -22,7 +22,7 @@ from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, normalise_optional_mapping
 
 from .co2_cached_sigma_runner import validate_cached_co2_sampler
-from .inference import uses_cached_ou
+from .inference import uses_cached_ou, uses_fixed_ou_amplitudes
 
 
 def _frozen(values: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -587,19 +587,29 @@ class Co2ModelConfig:
 
 @dataclass(frozen=True)
 class _Co2Sampling:
-    """Resolved sampler and the matched OU transition tuning controls."""
+    """Resolved sampler and the matched OU transition tuning controls.
+
+    For fixed OU amplitudes ``sigma_target_accept`` is ``None`` (there is no
+    amplitude step) and ``state_target_accept`` is ``None`` unless configured,
+    so the state step uses ``sampling.target_accept`` or the PyMC default.
+    """
 
     sampler: RhimeSampler
-    sigma_target_accept: float = 0.8
-    state_target_accept: float = 0.9
+    sigma_target_accept: float | None = 0.8
+    state_target_accept: float | None = 0.9
 
 
 def _resolve_co2_sampling(config: Mapping[str, object], *, model: Mapping[str, Any]) -> _Co2Sampling:
     """Resolve sampling options after the scientific model has selected its graph.
 
     The configured backend is selected from resolved scientific choices.
-    Additive sigma uses NumPyro; supported custom likelihoods use PyMC. Inferred
-    OU amplitudes use the matched PyMC transition and its two explicit controls.
+    Additive sigma uses NumPyro; supported custom likelihoods use PyMC. The
+    fixed-OU likelihood uses the matched cached PyMC transition. Inferred OU
+    amplitudes have two explicit controls (``sigma_target_accept`` and
+    ``state_target_accept``) and reject ``target_accept``. Fixed OU amplitudes
+    have only the state step: ``sigma_target_accept`` is rejected, and the
+    state target is ``state_target_accept`` or, as before, ``target_accept``
+    (not both), defaulting to PyMC's 0.8.
 
     Returns:
         object: Resolved sampler and matched OU tuning controls, with attributes
@@ -610,10 +620,24 @@ def _resolve_co2_sampling(config: Mapping[str, object], *, model: Mapping[str, A
     if "nuts_sampler" in sampling:
         raise ValueError("Configured CO2 selects its sampler from the likelihood; remove sampling.nuts_sampler.")
     cached = uses_cached_ou(model)
-    targets = {}
+    fixed = uses_fixed_ou_amplitudes(model)
+    targets: dict[str, float | None] = {}
     for name, default in (("sigma_target_accept", 0.8), ("state_target_accept", 0.9)):
         if name in sampling and not cached:
-            raise ValueError(f"sampling.{name} requires inferred fixed-OU amplitudes.")
+            raise ValueError(f"sampling.{name} requires the fixed-OU likelihood.")
+        if fixed and name == "sigma_target_accept" and name in sampling:
+            raise ValueError(
+                "sampling.sigma_target_accept tunes the amplitude step of inferred fixed-OU amplitudes; "
+                "fixed_site_amplitudes have no amplitude step."
+            )
+        if fixed and name == "state_target_accept" and name in sampling and "target_accept" in sampling:
+            raise ValueError(
+                "Configure sampling.state_target_accept or sampling.target_accept for fixed OU amplitudes, "
+                "not both; both tune the only (state) NUTS step."
+            )
+        if fixed and name not in sampling:
+            targets[name] = None
+            continue
         target = _number(sampling.pop(name, default), f"sampling.{name}")
         if not 0.0 < target < 1.0:
             raise ValueError(f"sampling.{name} must be between zero and one.")
@@ -621,7 +645,7 @@ def _resolve_co2_sampling(config: Mapping[str, object], *, model: Mapping[str, A
     sampling["nuts_sampler"] = "pymc" if model.get("likelihood_builder") is not None else "numpyro"
     sampler = _sampling(sampling)
     if cached:
-        validate_cached_co2_sampler(sampler)
+        validate_cached_co2_sampler(sampler, fixed_amplitudes=fixed)
     return _Co2Sampling(
         sampler=sampler,
         sigma_target_accept=targets["sigma_target_accept"], state_target_accept=targets["state_target_accept"],
