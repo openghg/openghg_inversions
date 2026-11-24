@@ -37,7 +37,7 @@ SCALAR_SIGMA_MODE_DIM = "scalar_sigma_mode"
 EIGENVECTORS = "eigenvectors"
 EIGENVALUES = "eigenvalues"
 
-ScalarSigmaAggregationMode = Literal["none", "dense", "low_rank", "diagonal"]
+ScalarSigmaAggregationMode = Literal["none", "dense", "low_rank"]
 
 
 def _align_observation_array(
@@ -180,18 +180,6 @@ def scalar_sigma_base_covariance(
                 f"Scalar-sigma diagonal_residual_variance must be one-dimensional on {output_dim!r}."
             )
         payloads.extend([("low_rank_factor", factor), ("diagonal_residual_variance", diagonal)])
-    elif aggregation_error.mode == "diagonal":
-        if aggregation_error.diagonal_variance is None:
-            raise ValueError("Diagonal aggregation error requires a variance array.")
-        diagonal = _align_observation_array(
-            observations,
-            aggregation_error.diagonal_variance,
-            name="diagonal_variance",
-            output_dim=output_dim,
-        )
-        if diagonal.dims != (output_dim,):
-            raise ValueError(f"Scalar-sigma diagonal_variance must have dims ({output_dim!r},).")
-        payloads.append(("diagonal_variance", diagonal))
     elif aggregation_error.mode != "none":
         raise ValueError(f"Unsupported aggregation-error mode {aggregation_error.mode!r}.")
 
@@ -221,11 +209,6 @@ def scalar_sigma_base_covariance(
         if (diagonal_values < 0.0).any():
             raise ValueError("Scalar-sigma diagonal_residual_variance must be non-negative.")
         covariance_values += factor_values @ factor_values.T
-        covariance_values.flat[:: n_observation + 1] += diagonal_values
-    elif aggregation_error.mode == "diagonal":
-        diagonal_values = _finite_values("diagonal_variance", eager_payloads["diagonal_variance"])
-        if (diagonal_values < 0.0).any():
-            raise ValueError("Scalar-sigma diagonal_variance must be non-negative.")
         covariance_values.flat[:: n_observation + 1] += diagonal_values
 
     tolerance = _scale_relative_tolerance(covariance_values)
@@ -595,7 +578,12 @@ def load_scalar_sigma_eigenbasis(
     if len(digest_bytes) != 32 or len(digest) != 64:
         raise ValueError("Scalar-sigma base covariance fingerprint must be SHA-256.")
     aggregation_error_mode = dataset.attrs.get("aggregation_error_mode", "")
-    if aggregation_error_mode not in ("none", "dense", "low_rank", "diagonal"):
+    if aggregation_error_mode == "diagonal":
+        raise ValueError(
+            "This scalar-sigma eigenbasis uses retired standalone diagonal aggregation error. "
+            "Rebuild it from migrated aggregation-error inputs."
+        )
+    if aggregation_error_mode not in ("none", "dense", "low_rank"):
         raise ValueError("Scalar-sigma cache requires a concrete aggregation-error mode.")
     eigenbasis = ScalarSigmaEigenbasis(
         eigenvectors=vectors,

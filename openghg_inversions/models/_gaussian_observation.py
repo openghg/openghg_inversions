@@ -181,21 +181,17 @@ def add_gaussian_observation_likelihood(
         mean: Completed forward-model concentration.
         independent_variance: Observation-aligned variance independent of the
             fixed aggregation error.
-        aggregation_error: Selected diagonal, dense, or low-rank fixed
+        aggregation_error: Selected dense or low-rank fixed
             aggregation covariance.
         output_dim: Named observation dimension for the PyMC variable.
 
     Returns:
         Observed PyMC variable named ``y``.
     """
-    if aggregation_error.mode in ("none", "diagonal"):
-        variance = independent_variance
-        if aggregation_error.mode == "diagonal":
-            assert aggregation_error.diagonal_variance is not None
-            variance = variance + aggregation_error.diagonal_variance
+    if aggregation_error.mode == "none":
         return cast(
             TensorVariable,
-            pm.Normal("y", mu=mean, sigma=pt.sqrt(variance), observed=observed, dims=output_dim),
+            pm.Normal("y", mu=mean, sigma=pt.sqrt(independent_variance), observed=observed, dims=output_dim),
         )
 
     if aggregation_error.mode == "dense":

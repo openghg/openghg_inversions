@@ -172,6 +172,37 @@ Inspect the recorded retained-spectrum and reconstruction metrics directly::
 These diagnostics describe the covariance approximation; they do not certify
 that the chosen rank is adequate for a particular likelihood.
 
+Migrating diagonal aggregation error
+------------------------------------
+
+``aggregation_error_sd`` is a marginal diagnostic alongside a dense or
+low-rank-plus-diagonal covariance. If it is the only aggregation-error
+payload, automatic resolution raises an error. Explicit ``"diagonal"`` mode
+has also been removed.
+
+Prefer regenerating the dense covariance from coherent reduction and applying
+LRPD where needed. To reproduce an old independent approximation exactly at
+the lower-level likelihood interface, promote the squared standard deviations
+to an explicit dense covariance::
+
+   import numpy as np
+   from openghg_inversions.observation_error import resolve_aggregation_error
+
+   sd = inputs["aggregation_error_sd"].transpose("nmeasure")
+   migrated = inputs.assign(
+       aggregation_error_covariance=(
+           ("nmeasure", "nmeasure_cov"),
+           np.diag(sd.to_numpy() ** 2),
+       ),
+   )
+   aggregation_error = resolve_aggregation_error(migrated, "dense")
+
+This reproduction uses dense storage. Rebuild scalar-sigma eigenbasis caches
+from the migrated inputs. To omit aggregation error deliberately, select
+``"none"`` at the lower-level interface. A known independent model mismatch
+can instead be supplied as ``fixed_model_mismatch`` where the additive-sigma
+likelihood supports it. It adds variance alongside the aggregation covariance.
+
 Assumptions and limitations
 ---------------------------
 
