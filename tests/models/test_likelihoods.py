@@ -417,7 +417,9 @@ def test_additive_sigma_likelihood_applies_minimum_error_floor() -> None:
         + data["aggregation_error_sd"].values ** 2
     )
     expected_scale = np.maximum(unconstrained_scale, data["min_error"].values)
-    np.testing.assert_allclose(model["epsilon"].eval(), expected_scale)
+    # epsilon is evaluated at the session floatX (float32 by default), so the
+    # comparison with the float64 expectation must allow float32 roundoff.
+    np.testing.assert_allclose(model["epsilon"].eval(), expected_scale, rtol=10 * np.finfo(np.float32).eps)
 
 
 def test_additive_sigma_likelihood_omits_optional_sigma_and_minimum_error() -> None:
