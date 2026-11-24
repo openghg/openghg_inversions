@@ -23,6 +23,7 @@ from ._provenance import footprint_metadata, selected_provenance
 from ._units import mole_fraction_unit_scale
 from ._site_options import is_surface_platform
 from ._surface_schema import validate_surface_inputs
+from ._boundary import BOUNDARY_TIME_METHODS, BoundaryTimeMethod
 from ._boundary import baseline_reference_sensitivities as _reference_sensitivities
 
 
@@ -229,6 +230,7 @@ def prepare_surface_site(
     boundary_mass_tolerance: float | None = None,
     output_units: str | None = None,
     observation_variable: str | None = None,
+    bc_time_method: BoundaryTimeMethod = "release_time",
 ) -> xr.Dataset:
     """Prepare supplied CO2/O2 observations and per-source responses for one site.
 
@@ -270,6 +272,11 @@ def prepare_surface_site(
         observation_variable: Explicit primary mole-fraction variable for supplied
             observations. Error/count aliases still use ``mf`` or the species prefix.
             Duplicate aliases for any role are rejected; unrelated fields are preserved.
+        bc_time_method: Boundary timing. ``"release_time"`` (default) uses each
+            curtain at the native release time. ``"mean_age"`` uses each curtain
+            cell at the release time minus its stored ``mean_age_particles_<d>``,
+            which site transport must then supply; ``boundary_data`` must cover
+            the largest positive-weight particle age before the first release.
 
     Returns:
         Dataset with aligned ``mf``, available errors/filter fields,
@@ -297,6 +304,7 @@ def prepare_surface_site(
     """
     if species.lower() not in {"co2", "o2"}:
         raise ValueError("Surface preparation currently supports only CO2 and O2.")
+    check_bc_time_method(bc_time_method, use_bc=boundary_data is not None)
     _validate_platform(obs_data)
     if not flux_data or set(flux_data) != set(transport):
         raise ValueError("transport must specify exactly one mode per flux source.")
@@ -341,6 +349,7 @@ def prepare_surface_site(
         species=species,
         boundary_data=boundary_view,
         observation_variable=primary,
+        particle_ages=bc_time_method == "mean_age",
     )
     aligned_obs, site_fp, native_site_fp = _resolve_surface_observations(
         obs, site_footprint_view, roles=roles, output_units=output_units,
@@ -353,7 +362,7 @@ def prepare_surface_site(
         aligned_obs, site_fp, native_site_fp, native_footprints, flux_views,
         species=species, transport=transport, boundary_view=boundary_view,
         boundary_reference=boundary_reference, boundary_reference_units=boundary_reference_units,
-        boundary_mass_tolerance=boundary_mass_tolerance,
+        boundary_mass_tolerance=boundary_mass_tolerance, bc_time_method=bc_time_method,
     )
     return _attach_surface_provenance(
         site, site_footprint=site_footprint, source_footprints=source_footprints,
@@ -367,7 +376,7 @@ def _surface_site_responses(
     native_footprints: Mapping[str, xr.Dataset], flux_views: Mapping[str, xr.Dataset],
     *, species: str, transport: Mapping[str, TransportMode], boundary_view: xr.Dataset | None,
     boundary_reference: float | None, boundary_reference_units: str | None,
-    boundary_mass_tolerance: float | None,
+    boundary_mass_tolerance: float | None, bc_time_method: BoundaryTimeMethod = "release_time",
 ) -> xr.Dataset:
     """Form native source products and boundary operands before observation averaging."""
     align, integrated, resolved = _surface_operations()
@@ -431,10 +440,15 @@ def _surface_site_responses(
         site.attrs["boundary_normalization_policy"] = "joint-curtain-unit-mass-v1"
         site.attrs["boundary_provider_policy_revision"] = "957-reference-sensitivities-v1"
         site.attrs["boundary_operator_owner"] = "openghg_inversions"
+        site.attrs["bc_time_method"] = bc_time_method
+        if bc_time_method == "mean_age":
+            # Lagged times are looked up in the same interval-start BC support.
+            site.attrs["bc_time_policy"] = "interval_start"
+            site.attrs["bc_time_lag_source"] = "openghg#1806 helpers vendored in openghg_inversions"
         operands = _reference_sensitivities(
             boundary_view, native_site_fp, species=species,
             reference=boundary_reference, reference_units=boundary_reference_units,
-            mass_tolerance=boundary_mass_tolerance,
+            mass_tolerance=boundary_mass_tolerance, bc_time_method=bc_time_method,
         )
         reference = operands.bc_reference
         operands = observation_means(operands.drop_vars("bc_reference")).assign(bc_reference=reference)
@@ -456,6 +470,19 @@ def _surface_site_responses(
         ]
         site["bc_mod"] = sum(directional_totals[1:], start=directional_totals[0]).assign_attrs(units=units)
     return site.transpose(..., "time")
+
+
+def check_bc_time_method(bc_time_method: object, *, use_bc: bool) -> None:
+    """Reject unknown boundary timing, and mean-age timing without boundaries.
+
+    Raises:
+        ValueError: If ``bc_time_method`` is not ``"release_time"`` or
+            ``"mean_age"``, or is ``"mean_age"`` without boundary conditions.
+    """
+    if bc_time_method not in BOUNDARY_TIME_METHODS:
+        raise ValueError(f"bc_time_method must be one of {BOUNDARY_TIME_METHODS!r}, got {bc_time_method!r}.")
+    if bc_time_method == "mean_age" and not use_bc:
+        raise ValueError("bc_time_method='mean_age' requires boundary conditions (use_bc=True).")
 
 
 def _attach_surface_provenance(

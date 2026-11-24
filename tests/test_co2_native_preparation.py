@@ -229,6 +229,26 @@ def test_supplied_merged_data_pass_scientific_input_validation(
         prepare(tmp_path, request(partition), unitless, "unitless")
 
 
+@pytest.mark.parametrize("recorded", [None, "release_time"])
+def test_supplied_release_time_operands_reject_a_mean_age_request(
+    tmp_path: Path, merged: MergedData, partition: Path, recorded: str | None,
+) -> None:
+    """Legacy merged data without bc_time_method hold release-time operands and cannot serve mean_age."""
+    from dataclasses import replace
+
+    site = merged.site_data["TOY"]
+    attrs = {k: v for k, v in site.attrs.items() if k not in ("bc_time_method", "bc_time_policy")}
+    if recorded is not None:
+        attrs["bc_time_method"] = recorded
+    supplied = replace(merged, site_data={"TOY": site.drop_attrs(deep=False).assign_attrs(attrs)})
+    config = request(partition)
+    config["prepared_inputs"]["acquisition"]["bc_time_method"] = "mean_age"
+    with pytest.raises(ValueError, match=r"Merged data for sites \['TOY'\] use a different bc_time_method"):
+        prepare(tmp_path, config, supplied, "legacy")
+    # The same legacy data remain valid for the default release-time request.
+    prepare(tmp_path, request(partition), supplied, "release")
+
+
 def test_saved_preparations_are_checked_against_the_boundary_choice(
     tmp_path: Path, merged: MergedData, partition: Path,
 ) -> None:

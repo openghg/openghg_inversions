@@ -172,6 +172,10 @@ def _channel_templates(
         ) if name in ds.attrs}
         if temporal:
             records[site]["boundary_temporal_provenance"] = temporal
+        # OGI's own boundary timing, recorded by surface preparation (release time or mean age).
+        for name in ("bc_time_method", "bc_time_policy"):
+            if name in ds.attrs:
+                records[site][name] = ds.attrs[name]
     boundary = xr.concat(boundaries, dim=dim, join="exact").rename({dim: "nmeasure"})
     boundary["bc_reference"] = reference
     boundary.attrs["boundary_representation"] = "centered-v1"
@@ -245,6 +249,11 @@ def prepare_linked_surface_templates(
         o2.acquisition.domain, o2.acquisition.start_date, o2.acquisition.end_date,
     ):
         raise ValueError("Linked channels require the same declared acquisition domain and window.")
+    # Channels acquired before bc_time_method was recorded hold release-time operands.
+    methods = {channel: {data.site_data[site].attrs.get("bc_time_method", "release_time") for site in data.site_data}
+               for channel, data in (("co2", co2), ("o2", o2))}
+    if len(methods["co2"] | methods["o2"]) > 1:
+        raise ValueError(f"Linked channels require one boundary timing (bc_time_method); got {methods}.")
     co2_obs, co2_error, co2_h, co2_bc, co2_record = channels["co2"]
     o2_obs, o2_error, o2_h, o2_bc, o2_record = channels["o2"]
     joint = _stack(co2_obs, o2_obs, co2_units="ppm", o2_units="ppm", name="observed_concentration")

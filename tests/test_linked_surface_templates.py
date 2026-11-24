@@ -153,6 +153,35 @@ def test_explicit_multiple_sources_sum_into_one_coefficient(inputs):
                                2 * prepared.co2_sensitivity.sel(state="gpp").compute())
 
 
+def _with_bc_time_method(channel, method):
+    site = channel.site_data["SYNTH"]
+    return replace(channel, site_data={"SYNTH": site.assign_attrs({**site.attrs, "bc_time_method": method})})
+
+
+def test_linked_channels_share_and_record_one_bc_time_method(inputs):
+    channels, prepared = inputs
+    co2, o2 = (_with_bc_time_method(channel, "mean_age") for channel in channels)
+    result = assemble((co2, o2), prepared)
+    recipe = result.provenance["surface_template_recipe"]
+    for name in ("co2", "o2"):
+        assert recipe[name]["sites"]["SYNTH"]["bc_time_method"] == "mean_age"
+    with pytest.raises(ValueError, match="one boundary timing"):
+        assemble((co2, _with_bc_time_method(channels[1], "release_time")), prepared)
+
+
+def test_linked_legacy_channel_without_bc_time_method_counts_as_release_time(inputs):
+    channels, prepared = inputs
+    site = channels[1].site_data["SYNTH"]
+    legacy = replace(channels[1], site_data={
+        "SYNTH": site.drop_attrs(deep=False).assign_attrs(
+            {k: v for k, v in site.attrs.items() if k not in ("bc_time_method", "bc_time_policy")})
+    })
+    assert "bc_time_method" not in legacy.site_data["SYNTH"].attrs
+    with pytest.raises(ValueError, match="one boundary timing"):
+        assemble((_with_bc_time_method(channels[0], "mean_age"), legacy), prepared)
+    assemble((_with_bc_time_method(channels[0], "release_time"), legacy), prepared)
+
+
 def test_rejects_disagreeing_native_site_references(inputs):
     from openghg_inversions.inversion_data import SiteOptions
 
@@ -239,6 +268,7 @@ def test_declared_boundary_policy_survives_saved_product_replay(inputs, tmp_path
     for name in ("co2", "o2"):
         record = expected[name]["sites"]["SYNTH"]
         assert record["boundary_temporal_provenance"] == declared[name]
+        assert record["bc_time_method"] == "release_time"
         assert record["selected_surface_inputs"]["sources"].keys() == _example.SOURCE_STATE[name].keys()
     path = tmp_path / f"prepared.{extension}"
     prepared.save(path)

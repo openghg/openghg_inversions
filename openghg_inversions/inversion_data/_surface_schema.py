@@ -24,13 +24,15 @@ def _coordinate_view(dataset: xr.Dataset) -> xr.Dataset:
 
 
 def _footprint_schema_options(
-    dataset: xr.Dataset, *, mode: str, particle_locations: bool
+    dataset: xr.Dataset, *, mode: str, particle_locations: bool, particle_ages: bool = False,
 ) -> dict[str, object]:
     resolved = mode == "time_resolved"
     # PARIS selects the provider's fp_time_resolved/fp_residual structural
     # schema, independently of which producer supplied the footprint.
     return {
         "particle_locations": particle_locations,
+        # OpenGHG's short-lifetime footprint schema adds mean_age_particles_[nesw].
+        "short_lifetime": particle_ages,
         "time_resolved": resolved,
         "source_format": "PARIS" if resolved and "fp_HiTRes" not in dataset else None,
     }
@@ -46,16 +48,21 @@ def validate_surface_inputs(
     species: str,
     boundary_data: xr.Dataset | None,
     observation_variable: str = "mf",
+    particle_ages: bool = False,
 ) -> None:
     """Check raw-input variable, dimension and dtype metadata without execution.
 
     Only the selected primary variable is renamed in the temporary provider
     view. Units, alignment and scientific coverage remain with their owning steps.
+    ``particle_ages`` additionally requires ``mean_age_particles_n/e/s/w`` in
+    site transport (OpenGHG's short-lifetime footprint schema), as needed by
+    mean-age boundary timing.
     """
     _validate_surface_transport(
         observations, site_footprint_data, footprint_data, transport=transport,
         species=species, particle_locations=boundary_data is not None,
         observation_variable=observation_variable,
+        particle_ages=particle_ages and boundary_data is not None,
     )
     _validate_surface_forcing(flux_data, boundary_data=boundary_data)
 
@@ -69,6 +76,7 @@ def _validate_surface_transport(
     species: str,
     particle_locations: bool,
     observation_variable: str,
+    particle_ages: bool = False,
 ) -> None:
     """Validate raw observation/transport metadata before role conversion and alignment."""
     context = "observations"
@@ -84,7 +92,8 @@ def _validate_surface_transport(
         Footprints.validate_data(
             _coordinate_view(site_footprint_data),
             **_footprint_schema_options(
-                site_footprint_data, mode=site_mode, particle_locations=particle_locations
+                site_footprint_data, mode=site_mode, particle_locations=particle_locations,
+                particle_ages=particle_ages,
             ),
         )
         for source, dataset in footprint_data.items():
