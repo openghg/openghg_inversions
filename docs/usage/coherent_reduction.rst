@@ -97,14 +97,28 @@ and site metadata. Load the canonical inputs from a checkpoint produced by
 the :doc:`rhime` workflow::
 
    from openghg_inversions.inversion_data import PreparedInputs
+   from openghg_inversions.models.fixed_ou import fixed_ou_mismatch_covariance
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
 
    canonical_inputs = PreparedInputs.load("base-prepared-inputs.zarr")
-   co2_inputs = prepare_co2_inputs(canonical_inputs, reduction)
+   observations = canonical_inputs.inv_inputs
+   reference = fixed_ou_mismatch_covariance(
+       observations["mf"], observations["mf_error"], fixed_site_amplitudes=2.0, amplitude_units="ppm",
+   )
+   co2_inputs = prepare_co2_inputs(
+       canonical_inputs,
+       reduction,
+       reference_covariance=reference,
+   )
 
 The returned
-:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact uses at most
-512 low-rank modes by default, capped at the observation count. Pass
+:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact uses a
+low-rank-plus-diagonal representation by default, with the rank chosen from the
+unresolved covariance's whitened spectrum
+(:class:`~openghg_inversions.observation_error.WhitenedRankRule`; see
+:doc:`co2_models`) and capped at the observation count. The rule needs a
+reference mismatch covariance chosen by the caller, here an independent 2 ppm
+amplitude on top of the reported observation error. Pass
 ``aggregation_error_rank=None`` to keep
 ``reduction.unresolved_observation_covariance`` as an exact dense aggregation
 covariance. The artifact records one representation, and the CO2 runners use
@@ -112,8 +126,9 @@ it without a separate mode argument.
 This handoff does not alter the prepared-input contracts of the standard,
 or multisector paths.
 
-For larger cases, request an explicit low-rank-plus-diagonal (LRPD) rank at the
-handoff::
+For benchmarking, request an explicit low-rank-plus-diagonal (LRPD) rank at the
+handoff. With a ``reference_covariance``, preparation warns when it is below
+the whitened-spectrum rule rank::
 
    co2_inputs = prepare_co2_inputs(
        canonical_inputs,
@@ -124,17 +139,24 @@ handoff::
 This factorization is downstream of coherent reduction: it does not make the
 reduction approximate or change the retained prior and effective operator.
 Let :math:`n` be the observation count and :math:`r` the retained rank. The
-current preparation path first materializes the complete dense
-:math:`n \times n` covariance and computes a full dense eigendecomposition,
-requiring :math:`O(n^2)` peak storage and :math:`O(n^3)` decomposition work.
+current preparation path materializes the complete dense :math:`n \times n`
+covariance and computes a full dense eigendecomposition. When a
+``reference_covariance`` is also supplied, it first materializes the dense
+reference, factorizes it and computes the dense whitened eigenvalues; this runs
+for an integer rank too, so the override is checked against the rule and
+recorded. A bare integer rank, as in the example above, skips the reference,
+the whitened eigenvalues and the rank-selection record. These steps are
+:math:`O(n^3)` and need :math:`O(n^2)` peak storage.
 The saved factor and diagonal use :math:`O(nr+n)` storage. For an ordinary
 diagonal-plus-factor likelihood, Woodbury evaluation uses
 :math:`O(nr^2+r^3)` work. Reducing :math:`r` therefore shrinks the artifact and
 downstream structured-likelihood work; it does not make preparation
 matrix-free or avoid the dense eigendecomposition.
 
-The default 512-mode cap is not an adequacy claim; selecting or overriding the
-LRPD rank remains a caller-owned numerical and scientific decision. LRPD
+The default rank rule is a screening heuristic, not an adequacy claim. The
+rank it selects depends on the reference covariance, and choosing the
+reference or overriding the rank remains a caller-owned numerical and
+scientific decision. LRPD
 preparation preserves the dense covariance diagonal up to accepted roundoff
 and diagonal-tail clipping, reported by ``diagonal_preservation_error``. It
 does not automatically certify that a rank is adequate for a particular

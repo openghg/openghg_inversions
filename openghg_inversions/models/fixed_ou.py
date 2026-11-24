@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
+import json
 import math
 from typing import Any, cast
 
@@ -21,7 +22,9 @@ from scipy.linalg import cho_solve, eigh, solve_triangular
 from scipy.linalg.lapack import dpocon
 from scipy.sparse import csr_matrix
 
-from openghg_inversions.array_ops import expand_mapping
+from openghg_inversions._labelled_matrices import matrix_column_dim, square_matrix
+from openghg_inversions.array_ops import expand_mapping, materialize_together
+from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.models.components import add_model_data
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import (
@@ -557,9 +560,6 @@ def prepare_fixed_ou_low_rank(
     factor_value = _matrix(factor, "factor")
     if factor_value.shape[0] != n_observation:
         raise ValueError("factor must have one row per observation.")
-    time_hours = _time_hours(observation_times)
-    if time_hours.shape != (n_observation,):
-        raise ValueError("observation_times must have one value per observation.")
     group_index = _group_index(site_index, n_observation)
     n_site = int(group_index.max()) + 1
     labels = _site_labels(site_labels, n_site)
@@ -574,16 +574,9 @@ def prepare_fixed_ou_low_rank(
     transformed_factor = np.empty_like(factor_value)
     mode_start = 0
     base_logdet = 0.0
-    for site in range(n_site):
-        indices = np.flatnonzero(group_index == site).astype(np.int64)
-        times = time_hours[indices]
-        if np.unique(times).size != times.size:
-            raise ValueError(
-                f"Observation times must be unique within site {labels[site]!r}."
-            )
-        lag_hours = np.abs(times[:, None] - times[None, :])
-        correlation = np.exp(-lag_hours / tau_by_site[site])
-        correlation = cast(FloatArray, (correlation + correlation.T) * 0.5)
+    for site, indices, correlation in _ou_correlation_blocks(
+        observation_times, group_index, tau_by_site, labels
+    ):
         try:
             correlation_cholesky = np.linalg.cholesky(correlation)
         except np.linalg.LinAlgError as error:
@@ -643,7 +636,27 @@ def prepare_fixed_ou_low_rank(
     )
 
 
+def _ou_correlation_blocks(
+    observation_times: ArrayLike,
+    site_index: IntArray,
+    tau_by_site: FloatArray,
+    site_labels: tuple[str, ...],
+) -> Iterator[tuple[int, IntArray, FloatArray]]:
+    """Yield each fixed-OU correlation block with its site and original observation rows."""
+    time_hours = _time_hours(observation_times)
+    if time_hours.shape != site_index.shape:
+        raise ValueError("observation_times must have one value per observation.")
+    for site, label in enumerate(site_labels):
+        indices = np.flatnonzero(site_index == site).astype(np.int64)
+        times = time_hours[indices]
+        if np.unique(times).size != times.size:
+            raise ValueError(f"Observation times must be unique within site {label!r}.")
+        lag_hours = np.abs(times[:, None] - times[None, :])
+        yield site, indices, np.exp(-lag_hours / tau_by_site[site])
+
+
 def _time_hours(value: ArrayLike) -> FloatArray:
+    """Convert datetime or numeric-hour observations to finite hour values."""
     array = np.asarray(value)
     if array.ndim != 1:
         raise ValueError(f"observation_times must be one-dimensional, got {array.shape}.")
@@ -736,12 +749,131 @@ def _site_values(
         raise ValueError(f"{name} must contain finite, {qualifier} values.")
     if isinstance(value, Mapping):
         assert coordinate is not None
+        if not value:
+            raise ValueError(f"{name} site mapping must include the observed sites.")
         values = np.asarray(expand_mapping(value, coordinate).values, dtype=np.float64)
     if values.ndim == 0:
         values = np.full(n_site, values.item(), dtype=np.float64)
     elif values.shape != (n_site,):
         raise ValueError(f"{name} must be scalar or have shape {(n_site,)}, got {values.shape}.")
     return cast(FloatArray, values.copy())
+
+
+def fixed_ou_mismatch_covariance(
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    *,
+    fixed_site_amplitudes: float | Mapping[str, float],
+    tau_hours: float | Mapping[str, float] | None = None,
+    amplitude_units: str | None = None,
+) -> xr.DataArray:
+    """Evaluate the reported-error and site mismatch covariance at fixed values.
+
+    Use this dense evaluation as a rank reference or to check the fixed-OU
+    likelihood. Aggregation error enters the likelihood separately. Supply a
+    reported-error vector that includes any additional independent white noise
+    used in the reference.
+
+    Args:
+        observations: Indexed observation axis with mole-fraction units and
+            a site coordinate. OU also requires observation-aligned times,
+            either datetime values or numeric hours.
+        observation_error: Independent standard deviations on the same axis
+            and in the same units as the observations.
+        fixed_site_amplitudes: Non-negative mismatch standard deviations,
+            supplied as one value or a mapping covering the observed sites.
+        tau_hours: Positive OU time scale in hours, scalar or by site.
+            Omit for independent mismatch with the same site amplitudes.
+        amplitude_units: Units of the amplitudes. Omit to use observation units.
+
+    Returns:
+        Dense labelled covariance in squared observation units, with the
+        supplied and resolved parameters in a JSON description attribute.
+
+    Raises:
+        ValueError: If observation labels, units, errors or settings are invalid.
+    """
+    site = observations.coords.get("site")
+    if observations.ndim != 1 or site is None or site.dims != observations.dims:
+        raise ValueError("Mismatch covariance needs an observation-aligned 'site' coordinate.")
+    dim = str(observations.dims[0])
+    index = observations.indexes.get(dim)
+    error_index = observation_error.indexes.get(dim)
+    if observation_error.dims != (dim,) or index is None or error_index is None or not error_index.equals(index):
+        raise ValueError("Observation error must share the indexed observation axis.")
+
+    units = observations.attrs.get("units")
+    if amplitude_units is None:
+        amplitude_units = units
+    error_units = observation_error.attrs.get("units")
+    if not isinstance(units, str) or not units.strip():
+        raise ValueError("Observations must declare mole-fraction units.")
+    if not isinstance(amplitude_units, str) or not amplitude_units.strip():
+        raise ValueError("fixed_site_amplitudes must declare mole-fraction units.")
+    if not isinstance(error_units, str) or not error_units.strip():
+        raise ValueError("Observation error must declare mole-fraction units.")
+    observation_scale = mole_fraction_unit_scale(units, context="observations")
+    error_scale = mole_fraction_unit_scale(error_units, context="observation error")
+    if not np.isclose(error_scale, observation_scale, rtol=1e-12, atol=0.0):
+        raise ValueError("Observation error units must have the same numeric scale as observation units.")
+    amplitude_scale = mole_fraction_unit_scale(amplitude_units, context="fixed_site_amplitudes")
+
+    time = observations.coords.get("time")
+    if tau_hours is not None and (time is None or time.dims != (dim,)):
+        raise ValueError("Fixed-OU mismatch needs an observation-aligned 'time' coordinate.")
+    arrays: tuple[xr.DataArray, ...] = (observation_error, site)
+    if tau_hours is not None and time is not None:
+        arrays = (*arrays, time)
+    error, site, *times = materialize_together(*arrays, purpose="fixed mismatch covariance evaluation")
+    error_values = _vector(error.data, "observation_error")
+    if np.any(error_values < 0.0):
+        raise ValueError("observation_error must be non-negative.")
+
+    if "site" not in observations.xindexes:
+        observations = observations.assign_coords(site=site.variable)
+    alignment = SigmaAlignment.from_observations(observations)
+    site_coord = cast(xr.DataArray, alignment.site_labels)
+    labels = tuple(str(label) for label in site_coord.values)
+    site_index = np.asarray(alignment.site_index.values, dtype=np.int64)
+    amplitudes = _site_values(
+        fixed_site_amplitudes, len(labels), "fixed_site_amplitudes", positive=False, coordinate=site_coord
+    ) * (amplitude_scale / observation_scale)
+
+    values = np.diag(np.square(error_values))
+    amplitude_variance = np.square(amplitudes)
+    if tau_hours is None:
+        values.flat[:: values.shape[0] + 1] += amplitude_variance[site_index]
+    else:
+        tau = _site_values(tau_hours, len(labels), "tau_hours", positive=True, coordinate=site_coord)
+        for site, indices, correlation in _ou_correlation_blocks(times[0].data, site_index, tau, labels):
+            values[np.ix_(indices, indices)] += amplitude_variance[site] * correlation
+
+    description = {
+        "source": "fixed_ou_mismatch_covariance",
+        "reference_sd": _json_site_values(fixed_site_amplitudes),
+        "units": amplitude_units,
+        "tau_hours": None if tau_hours is None else _json_site_values(tau_hours),
+        "correlation": "independent" if tau_hours is None else "within-site OU",
+        "reference_sd_observation_units_by_site": dict(zip(labels, amplitudes.tolist(), strict=True)),
+        "observation_error": "independent observation-error variance included",
+        "observation_error_sd_min": float(error_values.min()),
+        "observation_error_sd_median": float(np.median(error_values)),
+    }
+    return square_matrix(
+        values,
+        observations,
+        row_dim=dim,
+        column_dim=matrix_column_dim(dim, observations.dims),
+        name="reference_covariance",
+        attrs={"units": f"({units})**2", "description": json.dumps(description)},
+    )
+
+
+def _json_site_values(value: float | Mapping[str, float]) -> float | dict[str, float]:
+    """Return scalar or site-labelled settings as JSON-safe floats."""
+    if isinstance(value, Mapping):
+        return {str(site): float(item) for site, item in value.items()}
+    return float(value)
 
 
 def add_fixed_ou_gaussian_likelihood(

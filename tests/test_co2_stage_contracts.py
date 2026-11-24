@@ -132,6 +132,6 @@ def test_co2_preparation_allows_unknown_revision(tmp_path, monkeypatch):
         lambda name: SimpleNamespace(version="0.7.3", read_text=lambda name: None))
     canonical = _canonical_inputs()
     manifest = handoffs.prepare(canonical_inputs=canonical, reduction=_reduction(canonical),
-        output_dir=tmp_path / "prepare", **FACTS)
+        aggregation_error_rank=None, output_dir=tmp_path / "prepare", **FACTS)
     record = json.loads(manifest.read_text())
     assert record["provenance"] == {"version": "0.7.3", "revision": None, "dirty": None}
