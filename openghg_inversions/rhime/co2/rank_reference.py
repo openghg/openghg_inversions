@@ -37,8 +37,9 @@ class Co2ReferenceCovariance:
 
     Args:
         reference_sd: Positive reference amplitude: one value for every site
-            or a mapping covering every observation site. The default is an
-            independent 1 ppm.
+            or a mapping covering every observation site. There is no default:
+            the rank depends strongly on this choice, so the caller states it,
+            for example the run's floored or prior-median site amplitudes.
         units: Mole-fraction units of ``reference_sd``, converted to the
             observation units.
         tau_hours: Optional positive OU time scale in hours: one value or a
@@ -49,7 +50,7 @@ class Co2ReferenceCovariance:
         ValueError: If a value is invalid.
     """
 
-    reference_sd: float | Mapping[str, float] = 1.0
+    reference_sd: float | Mapping[str, float]
     units: str = "ppm"
     tau_hours: float | Mapping[str, float] | None = None
 

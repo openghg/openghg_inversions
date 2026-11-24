@@ -16,7 +16,7 @@ from typing import Any, Literal, TypeAlias
 import warnings
 
 import numpy as np
-from scipy.linalg import solve_triangular
+from scipy.linalg import cho_factor, cho_solve, solve_triangular
 import xarray as xr
 
 from openghg_inversions._linalg import cholesky_with_condition
@@ -489,7 +489,9 @@ def _prepare_whitened_low_rank_aggregation_error(
     Returns:
         The low-rank approximation at the chosen rank, as from
         :func:`prepare_low_rank_aggregation_error`, and a JSON-safe record of
-        the reference description, criteria, counts and dropped-mode KL.
+        the reference description, criteria, counts, the spectral
+        dropped-mode KL and the KL of the stored representation at
+        :math:`R_0`.
 
     Raises:
         ValueError: If coordinates or values are invalid, :math:`R_0` is not
@@ -518,7 +520,54 @@ def _prepare_whitened_low_rank_aggregation_error(
     approximation = _low_rank_approximation(
         covariance, values, rank=rank, roundoff_tolerance=tolerance, output_dim=output_dim
     )
-    return approximation, {"reference_covariance": description, **selection}
+    stored = approximation.aggregation_error
+    assert stored.factor is not None and stored.diagonal_variance is not None
+    stored_kl = _stored_representation_kl(
+        values,
+        np.asarray(reference_covariance, dtype=float),
+        np.asarray(stored.factor.values, dtype=float),
+        np.asarray(stored.diagonal_variance.values, dtype=float),
+    )
+    n = values.shape[0]
+    return approximation, {
+        "reference_covariance": description,
+        **selection,
+        "stored_representation_kl": stored_kl,
+        "stored_representation_kl_per_observation": stored_kl / n,
+        "stored_representation_kl_scope": (
+            "KL(N(0, R0 + A) || N(0, R0 + F F^T + diag(d))) for the stored factor F (leading eigenmodes of A) "
+            "and diagonal tail d, at the reference covariance R0"
+        ),
+    }
+
+
+def _stored_representation_kl(
+    values: np.ndarray,
+    reference_covariance: np.ndarray,
+    factor: np.ndarray,
+    diagonal: np.ndarray,
+) -> float:
+    r"""Return the KL divergence of the stored LRPD representation at the reference.
+
+    Computes :math:`\mathrm{KL}(N(0, R_0 + A)\,\|\,N(0, R_0 + A_s))` with
+    :math:`A_s = F F^\top + \mathrm{diag}(d)`, as
+    :math:`\tfrac12[\mathrm{tr}((R_0 + A_s)^{-1}(A - A_s)) + \log|R_0 + A_s| - \log|R_0 + A|]`.
+    Both totals are positive definite because :math:`R_0` is and :math:`A`
+    and :math:`A_s` are positive semidefinite. Cost is two dense Cholesky
+    factorizations and one dense solve, with three extra ``n x n`` arrays.
+    """
+    stored = factor @ factor.T
+    stored[np.diag_indices_from(stored)] += diagonal
+    difference = values - stored
+    stored += reference_covariance
+    exact = stored + difference
+    exact_factor = cho_factor(exact, lower=True, overwrite_a=True, check_finite=False)
+    logdet_exact = 2.0 * float(np.log(np.diag(exact_factor[0])).sum())
+    del exact, exact_factor
+    stored_factor = cho_factor(stored, lower=True, overwrite_a=True, check_finite=False)
+    logdet_stored = 2.0 * float(np.log(np.diag(stored_factor[0])).sum())
+    trace = float(np.trace(cho_solve(stored_factor, difference, overwrite_b=True, check_finite=False)))
+    return max(0.5 * (trace + logdet_stored - logdet_exact), 0.0)
 
 
 def _reference_cholesky(reference_covariance: np.ndarray, n_observation: int) -> np.ndarray:

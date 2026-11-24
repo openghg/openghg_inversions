@@ -95,8 +95,8 @@ def run_co2(
     :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`:
     a :class:`~openghg_inversions.observation_error.WhitenedRankRule` (the
     default), an integer override, or ``None`` for exact storage. So does
-    ``reference_covariance``, the rank rule's reference: ``None`` for the
-    default, a :class:`~openghg_inversions.rhime.co2.Co2ReferenceCovariance`,
+    ``reference_covariance``, the rank rule's reference, which the rule
+    requires: a :class:`~openghg_inversions.rhime.co2.Co2ReferenceCovariance`
     or a labelled covariance in the canonical observation order.
 
     Returns:

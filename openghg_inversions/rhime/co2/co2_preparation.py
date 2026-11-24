@@ -40,6 +40,7 @@ from openghg_inversions.observation_error import (
     LOW_RANK_FACTOR,
     WhitenedRankRule,
     _prepare_whitened_low_rank_aggregation_error,
+    prepare_low_rank_aggregation_error,
     resolve_aggregation_error,
 )
 from openghg_inversions.serialization import open_datatree_loaded, save_datatree
@@ -531,7 +532,7 @@ _PREPARATION_AGGREGATION_KEYS = ("aggregation_error", "aggregation_error_rank_se
 
 
 def _rank_reference(
-    reference_covariance: Co2ReferenceCovariance | xr.DataArray | None,
+    reference_covariance: Co2ReferenceCovariance | xr.DataArray,
     *,
     unresolved: xr.DataArray,
     inputs: xr.Dataset,
@@ -552,8 +553,8 @@ def _rank_reference(
         The materialized unresolved covariance, the reference values in
         observation units squared, and the JSON-safe reference description.
     """
-    if reference_covariance is None or isinstance(reference_covariance, Co2ReferenceCovariance):
-        settings = Co2ReferenceCovariance() if reference_covariance is None else reference_covariance
+    if isinstance(reference_covariance, Co2ReferenceCovariance):
+        settings = reference_covariance
         observations = inputs["mf"]
         error = inputs["mf_error"]
         if error.dims != ("nmeasure",):
@@ -607,9 +608,9 @@ def prepare_co2_inputs(
     unresolved covariance. By default, the LRPD rank comes from the unresolved
     covariance's spectrum whitened by a reference mismatch covariance (see
     :class:`~openghg_inversions.observation_error.WhitenedRankRule`), keeping
-    every mode with whitened eigenvalue above 0.1. The default reference is
-    the reported observation error plus an independent 1 ppm amplitude
-    (:class:`~openghg_inversions.rhime.co2.Co2ReferenceCovariance`). ``None`` stores the
+    every mode with whitened eigenvalue above 0.1. The rule needs a
+    ``reference_covariance`` chosen by the caller; there is no universal
+    default. ``None`` stores the
     unresolved covariance exactly; ranks larger than the observation count are
     capped at that count, and the actual factor width may be smaller when the
     covariance has lower numerical rank.
@@ -636,9 +637,11 @@ def prepare_co2_inputs(
         aggregation_error_rank: Whitened-spectrum rank rule (threshold, KL
             budget and optional explicit rank), defaulting to
             ``WhitenedRankRule()``. A positive integer is an explicit rank for
-            benchmarking, equivalent to ``WhitenedRankRule(rank=...)``: the
-            spectrum at ``reference_covariance`` is still recorded, with a
-            ``UserWarning`` when the rank is below the rule rank. Values
+            benchmarking. With a ``reference_covariance`` it is equivalent to
+            ``WhitenedRankRule(rank=...)``: the spectrum is still computed and
+            recorded, with a ``UserWarning`` when the rank is below the rule
+            rank. Without one, the rank is used as given and no rank
+            selection is recorded. Values
             larger than the observation count are capped at that count; the
             actual factor width is further limited by numerical positive
             rank. Pass ``None`` to store the exact dense covariance.
@@ -648,8 +651,8 @@ def prepare_co2_inputs(
             description, the count above the threshold, the chosen rank and
             the dropped-mode KL.
         reference_covariance: Reference mismatch covariance :math:`R_0` for
-            the rank rule. ``None`` uses ``Co2ReferenceCovariance()``;
-            pass a :class:`~openghg_inversions.rhime.co2.Co2ReferenceCovariance`
+            the rank rule, required with a ``WhitenedRankRule``. Pass a
+            :class:`~openghg_inversions.rhime.co2.Co2ReferenceCovariance`
             with the run's floored or prior-median site amplitudes and OU
             time scales where known, or a labelled observation-by-observation
             covariance whose rows and columns follow the canonical
@@ -772,6 +775,13 @@ def prepare_co2_inputs(
             raise TypeError("reference_covariance must be a Co2ReferenceCovariance, a labelled DataArray or None.")
         if rank_rule is None:
             raise ValueError("reference_covariance applies only to low-rank storage, not aggregation_error_rank=None.")
+    elif isinstance(aggregation_error_rank, WhitenedRankRule):
+        raise ValueError(
+            "The whitened rank rule needs reference_covariance; there is no universal reference mismatch "
+            "covariance. Pass Co2ReferenceCovariance(reference_sd=...) with the run's floored or prior-median "
+            "site amplitudes (and tau_hours where known), or a labelled covariance. Alternatively pass an "
+            "explicit integer aggregation_error_rank, or None to store the covariance exactly."
+        )
 
     target_representation_dim = "nmeasure_cov" if rank_rule is None else "agg_rank"
     mapped = _without_aggregation_payload(
@@ -835,6 +845,15 @@ def prepare_co2_inputs(
             ),
             "nmeasure",
         )
+    elif reference_covariance is None:
+        # An explicit integer rank without a reference is a plain LRPD request with nothing to screen against.
+        assert isinstance(aggregation_error_rank, int)
+        approximation = prepare_low_rank_aggregation_error(
+            unresolved,
+            rank=min(aggregation_error_rank, unresolved.sizes[observation_dim]),
+            output_dim=observation_dim,
+            covariance_dim=observation_covariance_dim,
+        )
     else:
         unresolved, reference, reference_description = _rank_reference(
             reference_covariance,
@@ -852,6 +871,7 @@ def prepare_co2_inputs(
             output_dim=observation_dim,
             covariance_dim=observation_covariance_dim,
         )
+    if approximation is not None:
         selected = approximation.aggregation_error
         assert selected.factor is not None and selected.diagonal_variance is not None
         factor_dim = str(selected.factor.dims[0])
@@ -892,7 +912,8 @@ def prepare_co2_inputs(
     )
     if approximation is not None:
         metadata["aggregation_error"] = dict(approximation.diagnostics)
-        metadata["aggregation_error_rank_selection"] = rank_selection
+        if rank_selection:
+            metadata["aggregation_error_rank_selection"] = rank_selection
     return Co2PreparedInputs(
         PreparedInputs(
             inv_inputs=mapped,

@@ -232,7 +232,7 @@ flux basis for separate fields):
 
    from openghg_inversions.basis._helpers import bc_sensitivity
    from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
-   from openghg_inversions.rhime.co2 import prepare_co2_inputs
+   from openghg_inversions.rhime.co2 import Co2ReferenceCovariance, prepare_co2_inputs
    from openghg_inversions.rhime.preparation import filter_observations, prepare_observation_errors
 
    selected, retained_selectors = filter_observations(
@@ -245,7 +245,10 @@ flux basis for separate fields):
        basis_functions=chosen_flux_basis, averaging_period="1h",
    )
    # The reduction must describe these same observations, states and sources.
-   prepared = prepare_co2_inputs(canonical, coherent_reduction)
+   # The low-rank rank rule needs a reference mismatch covariance chosen for the run.
+   prepared = prepare_co2_inputs(
+       canonical, coherent_reduction, reference_covariance=Co2ReferenceCovariance(reference_sd=2.0),
+   )
    prepared.save("centered-co2.nc")
 
 Selection filters preserve aligned operands and scalar references. Preparation

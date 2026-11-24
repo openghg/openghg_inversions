@@ -108,7 +108,7 @@ def test_independent_reference_spectrum_matches_scaled_covariance() -> None:
     """Without OU the reference is diagonal and the spectrum matches the scaled covariance."""
     covariance, sites, hours, error = _smooth_case()
 
-    built = _reference(Co2ReferenceCovariance(), sites, hours, error)
+    built = _reference(Co2ReferenceCovariance(reference_sd=1.0), sites, hours, error)
 
     np.testing.assert_array_equal(built, np.diag(error**2 + 1.0))
     expected = eigh(covariance, np.diag(error**2 + 1.0), eigvals_only=True)[::-1]
@@ -215,9 +215,11 @@ def test_co2_reference_names_missing_sites_and_coordinates() -> None:
     with pytest.raises(ValueError, match=r"reference_sd site mapping is missing observation site\(s\): \['TAC'\]"):
         Co2ReferenceCovariance(reference_sd={"MHD": 1.0}).covariance(observations, observation_error)
     with pytest.raises(ValueError, match=r"tau_hours site mapping is missing observation site\(s\): \['TAC'\]"):
-        Co2ReferenceCovariance(tau_hours={"MHD": 5.0}).covariance(observations, observation_error)
+        Co2ReferenceCovariance(reference_sd=1.0, tau_hours={"MHD": 5.0}).covariance(observations, observation_error)
     with pytest.raises(ValueError, match="'time'"):
-        Co2ReferenceCovariance(tau_hours=5.0).covariance(observations.drop_vars("time"), observation_error)
+        Co2ReferenceCovariance(reference_sd=1.0, tau_hours=5.0).covariance(
+            observations.drop_vars("time"), observation_error
+        )
 
 
 def test_rank_selection_on_synthetic_spectrum() -> None:
@@ -302,8 +304,8 @@ def test_rule_carries_only_rank_criteria() -> None:
         {"reference_sd": 0.0},
         {"reference_sd": {"MHD": -1.0}},
         {"reference_sd": {}},
-        {"tau_hours": 0.0},
-        {"units": ""},
+        {"reference_sd": 1.0, "tau_hours": 0.0},
+        {"reference_sd": 1.0, "units": ""},
     ],
 )
 def test_co2_reference_rejects_invalid_settings(kwargs: dict[str, object]) -> None:
@@ -324,7 +326,14 @@ def test_integrated_path_matches_standalone_selection_and_factorization() -> Non
     )
     standalone = prepare_low_rank_aggregation_error(_labelled(covariance), rank=rank)
 
-    assert record == {"reference_covariance": {"source": "test"}, **selection}
+    stored = approximation.aggregation_error
+    dense_stored = stored.factor.values @ stored.factor.values.T + np.diag(stored.diagonal_variance.values)
+    expected_kl = _gaussian_kl(reference + covariance, reference + dense_stored)
+    assert {key: record[key] for key in selection} == selection
+    assert record["reference_covariance"] == {"source": "test"}
+    np.testing.assert_allclose(record["stored_representation_kl"], expected_kl, rtol=1e-8)
+    assert record["stored_representation_kl_per_observation"] == pytest.approx(expected_kl / covariance.shape[0])
+    assert record["stored_representation_kl"] > record["dropped_mode_kl"] > 0.0
     assert approximation.diagnostics == standalone.diagnostics
     xr.testing.assert_identical(approximation.aggregation_error.factor, standalone.aggregation_error.factor)
     with pytest.raises(ValueError, match="JSON-safe"):
@@ -359,12 +368,39 @@ def test_default_preparation_records_rank_selection_through_serialization() -> N
     assert settings["correlation"] == "within-site OU"
 
 
+def test_rank_rule_requires_a_caller_chosen_reference() -> None:
+    """There is no universal reference covariance, so the rule refuses to guess one."""
+    canonical = _canonical_inputs()
+    with pytest.raises(ValueError, match="needs reference_covariance"):
+        prepare_co2_inputs(canonical, _reduction(canonical))
+    with pytest.raises(TypeError, match="reference_sd"):
+        Co2ReferenceCovariance()  # type: ignore[call-arg]
+
+
+def test_explicit_rank_without_reference_is_used_as_given() -> None:
+    """A bare integer rank is a plain LRPD request: no screening, warning or selection record."""
+    canonical = _canonical_inputs()
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=1)
+
+    assert prepared.provenance["aggregation_error_rank"] == 1
+    assert "aggregation_error_rank_selection" not in prepared.provenance
+    assert prepared.inv_inputs.sizes["agg_rank"] == 1
+
+
 def test_explicit_preparation_rank_below_count_warns() -> None:
-    """An integer rank is an override checked against the default reference."""
+    """With a reference, an integer rank is an override checked against the rule."""
     canonical = _canonical_inputs()
 
     with pytest.warns(UserWarning, match="below the whitened-spectrum rule rank"):
-        prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=1)
+        prepared = prepare_co2_inputs(
+            canonical,
+            _reduction(canonical),
+            aggregation_error_rank=1,
+            reference_covariance=Co2ReferenceCovariance(reference_sd=1.0),
+        )
 
     selection = prepared.provenance["aggregation_error_rank_selection"]
     assert prepared.provenance["aggregation_error_rank"] == 1
@@ -430,7 +466,10 @@ def test_supplied_reference_is_checked_while_labelled() -> None:
         prepare_co2_inputs(canonical, _reduction(canonical), reference_covariance=np.eye(3))  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="only to low-rank storage"):
         prepare_co2_inputs(
-            canonical, _reduction(canonical), aggregation_error_rank=None, reference_covariance=Co2ReferenceCovariance()
+            canonical,
+            _reduction(canonical),
+            aggregation_error_rank=None,
+            reference_covariance=Co2ReferenceCovariance(reference_sd=1.0),
         )
 
 
@@ -444,13 +483,17 @@ def test_observation_error_units_are_checked_before_whitening(monkeypatch: pytes
 
     monkeypatch.setattr(co2_preparation, "_prepare_whitened_low_rank_aggregation_error", unreachable)
     with pytest.raises(ValueError, match="CO2 mf_error units"):
-        prepare_co2_inputs(canonical, _reduction(canonical))
+        prepare_co2_inputs(
+            canonical, _reduction(canonical), reference_covariance=Co2ReferenceCovariance(reference_sd=1.0)
+        )
 
 
 def test_dense_re_preparation_drops_inherited_rank_diagnostics() -> None:
     """Aggregation-error diagnostics belong to the preparation that wrote them."""
     canonical = _canonical_inputs()
-    low_rank = prepare_co2_inputs(canonical, _reduction(canonical))
+    low_rank = prepare_co2_inputs(
+        canonical, _reduction(canonical), reference_covariance=Co2ReferenceCovariance(reference_sd=1.0)
+    )
     assert "aggregation_error_rank_selection" in low_rank.provenance
 
     dense = prepare_co2_inputs(
@@ -511,7 +554,7 @@ def test_full_run_passes_the_supplied_reference(monkeypatch: pytest.MonkeyPatch)
         **_model(),
         "outputs": {"output_format": "none"},
     }
-    prepared = prepare_co2_inputs(canonical, _reduction(canonical))
+    prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None)
     monkeypatch.setattr(execution, "prepare_co2_inputs", capture)
     with pytest.raises(Reached):
         execution.run_co2(

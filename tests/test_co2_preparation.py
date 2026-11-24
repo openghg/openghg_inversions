@@ -18,7 +18,7 @@ from openghg_inversions._labelled_matrices import renamed_column_coordinates
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import PreparedInputs
-from openghg_inversions.rhime.co2 import Co2PreparedInputs, prepare_co2_inputs
+from openghg_inversions.rhime.co2 import Co2PreparedInputs, Co2ReferenceCovariance, prepare_co2_inputs
 from openghg_inversions.rhime.co2 import (
     co2_cached_sigma_runner,
     co2_runner,
@@ -203,7 +203,9 @@ def test_prepare_co2_inputs_default_rank_comes_from_whitened_spectrum() -> None:
     """The default LRPD rank is the whitened-spectrum count, capped at the observation count."""
     canonical = _canonical_inputs()
 
-    prepared = prepare_co2_inputs(canonical, _reduction(canonical))
+    prepared = prepare_co2_inputs(
+        canonical, _reduction(canonical), reference_covariance=Co2ReferenceCovariance(reference_sd=1.0)
+    )
 
     selection = prepared.provenance["aggregation_error_rank_selection"]
     assert prepared.provenance["aggregation_error_rank"] == "whitened_spectrum"
@@ -364,6 +366,7 @@ def test_prepare_co2_inputs_rejects_conflicting_projection_strategy() -> None:
         prepare_co2_inputs(
             canonical,
             reduction,
+            aggregation_error_rank=None,
             provenance={"projection_strategy": "different-strategy"},
         )
 

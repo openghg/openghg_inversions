@@ -97,17 +97,23 @@ and site metadata. Load the canonical inputs from a checkpoint produced by
 the :doc:`rhime` workflow::
 
    from openghg_inversions.inversion_data import PreparedInputs
-   from openghg_inversions.rhime.co2 import prepare_co2_inputs
+   from openghg_inversions.rhime.co2 import Co2ReferenceCovariance, prepare_co2_inputs
 
    canonical_inputs = PreparedInputs.load("base-prepared-inputs.zarr")
-   co2_inputs = prepare_co2_inputs(canonical_inputs, reduction)
+   co2_inputs = prepare_co2_inputs(
+       canonical_inputs,
+       reduction,
+       reference_covariance=Co2ReferenceCovariance(reference_sd=2.0),  # ppm
+   )
 
 The returned
 :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact uses a
 low-rank-plus-diagonal representation by default, with the rank chosen from the
 unresolved covariance's whitened spectrum
 (:class:`~openghg_inversions.observation_error.WhitenedRankRule`; see
-:doc:`co2_models`) and capped at the observation count. Pass
+:doc:`co2_models`) and capped at the observation count. The rule needs a
+reference mismatch covariance chosen by the caller, here an independent 2 ppm
+amplitude on top of the reported observation error. Pass
 ``aggregation_error_rank=None`` to keep
 ``reduction.unresolved_observation_covariance`` as an exact dense aggregation
 covariance. The artifact records one representation, and the CO2 runners use
@@ -116,7 +122,8 @@ This handoff does not alter the prepared-input contracts of the standard,
 or multisector paths.
 
 For benchmarking, request an explicit low-rank-plus-diagonal (LRPD) rank at the
-handoff. Preparation warns when it is below the whitened-spectrum rule rank::
+handoff. With a ``reference_covariance``, preparation warns when it is below
+the whitened-spectrum rule rank::
 
    co2_inputs = prepare_co2_inputs(
        canonical_inputs,

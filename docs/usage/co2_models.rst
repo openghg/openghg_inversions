@@ -1167,11 +1167,11 @@ The selected rank depends strongly on :math:`R_0`: larger amplitudes whiten
 more of :math:`A` away. The rank criteria live on
 :class:`~openghg_inversions.observation_error.WhitenedRankRule`
 (``aggregation_error_rank``); the reference is a separate
-``reference_covariance`` input. By default CO2 preparation builds it with
-:class:`~openghg_inversions.rhime.co2.Co2ReferenceCovariance`: an independent
-1 ppm amplitude. Pass the run's floored or prior-median site amplitudes and OU
-time scales when they are known, never zero. A site mapping must cover every
-site in the preparation::
+``reference_covariance`` input, which the rule requires. There is no
+universal default: choose it for the intended likelihood, for example with
+:class:`~openghg_inversions.rhime.co2.Co2ReferenceCovariance` and the run's
+floored or prior-median site amplitudes and OU time scales, never zero. A
+site mapping must cover every site in the preparation::
 
    from openghg_inversions.observation_error import WhitenedRankRule
    from openghg_inversions.rhime.co2 import Co2ReferenceCovariance, prepare_co2_inputs
@@ -1194,8 +1194,8 @@ units must be a squared mole-fraction unit such as ``(ppb)^2``; it is
 converted to the observation units. An optional ``description`` attribute (a
 JSON object or text) is recorded in provenance.
 :meth:`Co2ReferenceCovariance.covariance
-<openghg_inversions.rhime.co2.Co2ReferenceCovariance.covariance>` builds the
-default in exactly this form, and preparation treats built and supplied
+<openghg_inversions.rhime.co2.Co2ReferenceCovariance.covariance>` builds its
+reference in exactly this form, and preparation treats built and supplied
 references the same way: as one dense matrix that must be numerically
 positive definite. At about 5,300 observations this costs a few seconds and
 about 230 MB. ``run_co2``
@@ -1208,13 +1208,26 @@ as supplied and the amplitudes converted to observation units) together with the
 criteria, the count above the threshold, the chosen rank and the dropped-mode
 KL :math:`\tfrac12\sum_{i>k}[\mu_i - \log(1 + \mu_i)]`. That KL describes
 the whitened truncation at :math:`R_0` without the diagonal tail, not the
-stored representation. The rule is a screening heuristic, not a bound on
-posterior error: the rank it selects depends on the reference covariance and
-should be checked for the intended likelihood.
+stored representation, which keeps the leading ordinary eigenmodes of
+:math:`A` instead. ``stored_representation_kl`` is the KL of what is stored,
+:math:`\mathrm{KL}(N(0, R_0 + A)\,\|\,N(0, R_0 + F F^\top + \mathrm{diag}(d)))`
+at the same reference; it can be several times the spectral value, more so
+when :math:`R_0` differs strongly between sites. Computing it costs two more
+dense Cholesky factorizations and a dense solve. The rule is a screening
+heuristic, not a bound on posterior error: the rank it selects depends on the
+reference covariance and should be checked for the intended likelihood.
 
-An integer rank is an explicit override for benchmarking. The spectrum at the
-reference is still computed and recorded, and preparation issues a
-``UserWarning`` when the integer is below the rule rank::
+A large selected rank usually means the basis is too coarse for the data: the
+unresolved covariance :math:`A` is large compared with the noise, typically
+near strong sources or domain borders. Increasing the rank keeps the
+likelihood faithful but raises its cost roughly as :math:`O(n r^2)`; refining
+the basis there reduces :math:`A` itself.
+
+An integer rank is an explicit override for benchmarking. With a
+``reference_covariance``, the spectrum is still computed and recorded, and
+preparation issues a ``UserWarning`` when the integer is below the rule rank.
+Without one, the integer is used as given and no rank selection is
+recorded::
 
    prepared = prepare_co2_inputs(canonical_inputs, reduction, aggregation_error_rank=1024)
 
