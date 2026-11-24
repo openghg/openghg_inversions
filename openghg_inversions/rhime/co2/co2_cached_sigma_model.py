@@ -37,7 +37,7 @@ from openghg_inversions.models.components import (
     prepare_active_correlated_prior,
 )
 from openghg_inversions.models.coords import add_coords, registered_model
-from openghg_inversions.models.outer_flux import OuterStates
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.fixed_ou import (
     FixedOuLowRank,
     prepare_fixed_ou_low_rank,
@@ -305,7 +305,7 @@ def build_co2_cached_sigma_model(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
-    outer_flux: OuterStates | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_freq: str | None = None,
     offset_drop_first: bool = False,
@@ -354,8 +354,9 @@ def build_co2_cached_sigma_model(
         state_activity: Optional labelled active/fixed policy for retained flux
             states. Fixed values are dimensionless flux scalings.
         boundary: Resolved boundary component bound to this fit.
-        outer_flux: Optional outer states resolved on ``retained_prior``,
-            whose fixed outer states are held at their prior mean; see
+        outer_flux: Optional outer-flux choice, resolved here on
+            ``retained_prior``; its fixed outer states are held at their prior
+            mean. See
             :func:`~openghg_inversions.rhime.co2.co2_model.build_co2_model`.
         offset_prior: Optional prior for additive offsets. Its location and
             scale parameters use the observations' concentration units. When
@@ -382,9 +383,9 @@ def build_co2_cached_sigma_model(
             offset options are supplied without ``offset_prior``. Also raised
             for incompatible global-offset options.
     """
-    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, outer_flux, priors = dask_compute(
+    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, priors = dask_compute(
         *to_dense_tree((
-            (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, outer_flux,
+            (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary,
             {"amplitude": site_amplitude_prior, "offset": offset_prior},
         ))
     )
@@ -423,7 +424,7 @@ def _build_co2_cached_sigma_model(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
-    outer_flux: OuterStates | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_freq: str | None = None,
     offset_drop_first: bool = False,
@@ -461,7 +462,9 @@ def _build_co2_cached_sigma_model(
     )
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
     if outer_flux is not None:
-        activity = outer_flux.fix_states(activity)
+        # Resolve the choice on the prior this model samples, so the held
+        # states and the covariance check always refer to it.
+        activity = outer_flux.resolve_states(retained_prior).fix_states(activity)
     (
         prepared_flux,
         flux_active_design,
