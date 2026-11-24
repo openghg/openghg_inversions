@@ -292,20 +292,21 @@ artifact carries the country products:
    in the prepared artifact's ``country_functionals`` node (schema version 4)
    and summarizes them under ``provenance["country_functionals"]``. Only
    full-restriction products on the ``country_functional`` axis are accepted,
-   and their own :math:`C_\alpha` and :math:`H_\alpha` must equal the
-   artifact's ``alpha_prior_covariance`` and ``H``. Because
-   :math:`H_\alpha = H U_*`, this ties the products to the native observation
-   operator, which the :math:`Q m` and :math:`D` checks cannot. The node stores
-   a ``reduction_fingerprint`` of :math:`C_\alpha`, :math:`H_\alpha` and their
-   labels, and load verifies it. The unresolved covariance must be symmetric
-   positive semidefinite.
+   and their ``reduction_identity`` must equal the artifact's
+   :attr:`~openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.reduction_identity`,
+   the identity of its ``alpha_prior_covariance``, ``H`` and dense :math:`A`.
+   This ties the products to the native observation operator, which the
+   :math:`Q m` and :math:`D` checks cannot. The node stores the identity, and
+   load requires the restored artifact to reproduce it. The unresolved
+   covariance must be symmetric positive semidefinite.
 3. Replay (:func:`openghg_inversions.rhime.co2.handoffs.postprocess`, or
    :func:`~openghg_inversions.rhime.co2.execution.run_co2`) rebuilds each
    posterior draw's residual ``mf - model_mean`` and the fit's own
    :math:`(A + R)^{-1}` with
    :func:`~openghg_inversions.rhime.co2.co2_unresolved.co2_unresolved_conditioning`,
-   restricts the products to the requested countries, and labels country
-   outputs ``"complete_native"``. Without products they stay
+   restricts the products to the requested countries, passes the artifact's
+   reduction identity, and labels country outputs ``"complete_native"``. The
+   trace must carry the fitted model's ``<flux_scale>_is_active`` mask. Without products they stay
    ``"retained_state_conditional"``. Native-grid flux is unchanged.
 
 The products use the exact :math:`B_\perp`, so the joint covariance of the
@@ -319,8 +320,9 @@ fixed or inferred amplitudes, rebuild the fit's
 observation error, OU site index and time scales (numeric hours, or a
 timedelta), with each draw's amplitudes. Other likelihoods raise an error
 rather than claiming complete outputs. ``unresolved_conditioning`` records
-the :math:`A` and noise model as JSON. If a conditional-covariance eigenvalue
-is clipped below a relative :math:`-10^{-6}`, the complete label is refused.
+the :math:`A` and noise model as JSON. A conditional-covariance eigenvalue
+below the clipping tolerance raises (see above), so no complete label is
+reported.
 Country sector totals are summed from the same complete (country, source)
 draws. States marginalised at preparation are declared from
 ``state_information_marginalised`` when the artifact records it.

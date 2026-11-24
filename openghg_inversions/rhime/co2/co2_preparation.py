@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from hashlib import sha256
 from numbers import Integral
 import json
 from pathlib import Path
@@ -27,7 +26,11 @@ from openghg.util import (  # pyright: ignore[reportPrivateImportUsage, reportAt
 from openghg_inversions._labelled_matrices import coordinates_on_dims, square_matrix
 from openghg_inversions._serialization_codecs import _copy_json_mapping, _decode_json_mapping
 from openghg_inversions.array_ops import require_unique_index, same_index, validate_covariance_coordinates
-from openghg_inversions.coherent_reduction import CoherentGaussianReduction, NativeFunctionalProducts
+from openghg_inversions.coherent_reduction import (
+    CoherentGaussianReduction,
+    NativeFunctionalProducts,
+    reduction_identity,
+)
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.postprocessing.co2_flux_outputs import COUNTRY_FUNCTIONAL_DIM
@@ -52,7 +55,7 @@ from .co2_o2_preparation import Co2O2PreparedInputs
 CO2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_prepared_inputs"
 CO2_PREPARED_INPUTS_SCHEMA_VERSION = 4
 COUNTRY_FUNCTIONALS_NODE = "country_functionals"
-REDUCTION_FINGERPRINT = "reduction_fingerprint"
+REDUCTION_IDENTITY = "reduction_identity"
 # Relative tolerances for the persisted unresolved functional covariance.
 _SYMMETRY_TOLERANCE = 1e-10
 _PSD_TOLERANCE = 1e-8
@@ -300,11 +303,12 @@ class Co2PreparedInputs:
             axis, from the same coherent reduction. They let staged outputs
             report complete native country totals instead of retained-only
             ones. Their observation and state axes are this artifact's
-            ``nmeasure`` and retained-state axes. Their own ``C_alpha`` and
-            ``H_alpha`` must equal this artifact's ``alpha_prior_covariance``
-            and ``H``, which construction checks before rebinding the
-            products to the artifact's arrays. Products require the exact
-            dense aggregation-error covariance (``aggregation_error_mode``
+            ``nmeasure`` and retained-state axes. Their
+            ``reduction_identity`` must equal this artifact's
+            :attr:`reduction_identity`, which construction checks before
+            rebinding the products' ``C_alpha`` and ``H_alpha`` to the
+            artifact's arrays. Products require the exact dense
+            aggregation-error covariance (``aggregation_error_mode``
             ``"dense"``), because they use the exact unresolved covariance.
 
     Invariant: ``alpha_prior_covariance`` and ``H`` are the full-restriction
@@ -367,6 +371,25 @@ class Co2PreparedInputs:
         return self.rhime_inputs.inv_inputs
 
     @property
+    def reduction_identity(self) -> str:
+        """Return the identity of the coherent reduction this artifact stores.
+
+        It is :func:`~openghg_inversions.coherent_reduction.reduction_identity`
+        of ``alpha_prior_covariance``, ``H`` and the dense aggregation-error
+        covariance, which are the reduction's ``C_alpha``, ``H_alpha`` and
+        exact ``A``. Fits prepared from this artifact share it.
+
+        Raises:
+            ValueError: If the artifact stores a low-rank ``A``, which does
+                not identify the exact reduction.
+        """
+        if self.aggregation_error_mode != "dense":
+            raise ValueError(
+                "A low-rank CO2 artifact does not store the exact A that identifies its coherent reduction."
+            )
+        return _artifact_reduction_identity(self.inv_inputs)
+
+    @property
     def basis_functions(self) -> Any:
         """Return the retained basis object."""
         return self.rhime_inputs.basis_functions
@@ -407,9 +430,8 @@ class Co2PreparedInputs:
             ``country_functionals`` node. That node stores only the
             functional labels; its observation, state and covariance-column
             labels are restored from ``rhime_inputs`` on load. Its
-            ``reduction_fingerprint`` attribute hashes ``C_alpha``,
-            ``H_alpha`` and their state and observation labels, and load
-            requires the restored artifact to reproduce it.
+            ``reduction_identity`` attribute is the products' identity, which
+            the restored artifact must reproduce.
 
         Raises:
             ValueError: If the aggregation-error representation is invalid or
@@ -442,7 +464,7 @@ class Co2PreparedInputs:
         nodes = {"rhime_inputs": serializable.to_datatree()}
         if self.country_functionals is not None:
             payload = _country_functionals_dataset(self.country_functionals)
-            payload.attrs[REDUCTION_FINGERPRINT] = _reduction_fingerprint(self.inv_inputs)
+            payload.attrs[REDUCTION_IDENTITY] = self.country_functionals.reduction_identity
             nodes[COUNTRY_FUNCTIONALS_NODE] = xr.DataTree(payload)
         tree = xr.DataTree.from_dict(nodes)
         tree.attrs = {
@@ -490,12 +512,8 @@ class Co2PreparedInputs:
         rhime_inputs = PreparedInputs.from_datatree(cast(xr.DataTree, tree["rhime_inputs"]))
         country_functionals = None
         if COUNTRY_FUNCTIONALS_NODE in tree.children:
+            # Construction compares the stored identity with the restored artifact's.
             payload = cast(xr.DataTree, tree[COUNTRY_FUNCTIONALS_NODE]).to_dataset()
-            if payload.attrs.get(REDUCTION_FINGERPRINT) != _reduction_fingerprint(rhime_inputs.inv_inputs):
-                raise ValueError(
-                    "Serialized CO2 country_functionals were computed for a different coherent reduction "
-                    "(C_alpha, H_alpha or their labels differ); prepare again."
-                )
             country_functionals = _country_functionals_from_dataset(payload, rhime_inputs.inv_inputs)
         prepared = cls(
             rhime_inputs,
@@ -546,13 +564,14 @@ def _bound_country_functionals(
 ) -> NativeFunctionalProducts:
     """Validate country functional products against the artifact and rebind ``C_alpha`` and ``H_alpha``.
 
-    The products must carry the artifact's own reduction: their ``C_alpha``
-    and ``H_alpha`` must equal ``alpha_prior_covariance`` and ``H``, labels
-    and values. ``H_alpha = H U_*`` ties them to the native observation
-    operator, which neither ``Q m`` nor ``D`` depends on. Only then are the
-    artifact's arrays reused instead of second copies. The unresolved
-    covariance must be symmetric positive semidefinite, and units must be
-    consistent with one functional unit and the observation units.
+    The products must come from the artifact's own reduction: their
+    ``reduction_identity`` must equal the identity of
+    ``alpha_prior_covariance``, ``H`` and the dense ``A``. That identity
+    depends on the native observation operator, which neither ``Q m`` nor
+    ``D`` does. Only then are the artifact's arrays reused instead of second
+    copies. The unresolved covariance must be symmetric positive
+    semidefinite, and units must be consistent with one functional unit and
+    the observation units.
     """
     if not isinstance(products, NativeFunctionalProducts):
         raise TypeError("CO2 country_functionals must be NativeFunctionalProducts.")
@@ -598,7 +617,11 @@ def _bound_country_functionals(
     for name in _COUNTRY_FUNCTIONAL_PAYLOAD:
         if not np.isfinite(np.asarray(getattr(products, name).values)).all():
             raise ValueError(f"CO2 country {name} must be finite.")
-    _require_same_reduction(products, inputs, state_dim=state_dim)
+    if products.reduction_identity != _artifact_reduction_identity(inputs):
+        raise ValueError(
+            "CO2 country functional products were computed for a different coherent reduction "
+            "(native observation operator, covariance or restriction); prepare again."
+        )
     _require_psd(np.asarray(covariance.values, dtype=np.float64))
     _require_functional_units(products, str(inputs["mf"].attrs["units"]))
     return replace(
@@ -606,39 +629,6 @@ def _bound_country_functionals(
         retained_covariance=inputs["alpha_prior_covariance"],
         effective_observation_operator=inputs["H"],
     )
-
-
-def _require_same_reduction(products: NativeFunctionalProducts, inputs: xr.Dataset, *, state_dim: str) -> None:
-    """Require the products' ``C_alpha`` and ``H_alpha`` to be the artifact's, labels and values."""
-    covariance = products.retained_covariance
-    operator = products.effective_observation_operator
-    expected_covariance = inputs["alpha_prior_covariance"]
-    expected_operator = inputs["H"].transpose("nmeasure", state_dim)
-    state_index = inputs.indexes[state_dim]
-    if (
-        covariance.ndim != 2
-        or not same_index(covariance.indexes[str(covariance.dims[0])], state_index)
-        # Column levels carry renamed copies of the state level names.
-        or not covariance.indexes[str(covariance.dims[1])].equals(state_index)
-    ):
-        raise ValueError("CO2 country functional products carry C_alpha for different retained states.")
-    if (
-        operator.ndim != 2
-        or not same_index(operator.indexes[str(operator.dims[0])], inputs.indexes["nmeasure"])
-        or not same_index(operator.indexes[str(operator.dims[1])], state_index)
-    ):
-        raise ValueError("CO2 country functional products carry H_alpha for different observations or states.")
-    for name, actual, expected in (
-        ("C_alpha", covariance.values, expected_covariance.values),
-        ("H_alpha", operator.values, expected_operator.values),
-    ):
-        actual = np.asarray(actual, dtype=np.float64)
-        expected = np.asarray(expected, dtype=np.float64)
-        scale = float(np.max(np.abs(expected), initial=0.0))
-        if actual.shape != expected.shape or np.max(np.abs(actual - expected), initial=0.0) > 1e-12 * scale:
-            raise ValueError(
-                f"CO2 country functional products were computed for a different coherent reduction ({name} differs)."
-            )
 
 
 def _require_psd(covariance: np.ndarray) -> None:
@@ -664,21 +654,14 @@ def _require_functional_units(products: NativeFunctionalProducts, observation_un
         _require_equivalent_units(array.attrs.get("units"), expected, name=f"CO2 country {name}")
 
 
-def _reduction_fingerprint(inputs: xr.Dataset) -> str:
-    """Hash ``C_alpha``, ``H_alpha`` and their state and observation labels."""
+def _artifact_reduction_identity(inputs: xr.Dataset) -> str:
+    """Return the reduction identity of a dense CO2 artifact's ``C_alpha``, ``H_alpha`` and ``A``."""
     state_dim = str(inputs["alpha_prior_mean"].dims[0])
-    digest = sha256()
-    for dim in (state_dim, "nmeasure"):
-        index = inputs.indexes[dim]
-        digest.update(json.dumps([str(name) for name in index.names]).encode())
-        labels = index.to_frame(index=False) if isinstance(index, pd.MultiIndex) else index
-        digest.update(pd.util.hash_pandas_object(labels, index=False).to_numpy().tobytes())
-    for array in (
-        inputs["alpha_prior_covariance"],
-        inputs["H"].transpose("nmeasure", state_dim),
-    ):
-        digest.update(np.ascontiguousarray(np.asarray(array.values, dtype=np.float64)).tobytes())
-    return f"sha256:{digest.hexdigest()}"
+    return reduction_identity(
+        retained_covariance=inputs["alpha_prior_covariance"],
+        effective_observation_operator=inputs["H"].transpose("nmeasure", state_dim),
+        unresolved_observation_covariance=inputs[AGGREGATION_ERROR_COVARIANCE],
+    )
 
 
 def _country_functionals_dataset(products: NativeFunctionalProducts) -> xr.Dataset:
@@ -709,6 +692,8 @@ def _country_functionals_from_dataset(dataset: xr.Dataset, inputs: xr.Dataset) -
     missing = [name for name in _COUNTRY_FUNCTIONAL_PAYLOAD if name not in dataset]
     if missing:
         raise ValueError(f"Serialized CO2 country_functionals are missing {missing!r}; prepare again.")
+    if not str(dataset.attrs.get(REDUCTION_IDENTITY, "")).startswith("sha256:"):
+        raise ValueError("Serialized CO2 country_functionals carry no reduction_identity; prepare again.")
     if COUNTRY_FUNCTIONAL_DIM in dataset.coords and "compress" in dataset[COUNTRY_FUNCTIONAL_DIM].attrs:
         dataset = decode_cf_multiindexes(dataset, (COUNTRY_FUNCTIONAL_DIM,))
     state_dim = str(inputs["alpha_prior_mean"].dims[0])
@@ -747,6 +732,7 @@ def _country_functionals_from_dataset(dataset: xr.Dataset, inputs: xr.Dataset) -
         ),
         retained_covariance=inputs["alpha_prior_covariance"],
         effective_observation_operator=inputs["H"],
+        reduction_identity=str(dataset.attrs.get(REDUCTION_IDENTITY, "")),
     )
 
 
@@ -768,21 +754,14 @@ def _prepared_country_functionals(
         )
     if products.state_dim != reduced_state_dim or products.observation_dim != observation_dim:
         raise ValueError("Country functional products use different axes from the coherent reduction.")
-    # Keep the products' own C_alpha and H_alpha, relabelled: artifact
-    # construction compares them with the reduction mapped into H and
-    # alpha_prior_covariance before rebinding.
-    covariance = products.retained_covariance
+    # C_alpha and H_alpha are rebound to the artifact's arrays at
+    # construction, after its reduction identity is checked against the
+    # products'.
     return replace(
         products,
         retained_response=products.retained_response.rename({reduced_state_dim: state_dim}),
         unresolved_observation_covariance=products.unresolved_observation_covariance.rename(
             {observation_dim: "nmeasure"}
-        ),
-        retained_covariance=covariance.rename(
-            {covariance.dims[0]: state_dim, covariance.dims[1]: f"{state_dim}_cov"}
-        ),
-        effective_observation_operator=products.effective_observation_operator.rename(
-            {observation_dim: "nmeasure", reduced_state_dim: state_dim}
         ),
     )
 

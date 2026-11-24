@@ -321,14 +321,17 @@ Complete country outputs require all of the following at preparation:
   unresolved covariance, so the artifact and the fit must use the exact dense
   ``A``; a low-rank artifact with products is rejected.
 - Use the full-restriction reduction. Its ``alpha_prior_covariance`` and ``H``
-  must be the reduction's own ``C_alpha`` and ``H_alpha``. This is checked
-  when the artifact is built, and on load through a fingerprint.
+  must be the reduction's own ``C_alpha`` and ``H_alpha``. The products'
+  ``reduction_identity`` must equal the artifact's, which is checked when the
+  artifact is built and again on load.
 
 At replay, the fit must use the additive-sigma, site-sigma or fixed-OU
-likelihood. Other likelihoods raise an error rather than reporting complete
+likelihood, and its trace must record the ``<flux_scale>_is_active`` mask
+(traces fitted before this was recorded for all-active fits must be fitted
+again). Other likelihoods raise an error rather than reporting complete
 totals. Country outputs record the ``A`` and noise model used in
-``unresolved_conditioning`` (JSON). Replay refuses the complete label if
-conditioning had to clip a conditional-covariance eigenvalue beyond roundoff.
+``unresolved_conditioning`` (JSON). Conditioning raises if it would have to
+clip a conditional-covariance eigenvalue beyond roundoff.
 Details are in the "Complete native functionals" section of the
 coherent-reduction guide.
 

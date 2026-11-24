@@ -23,9 +23,11 @@ from openghg_inversions.coherent_reduction import reduce_native_gaussian
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.postprocessing.co2_flux_outputs import (
     COUNTRY_FUNCTIONAL_DIM,
+    co2_country_flux_outputs,
     co2_flux_country_functionals,
 )
 from openghg_inversions.postprocessing.countries import Countries
+from openghg_inversions.postprocessing.unresolved_functionals import dense_solve
 from openghg_inversions.rhime.co2 import handoffs
 from openghg_inversions.rhime.co2.co2_affine_output import (
     BoundCo2AffineFluxMap,
@@ -243,6 +245,10 @@ def _fit_fixture(prepared: Co2PreparedInputs, count: int = COUNT, *, noise: np.n
                 ),
             }
         )
+    # Fitted models record which states were sampled; here all of them.
+    groups["constant_data"] = xr.Dataset(
+        {"flux_scaling_is_active": xr.DataArray(np.ones(len(prior_mean), dtype=bool), dims="region", coords=state_coords)}
+    )
     groups["/"] = xr.Dataset(
         attrs={
             "rhime_boundary_format_version": 2,
@@ -465,7 +471,7 @@ def _fixed_ou_trace(prepared: Co2PreparedInputs, *, inferred: bool, tau_attrs=No
     error, amplitudes = OU_ERROR, OU_AMPLITUDES
     site = xr.DataArray(SITE_NAMES, dims="ou_site")
     trace["constant_data"] = xr.DataTree(
-        xr.Dataset(
+        trace["constant_data"].to_dataset().assign(
             {
                 "error": observations.copy(data=error),
                 "ou_site_index": observations.copy(data=SITES),
@@ -604,20 +610,26 @@ def test_products_from_another_observation_operator_are_rejected() -> None:
         functional_dim=COUNTRY_FUNCTIONAL_DIM,
     ).functional_products
     np.testing.assert_array_equal(other.retained_covariance.values, products.retained_covariance.values)
-    with pytest.raises(ValueError, match="H_alpha differs"):
+    assert other.reduction_identity != products.reduction_identity
+    with pytest.raises(ValueError, match="different coherent reduction"):
         prepare_co2_inputs(
             problem["canonical"], replace(reduction, functional_products=other), aggregation_error_rank=None
         )
 
 
 def test_saved_products_must_match_the_artifacts_reduction(tmp_path) -> None:
-    """Load verifies the reduction fingerprint against the restored C_alpha and H_alpha."""
-    _, _, prepared, _ = _case()
+    """Load requires the restored artifact to reproduce the products' reduction identity."""
+    _, reduction, prepared, _ = _case()
+    assert prepared.reduction_identity == reduction.identity == reduction.functional_products.reduction_identity
     tree = prepared.to_datatree()
-    assert tree["country_functionals"].attrs["reduction_fingerprint"].startswith("sha256:")
+    assert tree["country_functionals"].attrs["reduction_identity"] == prepared.reduction_identity
     Co2PreparedInputs.from_datatree(tree)
+    unlabelled = tree.copy()
+    del unlabelled["country_functionals"].attrs["reduction_identity"]
+    with pytest.raises(ValueError, match="no reduction_identity"):
+        Co2PreparedInputs.from_datatree(unlabelled)
     inputs = tree["rhime_inputs/inv_inputs"].to_dataset()
-    tree["rhime_inputs/inv_inputs"] = xr.DataTree(inputs.assign(H=inputs["H"] * 1.01))
+    tree["rhime_inputs/inv_inputs"] = xr.DataTree(inputs.assign(H=inputs["H"].copy(data=inputs["H"].values * 1.01)))
     with pytest.raises(ValueError, match="different coherent reduction"):
         Co2PreparedInputs.from_datatree(tree)
 
@@ -633,10 +645,52 @@ def test_products_require_a_positive_semidefinite_unresolved_covariance() -> Non
         replace(prepared, country_functionals=indefinite)
 
 
-def test_clipped_conditioning_is_not_reported_as_complete() -> None:
-    """Clipping beyond roundoff refuses the complete-native label."""
-    from openghg_inversions.rhime.co2.co2_outputs import _require_consistent_conditioning
+def test_conditioning_with_another_a_is_not_reported_as_complete() -> None:
+    """A solve whose A is not the products' A fails the library's clipping guard."""
+    from dataclasses import replace
 
-    _require_consistent_conditioning(xr.Dataset(attrs={"conditional_covariance_min_eigenvalue": "-1.000e-09"}))
-    with pytest.raises(ValueError, match="inconsistent"):
-        _require_consistent_conditioning(xr.Dataset(attrs={"conditional_covariance_min_eigenvalue": "-1.000e+00"}))
+    _, _, prepared, affine = _case()
+    bound = BoundCo2AffineFluxMap(affine, prepared.inv_inputs["alpha_prior_mean"])
+    trace = _fit_fixture(prepared, count=2)
+    conditioning = co2_unresolved_conditioning(trace, prepared, bound=bound, countries=_countries())
+    co2_country_flux_outputs(trace, bound, _countries(), unresolved=conditioning)
+    # Conditioning on a far smaller A + R than the products' removes more
+    # variance than Q B_perp Q.T holds.
+    observations = prepared.inv_inputs["mf"]
+    index = observations.indexes["nmeasure"]
+    small = xr.DataArray(
+        1e-6 * np.eye(len(index)) * float(_stored_a(prepared).max()),
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={
+            **xr.Coordinates.from_pandas_multiindex(index, "nmeasure"),
+            **xr.Coordinates.from_pandas_multiindex(index.rename([f"{n}_cov" for n in index.names]), "nmeasure_cov"),
+        },
+    )
+    with pytest.raises(ValueError, match="clipping tolerance"):
+        co2_country_flux_outputs(
+            trace, bound, _countries(), unresolved=replace(conditioning, solve=dense_solve(small))
+        )
+
+
+def test_conditioning_must_come_from_the_products_reduction() -> None:
+    """The library refuses products and a conditioning from different reductions."""
+    from dataclasses import replace
+
+    _, _, prepared, affine = _case()
+    bound = BoundCo2AffineFluxMap(affine, prepared.inv_inputs["alpha_prior_mean"])
+    trace = _fit_fixture(prepared, count=2)
+    conditioning = co2_unresolved_conditioning(trace, prepared, bound=bound, countries=_countries())
+    assert conditioning.reduction_identity == prepared.reduction_identity
+    with pytest.raises(ValueError, match="different reduction"):
+        co2_country_flux_outputs(
+            trace, bound, _countries(), unresolved=replace(conditioning, reduction_identity="sha256:other")
+        )
+
+
+def test_traces_without_the_activity_mask_are_rejected(tmp_path) -> None:
+    """Complete outputs need the fitted model's activity mask, which earlier traces lack."""
+    _, _, prepared, affine = _case()
+    trace = _fit_fixture(prepared, count=2)
+    del trace["constant_data"]
+    with pytest.raises(ValueError, match="activity mask"):
+        _staged(tmp_path, prepared, affine, trace)

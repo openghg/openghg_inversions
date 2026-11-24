@@ -13,13 +13,17 @@ prepared artifact. The products use the exact unresolved covariance
 ``B_perp``, so the joint covariance of the products and the observations is
 consistent only with the exact ``A``: an artifact carrying country products
 must store dense ``A`` (``aggregation_error_rank=None``), and the fit then
-samples the same ``A`` it is conditioned on. Each conditioning records a
-structured account of the ``A`` and noise model it used.
+samples the same ``A`` it is conditioned on. The conditioning carries the
+artifact's
+:attr:`~openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.reduction_identity`,
+which the products must share, and records a structured account of the
+``A`` and noise model it used.
 """
 
 from __future__ import annotations
 
 from collections.abc import Hashable
+from dataclasses import replace
 import json
 
 import numpy as np
@@ -147,6 +151,7 @@ def co2_unresolved_conditioning(
         products=products,
         residual=residual,
         solve=_observation_solve(trace, prepared, roles),
+        reduction_identity=prepared.reduction_identity,
         marginalised=None if marginalised is None else marginalised.astype(bool),
         seed=seed,
     )
@@ -176,14 +181,12 @@ def _select_functionals(products: NativeFunctionalProducts, requested: pd.Index)
         )
     column_dim = str(products.unresolved_covariance.dims[1])
     rows = {COUNTRY_FUNCTIONAL_DIM: positions}
-    return NativeFunctionalProducts(
+    return replace(
+        products,
         functional_mean=products.functional_mean.isel(rows),
         retained_response=products.retained_response.isel(rows),
         unresolved_observation_covariance=products.unresolved_observation_covariance.isel(rows),
         unresolved_covariance=products.unresolved_covariance.isel({**rows, column_dim: positions}),
-        retained_covariance=products.retained_covariance,
-        effective_observation_operator=products.effective_observation_operator,
-        marginalised=products.marginalised,
     )
 
 
@@ -252,6 +255,7 @@ def _fixed_ou_solve(
         amplitude,
         site_dim=OU_SITE_DIM,
         observation_index=observations.indexes["nmeasure"],
+        site_index=np.asarray(site_index.values, dtype=np.int64),
         description=_conditioning_record(prepared, noise=noise, varies_by_draw=True),
     )
 
