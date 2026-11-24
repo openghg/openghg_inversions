@@ -1487,8 +1487,8 @@ fixed after construction; rebuild the recipe for different inputs.</p>
 <li><p><strong>flux_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Reduced sensitivity with the output dimension and
 one labelled retained-state dimension, in concentration units per
 unit dimensionless flux scaling.</p></li>
-<li><p><strong>retained_prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><em>CorrelatedLognormalPrior</em></a>) – Complete labelled arithmetic-moment prior for the
-positive, dimensionless retained flux-scaling state.</p></li>
+<li><p><strong>retained_prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><em>CorrelatedPrior</em></a>) – Complete labelled arithmetic moments and marginals
+for the dimensionless retained flux-scaling state.</p></li>
 <li><p><strong>fixed_prior_contribution</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Fixed coherent-reduction affine contribution
 on the output dimension, in the observations’ concentration units.</p></li>
 <li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Observed CO2 concentrations on the output dimension,
@@ -1605,8 +1605,8 @@ See <a class="reference internal" href="../usage/surface_preparation.html#surfac
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>flux_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Reduced CO2 sensitivity with observation dimension
 <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> and one labelled retained-state dimension.</p></li>
-<li><p><strong>retained_prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><em>CorrelatedLognormalPrior</em></a>) – Complete labelled arithmetic-moment prior for the
-retained positive state.</p></li>
+<li><p><strong>retained_prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><em>CorrelatedPrior</em></a>) – Complete labelled arithmetic moments and marginals
+for the retained state.</p></li>
 <li><p><strong>fixed_prior_contribution</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Fixed coherent-reduction affine intercept
 named <code class="docutils literal notranslate"><span class="pre">fixed_prior_contribution</span></code> on <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>.</p></li>
 <li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Observed CO2 concentrations on <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>.</p></li>
@@ -1789,8 +1789,8 @@ first and the same state axis; its shared-state columns already
 embed the fixed oxidation ratios.</p></li>
 <li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Joint fixed aggregation covariance, including its
 cross-channel block.</p></li>
-<li><p><strong>retained_prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><em>CorrelatedLognormalPrior</em></a>) – Correlated arithmetic-moment prior for the one state
-vector shared by both channels.</p></li>
+<li><p><strong>retained_prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><em>CorrelatedPrior</em></a>) – Correlated arithmetic moments and marginals for the
+one state vector shared by both channels.</p></li>
 <li><p><strong>independent_error_sd</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Joint per-row independent standard deviations in
 each observation row’s native units.</p></li>
 <li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled policy fixing or activating retained
@@ -1916,8 +1916,8 @@ first and the same state axis; its shared-state columns already
 embed the fixed oxidation ratios.</p></li>
 <li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Joint fixed aggregation covariance, including its
 cross-channel block.</p></li>
-<li><p><strong>retained_prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><em>CorrelatedLognormalPrior</em></a>) – Correlated arithmetic-moment prior for the one state
-vector shared by both channels.</p></li>
+<li><p><strong>retained_prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><em>CorrelatedPrior</em></a>) – Correlated arithmetic moments and marginals for the
+one state vector shared by both channels.</p></li>
 <li><p><strong>independent_error_sd</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Joint per-row independent standard deviations in
 each observation row’s native units.</p></li>
 <li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled policy fixing or activating retained

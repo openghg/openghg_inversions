@@ -1122,6 +1122,57 @@ inputs remain unchanged and shared Dask coordinate tasks run once.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.add_correlated_state_with_activity">
+<span class="sig-name descname"><span class="pre">add_correlated_state_with_activity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">activity</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior</span></span></em>, <em class="sig-param"><span class="positional-only-separator o"><abbr title="Positional-only parameter separator (PEP 570)"><span class="pre">/</span></abbr></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">var_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.add_correlated_state_with_activity" title="Link to this definition">#</a></dt>
+<dd><p>Construct a correlated state with each state’s marginal and exact fixed values.</p>
+<p>Every marginal is lognormal, so this is
+<a class="reference internal" href="#openghg_inversions.models.components.add_correlated_lognormal_state_with_activity" title="openghg_inversions.models.components.add_correlated_lognormal_state_with_activity"><code class="xref py py-func docutils literal notranslate"><span class="pre">add_correlated_lognormal_state_with_activity()</span></code></a> on the prior’s
+lognormal copula.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><em>ResolvedStateActivity</em></a>) – Resolved activity in canonical full-state order.</p></li>
+<li><p><strong>prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><em>CorrelatedPrior</em></a>) – Arithmetic moments and marginals for the full state.</p></li>
+<li><p><strong>var_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Name of the full user-facing state vector.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Effective whitened latent, full state vector, and supplied activity.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.models.components.StateVectorResult" title="openghg_inversions.models.components.StateVectorResult"><em>StateVectorResult</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.prepare_active_correlated_prior">
+<span class="sig-name descname"><span class="pre">prepare_active_correlated_prior</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">activity</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior</span></span></em>, <em class="sig-param"><span class="positional-only-separator o"><abbr title="Positional-only parameter separator (PEP 570)"><span class="pre">/</span></abbr></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">var_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.prepare_active_correlated_prior" title="Link to this definition">#</a></dt>
+<dd><p>Subset a correlated prior to its active states before graph construction.</p>
+<p>Every marginal is lognormal, so the active prior is the active subset of
+the lognormal copula, for
+<code class="docutils literal notranslate"><span class="pre">_add_prepared_correlated_lognormal_state_with_activity</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><em>ResolvedStateActivity</em></a>) – Resolved activity in canonical full-state order.</p></li>
+<li><p><strong>prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><em>CorrelatedPrior</em></a>) – Arithmetic moments and marginals for the full state.</p></li>
+<li><p><strong>var_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Name of the full user-facing state vector.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The active lognormal prior, or <code class="docutils literal notranslate"><span class="pre">None</span></code> when every state is fixed.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the prior and activity labels differ.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><em>CorrelatedLognormalPrior</em></a> | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.components.add_sigma_component">
 <span class="sig-name descname"><span class="pre">add_sigma_component</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alignment</span></span></em>, <em class="sig-param"><span class="positional-only-separator o"><abbr title="Positional-only parameter separator (PEP 570)"><span class="pre">/</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compute_deterministic</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.add_sigma_component" title="Link to this definition">#</a></dt>
 <dd><p>Register a latent sigma component and align it to observations.</p>
@@ -1264,6 +1315,8 @@ when several independent offset components share one model.</p></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_correlated_lognormal_state"><code class="docutils literal notranslate"><span class="pre">add_correlated_lognormal_state()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_correlated_lognormal_state_with_activity"><code class="docutils literal notranslate"><span class="pre">add_correlated_lognormal_state_with_activity()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.prepare_active_correlated_lognormal_prior"><code class="docutils literal notranslate"><span class="pre">prepare_active_correlated_lognormal_prior()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_correlated_state_with_activity"><code class="docutils literal notranslate"><span class="pre">add_correlated_state_with_activity()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.prepare_active_correlated_prior"><code class="docutils literal notranslate"><span class="pre">prepare_active_correlated_prior()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_sigma_component"><code class="docutils literal notranslate"><span class="pre">add_sigma_component()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_offset_component"><code class="docutils literal notranslate"><span class="pre">add_offset_component()</span></code></a></li>
 </ul>

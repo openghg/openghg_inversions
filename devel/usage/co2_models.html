@@ -390,6 +390,7 @@
 <li class="toctree-l2"><a class="reference internal" href="co2_boundary_corrections.html">Configure CO₂ boundary corrections</a></li>
 </ul>
 </details></li>
+<li class="toctree-l1"><a class="reference internal" href="flux_prior.html">Retained flux prior</a></li>
 <li class="toctree-l1"><a class="reference internal" href="surface_preparation.html">Surface CO₂/O₂ preparation pilot</a></li>
 <li class="toctree-l1"><a class="reference internal" href="centered_boundary_conditions.html">Boundary-condition operators</a></li>
 <li class="toctree-l1"><a class="reference internal" href="boundary_correction_structures.html">Boundary correction structures</a></li>
@@ -478,6 +479,8 @@
 seams for the CO₂-only and linked CO₂/O₂ recipes. Start with the
 <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> support matrix before using these
 interfaces.</p>
+<p>The retained flux state is sampled from a correlated prior with a marginal
+family per state; see <a class="reference internal" href="flux_prior.html"><span class="doc">Retained flux prior</span></a>.</p>
 <section id="co2-coherent-reduction-model">
 <span id="co2-only-model"></span><h2>CO2 coherent-reduction model<a class="headerlink" href="#co2-coherent-reduction-model" title="Link to this heading">#</a></h2>
 <p>The public <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.build_co2_model" title="openghg_inversions.rhime.build_co2_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.build_co2_model()</span></code></a> recipe

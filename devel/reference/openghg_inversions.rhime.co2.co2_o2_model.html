@@ -735,8 +735,8 @@ first and the same state axis; its shared-state columns already
 embed the fixed oxidation ratios.</p></li>
 <li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Joint fixed aggregation covariance, including its
 cross-channel block.</p></li>
-<li><p><strong>retained_prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><em>CorrelatedLognormalPrior</em></a>) – Correlated arithmetic-moment prior for the one state
-vector shared by both channels.</p></li>
+<li><p><strong>retained_prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><em>CorrelatedPrior</em></a>) – Correlated arithmetic moments and marginals for the
+one state vector shared by both channels.</p></li>
 <li><p><strong>independent_error_sd</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Joint per-row independent standard deviations in
 each observation row’s native units.</p></li>
 <li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled policy fixing or activating retained
