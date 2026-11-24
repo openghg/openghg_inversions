@@ -496,12 +496,12 @@ def build_co2_from_materialized(
         prepared_inputs: Preparation supplying aggregation mode and provenance.
         priors: Materialized prior parameters under their concrete graph names.
         boundary: Jointly materialized bound boundary, or None when disabled.
-        outer_flux: Optional outer-flux choice, resolved on the retained flux
-            prior here.
+        outer_flux: Optional outer-flux choice, which the model builder
+            resolves on the retained flux prior.
         gaussian_prior: Optional Gaussian retained-state prior replacing the
             retained flux prior in the graph, for the Gaussian estimator. Outer
             states are still selected on the retained flux prior, whose
-            covariance the Gaussian prior shares.
+            moments the Gaussian prior shares.
 
     Returns:
         Constructed PyMC model with component-declared scientific roles, units
@@ -552,7 +552,6 @@ def build_co2_from_materialized(
         prior_covariance,
         covariance_dim=str(prior_covariance.dims[-1]),
     )
-    outer = None if outer_flux is None else outer_flux.resolve_states(retained_prior)
     model = _build_co2_model(
         model_inputs["H"],
         retained_prior=None if gaussian_prior is not None else retained_prior,
@@ -567,10 +566,11 @@ def build_co2_from_materialized(
         fixed_model_mismatch=prepared_mismatch,
         state_activity=_state_activity_from_inputs(model_inputs),
         boundary=boundary,
-        outer_flux=outer,
+        outer_flux=outer_flux,
         offset_prior=priors["offset_latent"] if offset_prior is not None else None,
         offset_args=offset_args,
         gaussian_prior=gaussian_prior,
+        outer_flux_prior=retained_prior if gaussian_prior is not None and outer_flux is not None else None,
     )
     variable_roles = {
         "observation": "y",
@@ -587,7 +587,7 @@ def build_co2_from_materialized(
     boundary_outputs = boundary.outputs() if boundary is not None else None
     if boundary_outputs is not None:
         variable_roles.update(boundary_outputs.roles)
-    outer_outputs = outer.outputs() if outer is not None else None
+    outer_outputs = outer_flux.outputs() if outer_flux is not None else None
     if outer_outputs is not None:
         variable_roles.update(outer_outputs.roles)
     if offset_prior is not None:

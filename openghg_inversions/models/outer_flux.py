@@ -12,8 +12,9 @@ not a stand-in for leaving the outer flux unsampled. That would marginalise
 the outer states, adding ``H_O Sigma_OO H_O^T`` to the error covariance, which
 this module does not do.
 
-:meth:`OuterFluxChoice.resolve_states` reads the flux prior once, so linked
-CO2/O2 channels share one :class:`OuterStates`, and recipes apply it with
+Recipe builders take the :class:`OuterFluxChoice` and resolve it with
+:meth:`OuterFluxChoice.resolve_states` on the prior they sample (once for the
+shared linked CO2/O2 state), then apply the result with
 :meth:`OuterStates.fix_states` after exact-zero pruning.
 """
 
@@ -62,6 +63,22 @@ class OuterFluxChoice:
         if not self.outer_groups:
             raise ValueError("The outer-flux option needs at least one outer basis group.")
 
+    def outputs(self, prefix: str = "") -> Outputs:
+        """Record this option's mode and selectors as run metadata.
+
+        Args:
+            prefix: Graph-name prefix of the recipe's variables.
+
+        Returns:
+            No roles or units, and metadata recording the mode and selectors.
+        """
+        metadata = {
+            "outer_flux_mode": self.mode,
+            "outer_groups": list(self.outer_groups),
+            "outer_fixed_sources": list(self.fixed_sources),
+        }
+        return Outputs({}, {}, metadata).prefixed(prefix)
+
     def resolve_states(self, flux_prior: CorrelatedPrior) -> OuterStates:
         """Select the held outer states on the flux prior's state axis.
 
@@ -77,20 +94,27 @@ class OuterFluxChoice:
 
         Raises:
             ValueError: If a selector coordinate is missing or not on the state
-                axis, no state is in ``outer_groups``, no outer state has a
-                source in ``fixed_sources``, or a held state has nonzero prior
-                covariance with any other state.
+                axis, any label in ``outer_groups`` matches no state, any label
+                in ``fixed_sources`` matches no outer state, or a held state has
+                nonzero prior covariance with any other state.
         """
         mean = flux_prior.mean
 
-        outer = _state_labels(mean, self.group_coord).isin(self.outer_groups)
-        if not bool(outer.any()):
-            raise ValueError(f"No flux state has {self.group_coord} in {self.outer_groups!r}.")
+        groups = _state_labels(mean, self.group_coord)
+        missing_groups = _missing(self.outer_groups, groups)
+        if missing_groups:
+            raise ValueError(f"No flux state has {self.group_coord} {missing_groups!r}.")
+        outer = groups.isin(self.outer_groups)
         fixed = outer
         if self.fixed_sources:
-            fixed = outer & _state_labels(mean, self.source_coord).isin(self.fixed_sources)
-            if not bool(fixed.any()):
-                raise ValueError(f"No outer flux state has {self.source_coord} in {self.fixed_sources!r}.")
+            sources = _state_labels(mean, self.source_coord)
+            missing_sources = _missing(self.fixed_sources, sources.where(outer, drop=True))
+            if missing_sources:
+                raise ValueError(
+                    f"No outer flux state (with {self.group_coord} in {self.outer_groups!r}) has "
+                    f"{self.source_coord} {missing_sources!r}."
+                )
+            fixed = outer & sources.isin(self.fixed_sources)
 
         # Holding F at its prior mean while sampling the marginal prior of the
         # other states is exact only when F is uncorrelated with them.
@@ -106,6 +130,12 @@ class OuterFluxChoice:
             fixed=fixed.rename("fixed_outer"),
             prior_mean=mean,
         )
+
+
+def _missing(requested: tuple[str, ...], labels: xr.DataArray) -> list[str]:
+    """Return the requested labels, in request order, that ``labels`` lacks."""
+    present = set(labels.to_numpy().tolist())
+    return [label for label in requested if label not in present]
 
 
 def _state_labels(mean: xr.DataArray, name: str) -> xr.DataArray:
@@ -144,11 +174,23 @@ class OuterStates:
             their activity and fixed values.
 
         Raises:
-            ValueError: If the activity's state labels differ from the prior's.
+            ValueError: If the activity's state labels differ from the prior's,
+                or the caller's policy explicitly fixes a held state at a value
+                other than its prior mean. States inactive only because their
+                sensitivity column is exactly zero are not explicit fixes.
         """
-        active, fixed, prior_mean = xr.align(
-            activity.active, self.fixed, self.prior_mean.reset_coords(drop=True), join="exact", copy=False,
+        active, fixed, prior_mean, caller_value, zero = xr.align(
+            activity.active, self.fixed, self.prior_mean.reset_coords(drop=True),
+            activity.fixed_value.reset_coords(drop=True), activity.zero_sensitivity.reset_coords(drop=True),
+            join="exact", copy=False,
         )
+        conflict = fixed & ~active & ~zero & (caller_value != prior_mean)
+        if bool(conflict.any()):
+            labels = conflict[conflict.dims[0]].where(conflict, drop=True).to_numpy().tolist()
+            raise ValueError(
+                f"State activity fixes outer flux state(s) {labels!r} at values other than their prior "
+                "mean, which the fixed outer-flux option holds them at."
+            )
         return replace(
             activity,
             active=(active & ~fixed).rename(activity.active.name),
@@ -156,20 +198,15 @@ class OuterStates:
         )
 
     def outputs(self, prefix: str = "") -> Outputs:
-        """Record this option's mode and selectors as run metadata.
+        """Record the resolved choice's mode and selectors as run metadata.
 
         Args:
             prefix: Graph-name prefix of the recipe's variables.
 
         Returns:
-            No roles or units, and metadata recording the mode and selectors.
+            See :meth:`OuterFluxChoice.outputs`.
         """
-        metadata = {
-            "outer_flux_mode": self.choice.mode,
-            "outer_groups": list(self.choice.outer_groups),
-            "outer_fixed_sources": list(self.choice.fixed_sources),
-        }
-        return Outputs({}, {}, metadata).prefixed(prefix)
+        return self.choice.outputs(prefix)
 
 
 __all__ = ["OuterFluxChoice", "OuterMode", "OuterStates"]
