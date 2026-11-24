@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, field, fields, replace
 import json
 from pathlib import Path
 from typing import Any
@@ -11,8 +11,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from openghg_inversions.basis.options import FluxBasisOptions
 from openghg_inversions.models import StateActivity
-from openghg_inversions.models.boundary import Choice, MultiplicativeChoice
+from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
+from openghg_inversions.models.boundary import Choice, MultiplicativeChoice, boundary_preparation
+from openghg_inversions.models.boundary.preparation import check_representation
 from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.inversion_inputs import normalise_frequency
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
@@ -20,16 +23,19 @@ from openghg_inversions.inversion_data.o2n2 import (
     DELTA_O2_N2, MOLE_FRACTION, O2_OBSERVABLE_PROVENANCE_KEY, O2_OBSERVABLES, DeltaO2N2Declaration,
     is_per_meg_unit, is_ratio_anomaly_unit,
 )
+from openghg_inversions.rhime.params import BcBasisOptions
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, normalise_optional_mapping
 
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .configuration import (
     _validate_section_option_names, _SAMPLING_OPTION_NAMES,
+    _ACQUISITION_OPTION_NAMES, _BASIS_OPTION_NAMES, _NATIVE_CALIBRATION_OPTION_NAMES,
+    _NATIVE_PRIOR_OPTION_NAMES, _MULTISOURCE_NATIVE_PRIOR_OPTION_NAMES,
     _PRIOR_OPTION_NAMES, _MODEL_SECTION_OPTION_NAMES,
     _reject_unknown,
-    _bool, _number, _take, _model, _co2_likelihood, _frozen,
-    _path,
+    _bool, _number, _path, _take, _model, _co2_likelihood, _frozen,
+    _acquisition, _basis_options, _bc_basis_options, _boundary_choice, Co2MultiSourceNativePrior,
     _sampling,
     _string,
     _table, _outer_flux_choice,
@@ -37,8 +43,6 @@ from .configuration import (
     resolve_co2_prior_seed,
 )
 
-
-_LINKED_PREPARATION_OPTIONS = frozenset({"path", "start_date", "end_date", "domain"})
 
 
 def load_co2_o2_params(
@@ -106,7 +110,17 @@ def _validate_co2_o2_option_names(*requests: Mapping[str, object]) -> None:
     }
     _validate_section_option_names(requests, {
         "": frozenset(allowed),
-        "prepared_inputs": _LINKED_PREPARATION_OPTIONS | {"reconstruction_path"},
+        "prepared_inputs": _LINKED_PREPARATION_OPTION_NAMES,
+        "prepared_inputs.acquisition": frozenset(LINKED_CHANNELS),
+        **{f"prepared_inputs.acquisition.{channel}": _ACQUISITION_OPTION_NAMES | {"flux_sources", "use_bc"}
+           for channel in LINKED_CHANNELS},
+        "prepared_inputs.observations": frozenset(LINKED_CHANNELS),
+        **{f"prepared_inputs.observations.{channel}": frozenset({"filters", "averaging_error"})
+           for channel in LINKED_CHANNELS},
+        "prepared_inputs.basis": _BASIS_OPTION_NAMES,
+        "prepared_inputs.bc_basis": frozenset(field.name for field in fields(BcBasisOptions)),
+        "prepared_inputs.native_prior": _NATIVE_PRIOR_OPTION_NAMES | _MULTISOURCE_NATIVE_PRIOR_OPTION_NAMES,
+        "prepared_inputs.native_prior.calibration": _NATIVE_CALIBRATION_OPTION_NAMES,
         "outer_flux": _MODEL_SECTION_OPTION_NAMES["outer_flux"],
         "channels": frozenset({"co2", "o2"}),
         **{f"channels.{channel}" + (f".{path}" if path else ""): names
@@ -123,31 +137,315 @@ def _validate_co2_o2_option_names(*requests: Mapping[str, object]) -> None:
     })
 
 
+LINKED_CHANNELS = ("co2", "o2")
+"""Tracer channels of the linked recipe, in observation order."""
+
+# A saved linked preparation is imported with ``path``; a new one is built from these tables.
+_LINKED_NATIVE_OPTION_NAMES = frozenset({
+    "acquisition", "observations", "basis", "bc_basis", "native_prior", "source_states", "bc_centering_weights_path",
+})
+_LINKED_PREPARATION_OPTION_NAMES = frozenset({
+    "path", "start_date", "end_date", "domain", "boundary_representation", "reconstruction_path",
+    "aggregation_error_rank",
+}) | _LINKED_NATIVE_OPTION_NAMES
+_SOURCE_STATE_OPTION_NAMES = frozenset({
+    "source", "tracer_scope", "co2_flux_source", "o2_flux_source", "flux_tracer",
+})
+_TRACER_SCOPES = ("shared", *LINKED_CHANNELS)
+
+
+@dataclass(frozen=True)
+class Co2O2SourceState:
+    """How one native source enters the linked preparation.
+
+    Attributes:
+        source: Retained sector label (``"gpp"``, ``"ter"``, ``"ff"`` or
+            ``"ocean"``, any case).
+        tracer_scope: ``"shared"`` (one scaling field for both tracers'
+            fluxes) or the one tracer, ``"co2"`` or ``"o2"``.
+        co2_flux_source: Acquired CO2 flux source whose response this native
+            source scales; required unless the scope is ``"o2"``.
+        o2_flux_source: Acquired O2 flux source (signed O2 flux) whose
+            response it scales; required unless the scope is ``"co2"``.
+        flux_tracer: Tracer whose prior flux weights a shared source in the
+            absolute-flux-weighted restriction and in amplitude calibration.
+            Required for a shared source exactly when one of those uses it.
+    """
+
+    source: str
+    tracer_scope: str
+    co2_flux_source: str | None = None
+    o2_flux_source: str | None = None
+    flux_tracer: str | None = None
+
+    @classmethod
+    def from_params(cls, value: object, path: str) -> Co2O2SourceState:
+        """Parse one ``[prepared_inputs.source_states.<source>]`` table."""
+        options = _table(value, path)
+        result: dict[str, Any] = {
+            "source": _string(_take(options, "source", path), f"{path}.source"),
+            "tracer_scope": _string(_take(options, "tracer_scope", path), f"{path}.tracer_scope"),
+        }
+        if result["tracer_scope"] not in _TRACER_SCOPES:
+            raise ValueError(f"{path}.tracer_scope must be one of {_TRACER_SCOPES!r}.")
+        for name in ("co2_flux_source", "o2_flux_source", "flux_tracer"):
+            if name in options:
+                result[name] = _string(options.pop(name), f"{path}.{name}")
+        _reject_unknown(options, path)
+        state = cls(**result)
+        for channel in LINKED_CHANNELS:
+            given = getattr(state, f"{channel}_flux_source") is not None
+            needed = state.tracer_scope in ("shared", channel)
+            if given != needed:
+                raise ValueError(
+                    f"{path}.{channel}_flux_source is {'required' if needed else 'not allowed'} for "
+                    f"tracer_scope = {state.tracer_scope!r}."
+                )
+        if state.flux_tracer is not None:
+            if state.tracer_scope != "shared":
+                raise ValueError(f"{path}.flux_tracer applies only to shared sources; a {state.tracer_scope} "
+                                 "source is weighted by its own tracer's flux.")
+            if state.flux_tracer not in LINKED_CHANNELS:
+                raise ValueError(f"{path}.flux_tracer must be one of {LINKED_CHANNELS!r}.")
+        return state
+
+    def to_params(self) -> dict[str, Any]:
+        """Return the table :meth:`from_params` reads back."""
+        return {item.name: getattr(self, item.name) for item in fields(self) if getattr(self, item.name) is not None}
+
+
+@dataclass(frozen=True)
+class Co2O2NativePreparationConfig:
+    """Acquisition and native choices for a new linked CO2/O2 preparation.
+
+    Each tracer has its own complete acquisition and observation choices;
+    nothing is inherited between them. The per-source native priors are those
+    of the configured CO2 route, keyed by native source, and
+    ``source_states`` ties every native source to the acquired flux sources it
+    scales. See
+    :func:`~openghg_inversions.rhime.co2.co2_o2_native_preparation.prepare_native_co2_o2`.
+
+    Attributes:
+        acquisition: Per-channel keywords for
+            :meth:`~openghg_inversions.inversion_data.MergedData.from_options`,
+            other than species, domain and window.
+        filters: Per-channel observation filters (``None`` for none).
+        averaging_error: Per-channel choice to include variability in the
+            derived observation errors.
+        bc_basis: Shared boundary basis selection for channels with boundaries.
+        basis: Basis selection; ``partition_path`` holds one integer partition
+            per native source on a ``source`` dimension.
+        native_prior: Per-source native priors keyed by native source.
+        source_states: How each native source maps to flux sources, tracers
+            and retained labels.
+        bc_centering_weights_path: Optional netCDF holding one
+            ``bc_centering_weights`` array for weighted additive boundaries.
+    """
+
+    acquisition: Mapping[str, Mapping[str, Any]]
+    basis: FluxBasisOptions
+    bc_basis: BcBasisOptions
+    native_prior: Co2MultiSourceNativePrior
+    source_states: Mapping[str, Co2O2SourceState]
+    filters: Mapping[str, Any] = field(default_factory=dict)
+    averaging_error: Mapping[str, bool] = field(default_factory=dict)
+    bc_centering_weights_path: Path | None = None
+
+    @classmethod
+    def from_params(cls, prepared: dict[str, object], *, domain: str) -> Co2O2NativePreparationConfig:
+        """Pop and parse the build-route tables of a linked ``[prepared_inputs]``."""
+        path = "prepared_inputs"
+        if "aggregation_error_rank" in prepared:
+            raise ValueError(
+                f"{path}.aggregation_error_rank is not available for linked preparations, which keep the "
+                "dense joint aggregation error (low-rank linked A is #1079)."
+            )
+        tables = _table(_take(prepared, "acquisition", path), f"{path}.acquisition")
+        acquisition = {}
+        for channel in LINKED_CHANNELS:
+            channel_path = f"{path}.acquisition.{channel}"
+            table = _table(_take(tables, channel, f"{path}.acquisition"), channel_path)
+            sources = _take(table, "flux_sources", channel_path)
+            if isinstance(sources, str):
+                sources = [sources]
+            if not isinstance(sources, list) or not sources:
+                raise TypeError(f"{channel_path}.flux_sources must be a non-empty list of source names.")
+            flux_sources = tuple(_string(source, f"{channel_path}.flux_sources item") for source in sources)
+            use_bc = _bool(table.pop("use_bc", True), f"{channel_path}.use_bc")
+            acquisition[channel] = {
+                **_acquisition(table, flux_sources=flux_sources, use_bc=use_bc, path=channel_path, species=channel),
+                "flux_sources": flux_sources,
+            }
+        _reject_unknown(tables, f"{path}.acquisition")
+        prior_table = _table(_take(prepared, "native_prior", path), f"{path}.native_prior")
+        if "sources" not in prior_table:
+            raise ValueError(f"Linked preparation requires per-source priors in {path}.native_prior.sources.")
+        prior = Co2MultiSourceNativePrior.from_params(prior_table, path=f"{path}.native_prior")
+        states_table = _table(_take(prepared, "source_states", path), f"{path}.source_states")
+        states = {
+            _string(name, f"{path}.source_states key"): Co2O2SourceState.from_params(
+                value, f"{path}.source_states.{name}",
+            )
+            for name, value in states_table.items()
+        }
+        if set(states) != set(prior.sources):
+            raise ValueError(
+                f"{path}.source_states must name exactly the native sources of {path}.native_prior.sources "
+                f"{sorted(prior.sources)!r}; got {sorted(states)!r}."
+            )
+        for channel in LINKED_CHANNELS:
+            mapped = [state.co2_flux_source if channel == "co2" else state.o2_flux_source for state in states.values()]
+            mapped = [name for name in mapped if name is not None]
+            acquired = list(acquisition[channel]["flux_sources"])
+            if sorted(mapped) != sorted(acquired) or len(set(mapped)) != len(mapped):
+                raise ValueError(
+                    f"{path}.source_states must map each {channel} flux source in {path}.acquisition.{channel}."
+                    f"flux_sources {sorted(acquired)!r} exactly once; got {sorted(mapped)!r}."
+                )
+        weighted = prior.restriction == "absolute_flux_weighted_mean"
+        for name, state in states.items():
+            calibrated = prior.calibration is not None and prior.sources[name].sigma is None
+            if state.tracer_scope == "shared" and (weighted or calibrated) and state.flux_tracer is None:
+                raise ValueError(
+                    f"{path}.source_states.{name}.flux_tracer is required: the "
+                    f"{'absolute-flux-weighted restriction' if weighted else 'amplitude calibration'} weights "
+                    "this shared source by one tracer's prior flux; set 'co2' or 'o2'."
+                )
+        use_bc = any(table.get("use_bc", True) for table in acquisition.values())
+        basis = _basis_options(prepared.pop("basis", {}), domain=domain, path=f"{path}.basis")
+        bc_basis = _bc_basis_options(prepared.pop("bc_basis", {}), use_bc=use_bc, path=f"{path}.bc_basis")
+        if basis.basis_partition_path is None or basis.basis_path is not None or basis.fix_basis_outer_regions:
+            raise ValueError(
+                f"Linked preparation requires {path}.basis.partition_path, with one partition per native source "
+                "on a source dimension; basis paths, generated bases and fix_outer_regions are not supported."
+            )
+        result: dict[str, Any] = {
+            "acquisition": _frozen({channel: _frozen(value) for channel, value in acquisition.items()}),
+            "basis": basis, "bc_basis": bc_basis, "native_prior": prior, "source_states": _frozen(states),
+        }
+        observations = _table(prepared.pop("observations", {}), f"{path}.observations")
+        filters: dict[str, Any] = {}
+        averaging: dict[str, bool] = {}
+        for channel in LINKED_CHANNELS:
+            table = _table(observations.pop(channel, {}), f"{path}.observations.{channel}")
+            if "filters" in table:
+                value = table.pop("filters")
+                if isinstance(value, Mapping):
+                    value = {str(site): item for site, item in value.items()}
+                elif not isinstance(value, str | list):
+                    raise TypeError(f"{path}.observations.{channel}.filters must be a name, list or table.")
+                filters[channel] = value
+            if "averaging_error" in table:
+                averaging[channel] = _bool(table.pop("averaging_error"), f"{path}.observations.{channel}.averaging_error")
+            _reject_unknown(table, f"{path}.observations.{channel}")
+        _reject_unknown(observations, f"{path}.observations")
+        result["filters"] = _frozen(filters)
+        result["averaging_error"] = _frozen(averaging)
+        if "bc_centering_weights_path" in prepared:
+            result["bc_centering_weights_path"] = _path(
+                prepared.pop("bc_centering_weights_path"), f"{path}.bc_centering_weights_path",
+            )
+        return cls(**result)
+
+    def flux_sources(self, channel: str) -> dict[str, str]:
+        """Map each of ``channel``'s acquired flux sources to its native source."""
+        name = f"{channel}_flux_source"
+        return {getattr(state, name): native for native, state in self.source_states.items()
+                if getattr(state, name) is not None}
+
+    def resource_paths(self) -> tuple[Path, ...]:
+        """Identify the configured files native preparation reads."""
+        basis, prior = self.basis, self.native_prior
+        calibration = prior.calibration.targets_path if prior.calibration is not None else None
+        paths = (basis.basis_partition_path, basis.landsea_path, basis.outer_regions_path,
+                 *(self.bc_basis.paths or ()), self.bc_centering_weights_path,
+                 prior.class_labels_path, prior.retained_regions_path, calibration)
+        return tuple(Path(item).resolve() for item in paths if item is not None)
+
+
 @dataclass(frozen=True)
 class Co2O2PreparationConfig:
-    """Linked artifact selection and original requested context, without I/O."""
+    """Import a saved linked artifact, or build one from configured native choices.
+
+    ``[prepared_inputs]`` either names a saved artifact with ``path`` or, with
+    ``acquisition`` tables, describes a new preparation (``native``). Each
+    channel's prepared boundary representation is resolved from its
+    ``[channels.<channel>.boundary]`` choice, or the explicit
+    ``boundary_representation``, as on the CO2 route. Only the channel
+    boundary tables are read from ``[channels]``.
+    """
 
     prepared_path: Path | None = None
     start_date: str | None = None
     end_date: str | None = None
     domain: str | None = None
+    boundary_representation: BoundaryRepresentation | None = None
+    boundary: Mapping[str, Choice | None] = field(default_factory=dict)
+    native: Co2O2NativePreparationConfig | None = None
 
     @classmethod
-    def from_params(cls, config: Mapping[str, object], *, require_path: bool = False) -> Co2O2PreparationConfig:
-        """Parse only linked artifact options; reject affine reconstruction."""
-        prepared = _table(_table(config, "config").get("prepared_inputs", {}), "prepared_inputs")
+    def from_params(cls, config: Mapping[str, object], *, require_source: bool = False) -> Co2O2PreparationConfig:
+        """Parse linked prepared-input options and the channel boundary choices they serve.
+
+        Args:
+            config: Complete linked request.
+            require_source: Require ``path`` or ``acquisition`` tables.
+
+        Raises:
+            ValueError: If options are missing, unknown or conflicting.
+        """
+        options = _table(config, "config")
+        prepared = _table(options.get("prepared_inputs", {}), "prepared_inputs")
         if "reconstruction_path" in prepared:
             raise ValueError("Linked CO2/O2 preparation does not support prepared_inputs.reconstruction_path.")
-        _reject_unknown({name: value for name, value in prepared.items() if name not in _LINKED_PREPARATION_OPTIONS},
-                        "prepared_inputs")
-        if require_path and "path" not in prepared:
-            raise ValueError("Missing required option prepared_inputs.path.")
-        path = _path(prepared.pop("path"), "prepared_inputs.path") if "path" in prepared else None
-        facts = {name: _string(value, f"prepared_inputs.{name}") for name, value in prepared.items()}
-        return cls(prepared_path=path, **facts)
+        native = bool((_LINKED_NATIVE_OPTION_NAMES | {"aggregation_error_rank", "boundary_representation"}) & prepared.keys())
+        if native and "path" in prepared:
+            raise ValueError("prepared_inputs.path imports a saved preparation; remove the build options.")
+        if require_source and not native and "path" not in prepared:
+            raise ValueError(
+                "Missing required option prepared_inputs.path, or prepared_inputs.acquisition to build one."
+            )
+        result: dict[str, Any] = {}
+        if "path" in prepared:
+            result["prepared_path"] = _path(prepared.pop("path"), "prepared_inputs.path")
+        for name in ("start_date", "end_date", "domain"):
+            if name in prepared:
+                result[name] = _string(prepared.pop(name), f"prepared_inputs.{name}")
+        if native:
+            if "boundary_representation" in prepared:
+                result["boundary_representation"] = check_representation(prepared.pop("boundary_representation"))
+            channels = options.get("channels", {})
+            boundary: dict[str, Choice | None] = {}
+            if isinstance(channels, Mapping):
+                for channel in LINKED_CHANNELS:
+                    table = channels.get(channel)
+                    if isinstance(table, Mapping) and "boundary" in table:
+                        choice = {key: value for key, value in _table(table["boundary"], f"channels.{channel}.boundary").items()
+                                  if key != "activity"}
+                        boundary[channel] = _boundary_choice(choice, f"channels.{channel}.boundary")
+            result["boundary"] = _frozen(boundary)
+            for name in ("start_date", "end_date", "domain"):
+                if name not in result:
+                    raise ValueError(f"Missing required option prepared_inputs.{name} for a new preparation.")
+            result["native"] = Co2O2NativePreparationConfig.from_params(prepared, domain=result["domain"])
+            representation = result.get("boundary_representation")
+            needs = {channel: boundary_preparation(boundary.get(channel), representation) for channel in LINKED_CHANNELS}
+            weights = result["native"].bc_centering_weights_path
+            if any(need.centering_weights for need in needs.values()) and weights is None:
+                raise ValueError("The weighted additive boundary requires prepared_inputs.bc_centering_weights_path.")
+            if weights is not None and not any(need.representation == "centered" for need in needs.values()):
+                raise ValueError("prepared_inputs.bc_centering_weights_path requires centered boundaries.")
+            for channel in LINKED_CHANNELS:
+                if not result["native"].acquisition[channel].get("use_bc", True) and boundary.get(channel) is not None:
+                    raise ValueError(
+                        f"prepared_inputs.acquisition.{channel}.use_bc = false cannot serve "
+                        f"channels.{channel}.boundary; enable use_bc or disable that boundary."
+                    )
+        _reject_unknown(prepared, "prepared_inputs")
+        return cls(**result)
 
     def preparation_arguments(self) -> dict[str, Any]:
-        """Return keywords for the linked artifact-import boundary."""
+        """Return keywords for the linked prepare boundary."""
         return {item.name: getattr(self, item.name) for item in fields(self)}
 
 
@@ -422,6 +720,7 @@ def resolve_co2_o2_prior_seed(config: Mapping[str, object]) -> int | None:
 
 __all__ = [
     "load_co2_o2_params", "Co2O2PreparationConfig", "Co2O2ModelConfig",
+    "Co2O2NativePreparationConfig", "Co2O2SourceState", "LINKED_CHANNELS",
     "resolve_co2_o2_sampler", "resolve_co2_o2_prior_seed",
     "validate_co2_o2_channel_units",
 ]

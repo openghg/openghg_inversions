@@ -289,8 +289,10 @@ def test_build_route_requires_window_and_linked_route_rejects_it(partition: Path
     del config["data"]["end_date"]
     with pytest.raises(ValueError, match="end_date for a new preparation"):
         Co2PreparationConfig.from_params(config)
-    with pytest.raises(ValueError, match="prepared_inputs.acquisition"):
-        Co2O2PreparationConfig.from_params({"prepared_inputs": {"acquisition": {}}})
+    linked = {**request(partition)["data"], "acquisition": {}}
+    del linked["preparation"], linked["flux_sources"]
+    with pytest.raises(ValueError, match="prepared_inputs.acquisition.co2"):
+        Co2O2PreparationConfig.from_params({"prepared_inputs": linked})
 
 
 def test_one_merged_dataset_feeds_both_representations(tmp_path: Path, merged: MergedData, partition: Path) -> None:
