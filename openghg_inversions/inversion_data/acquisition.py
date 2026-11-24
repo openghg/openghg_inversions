@@ -378,6 +378,9 @@ class MergedData:
         )
 
 
+# Total seconds OpenGHG removes from a retrieval end_date before its inclusive time slice.
+_OPENGHG_END_DATE_PAD = pd.Timedelta(seconds=2)
+
 def _acquire_scenario_data(
     *, species: str, site_options: _site_options.SiteOptions, domain: str,
     start_date: str, end_date: str, flux_sources: Sequence[str] | None,
@@ -761,8 +764,11 @@ def acquire_surface_data(
     ]
     flux_first = min(first for first, _ in support)
     flux_last = max(last for _, last in support)
-    # OpenGHG subtracts one second and then slices inclusively at the end.
-    query_end = flux_last + pd.Timedelta(seconds=1) - pd.Timedelta("1ns")
+    # OpenGHG 0.17 subtracts one second from end_date twice, once when searching the metastore
+    # (retrieve/_search.py) and again when slicing the retrieved data (dataobjects/_basedata.py,
+    # see its TODO), then slices inclusively. A one-second pad dropped the final integrated release.
+    # Pad by two seconds so the inclusive slice ends at the last instant before ``flux_last``.
+    query_end = flux_last - pd.Timedelta("1ns") + _OPENGHG_END_DATE_PAD
     retrieved_flux = get_flux_data(
         sources=list(flux_sources), species=species, domain=domain,
         start_date=str(flux_first), end_date=str(query_end), store=flux_store,
