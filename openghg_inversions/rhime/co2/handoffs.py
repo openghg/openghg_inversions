@@ -97,7 +97,7 @@ def _finish_preparation(
 def save_preparation(
     prepared: Co2PreparedInputs, *, output_dir: str | Path,
     start_date: str | None = None, end_date: str | None = None, domain: str | None = None,
-    affine_artifact: AffineFluxMapArtifact | None = None,
+    affine_artifact: AffineFluxMapArtifact | None = None, referenced: tuple[str | Path, ...] = (),
 ) -> Path:
     """Serialize coherent inputs and an optional new affine companion, manifest last.
 
@@ -106,10 +106,14 @@ def save_preparation(
     is rebound to the saved numerical bytes and checked by the existing loader,
     including prepared projection, source/grid labels, signed flux and operator.
     A successful replacement assigns a new generation and invalidates old samples.
+    ``referenced`` names consumed request files, such as the CLI parameters
+    file, which the preparation outputs must not overwrite.
     """
     facts = requested_co2_facts(prepared, start_date=start_date, end_date=end_date, domain=domain)
     payloads = ("prepared-inputs.nc",) + (("affine-flux-map.nc",) if affine_artifact is not None else ())
-    destination = start_checkpoint(output_dir, "prepare", payloads=payloads)
+    destination = start_checkpoint(
+        output_dir, "prepare", payloads=payloads, referenced=tuple(Path(path).resolve() for path in referenced),
+    )
     prepared_path = destination / "prepared-inputs.nc"
     prepared.save(prepared_path)
     companion = None
@@ -130,6 +134,7 @@ def prepare(
     aggregation_error_rank: int | None = 512,
     bc_centering_weights: xr.DataArray | None = None,
     affine_artifact: AffineFluxMapArtifact | None = None, affine_path: str | Path | None = None,
+    referenced: tuple[str | Path, ...] = (),
 ) -> Path:
     """Prepare a coherent reduction or import a saved prepared/affine pair.
 
@@ -141,6 +146,8 @@ def prepare(
     ``bc_centering_weights`` is stored with new centered preparations, as in
     :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`;
     weighted additive boundaries require it.
+    ``referenced`` names consumed request files, such as the CLI parameters
+    file, which the preparation outputs must not overwrite.
     """
     if (canonical_inputs is None) != (reduction is None):
         raise ValueError("Pass canonical_inputs and reduction together.")
@@ -159,7 +166,7 @@ def prepare(
         )
         return save_preparation(
             prepared, output_dir=output_dir, start_date=start_date, end_date=end_date, domain=domain,
-            affine_artifact=affine_artifact,
+            affine_artifact=affine_artifact, referenced=referenced,
         )
     source = Path(cast(str | Path, prepared_path)).resolve()
     prepared = Co2PreparedInputs.load(source)
@@ -172,7 +179,8 @@ def prepare(
             load_affine(companion), prepared, prepared_inputs_id=prepared_inputs_content_id(source),
         )
     destination = start_checkpoint(
-        output_dir, "prepare", payloads=(), referenced=(source,) + ((companion,) if companion else ()),
+        output_dir, "prepare", payloads=(),
+        referenced=(source,) + ((companion,) if companion else ()) + tuple(Path(path).resolve() for path in referenced),
     )
     return _finish_preparation(
         destination, prepared_path=source, affine_path=companion, facts=facts,
