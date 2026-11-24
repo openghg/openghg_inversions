@@ -22,6 +22,8 @@ from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
+from .co2_o2_error_correlation import validate_cross_species_error_correlation
+from .co2_o2_fixed_ou import linked_channel_units
 from .co2_o2_model import _build_co2_o2_model, _validate_channel_offset_options
 from .co2_o2_preparation import Co2O2PreparedInputs
 
@@ -289,6 +291,7 @@ def build_rhime_co2_o2(
     tau_hours: float | Mapping[str, float] | None = None,
     fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     site_amplitude_prior: Mapping[str, Any] | None = None,
+    cross_species_error_correlation: float | Mapping[str, float] | None = None,
 ) -> RhimeModelBuildResult:
     """Materialize borrowed linked inputs and build their joint scientific graph.
 
@@ -316,6 +319,11 @@ def build_rhime_co2_o2(
     observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = (
         materialized
     )
+    if cross_species_error_correlation is not None:
+        # One normalized value (plain floats) feeds both the pairing and the JSON metadata.
+        cross_species_error_correlation = validate_cross_species_error_correlation(
+            cross_species_error_correlation
+        )
     model = _build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
@@ -328,6 +336,7 @@ def build_rhime_co2_o2(
         tau_hours=tau_hours,
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
+        cross_species_error_correlation=cross_species_error_correlation,
         boundary=bound,
         offset_prior=offset_prior,
         offset_args=offset_args,
@@ -351,6 +360,19 @@ def build_rhime_co2_o2(
             }
         )
         metadata["likelihood"] = "joint Gaussian with fixed OU blocks by (species, site)"
+    if cross_species_error_correlation is not None:
+        variable_roles.update(
+            {
+                "cross_species_error_correlation": "paired_error_correlation",
+                "cross_species_error_partner": "paired_error_partner",
+            }
+        )
+        metadata["cross_species_error_correlation"] = {
+            "value": cross_species_error_correlation
+            if not isinstance(cross_species_error_correlation, Mapping)
+            else dict(cross_species_error_correlation),
+            "pairs": "same site and time; cross covariance rho * sd_co2 * sd_o2 on independent errors",
+        }
     return RhimeModelBuildResult(
         model=model,
         output_contract=OutputContract(
@@ -372,6 +394,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     tau_hours: float | Mapping[str, float] | None = None,
     fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     site_amplitude_prior: Mapping[str, Any] | None = None,
+    cross_species_error_correlation: float | Mapping[str, float] | None = None,
 ) -> xr.DataTree:
     """Build and sample the CO2/O2 model from prepared scientific inputs.
 
@@ -412,11 +435,22 @@ def run_rhime_co2_o2_from_prepared_inputs(
             so offsets allow mixed units (for example ppm CO2 and per-meg O2).
             Boundary terms still require identical channel units.
         tau_hours: Optional fixed OU timescale, scalar or mapping keyed by
-            ``co2:SITE``/``o2:SITE``, in hours. Requires the same channel units.
+            ``co2:SITE``/``o2:SITE``, in hours.
         fixed_site_amplitudes: Fixed additive species/site standard deviations
-            in concentration units, scalar or mapping using the same keys.
+            in each group's channel units, scalar or mapping using the same keys.
+            With mixed channel units a nonzero value must be a mapping.
         site_amplitude_prior: Prior for inferred species/site amplitudes,
-            mutually exclusive with fixed amplitudes.
+            mutually exclusive with fixed amplitudes. Requires common channel units.
+        cross_species_error_correlation: Optional fixed correlation between the
+            independent errors of same-site, same-time CO2 and O2 rows; one
+            value, or a mapping from site to value, each strictly between -1
+            and 1. The cross covariance is ``rho * sd_co2 * sd_o2`` in the
+            product of the channel units. ``rho`` correlates only the
+            independent error components: aggregation covariance (including
+            its CO2-O2 blocks) and OU terms are unchanged, so a correlation
+            fitted from total residuals is not this value. Row correlations
+            and partners are saved as ``paired_error_correlation`` and
+            ``paired_error_partner``.
         sampler: Sampler configuration or ``"default"``; explicit ``None`` is invalid. Fixed OU requires and
             defaults to PyMC; the fixed-error default uses NumPyro.
 
@@ -452,6 +486,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
         tau_hours=tau_hours,
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
+        cross_species_error_correlation=cross_species_error_correlation,
     )
     trace = sample_rhime_model(built, sampler)
     return annotate_co2_o2_trace(trace, built=built)
@@ -462,19 +497,29 @@ def _annotate_linked_fixed_ou_trace(
     *,
     observations: xr.DataArray,
 ) -> xr.DataTree:
-    """Retain OU group identity, units, and joint likelihood semantics."""
-    units = str(observations.observation_units.values[0])
+    """Retain OU group identity, units, and joint likelihood semantics.
+
+    With mixed channel units, OU amplitudes carry an ``ou_units`` coordinate
+    and observation-aligned variables point at ``observation_units``.
+    """
+    channel_units = linked_channel_units(observations)
+    mixed = len(set(channel_units.values())) > 1
+    units = "mixed; see observation_units coordinate" if mixed else next(iter(channel_units.values()))
     for group_name, node in trace.children.items():
         group = node.to_dataset()
         if "ou_site" in group.coords:
             labels = group.ou_site.values.astype(str)
+            species = [label.split(":", 1)[0] for label in labels]
             group = group.assign_coords(
-                ou_species=("ou_site", [label.split(":", 1)[0] for label in labels]),
+                ou_species=("ou_site", species),
                 ou_station=("ou_site", [label.split(":", 1)[1] for label in labels]),
+                ou_units=("ou_site", [channel_units[name] for name in species]),
             )
-        for name in ("ou_site_amplitude", "Y", "error"):
+        for name in ("Y", "error"):
             if name in group:
                 group[name].attrs["units"] = units
+        if "ou_site_amplitude" in group:
+            group["ou_site_amplitude"].attrs["units"] = "mixed; see ou_units coordinate" if mixed else units
         if "ou_tau_hours" in group:
             group.ou_tau_hours.attrs.update(units="hours", dtype="timedelta64[ns]")
         if group_name == "log_likelihood" and "y" in group:
