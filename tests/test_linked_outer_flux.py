@@ -115,3 +115,20 @@ def test_linked_builders_resolve_the_choice_on_the_shared_prior(cached):
             build_co2_o2_cached_sigma_model(**{**inputs, "retained_prior": correlated}, **NOISE)
         else:
             build_co2_o2_model(**{**inputs, "retained_prior": correlated}, **NOISE)
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_linked_builders_reject_an_explicit_fix_on_a_jointly_pruned_held_state(cached):
+    """Joint exact-zero pruning does not hide a conflicting explicit fixed value."""
+    from openghg_inversions.models.state_activity import StateActivity
+
+    _, prior, _ = case()
+    state = prior.state_dim
+    last = prior.mean[state].values[-1]
+    _, _, inputs = case(OuterFluxChoice("fixed", ("outer",), (str(prior.mean["source"].values[-1]),)))
+    for channel in ("co2_sensitivity", "o2_sensitivity"):
+        inputs[channel] = inputs[channel].where(inputs[channel][state] != last, 0.0)
+    policy = StateActivity(active=prior.mean[state] != last, fixed_value=2.0)
+    build = build_co2_o2_cached_sigma_model if cached else build_co2_o2_model
+    with pytest.raises(ValueError, match="at values other than their prior mean"):
+        build(**inputs, state_activity=policy, **NOISE)
