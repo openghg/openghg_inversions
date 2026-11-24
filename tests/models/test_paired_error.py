@@ -91,7 +91,20 @@ def test_zero_correlation_pairs_add_no_factor_columns():
     registered = RegisteredPairedError(
         pairs=ZERO_PAIR, correlation=pm.math.constant(ZERO_PAIR.row_correlation(5))
     )
-    np.testing.assert_allclose(registered.factor(pm.math.constant(SD)).eval(), factor)
+    assert registered.correlated
+    # The 2x2-block form covers the correlated pair only and is exact: L diag(d) L^T.
+    variance = SD**2 + np.array([0.1, 0.2, 0.3, 0.4, 0.5])
+    first, second, conditional, coefficient = registered.conditional(
+        pm.math.constant(SD), pm.math.constant(variance)
+    )
+    assert first.tolist() == [0] and second.tolist() == [2]
+    lower = np.eye(5)
+    lower[second, first] = coefficient.eval()[second]
+    np.testing.assert_allclose(
+        lower @ np.diag(conditional.eval()) @ lower.T,
+        np.diag(variance) + ZERO_PAIR.covariance(SD),
+        atol=1e-12,
+    )
     none = PairedErrorCorrelation(np.array([0]), np.array([2]), np.array([0.0]))
     assert none.split(SD)[1].shape == (5, 0)
     np.testing.assert_array_equal(none.partner(5), [2, -1, 0, -1, -1])
@@ -148,3 +161,65 @@ def test_fixed_ou_likelihood_matches_dense_paired_covariance(pairs):
     np.testing.assert_allclose(
         model.compile_fn(model["epsilon"])({}), np.sqrt(np.diag(covariance)), rtol=1e-12
     )
+
+
+ALL_ZERO = PairedErrorCorrelation(first=np.array([0, 1]), second=np.array([2, 3]), correlation=np.zeros(2))
+
+
+def _additive_model(mode, pairs):
+    observations, error = _observations()
+    aggregation, _ = _aggregation(mode)
+    mean = observations.values + np.array([0.2, -0.1, 3.0, -2.0, 0.05])
+    with registered_model() as model:
+        add_additive_sigma_likelihood(
+            observations=observations,
+            observation_error=error,
+            aggregation_error=aggregation,
+            mean=pm.math.constant(mean),
+            output_dim="nmeasure",
+            paired_error_correlation=pairs,
+        )
+    return model
+
+
+@pytest.mark.usefixtures("double_precision")
+@pytest.mark.parametrize("mode", ["none", "diagonal", "low_rank", "dense"])
+def test_zero_correlations_keep_the_unpaired_numerical_path(mode):
+    """Supplying only rho = 0 pairs records them but builds the original likelihood."""
+    plain = _additive_model(mode, None)
+    paired = _additive_model(mode, ALL_ZERO)
+    # CustomDist makes a class per model, so compare the distribution name and signature.
+    for attribute in ("__name__",):
+        assert getattr(type(paired["y"].owner.op), attribute) == getattr(type(plain["y"].owner.op), attribute)
+    assert getattr(paired["y"].owner.op, "signature", None) == getattr(plain["y"].owner.op, "signature", None)
+    assert len(paired["y"].owner.inputs) == len(plain["y"].owner.inputs)
+    assert paired.compile_logp()({}) == plain.compile_logp()({})
+    np.testing.assert_array_equal(paired["paired_error_partner"].get_value(), [2, 3, 0, 1, -1])
+
+
+@pytest.mark.usefixtures("double_precision")
+@pytest.mark.parametrize("mode", ["none", "diagonal", "low_rank"])
+def test_correlated_pairs_stay_blockwise_and_sample_their_covariance(mode):
+    """No n x n covariance and no extra factor columns; draws follow the paired covariance."""
+    model = _additive_model(mode, PAIRS)
+    assert "MvNormal" not in type(model["y"].owner.op).__name__
+    matrices = [node for node in model["y"].owner.inputs if getattr(node, "ndim", None) == 2]
+    assert [tuple(node.shape.eval()) for node in matrices] == ([(5, 1)] if mode == "low_rank" else [])
+    _, aggregation_covariance = _aggregation(mode)
+    covariance = aggregation_covariance + np.diag(SD**2) + PAIRS.covariance(SD)
+    draws = pm.draw(model["y"], draws=40_000, random_seed=1104)
+    # Five standard errors of each sample covariance element.
+    tolerance = 5 * np.sqrt((np.outer(np.diag(covariance), np.diag(covariance)) + covariance**2) / len(draws))
+    assert np.all(np.abs(np.cov(draws.T) - covariance) < tolerance)
+
+
+def test_correlations_that_round_to_one_in_float32_are_rejected():
+    """Under the float32 default, |rho| that rounds to 1 would give a singular covariance."""
+    import pytensor
+
+    assert pytensor.config.floatX == "float32"
+    near_one = PairedErrorCorrelation(np.array([0]), np.array([2]), np.array([0.99999999]))
+    with pytest.raises(ValueError, match="round to"):
+        _additive_model("none", near_one)
+    # A value that is still below one in float32 is accepted.
+    _additive_model("none", PairedErrorCorrelation(np.array([0]), np.array([2]), np.array([0.999])))

@@ -772,8 +772,8 @@ def add_fixed_ou_gaussian_likelihood(
     must be numeric, finite and non-negative, and every supplied time scale
     must be numeric, finite and positive, including entries for dropped sites.
     ``paired_error_correlation`` optionally correlates pairs of rows' reported
-    ``observation_error``; each pair adds one exact rank-one column to the
-    fixed base (see :mod:`openghg_inversions.models.paired_error`). OU blocks
+    ``observation_error``; each pair with nonzero correlation adds one exact
+    rank-one column to the fixed base (see :mod:`openghg_inversions.models.paired_error`). OU blocks
     stay independent between groups.
     """
     if fixed_site_amplitudes is not None and site_amplitude_prior is not None:
@@ -810,7 +810,8 @@ def add_fixed_ou_gaussian_likelihood(
         tau_hours, alignment.nsite, "tau_hours", positive=True, coordinate=site_coord
     )
     base_variance = observation_variance + aggregation_diagonal
-    if paired_error_correlation is not None and paired_error_correlation.first.size:
+    # Pairs with rho = 0 add nothing, so the base stays on the unpaired path.
+    if paired_error_correlation is not None and paired_error_correlation.correlated().size:
         reduction, paired_factor = paired_error_correlation.split(
             np.asarray(observation_error.values, dtype=np.float64)
         )

@@ -114,9 +114,14 @@ def _low_rank_gaussian_logp(
     Returns:
         Scalar Gaussian log density evaluated through the Woodbury identity.
     """
+    return _whitened_low_rank_logp(value - mean, factor, diagonal_variance, lambda rows: rows)
+
+
+def _whitened_low_rank_logp(residual, factor, diagonal_variance, decorrelate) -> TensorVariable:
+    """Woodbury log density for ``L diag(d) L^T + F F^T`` given ``decorrelate = L^{-1}`` on rows."""
     inverse_sqrt_diagonal = pt.reciprocal(pt.sqrt(diagonal_variance))
-    whitened_residual = (value - mean) * inverse_sqrt_diagonal
-    whitened_factor = factor * inverse_sqrt_diagonal[:, None]
+    whitened_residual = decorrelate(residual) * inverse_sqrt_diagonal
+    whitened_factor = decorrelate(factor) * inverse_sqrt_diagonal[:, None]
     core = pt.eye(factor.shape[1], dtype=whitened_factor.dtype) + pt.dot(
         whitened_factor.T,
         whitened_factor,
@@ -137,8 +142,52 @@ def _low_rank_gaussian_logp(
     logdet = pt.sum(pt.log(diagonal_variance)) + floatX(2.0) * pt.sum(
         pt.log(pt.diagonal(cholesky))
     )
-    normalizing_constant = value.shape[0] * floatX(np.log(2.0 * np.pi))
+    normalizing_constant = residual.shape[0] * floatX(np.log(2.0 * np.pi))
     return -floatX(0.5) * (normalizing_constant + logdet + quadratic)
+
+
+def _decorrelate_pairs(first: np.ndarray, second: np.ndarray, coefficient: TensorVariable):
+    """Return ``L^{-1}`` on rows: subtract each pair's second-row regression on its first row."""
+
+    def decorrelate(rows: TensorVariable) -> TensorVariable:
+        scale = coefficient[second]
+        if rows.ndim == 2:
+            scale = scale[:, None]
+        return pt.inc_subtensor(rows[second], -scale * rows[first])
+
+    return decorrelate
+
+
+def _paired_gaussian_distribution(first: np.ndarray, second: np.ndarray, *, low_rank: bool):
+    """Log density and sampler for 2x2 pair blocks, optionally plus a low-rank factor.
+
+    The covariance is ``L diag(conditional) L^T`` (plus ``F F^T``), where ``L``
+    adds ``coefficient[q]`` times row ``p`` to row ``q`` of each pair.
+    """
+
+    def logp(value, mean, *params):
+        *factor, conditional, coefficient = params
+        decorrelate = _decorrelate_pairs(first, second, coefficient)
+        if low_rank:
+            return _whitened_low_rank_logp(value - mean, factor[0], conditional, decorrelate)
+        whitened = decorrelate(value - mean) / pt.sqrt(conditional)
+        normalizing_constant = value.shape[0] * floatX(np.log(2.0 * np.pi))
+        return -floatX(0.5) * (
+            normalizing_constant + pt.sum(pt.log(conditional)) + pt.dot(whitened, whitened)
+        )
+
+    def random(mean, *params, rng=None, size=None):
+        *factor, conditional, coefficient = params
+        rng = np.random.default_rng() if rng is None else rng
+        sample_shape = () if size is None else (size,) if isinstance(size, int) else tuple(size)
+        draw = np.sqrt(conditional) * rng.normal(size=(*sample_shape, mean.shape[-1]))
+        draw[..., second] += coefficient[second] * draw[..., first]
+        if low_rank:
+            noise = rng.normal(size=(*sample_shape, factor[0].shape[1]))
+            draw = draw + np.einsum("...r,nr->...n", noise, factor[0])
+        return mean + draw
+
+    return logp, random
 
 
 def _low_rank_gaussian_random(
@@ -191,19 +240,22 @@ def add_gaussian_observation_likelihood(
         output_dim: Named observation dimension for the PyMC variable.
         paired_error: Optional fixed correlations between pairs of rows.
             Their cross covariance is ``rho * sd_a * sd_b`` with
-            ``paired_error_sd``. Without aggregation error or with diagonal or
-            dense aggregation error the likelihood is a dense multivariate
-            normal; with low-rank aggregation error each pair adds one exact
-            rank-one column (see :mod:`openghg_inversions.models.paired_error`).
+            ``paired_error_sd``. Pairs with ``rho = 0`` leave the likelihood on
+            its unpaired path. Otherwise, without aggregation error or with
+            diagonal or low-rank aggregation error, each correlated pair is an
+            exact 2x2 block of the diagonal term, so the cost stays linear in
+            the pairs and the low-rank width is unchanged; dense aggregation
+            error adds the cross terms to its covariance in place (see
+            :mod:`openghg_inversions.models.paired_error`).
         paired_error_sd: Standard deviations correlated by ``paired_error``.
             Their variance must be part of ``independent_variance``.
 
     Returns:
         Observed PyMC variable named ``y``.
     """
-    if paired_error is not None:
-        if paired_error_sd is None:
-            raise ValueError("Paired error correlation requires the paired standard deviations.")
+    if paired_error is not None and paired_error_sd is None:
+        raise ValueError("Paired error correlation requires the paired standard deviations.")
+    if paired_error is not None and paired_error.correlated:
         return _add_paired_gaussian_likelihood(
             observed=observed, mean=mean, independent_variance=independent_variance,
             aggregation_error=aggregation_error, output_dim=output_dim,
@@ -261,39 +313,41 @@ def _add_paired_gaussian_likelihood(
     paired_error: RegisteredPairedError,
     paired_error_sd: TensorVariable,
 ) -> TensorVariable:
-    """Add ``y`` with fixed pair correlations; see :func:`add_gaussian_observation_likelihood`."""
-    if aggregation_error.mode in ("none", "diagonal", "dense"):
-        variance = independent_variance
-        if aggregation_error.mode == "diagonal":
-            assert aggregation_error.diagonal_variance is not None
-            variance = variance + aggregation_error.diagonal_variance
-        covariance = pt.diag(variance) + paired_error.covariance(paired_error_sd)
-        if aggregation_error.mode == "dense":
-            assert aggregation_error.covariance is not None
-            covariance = covariance + aggregation_error.covariance
+    """Add ``y`` with correlated pairs; see :func:`add_gaussian_observation_likelihood`."""
+    if aggregation_error.mode == "dense":
+        assert aggregation_error.covariance is not None
+        rows, columns, values = paired_error.cross(paired_error_sd)
+        covariance = aggregation_error.covariance + pt.diag(independent_variance)
+        covariance = pt.inc_subtensor(covariance[rows, columns], values)
         return cast(
             TensorVariable,
             pm.MvNormal("y", mu=mean, cov=covariance, observed=observed, dims=output_dim),
         )
-    assert aggregation_error.factor is not None
-    assert aggregation_error.diagonal_variance is not None
-    diagonal = (
-        independent_variance
-        - paired_error.reduction(paired_error_sd)
-        + aggregation_error.diagonal_variance
-    )
-    factor = pt.concatenate([aggregation_error.factor, paired_error.factor(paired_error_sd)], axis=1)
+    variance = independent_variance
+    if aggregation_error.mode in ("diagonal", "low_rank"):
+        assert aggregation_error.diagonal_variance is not None
+        variance = variance + aggregation_error.diagonal_variance
+    variance = pt.broadcast_to(variance, mean.shape)
+    first, second, conditional, coefficient = paired_error.conditional(paired_error_sd, variance)
+    low_rank = aggregation_error.mode == "low_rank"
+    logp, random = _paired_gaussian_distribution(first, second, low_rank=low_rank)
+    if low_rank:
+        assert aggregation_error.factor is not None
+        params, signature = (aggregation_error.factor, conditional, coefficient), "(n),(n,r),(n),(n)->(n)"
+    else:
+        params, signature = (conditional, coefficient), "(n),(n),(n)->(n)"
     return cast(
         TensorVariable,
         pm.CustomDist(
             "y",
             mean,
-            factor,
-            diagonal,
-            logp=_low_rank_gaussian_logp,
-            random=_low_rank_gaussian_random,
-            signature="(n),(n,r),(n)->(n)",
+            *params,
+            logp=logp,
+            random=random,
+            signature=signature,
             observed=observed,
             dims=output_dim,
         ),
     )
+
+

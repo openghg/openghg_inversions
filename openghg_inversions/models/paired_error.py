@@ -14,9 +14,19 @@ pairs may mix units. Likelihoods use the exact split::
     block = (1 - |rho|) * diag(s_a**2, s_b**2) + |rho| * v v^T,
     v = (s_a, sign(rho) * s_b)
 
-so the paired term is a positive diagonal plus one rank-one column per pair.
-This keeps dense, low-rank and fixed-OU likelihoods exact while recorded
-standard deviations and aggregation covariance stay unchanged.
+Generic Gaussian likelihoods keep each correlated pair as an exact 2x2 block:
+the second row is regressed on the first (see
+:meth:`RegisteredPairedError.conditional`), so independent and low-rank
+likelihoods stay O(n) in the pairs and dense likelihoods add the cross terms
+in place. The fixed-OU preparation uses the exact split::
+
+    block = (1 - |rho|) * diag(s_a**2, s_b**2) + |rho| * v v^T,
+    v = (s_a, sign(rho) * s_b)
+
+a positive diagonal plus one rank-one column per pair. Pairs with ``rho = 0``
+take no part in either form, so they leave the original numerical path
+unchanged. Recorded standard deviations and aggregation covariance stay
+unchanged.
 """
 
 from __future__ import annotations
@@ -134,29 +144,45 @@ class RegisteredPairedError:
     pairs: PairedErrorCorrelation
     correlation: TensorVariable
 
-    def reduction(self, sd: TensorVariable) -> TensorVariable:
-        """Return ``|rho| * sd**2`` on paired rows, zero elsewhere."""
-        return pt.abs(self.correlation) * sd**2
+    @property
+    def correlated(self) -> bool:
+        """Whether any pair has a nonzero correlation."""
+        return bool(self.pairs.correlated().size)
 
-    def covariance(self, sd: TensorVariable) -> TensorVariable:
-        """Return the dense zero-diagonal cross covariance for tensor ``sd``."""
-        size = sd.shape[0]
-        rows = np.concatenate([self.pairs.first, self.pairs.second])
-        columns = np.concatenate([self.pairs.second, self.pairs.first])
-        values = self.correlation[rows] * sd[rows] * sd[columns]
-        return pt.set_subtensor(pt.zeros((size, size), dtype=values.dtype)[rows, columns], values)
-
-    def factor(self, sd: TensorVariable) -> TensorVariable:
-        """Return one rank-one column per pair of nonzero correlation for tensor ``sd``."""
-        size = sd.shape[0]
+    def _rows(self) -> tuple[np.ndarray, np.ndarray]:
         keep = self.pairs.correlated()
-        first, second = self.pairs.first[keep], self.pairs.second[keep]
-        columns = np.arange(first.size)
-        rho = self.correlation[first]
-        scale = pt.sqrt(pt.abs(rho))
-        result = pt.zeros((size, first.size), dtype=sd.dtype)
-        result = pt.set_subtensor(result[first, columns], scale * sd[first])
-        return pt.set_subtensor(result[second, columns], scale * pt.sgn(rho) * sd[second])
+        return self.pairs.first[keep], self.pairs.second[keep]
+
+    def cross(self, sd: TensorVariable) -> tuple[np.ndarray, np.ndarray, TensorVariable]:
+        """Return rows, columns and values of the nonzero symmetric cross covariance for tensor ``sd``."""
+        first, second = self._rows()
+        rows = np.concatenate([first, second])
+        columns = np.concatenate([second, first])
+        return rows, columns, self.correlation[rows] * sd[rows] * sd[columns]
+
+    def conditional(
+        self, sd: TensorVariable, variance: TensorVariable
+    ) -> tuple[np.ndarray, np.ndarray, TensorVariable, TensorVariable]:
+        """Factor ``diag(variance) + cross covariance`` into exact 2x2 blocks.
+
+        For a correlated pair ``(p, q)`` with cross covariance ``c``, row ``q``
+        is regressed on row ``p``: ``coefficient[q] = c / variance[p]`` and the
+        conditional variance of ``q`` is ``variance[q] - c**2 / variance[p]``.
+        Every other row keeps ``variance`` and a zero coefficient. Then the
+        block covariance is ``L diag(conditional) L^T`` with ``L`` the identity
+        plus ``coefficient[q]`` at ``(q, p)``, and its log determinant is
+        ``sum(log(conditional))``.
+
+        Returns:
+            First and second rows of the correlated pairs, the conditional
+            variance and the regression coefficient.
+        """
+        first, second = self._rows()
+        cross = self.correlation[first] * sd[first] * sd[second]
+        ratio = cross / variance[first]
+        conditional = pt.set_subtensor(variance[second], variance[second] - ratio * cross)
+        coefficient = pt.set_subtensor(pt.zeros_like(variance)[second], ratio)
+        return first, second, conditional, coefficient
 
 
 def add_paired_error_data(
@@ -174,9 +200,13 @@ def add_paired_error_data(
         return None
     size = observations.sizes[output_dim]
     coords = {output_dim: observations.coords[output_dim]}
-    correlation = xr.DataArray(
-        floatX(pairs.row_correlation(size)), dims=(output_dim,), coords=coords, name=PAIRED_ERROR_CORRELATION
-    )
+    working = floatX(pairs.row_correlation(size))
+    if np.any(np.abs(working) >= 1.0):
+        raise ValueError(
+            f"Paired error correlations round to +/-1 at the working precision ({working.dtype}); "
+            "use a smaller |rho| or floatX='float64'."
+        )
+    correlation = xr.DataArray(working, dims=(output_dim,), coords=coords, name=PAIRED_ERROR_CORRELATION)
     partner = xr.DataArray(pairs.partner(size), dims=(output_dim,), coords=coords, name=PAIRED_ERROR_PARTNER)
     registered = add_model_data(correlation)
     add_model_data(partner)

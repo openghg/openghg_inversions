@@ -1308,12 +1308,29 @@ independent errors of CO2 and O2 rows at the same site and time,
 by site, each strictly between -1 and 1. A matched pair then has cross
 covariance :math:`\rho\,\sigma_{CO_2}\,\sigma_{O_2}` from the independent
 error standard deviations, in CO2 units times O2 units, so ppm CO2 with per-meg
-δ(O2/N2) needs no conversion. Times must match exactly. Rows without a partner,
-aggregation covariance and OU blocks are unchanged. The likelihood uses an exact
-split of each pair into a smaller diagonal plus one rank-one column, so dense,
-low-rank and fixed-OU likelihoods stay exact. Traces save
-``paired_error_correlation`` and ``paired_error_partner`` on the observation
-axis. In configuration:
+δ(O2/N2) needs no conversion. Sites and times must match exactly; rows with a
+missing site or time, and rows without a partner, stay independent. Aggregation
+covariance and OU blocks are unchanged.
+
+:math:`\rho` is therefore the correlation of the *independent* error
+components only. It is not the correlation of the total residuals, which also
+includes the aggregation covariance (whose CO2–O2 blocks are already part of
+the likelihood) and any OU term. A correlation fitted from total residuals is
+not a value for this option, and an artifact whose aggregation covariance
+already contains a :math:`\rho` term must have that term removed before the
+option is enabled, or the correlation is counted twice.
+
+Pairs with :math:`\rho=0` leave the likelihood on its unpaired numerical path.
+Correlated pairs stay exact and cheap: without aggregation error or with
+diagonal or low-rank aggregation error, each pair is a 2×2 block of the
+diagonal term, so the cost is linear in the number of pairs and the low-rank
+width is unchanged; dense aggregation error gains the cross terms in place.
+Fixed OU splits each correlated pair into a smaller diagonal plus one rank-one
+column of its fixed base, so its preparation cost grows with the number of
+correlated pairs. Correlations that round to ±1 at the working precision
+(for example ``0.99999999`` under ``floatX="float32"``) are rejected. Traces
+save ``paired_error_correlation`` and ``paired_error_partner`` on the
+observation axis. In configuration:
 
 .. code-block:: toml
 

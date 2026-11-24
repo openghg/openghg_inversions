@@ -22,6 +22,7 @@ from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
+from .co2_o2_error_correlation import validate_cross_species_error_correlation
 from .co2_o2_fixed_ou import linked_channel_units
 from .co2_o2_model import _build_co2_o2_model, _validate_channel_offset_options
 from .co2_o2_preparation import Co2O2PreparedInputs
@@ -318,6 +319,11 @@ def build_rhime_co2_o2(
     observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = (
         materialized
     )
+    if cross_species_error_correlation is not None:
+        # One normalized value (plain floats) feeds both the pairing and the JSON metadata.
+        cross_species_error_correlation = validate_cross_species_error_correlation(
+            cross_species_error_correlation
+        )
     model = _build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
@@ -437,8 +443,12 @@ def run_rhime_co2_o2_from_prepared_inputs(
             independent errors of same-site, same-time CO2 and O2 rows; one
             value, or a mapping from site to value, each strictly between -1
             and 1. The cross covariance is ``rho * sd_co2 * sd_o2`` in the
-            product of the channel units. Row correlations and partners are
-            saved as ``paired_error_correlation`` and ``paired_error_partner``.
+            product of the channel units. ``rho`` correlates only the
+            independent error components: aggregation covariance (including
+            its CO2-O2 blocks) and OU terms are unchanged, so a correlation
+            fitted from total residuals is not this value. Row correlations
+            and partners are saved as ``paired_error_correlation`` and
+            ``paired_error_partner``.
         sampler: Sampler configuration or ``"default"``; explicit ``None`` is invalid. Fixed OU requires and
             defaults to PyMC; the fixed-error default uses NumPyro.
 

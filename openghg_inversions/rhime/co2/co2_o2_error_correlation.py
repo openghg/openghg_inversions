@@ -51,7 +51,8 @@ def linked_cross_species_pairs(
     covariance ``rho * sd_first * sd_second`` is in the product of the two
     channels' units (for example ppm times per meg, or ppm times per mil);
     ``rho`` itself is dimensionless. Times must match exactly. Rows with a
-    missing (NaT) time and rows without a partner stay independent.
+    missing site or time (``None``, NaN or NaT) and rows without a partner
+    stay independent.
 
     Args:
         observations: Joint observations with observation-aligned ``species``,
@@ -78,16 +79,20 @@ def linked_cross_species_pairs(
             raise ValueError(
                 f"Cross-species error correlation requires observation-aligned {name!r} coordinates."
             )
+    # A missing site or timestamp is not a known common site or time, so those
+    # rows stay unpaired. Drop them before labels are stringified, which would
+    # make two missing values equal.
+    sites = np.asarray(observations.site.values, dtype=object)
+    times = pd.to_datetime(np.asarray(observations.time.values))
+    known = ~pd.isna(sites) & ~pd.isna(times)
     frame = pd.DataFrame(
         {
-            "species": [str(value) for value in observations.species.values],
-            "site": [str(value) for value in observations.site.values],
-            "time": pd.to_datetime(np.asarray(observations.time.values)),
-            "row": np.arange(observations.size),
+            "species": [str(value) for value in observations.species.values[known]],
+            "site": [str(value) for value in sites[known]],
+            "time": times[known],
+            "row": np.flatnonzero(known),
         }
     )
-    # A missing timestamp is not a known common time, so those rows stay unpaired.
-    frame = frame[frame.time.notna()]
     if frame[["species", "site", "time"]].duplicated().any():
         raise ValueError("Cross-species error correlation requires one row per species, site and time.")
     pairs = frame[frame.species == first].merge(

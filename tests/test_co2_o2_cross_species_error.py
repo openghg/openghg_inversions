@@ -96,6 +96,24 @@ def test_missing_times_are_never_paired():
         linked_cross_species_pairs(both_missing, RHO)
 
 
+@pytest.mark.parametrize("missing", [None, np.nan], ids=["None", "NaN"])
+def test_missing_sites_are_never_paired(missing):
+    """Two unknown sites are not the same site, and a valid pair still matches beside them."""
+    observations = _prepared().observations
+    sites = observations.site.values.astype(object)
+    # Rows 0 (co2, hour 4) and 2 (o2, hour 4) share a time; only rows 1 and 4 keep site A.
+    sites[[0, 2]] = missing
+    unknown = observations.assign_coords(site=("observation", sites))
+    pairs = linked_cross_species_pairs(unknown, RHO)
+    assert pairs.first.tolist() == [1]
+    assert pairs.second.tolist() == [4]
+    assert linked_cross_species_pairs(unknown, {"A": RHO}).first.tolist() == [1]
+    with pytest.raises(ValueError, match="no same-site"):
+        linked_cross_species_pairs(
+            observations.assign_coords(site=("observation", np.full(5, missing, dtype=object))), RHO
+        )
+
+
 @pytest.mark.usefixtures("double_precision")
 def test_built_model_leaves_missing_time_rows_unpaired():
     from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
@@ -214,3 +232,28 @@ def test_configured_correlation_reaches_the_built_model_and_metadata():
     metadata = json.loads(json.dumps(built.output_contract.metadata))
     assert metadata["cross_species_error_correlation"]["value"] == {"A": RHO}
     assert prepared.observations.observation_units.values.tolist()[-1] == "per meg"
+
+
+@pytest.mark.parametrize("correlation", [np.float32(-0.9), {"A": np.float32(-0.9)}], ids=["scalar", "site"])
+def test_runner_normalizes_numpy_correlations_for_pairing_and_metadata(correlation):
+    """NumPy scalars are normalized once, so the stored metadata is plain JSON and matches the model."""
+    arguments = Co2O2ModelConfig.from_params(
+        {
+            "channels": {
+                "co2": {"units": "ppm", "independent_error_sd": 0.5},
+                "o2": {"units": "ppm", "independent_error_sd": 5.0},
+            }
+        }
+    ).bind(_prepared())
+    built = build_rhime_co2_o2(
+        prepared_inputs=_prepared(), **{**arguments, "cross_species_error_correlation": correlation}
+    )
+    stored = json.loads(json.dumps(built.output_contract.metadata))["cross_species_error_correlation"][
+        "value"
+    ]
+    value = float(np.float32(-0.9))
+    assert stored == (value if not isinstance(correlation, dict) else {"A": value})
+    assert type(stored if not isinstance(stored, dict) else stored["A"]) is float
+    np.testing.assert_allclose(
+        built.model["paired_error_correlation"].get_value(), [value, value, value, 0.0, value], rtol=1e-6
+    )
