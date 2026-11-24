@@ -99,25 +99,31 @@ class PairedErrorCorrelation:
         result[self.second, self.first] = values
         return result
 
+    def correlated(self) -> np.ndarray:
+        """Return the positions of pairs with nonzero correlation, the only ones that need a factor column."""
+        return np.flatnonzero(self.correlation != 0.0)
+
     def split(self, sd: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Split the paired block into a variance reduction and rank-one factor columns.
 
         Returns:
             ``reduction`` (``|rho| * sd**2`` on paired rows, zero elsewhere) and
-            ``factor`` with one column per pair, so that
+            ``factor`` with one column per pair of nonzero correlation, so that
             ``diag(sd**2) + covariance(sd) == diag(sd**2 - reduction) + factor @ factor.T``.
         """
         sd = np.asarray(sd, dtype=np.float64)
         self._check_size(sd.size)
-        magnitude = np.abs(self.correlation)
+        keep = self.correlated()
+        first, second, rho = self.first[keep], self.second[keep], self.correlation[keep]
+        magnitude = np.abs(rho)
         reduction = np.zeros(sd.size, dtype=np.float64)
-        reduction[self.first] = magnitude * sd[self.first] ** 2
-        reduction[self.second] = magnitude * sd[self.second] ** 2
-        factor = np.zeros((sd.size, self.first.size), dtype=np.float64)
-        columns = np.arange(self.first.size)
+        reduction[first] = magnitude * sd[first] ** 2
+        reduction[second] = magnitude * sd[second] ** 2
+        factor = np.zeros((sd.size, keep.size), dtype=np.float64)
+        columns = np.arange(keep.size)
         scale = np.sqrt(magnitude)
-        factor[self.first, columns] = scale * sd[self.first]
-        factor[self.second, columns] = scale * np.sign(self.correlation) * sd[self.second]
+        factor[first, columns] = scale * sd[first]
+        factor[second, columns] = scale * np.sign(rho) * sd[second]
         return reduction, factor
 
 
@@ -141,9 +147,10 @@ class RegisteredPairedError:
         return pt.set_subtensor(pt.zeros((size, size), dtype=values.dtype)[rows, columns], values)
 
     def factor(self, sd: TensorVariable) -> TensorVariable:
-        """Return one rank-one column per pair for tensor ``sd``."""
+        """Return one rank-one column per pair of nonzero correlation for tensor ``sd``."""
         size = sd.shape[0]
-        first, second = self.pairs.first, self.pairs.second
+        keep = self.pairs.correlated()
+        first, second = self.pairs.first[keep], self.pairs.second[keep]
         columns = np.arange(first.size)
         rho = self.correlation[first]
         scale = pt.sqrt(pt.abs(rho))

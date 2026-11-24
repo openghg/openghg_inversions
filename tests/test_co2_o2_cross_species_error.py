@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import numpy as np
 import xarray as xr
@@ -76,6 +77,65 @@ def test_pairs_follow_site_and_time_and_check_site_mappings():
     unpaired = observations.assign_coords(site=("observation", ["A", "A", "B", "B", "B"]))
     with pytest.raises(ValueError, match="no same-site"):
         linked_cross_species_pairs(unpaired, RHO)
+
+
+def test_missing_times_are_never_paired():
+    """Two NaT rows at one site have no known common time, so they stay independent."""
+    observations = _prepared().observations
+    times = observations.time.values.copy()
+    # Rows 0 (co2:A, hour 4) and 2 (o2:A, hour 4) would otherwise pair.
+    times[[0, 2]] = np.datetime64("NaT")
+    missing = observations.assign_coords(time=("observation", times))
+    pairs = linked_cross_species_pairs(missing, RHO)
+    assert pairs.first.tolist() == [1]
+    assert pairs.second.tolist() == [4]
+    both_missing = observations.assign_coords(
+        time=("observation", np.full(5, np.datetime64("NaT"), "M8[ns]"))
+    )
+    with pytest.raises(ValueError, match="no same-site"):
+        linked_cross_species_pairs(both_missing, RHO)
+
+
+@pytest.mark.usefixtures("double_precision")
+def test_built_model_leaves_missing_time_rows_unpaired():
+    from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
+    from test_rhime_co2_o2 import _inputs
+
+    inputs = _inputs()
+    inputs["o2_units"] = "ppm"
+    # co2:A and o2:A share hour 0 (a real pair) and both miss their other time (NaT).
+    for channel, sites, hours in [("co2", ["A", "A"], [None, 0]), ("o2", ["A", "B", "A"], [None, 2, 0])]:
+        observed = inputs[f"{channel}_observations"]
+        times = [
+            np.datetime64("NaT", "ns")
+            if hour is None
+            else np.datetime64("2021-01-01T00", "ns") + np.timedelta64(hour, "h")
+            for hour in hours
+        ]
+        inputs[f"{channel}_observations"] = observed.assign_coords(
+            site=(observed.dims[0], sites), time=(observed.dims[0], np.array(times, dtype="M8[ns]"))
+        )
+    kwargs = _channel_errors(_kwargs(prepare_co2_o2_inputs(**inputs)))
+    # The model coordinate registry compares NaT as unequal, so keep time only on the row arrays.
+    aggregation = kwargs["aggregation_error"]
+    covariance = aggregation.covariance
+    kwargs["aggregation_error"] = replace(
+        aggregation,
+        covariance=covariance.drop_vars([name for name in covariance.coords if str(name).startswith("time")]),
+    )
+    model = build_co2_o2_model(
+        **bound_linked_model_arguments({**kwargs, "cross_species_error_correlation": RHO})
+    )
+    np.testing.assert_array_equal(model["paired_error_partner"].get_value(), [-1, 4, -1, -1, 1])
+    actual, mean = _logp(model)
+    covariance = (
+        kwargs["aggregation_error"].covariance.values
+        + np.diag(kwargs["independent_error_sd"].values ** 2)
+        + _cross(kwargs, RHO)
+    )
+    assert covariance[0, 2] == kwargs["aggregation_error"].covariance.values[0, 2]
+    expected = multivariate_normal.logpdf(kwargs["observations"].values, mean=mean, cov=covariance)
+    np.testing.assert_allclose(actual, expected, rtol=1e-8)
 
 
 @pytest.mark.usefixtures("double_precision")

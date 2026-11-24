@@ -50,8 +50,8 @@ def linked_cross_species_pairs(
     The correlation applies to the rows' independent errors, so its cross
     covariance ``rho * sd_first * sd_second`` is in the product of the two
     channels' units (for example ppm times per meg, or ppm times per mil);
-    ``rho`` itself is dimensionless. Times must match exactly. Rows without a
-    partner stay independent.
+    ``rho`` itself is dimensionless. Times must match exactly. Rows with a
+    missing (NaT) time and rows without a partner stay independent.
 
     Args:
         observations: Joint observations with observation-aligned ``species``,
@@ -86,6 +86,8 @@ def linked_cross_species_pairs(
             "row": np.arange(observations.size),
         }
     )
+    # A missing timestamp is not a known common time, so those rows stay unpaired.
+    frame = frame[frame.time.notna()]
     if frame[["species", "site", "time"]].duplicated().any():
         raise ValueError("Cross-species error correlation requires one row per species, site and time.")
     pairs = frame[frame.species == first].merge(

@@ -19,6 +19,10 @@ SD = np.array([0.5, 0.4, 6.0, 5.0, 0.3])
 PAIRS = PairedErrorCorrelation(
     first=np.array([0, 1]), second=np.array([2, 3]), correlation=np.array([-0.9, 0.6])
 )
+# A configured zero correlation keeps its pair labels but needs no factor column.
+ZERO_PAIR = PairedErrorCorrelation(
+    first=np.array([0, 1]), second=np.array([2, 3]), correlation=np.array([-0.9, 0.0])
+)
 
 
 def _aggregation(mode: str) -> tuple[AggregationError | None, np.ndarray]:
@@ -72,9 +76,31 @@ def test_split_reproduces_the_paired_block_and_validates_pairs():
             PairedErrorCorrelation(np.array(first), np.array(second), np.array(rho))
 
 
+def test_zero_correlation_pairs_add_no_factor_columns():
+    """Only correlated pairs cost a factor column; the split stays exact."""
+    from openghg_inversions.models.paired_error import RegisteredPairedError
+
+    reduction, factor = ZERO_PAIR.split(SD)
+    assert factor.shape == (5, 1)
+    np.testing.assert_allclose(reduction, [0.9 * SD[0] ** 2, 0.0, 0.9 * SD[2] ** 2, 0.0, 0.0])
+    np.testing.assert_allclose(
+        np.diag(SD**2 - reduction) + factor @ factor.T,
+        np.diag(SD**2) + ZERO_PAIR.covariance(SD),
+        atol=1e-12,
+    )
+    registered = RegisteredPairedError(
+        pairs=ZERO_PAIR, correlation=pm.math.constant(ZERO_PAIR.row_correlation(5))
+    )
+    np.testing.assert_allclose(registered.factor(pm.math.constant(SD)).eval(), factor)
+    none = PairedErrorCorrelation(np.array([0]), np.array([2]), np.array([0.0]))
+    assert none.split(SD)[1].shape == (5, 0)
+    np.testing.assert_array_equal(none.partner(5), [2, -1, 0, -1, -1])
+
+
 @pytest.mark.usefixtures("double_precision")
+@pytest.mark.parametrize("pairs", [PAIRS, ZERO_PAIR], ids=["correlated", "zero-pair"])
 @pytest.mark.parametrize("mode", ["none", "diagonal", "low_rank", "dense"])
-def test_additive_likelihood_matches_dense_paired_covariance(mode):
+def test_additive_likelihood_matches_dense_paired_covariance(mode, pairs):
     observations, error = _observations()
     aggregation, aggregation_covariance = _aggregation(mode)
     mean = observations.values + np.array([0.2, -0.1, 3.0, -2.0, 0.05])
@@ -85,18 +111,19 @@ def test_additive_likelihood_matches_dense_paired_covariance(mode):
             aggregation_error=aggregation,
             mean=pm.math.constant(mean),
             output_dim="nmeasure",
-            paired_error_correlation=PAIRS,
+            paired_error_correlation=pairs,
         )
-    covariance = aggregation_covariance + np.diag(SD**2) + PAIRS.covariance(SD)
+    covariance = aggregation_covariance + np.diag(SD**2) + pairs.covariance(SD)
     expected = multivariate_normal.logpdf(observations.values, mean=mean, cov=covariance)
     np.testing.assert_allclose(model.compile_logp()({}), expected, rtol=1e-10)
     epsilon = model.compile_fn(model["epsilon"])({})
     np.testing.assert_allclose(epsilon, np.sqrt(np.diag(covariance)), rtol=1e-12)
-    np.testing.assert_allclose(model["paired_error_correlation"].get_value(), PAIRS.row_correlation(5))
+    np.testing.assert_allclose(model["paired_error_correlation"].get_value(), pairs.row_correlation(5))
 
 
 @pytest.mark.usefixtures("double_precision")
-def test_fixed_ou_likelihood_matches_dense_paired_covariance():
+@pytest.mark.parametrize("pairs", [PAIRS, ZERO_PAIR], ids=["correlated", "zero-pair"])
+def test_fixed_ou_likelihood_matches_dense_paired_covariance(pairs):
     observations, error = _observations()
     aggregation, aggregation_covariance = _aggregation("dense")
     mean = observations.values + np.array([0.2, -0.1, 3.0, -2.0, 0.05])
@@ -110,12 +137,12 @@ def test_fixed_ou_likelihood_matches_dense_paired_covariance():
             tau_hours=tau,
             fixed_site_amplitudes=amplitude,
             output_dim="nmeasure",
-            paired_error_correlation=PAIRS,
+            paired_error_correlation=pairs,
         )
     hours = (observations.time.values - observations.time.values[0]) / np.timedelta64(1, "h")
     same_site = observations.site.values[:, None] == observations.site.values[None, :]
     ou = amplitude**2 * np.exp(-np.abs(hours[:, None] - hours[None, :]) / tau) * same_site
-    covariance = aggregation_covariance + np.diag(SD**2) + PAIRS.covariance(SD) + ou
+    covariance = aggregation_covariance + np.diag(SD**2) + pairs.covariance(SD) + ou
     expected = multivariate_normal.logpdf(observations.values, mean=mean, cov=covariance)
     np.testing.assert_allclose(model.compile_logp()({}), expected, rtol=1e-10)
     np.testing.assert_allclose(
