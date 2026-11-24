@@ -52,12 +52,25 @@ outer states induce. Run metadata records ``outer_marginal_rank``.
 
 For a linear Gaussian model with uncorrelated outer states this is exact: the
 posterior of the other states equals their marginal posterior when the outer
-states are sampled uncentred (the default), and it is cheaper because the
-outer states leave the sampler. Correlated outer states are conditioned on the
-others; see below.
-Under the default LogNormal-copula flux prior it is an approximation:
+states are sampled uncentred (the default). Correlated outer states are
+conditioned on the others; see below.
+
+Under the default LogNormal-copula flux prior it is an approximation, not a
+pure reparameterisation of sampling the outer states:
 :math:`\Sigma_{OO}` is the prior's arithmetic covariance, so the outer
-contribution is replaced by the Gaussian with the same mean and covariance.
+contribution is replaced by the Gaussian with the same mean and covariance,
+and the posterior changes slightly. In a WUR BASE July 2021 test (5314
+observations, 18 marginalised outer states), NUTS with ``"marginalise"``
+moved the inner NET_BIOSPHERE and TOTAL posterior means by +90 Tg CO2/yr
+(0.05 posterior SD, about two Monte Carlo standard errors) relative to
+sampling the outer states, and left FF unchanged. Exact solves of the same
+problem with a Gaussian prior agreed to 2e-9 Tg CO2/yr, so the shift is the
+moment approximation. Expect differences of this size, larger when the
+LogNormal prior is wide.
+
+Taking the outer states out of the sampler makes the state smaller, but it
+need not make NUTS faster: the likelihood gains a low-rank term, and in the
+test above sampling took slightly longer than sampling the outer states.
 
 The outer ocean can be marginalised the same way instead of being held with
 zero uncertainty, with ``fixed_sources=("ocean",)``.
