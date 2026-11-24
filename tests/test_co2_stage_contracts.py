@@ -389,3 +389,27 @@ def test_staged_request_file_is_protected_before_construction(full_run_files, tm
         else:
             handoffs.prior_predictive(prep, model=model, output_dir=destination, referenced=(request,))
     assert request.read_bytes() == b"consumed request must remain intact"
+
+
+@pytest.mark.parametrize("model", ["co2", "co2_o2"])
+def test_staged_prepare_protects_its_request_file(full_run_files, tmp_path, model):
+    """A prepare request saved where the stage writes its manifest is not replaced."""
+    from examples.co2_o2_handoffs import synthetic_inputs
+    from openghg_inversions.cli import main
+
+    if model == "co2":
+        _, source, _, _ = full_run_files
+        params = {"prepared_inputs": {**FACTS, "path": str(source)}}
+    else:
+        source = tmp_path / "linked.nc"
+        synthetic_inputs().save(source)
+        params = {"format_version": 1, "recipe": "co2_o2", "prepared_inputs": {"path": str(source)},
+                  "channels": {"co2": {"units": "ppm"}, "o2": {"units": "ppm"}}}
+    destination = tmp_path / "prepare"
+    destination.mkdir()
+    request = destination / "prepare-manifest.json"
+    request.write_text(json.dumps(params))
+    before = request.read_bytes()
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+        main(["prepare", "--model", model, "--params-file", str(request), "--output-dir", str(destination)])
+    assert request.read_bytes() == before

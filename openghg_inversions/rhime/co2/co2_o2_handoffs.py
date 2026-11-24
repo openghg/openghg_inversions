@@ -82,18 +82,24 @@ def _finish_preparation(destination: Path, *, payload: Path, facts: Mapping[str,
 def save_preparation(
     prepared: Co2O2PreparedInputs, *, output_dir: str | Path,
     start_date: str | None = None, end_date: str | None = None, domain: str | None = None,
+    referenced: tuple[str | Path, ...] = (),
 ) -> Path:
     """Save joint inputs using their numerical codec, then publish a manifest.
 
     Requested dates/domain must be explicit or present in preparation provenance.
     Saving materializes the borrowed arrays at the existing serialization boundary.
     A successful replacement creates a new preparation generation.
+    ``referenced`` names consumed request files, such as the CLI parameters
+    file, which the preparation outputs must not overwrite.
     """
     facts = requested_co2_facts(prepared, start_date=start_date, end_date=end_date, domain=domain)
     lazy_units = isinstance(prepared.observations.observation_units.data, DaskArray)
     if not lazy_units:
         validate_co2_o2_units(prepared)
-    destination = start_checkpoint(output_dir, "prepare", payloads=("prepared-inputs.nc",))
+    destination = start_checkpoint(
+        output_dir, "prepare", payloads=("prepared-inputs.nc",),
+        referenced=tuple(Path(path).resolve() for path in referenced),
+    )
     payload = destination / "prepared-inputs.nc"
     prepared.save(payload)
     if lazy_units:
@@ -108,6 +114,7 @@ def save_preparation(
 def prepare(
     *, prepared_path: str | Path, output_dir: str | Path,
     start_date: str | None = None, end_date: str | None = None, domain: str | None = None,
+    referenced: tuple[str | Path, ...] = (),
 ) -> Path:
     """Reference an existing NetCDF/Zarr linked preparation without copying it.
 
@@ -116,12 +123,16 @@ def prepare(
     times cannot recover an interval after filtering. New in-memory preparation
     uses :func:`openghg_inversions.rhime.co2.prepare_co2_o2_inputs` followed by
     :func:`save_preparation`.
+    ``referenced`` names consumed request files, such as the CLI parameters
+    file, which the preparation outputs must not overwrite.
     """
     payload = Path(prepared_path).resolve()
     prepared = Co2O2PreparedInputs.load(payload)
     validate_co2_o2_units(prepared)
     facts = requested_co2_facts(prepared, start_date=start_date, end_date=end_date, domain=domain)
-    destination = start_checkpoint(output_dir, "prepare", payloads=(), referenced=(payload,))
+    destination = start_checkpoint(
+        output_dir, "prepare", payloads=(), referenced=(payload, *(Path(path).resolve() for path in referenced)),
+    )
     return _finish_preparation(destination, payload=payload, facts=facts)
 
 
