@@ -242,7 +242,8 @@ def test_builders_resolve_the_choice_on_the_prior_they_sample(cached):
 
 
 def test_outputs_record_the_mode_and_selectors():
-    outputs = FIXED_OCEAN.resolve_states(prior()).outputs()
+    outputs = FIXED_OCEAN.outputs()
+    assert FIXED_OCEAN.resolve_states(prior()).outputs() == outputs
     assert outputs.roles == {} and outputs.units == {}
     assert outputs.metadata == {
         "outer_flux_mode": "fixed", "outer_groups": ["outer"], "outer_fixed_sources": ["ocean"],
