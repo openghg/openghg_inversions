@@ -63,6 +63,22 @@ class OuterFluxChoice:
         if not self.outer_groups:
             raise ValueError("The outer-flux option needs at least one outer basis group.")
 
+    def outputs(self, prefix: str = "") -> Outputs:
+        """Record this option's mode and selectors as run metadata.
+
+        Args:
+            prefix: Graph-name prefix of the recipe's variables.
+
+        Returns:
+            No roles or units, and metadata recording the mode and selectors.
+        """
+        metadata = {
+            "outer_flux_mode": self.mode,
+            "outer_groups": list(self.outer_groups),
+            "outer_fixed_sources": list(self.fixed_sources),
+        }
+        return Outputs({}, {}, metadata).prefixed(prefix)
+
     def resolve_states(self, flux_prior: CorrelatedPrior) -> OuterStates:
         """Select the held outer states on the flux prior's state axis.
 
@@ -182,20 +198,15 @@ class OuterStates:
         )
 
     def outputs(self, prefix: str = "") -> Outputs:
-        """Record this option's mode and selectors as run metadata.
+        """Record the resolved choice's mode and selectors as run metadata.
 
         Args:
             prefix: Graph-name prefix of the recipe's variables.
 
         Returns:
-            No roles or units, and metadata recording the mode and selectors.
+            See :meth:`OuterFluxChoice.outputs`.
         """
-        metadata = {
-            "outer_flux_mode": self.choice.mode,
-            "outer_groups": list(self.choice.outer_groups),
-            "outer_fixed_sources": list(self.choice.fixed_sources),
-        }
-        return Outputs({}, {}, metadata).prefixed(prefix)
+        return self.choice.outputs(prefix)
 
 
 __all__ = ["OuterFluxChoice", "OuterMode", "OuterStates"]
