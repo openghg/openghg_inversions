@@ -76,7 +76,13 @@ by default. ``latent_correlation_floor`` (a
 opts in to a repair: eigenvalues below the floor are raised to it, and the
 matrix is rescaled to a unit diagonal. Each marginal is unchanged, so every
 state keeps its mean and SD exactly. The pair covariances move slightly off
-their targets.
+their targets. How far they move depends on how negative the eigenvalues were,
+not on the floor, so a repair that would move any implied state correlation by
+more than 0.01 is refused: such pairwise targets do not belong to one copula.
+For example, five Weibull states with CV 1.5 and equal arithmetic correlation
+-0.24 have a positive-definite arithmetic covariance, but a latent minimum
+eigenvalue of about -0.9, and repairing it would change state correlations by
+about 0.1.
 
 The repair is an eigenvalue floor rather than the nearest correlation matrix
 (Higham's alternating projections). It is one deterministic step with no

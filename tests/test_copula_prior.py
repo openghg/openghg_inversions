@@ -342,6 +342,13 @@ def test_latent_floor_leaves_a_positive_definite_copula_unchanged():
     assert plain.latent_correlation_repair is None
 
 
+def test_latent_floor_refuses_a_repair_that_changes_state_correlations_materially():
+    correlation = np.full((5, 5), -0.24) + 1.24 * np.eye(5)
+    mean = xr.DataArray(np.ones(5), dims="state", coords={"state": LABELS})
+    with pytest.raises(ValueError, match=r"far from positive definite.*state correlations by up to 0\.09"):
+        CorrelatedPrior(mean, correlation * 2.25, marginal="weibull", latent_correlation_floor=1e-6)
+
+
 @pytest.mark.parametrize("floor", [0.0, -1e-6, 0.2])
 def test_latent_floor_must_be_small_and_positive(floor):
     with pytest.raises(ValueError, match=r"latent_correlation_floor must be in \(0, 0.1\]"):

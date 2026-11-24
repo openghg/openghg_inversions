@@ -682,6 +682,14 @@ _SERIES_VARIANCE_TOLERANCE = 1e-6
 
 _WEIBULL_SHAPE_BOUNDS = (0.02, 1000.0)
 
+_LATENT_REPAIR_MAX_CORRELATION_CHANGE = 0.01
+"""Largest change in an implied state correlation the latent-correlation floor may make.
+
+The floor's change is set by how negative the latent eigenvalues are, not by
+the floor. Beyond this the pairwise targets cannot belong to one copula, and
+the prior is refused instead of silently given different correlations.
+"""
+
 GAMMA_LATENT_CAP = 8.0
 """Gamma states are held at their quantile for latent ``u = 8`` above it.
 
@@ -990,8 +998,10 @@ class CorrelatedPrior:
             latent_correlation_floor: Opt-in repair for a copula prior whose
                 latent correlation is not positive definite, in ``(0, 0.1]``.
                 Eigenvalues below it are raised to it and the unit diagonal
-                is restored. ``None`` (the default) rejects such priors. It
-                does not apply when every marginal is lognormal.
+                is restored. A repair that would move an implied state
+                correlation by more than 0.01 is refused. ``None`` (the
+                default) rejects such priors. It does not apply when every
+                marginal is lognormal.
 
         Raises:
             TypeError: If ``mean`` is not an xarray ``DataArray``.
@@ -999,8 +1009,9 @@ class CorrelatedPrior:
                 labels differ from the mean's, a state has zero variance
                 under a non-lognormal marginal, a pair covariance is out of
                 reach of its marginals, the latent correlation is not
-                positive definite and no floor is given, or the floor is
-                outside ``(0, 0.1]``.
+                positive definite and no floor is given, the floor's repair
+                would move an implied state correlation by more than 0.01,
+                or the floor is outside ``(0, 0.1]``.
         """
         if latent_correlation_floor is not None and not 0.0 < float(latent_correlation_floor) <= 0.1:
             raise ValueError(f"latent_correlation_floor must be in (0, 0.1]; got {latent_correlation_floor!r}.")
@@ -1040,6 +1051,14 @@ class CorrelatedPrior:
                     max_abs_state_covariance_change=float(change.max()),
                     max_abs_state_correlation_change=float(np.max(change / np.outer(sd, sd))),
                 )
+                if record["max_abs_state_correlation_change"] > _LATENT_REPAIR_MAX_CORRELATION_CHANGE:
+                    raise ValueError(
+                        "The latent correlation that reproduces the arithmetic covariance with these marginals "
+                        f"is far from positive definite (minimum eigenvalue {record['minimum_eigenvalue']:.6g}); "
+                        "repairing it would change implied state correlations by up to "
+                        f"{record['max_abs_state_correlation_change']:.3g}, more than "
+                        f"{_LATENT_REPAIR_MAX_CORRELATION_CHANGE}. Choose other marginals or covariances."
+                    )
                 correlation = repaired
             self._latent_repair = record
         try:
