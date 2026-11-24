@@ -11,7 +11,7 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions.array_ops import to_dense_tree
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models import (
     StateActivity,
     add_coherent_affine_component,
@@ -26,7 +26,7 @@ from openghg_inversions.models.components import (
     AffineConcentrationTerm,
     _add_prepared_correlated_lognormal_state_with_activity,
     likelihood_representation,
-    prepare_active_correlated_lognormal_prior,
+    prepare_active_correlated_prior,
 )
 from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
 from openghg_inversions.models.priors import PriorArgs
@@ -56,7 +56,7 @@ def build_co2_o2_cached_sigma_model(
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
     aggregation_error: AggregationError,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: CorrelatedPrior,
     independent_error_sd: xr.DataArray,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior: PriorArgs,
@@ -99,8 +99,8 @@ def build_co2_o2_cached_sigma_model(
             embed the fixed oxidation ratios.
         aggregation_error: Joint fixed aggregation covariance, including its
             cross-channel block.
-        retained_prior: Correlated arithmetic-moment prior for the one state
-            vector shared by both channels.
+        retained_prior: Correlated arithmetic moments and marginals for the
+            one state vector shared by both channels.
         independent_error_sd: Joint per-row independent standard deviations in
             each observation row's native units.
         state_activity: Optional labelled policy fixing or activating retained
@@ -161,7 +161,7 @@ def _build_co2_o2_cached_sigma_model(
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
     aggregation_error: AggregationError,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: CorrelatedPrior,
     independent_error_sd: xr.DataArray,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior: PriorArgs,
@@ -202,7 +202,7 @@ def _build_co2_o2_cached_sigma_model(
         activity,
         output_dim=output_dim,
     )
-    active_prior = prepare_active_correlated_lognormal_prior(
+    active_prior = prepare_active_correlated_prior(
         activity,
         retained_prior,
         var_name="flux_scaling",

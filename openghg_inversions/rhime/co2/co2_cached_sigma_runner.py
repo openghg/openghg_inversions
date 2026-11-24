@@ -15,7 +15,7 @@ from typing import Any, cast
 import xarray as xr
 from pymc.initial_point import convert_str_to_rv_dict, make_initial_point_fn  # type: ignore[import-untyped]
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
 from openghg_inversions.models.boundary import Choice
 from openghg_inversions.models.priors import PriorArgs
@@ -266,7 +266,7 @@ def build_rhime_co2_cached_sigma(
         prepared.aggregation_error_mode,
     )
     prior_covariance = model_inputs["alpha_prior_covariance"]
-    retained_prior = CorrelatedLognormalPrior(
+    retained_prior = CorrelatedPrior(
         model_inputs["alpha_prior_mean"],
         prior_covariance,
         covariance_dim=str(prior_covariance.dims[-1]),

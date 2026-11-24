@@ -13,10 +13,10 @@ import pytensor.tensor as pt
 import xarray as xr
 
 from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array, to_dense_tree
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.models import (
     StateActivity,
-    add_correlated_lognormal_state_with_activity,
+    add_correlated_state_with_activity,
     apply_linear_sensitivity,
     prepare_linear_sensitivity,
     registered_model,
@@ -278,7 +278,7 @@ def build_co2_o2_model(
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
     aggregation_error: AggregationError,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: CorrelatedPrior,
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
@@ -336,8 +336,8 @@ def build_co2_o2_model(
             embed the fixed oxidation ratios.
         aggregation_error: Joint fixed aggregation covariance, including its
             cross-channel block.
-        retained_prior: Correlated arithmetic-moment prior for the one state
-            vector shared by both channels.
+        retained_prior: Correlated arithmetic moments and marginals for the
+            one state vector shared by both channels.
         independent_error_sd: Joint per-row independent standard deviations in
             each observation row's native units.
         state_activity: Optional labelled policy fixing or activating retained
@@ -396,7 +396,7 @@ def _build_co2_o2_model(
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
     aggregation_error: AggregationError,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: CorrelatedPrior,
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
@@ -427,7 +427,7 @@ def _build_co2_o2_model(
     activity = resolve_state_activity(prepared_sensitivity.removed, state_activity)
 
     with registered_model() as model:
-        state = add_correlated_lognormal_state_with_activity(
+        state = add_correlated_state_with_activity(
             activity,
             retained_prior,
             var_name="flux_scaling",
