@@ -47,6 +47,7 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.rhime.co2.co2_preparation';</script>
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.21.0';
@@ -476,6 +477,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.rank_reference.html">openghg_inversions.rhime.co2.rank_reference</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.api.html">openghg_inversions.rhime.api</a></li>
@@ -758,7 +760,8 @@ omitted, infer the format from <code class="docutils literal notranslate"><span 
 <dd><em class="sig-param"><span class="n"><span class="pre">canonical_inputs</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">reduction</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">aggregation_error_rank</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">512</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">aggregation_error_rank</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">WhitenedRankRule(mu_threshold=0.1,</span> <span class="pre">kl_budget_per_observation=None,</span> <span class="pre">rank=None)</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">reference_covariance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_centering_weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">provenance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
@@ -767,10 +770,15 @@ omitted, infer the format from <code class="docutils literal notranslate"><span 
 <dd><p>Map one coherent Gaussian reduction into the CO2 replay contract.</p>
 <p>The reduction replaces the canonical sensitivity with its effective
 operator and supplies the linked retained prior, affine intercept, and
-unresolved covariance. By default, the handoff retains at most 512 LRPD
-modes. <code class="docutils literal notranslate"><span class="pre">None</span></code> stores the unresolved covariance exactly; requested ranks
-larger than the observation count are capped at that count, and the actual
-factor width may be smaller when the covariance has lower numerical rank.</p>
+unresolved covariance. By default, the LRPD rank comes from the unresolved
+covariance’s spectrum whitened by a reference mismatch covariance (see
+<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.WhitenedRankRule" title="openghg_inversions.observation_error.WhitenedRankRule"><code class="xref py py-class docutils literal notranslate"><span class="pre">WhitenedRankRule</span></code></a>), keeping
+every mode with whitened eigenvalue above 0.1. The rule needs a
+<code class="docutils literal notranslate"><span class="pre">reference_covariance</span></code> chosen by the caller; there is no universal
+default. <code class="docutils literal notranslate"><span class="pre">None</span></code> stores the
+unresolved covariance exactly; ranks larger than the observation count are
+capped at that count, and the actual factor width may be smaller when the
+covariance has lower numerical rank.</p>
 <p>Inputs are borrowed and are not mutated. The returned artifact retains the
 canonical observations, observation error, optional boundary data, state
 activity, basis functions, and site metadata. Observation and retained-state
@@ -778,9 +786,11 @@ dimensions must be labelled and aligned between the canonical inputs and
 reduction. Concentration units must be compatible at the same numeric scale;
 values are not converted.</p>
 <p>Selecting LRPD storage eagerly materializes the complete unresolved
-covariance and computes its full dense eigendecomposition. The retained
-rank reduces the saved payload and downstream structured-likelihood cost,
-not this preparation cost.</p>
+covariance and computes its full dense eigendecomposition, plus, for the
+rank rule, a dense reference covariance, its Cholesky factorization and
+one dense whitened eigenvalue decomposition. The retained rank
+reduces the saved payload and downstream structured-likelihood cost, not
+this preparation cost.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -788,10 +798,30 @@ not this preparation cost.</p>
 observation and retained-state labels match <code class="docutils literal notranslate"><span class="pre">reduction</span></code>.</p></li>
 <li><p><strong>reduction</strong> (<a class="reference internal" href="openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.CoherentGaussianReduction" title="openghg_inversions.coherent_reduction.CoherentGaussianReduction"><em>CoherentGaussianReduction</em></a>) – One coherent Gaussian reduction containing all linked
 retained-prior and observation products.</p></li>
-<li><p><strong>aggregation_error_rank</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><em>None</em>) – Positive LRPD rank, defaulting to 512. Values
+<li><p><strong>aggregation_error_rank</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.WhitenedRankRule" title="openghg_inversions.observation_error.WhitenedRankRule"><em>WhitenedRankRule</em></a><em> | </em><em>None</em>) – Whitened-spectrum rank rule (threshold, KL
+budget and optional explicit rank), defaulting to
+<code class="docutils literal notranslate"><span class="pre">WhitenedRankRule()</span></code>. A positive integer is an explicit rank for
+benchmarking. With a <code class="docutils literal notranslate"><span class="pre">reference_covariance</span></code> it is equivalent to
+<code class="docutils literal notranslate"><span class="pre">WhitenedRankRule(rank=...)</span></code>: the spectrum is still computed and
+recorded, with a <code class="docutils literal notranslate"><span class="pre">UserWarning</span></code> when the rank is below the rule
+rank. Without one, the rank is used as given and no rank
+selection is recorded. Values
 larger than the observation count are capped at that count; the
-actual factor width is further limited by numerical positive rank.
-Pass <code class="docutils literal notranslate"><span class="pre">None</span></code> to store the exact dense covariance.</p></li>
+actual factor width is further limited by numerical positive
+rank. Pass <code class="docutils literal notranslate"><span class="pre">None</span></code> to store the exact dense covariance.
+Provenance <code class="docutils literal notranslate"><span class="pre">aggregation_error_rank</span></code> records the request (the
+integer, <code class="docutils literal notranslate"><span class="pre">&quot;whitened_spectrum&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">None</span></code>), and
+<code class="docutils literal notranslate"><span class="pre">aggregation_error_rank_selection</span></code> records the reference
+description, the count above the threshold, the chosen rank and
+the dropped-mode KL.</p></li>
+<li><p><strong>reference_covariance</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Reference mismatch covariance <span class="math notranslate nohighlight">\(R_0\)</span> for
+the rank rule, required with a <code class="docutils literal notranslate"><span class="pre">WhitenedRankRule</span></code>. Supply a
+labelled positive-definite covariance in canonical observation
+order on both axes, with squared mole-fraction units and an
+optional <code class="docutils literal notranslate"><span class="pre">description</span></code> attribute recorded in provenance. For
+example, evaluate a mismatch covariance at fixed parameters with
+<a class="reference internal" href="openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.fixed_ou_mismatch_covariance" title="openghg_inversions.models.fixed_ou.fixed_ou_mismatch_covariance"><code class="xref py py-func docutils literal notranslate"><span class="pre">fixed_ou_mismatch_covariance()</span></code></a>.
+Only valid with low-rank storage.</p></li>
 <li><p><strong>bc_centering_weights</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Positive dimensionless averaging weights on
 <code class="docutils literal notranslate"><span class="pre">(bc_curtain,</span> <span class="pre">bc_period)</span></code>, with interval start times as period
 labels. Raw transport stays spatial and reusable; binding stacks

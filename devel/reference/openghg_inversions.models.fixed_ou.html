@@ -476,6 +476,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.rank_reference.html">openghg_inversions.rhime.co2.rank_reference</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.api.html">openghg_inversions.rhime.api</a></li>
@@ -765,6 +766,53 @@ of tau values is accepted only with matching, ordered <code class="docutils lite
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.fixed_ou.fixed_ou_mismatch_covariance">
+<span class="sig-name descname"><span class="pre">fixed_ou_mismatch_covariance</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">observations</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">observation_error</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fixed_site_amplitudes</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">amplitude_units</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.fixed_ou.fixed_ou_mismatch_covariance" title="Link to this definition">#</a></dt>
+<dd><p>Evaluate the reported-error and site mismatch covariance at fixed values.</p>
+<p>Use this dense evaluation as a rank reference or to check the fixed-OU
+likelihood. Aggregation error enters the likelihood separately. Supply a
+reported-error vector that includes any additional independent white noise
+used in the reference.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Indexed observation axis with mole-fraction units and
+a site coordinate. OU also requires observation-aligned times,
+either datetime values or numeric hours.</p></li>
+<li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Independent standard deviations on the same axis
+and in the same units as the observations.</p></li>
+<li><p><strong>fixed_site_amplitudes</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>]</em>) – Non-negative mismatch standard deviations,
+supplied as one value or a mapping covering the observed sites.</p></li>
+<li><p><strong>tau_hours</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Positive OU time scale in hours, scalar or by site.
+Omit for independent mismatch with the same site amplitudes.</p></li>
+<li><p><strong>amplitude_units</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Units of the amplitudes. Omit to use observation units.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dense labelled covariance in squared observation units, with the
+supplied and resolved parameters in a JSON description attribute.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If observation labels, units, errors or settings are invalid.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood">
 <span class="sig-name descname"><span class="pre">add_fixed_ou_gaussian_likelihood</span></span><span class="sig-paren">(</span>
 
@@ -865,6 +913,7 @@ must be numeric, finite and positive, including entries for dropped sites.</p>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.fixed_ou.prepare_fixed_ou_low_rank"><code class="docutils literal notranslate"><span class="pre">prepare_fixed_ou_low_rank()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.fixed_ou.fixed_ou_mismatch_covariance"><code class="docutils literal notranslate"><span class="pre">fixed_ou_mismatch_covariance()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood"><code class="docutils literal notranslate"><span class="pre">add_fixed_ou_gaussian_likelihood()</span></code></a></li>
 </ul>
   </nav></div>

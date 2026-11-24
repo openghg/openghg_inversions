@@ -476,6 +476,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.rank_reference.html">openghg_inversions.rhime.co2.rank_reference</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.api.html">openghg_inversions.rhime.api</a></li>
@@ -969,43 +970,46 @@ operands and supported model routes.</p>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_inputs</span></code></a></p></td>
 <td><p>Map one coherent Gaussian reduction into the CO2 replay contract.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.prepare" title="openghg_inversions.rhime.co2.handoffs.prepare"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.prepare</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.fixed_ou_mismatch_covariance" title="openghg_inversions.models.fixed_ou.fixed_ou_mismatch_covariance"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.fixed_ou.fixed_ou_mismatch_covariance</span></code></a></p></td>
+<td><p>Evaluate the reported-error and site mismatch covariance at fixed values.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.prepare" title="openghg_inversions.rhime.co2.handoffs.prepare"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.prepare</span></code></a></p></td>
 <td><p>Prepare a coherent reduction or import a saved prepared/affine pair.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.save_preparation" title="openghg_inversions.rhime.co2.handoffs.save_preparation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.save_preparation</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.save_preparation" title="openghg_inversions.rhime.co2.handoffs.save_preparation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.save_preparation</span></code></a></p></td>
 <td><p>Serialize coherent inputs and an optional new affine companion, manifest last.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.load_preparation" title="openghg_inversions.rhime.co2.handoffs.load_preparation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.load_preparation</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.load_preparation" title="openghg_inversions.rhime.co2.handoffs.load_preparation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.load_preparation</span></code></a></p></td>
 <td><p>Load one completed numerical preparation and original requested facts.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.sample" title="openghg_inversions.rhime.co2.handoffs.sample"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.sample</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.sample" title="openghg_inversions.rhime.co2.handoffs.sample"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.sample</span></code></a></p></td>
 <td><p>Build and sample CO2 using current science and its resolved sampler.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.save_samples" title="openghg_inversions.rhime.co2.handoffs.save_samples"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.save_samples</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.save_samples" title="openghg_inversions.rhime.co2.handoffs.save_samples"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.save_samples</span></code></a></p></td>
 <td><p>Save annotated samples and inference provenance bound to a preparation generation.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.load_samples" title="openghg_inversions.rhime.co2.handoffs.load_samples"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.load_samples</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.load_samples" title="openghg_inversions.rhime.co2.handoffs.load_samples"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.load_samples</span></code></a></p></td>
 <td><p>Load saved scientific meaning without acquisition, construction or inference.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.postprocess" title="openghg_inversions.rhime.co2.handoffs.postprocess"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.postprocess</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.postprocess" title="openghg_inversions.rhime.co2.handoffs.postprocess"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.postprocess</span></code></a></p></td>
 <td><p>Reopen one sample manifest, calculate requested products and export them.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.prior_predictive" title="openghg_inversions.rhime.co2.handoffs.prior_predictive"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.prior_predictive</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.prior_predictive" title="openghg_inversions.rhime.co2.handoffs.prior_predictive"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.prior_predictive</span></code></a></p></td>
 <td><p>Check exact graph prior predictions without posterior inference.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs" title="openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs" title="openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs</span></code></a></p></td>
 <td><p>Jointly materialize selected CO2 inputs, enabled priors and fixed mismatch.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized" title="openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized" title="openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized</span></code></a></p></td>
 <td><p>Construct the CO2 model from explicitly materialized scientific inputs.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request" title="openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request" title="openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request</span></code></a></p></td>
 <td><p>Validate one product request and load its reporting inputs before execution.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma" title="openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma" title="openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma</span></code></a></p></td>
 <td><p>Materialize and build the matched cached fixed-OU graph without sampling.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_o2_inputs</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_o2_inputs</span></code></a></p></td>
 <td><p>Validate coherent-reduction channel products and form one joint likelihood.</p></td>
 </tr>
 </tbody>
@@ -1167,6 +1171,15 @@ mathematical contracts and eager-computation boundaries.</p>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.resolve_aggregation_error" title="openghg_inversions.observation_error.resolve_aggregation_error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.resolve_aggregation_error</span></code></a></p></td>
 <td><p>Validate and select an aggregation-error covariance representation.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.WhitenedRankRule" title="openghg_inversions.observation_error.WhitenedRankRule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.WhitenedRankRule</span></code></a></p></td>
+<td><p>Choose an LRPD aggregation-error rank from the R-whitened spectrum.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.select_whitened_rank" title="openghg_inversions.observation_error.select_whitened_rank"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.select_whitened_rank</span></code></a></p></td>
+<td><p>Apply a rank rule to whitened eigenvalues.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.whitened_eigenvalue_kl" title="openghg_inversions.observation_error.whitened_eigenvalue_kl"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.whitened_eigenvalue_kl</span></code></a></p></td>
+<td><p>Return the Gaussian KL carried by whitened covariance eigenvalues.</p></td>
 </tr>
 </tbody>
 </table>

@@ -670,6 +670,7 @@ response for a shared source-scaling field, or a compatible source-resolved
 flux basis for separate fields):</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.basis._helpers</span><span class="w"> </span><span class="kn">import</span> <span class="n">bc_sensitivity</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_rhime_inputs_from_xarray</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models.fixed_ou</span><span class="w"> </span><span class="kn">import</span> <span class="n">fixed_ou_mismatch_covariance</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_co2_inputs</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.preparation</span><span class="w"> </span><span class="kn">import</span> <span class="n">filter_observations</span><span class="p">,</span> <span class="n">prepare_observation_errors</span>
 
@@ -683,7 +684,12 @@ flux basis for separate fields):</p>
     <span class="n">basis_functions</span><span class="o">=</span><span class="n">chosen_flux_basis</span><span class="p">,</span> <span class="n">averaging_period</span><span class="o">=</span><span class="s2">"1h"</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="c1"># The reduction must describe these same observations, states and sources.</span>
-<span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_co2_inputs</span><span class="p">(</span><span class="n">canonical</span><span class="p">,</span> <span class="n">coherent_reduction</span><span class="p">)</span>
+<span class="c1"># The low-rank rank rule needs a reference mismatch covariance chosen for the run.</span>
+<span class="n">observations</span> <span class="o">=</span> <span class="n">canonical</span><span class="o">.</span><span class="n">inv_inputs</span>
+<span class="n">reference</span> <span class="o">=</span> <span class="n">fixed_ou_mismatch_covariance</span><span class="p">(</span>
+    <span class="n">observations</span><span class="p">[</span><span class="s2">"mf"</span><span class="p">],</span> <span class="n">observations</span><span class="p">[</span><span class="s2">"mf_error"</span><span class="p">],</span> <span class="n">fixed_site_amplitudes</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">amplitude_units</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_co2_inputs</span><span class="p">(</span><span class="n">canonical</span><span class="p">,</span> <span class="n">coherent_reduction</span><span class="p">,</span> <span class="n">reference_covariance</span><span class="o">=</span><span class="n">reference</span><span class="p">)</span>
 <span class="n">prepared</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"centered-co2.nc"</span><span class="p">)</span>
 </pre></div>
 </div>

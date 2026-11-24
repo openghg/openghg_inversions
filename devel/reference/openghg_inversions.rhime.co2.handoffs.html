@@ -476,6 +476,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.rank_reference.html">openghg_inversions.rhime.co2.rank_reference</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.api.html">openghg_inversions.rhime.api</a></li>
@@ -632,7 +633,8 @@ from retained observations.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">canonical_inputs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">reduction</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">aggregation_error_rank</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">512</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">aggregation_error_rank</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">WhitenedRankRule(mu_threshold=0.1,</span> <span class="pre">kl_budget_per_observation=None,</span> <span class="pre">rank=None)</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">reference_covariance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_centering_weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">affine_artifact</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">affine_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -647,7 +649,14 @@ callers retain those files for later sampling/replay. New pairs use
 projections belong to the coherent preparation, never an inference override.
 <code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code> is stored with new centered preparations, as in
 <a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs" title="openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_co2_inputs()</span></code></a>;
-weighted additive boundaries require it.</p>
+weighted additive boundaries require it. <code class="docutils literal notranslate"><span class="pre">aggregation_error_rank</span></code>
+applies only when creating a preparation from <code class="docutils literal notranslate"><span class="pre">canonical_inputs</span></code> and
+<code class="docutils literal notranslate"><span class="pre">reduction</span></code>, with the rank contract of
+<a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs" title="openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_co2_inputs()</span></code></a>:
+a <a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.WhitenedRankRule" title="openghg_inversions.observation_error.WhitenedRankRule"><code class="xref py py-class docutils literal notranslate"><span class="pre">WhitenedRankRule</span></code></a> (the
+default), an integer override, or <code class="docutils literal notranslate"><span class="pre">None</span></code> for exact storage. So does
+<code class="docutils literal notranslate"><span class="pre">reference_covariance</span></code>, the rank rule’s reference, which the rule
+requires a labelled covariance in the canonical observation order.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a></p>

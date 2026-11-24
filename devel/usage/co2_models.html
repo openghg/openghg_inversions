@@ -1562,16 +1562,99 @@ covariance. The cached runner can retain every mode above the scale-relative
 numerical tolerance and carry the remaining marginal variance in the diagonal
 tail. This is exact when every positive mode exceeds that tolerance, but it
 generally produces a full numerical-rank factor and is not the intended
-scaling path. The default retains at most 512 modes; override it when a
-different retained rank is scientifically justified:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_co2_inputs</span>
+scaling path.</p>
+<p>By default the factor width comes from the whitened spectrum. Preparation
+solves <span class="math notranslate nohighlight">\(A u_i = \mu_i R_0 u_i\)</span>, where <span class="math notranslate nohighlight">\(A\)</span> is the unresolved
+covariance and <span class="math notranslate nohighlight">\(R_0\)</span> is a reference mismatch covariance: the reported
+observation error plus a reference amplitude, optionally with within-site OU
+correlation. It counts the whitened eigenvalues <span class="math notranslate nohighlight">\(\mu_i\)</span> above 0.1 and
+uses that count as the factor width; an optional dropped-mode KL budget can
+only increase it. The whitened modes are not stored: the factor is still the
+leading ordinary eigenmodes of <span class="math notranslate nohighlight">\(A\)</span>, with the remaining marginal variance
+on the diagonal tail.</p>
+<p>The selected rank depends strongly on <span class="math notranslate nohighlight">\(R_0\)</span>: larger amplitudes whiten
+more of <span class="math notranslate nohighlight">\(A\)</span> away. The rank criteria live on
+<a class="reference internal" href="../reference/openghg_inversions.observation_error.html#openghg_inversions.observation_error.WhitenedRankRule" title="openghg_inversions.observation_error.WhitenedRankRule"><code class="xref py py-class docutils literal notranslate"><span class="pre">WhitenedRankRule</span></code></a>
+(<code class="docutils literal notranslate"><span class="pre">aggregation_error_rank</span></code>); the reference is a separate
+<code class="docutils literal notranslate"><span class="pre">reference_covariance</span></code> input, which the rule requires. Choose it for the
+intended likelihood. For example, evaluate the fixed-OU mismatch covariance
+at the run’s representative site amplitudes and OU time scales. A site
+mapping must cover every site in the preparation:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models.fixed_ou</span><span class="w"> </span><span class="kn">import</span> <span class="n">fixed_ou_mismatch_covariance</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.observation_error</span><span class="w"> </span><span class="kn">import</span> <span class="n">WhitenedRankRule</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_co2_inputs</span>
 
+<span class="n">observations</span> <span class="o">=</span> <span class="n">canonical_inputs</span><span class="o">.</span><span class="n">inv_inputs</span>
+<span class="n">reference</span> <span class="o">=</span> <span class="n">fixed_ou_mismatch_covariance</span><span class="p">(</span>
+    <span class="n">observations</span><span class="p">[</span><span class="s2">"mf"</span><span class="p">],</span>
+    <span class="n">observations</span><span class="p">[</span><span class="s2">"mf_error"</span><span class="p">],</span>
+    <span class="n">fixed_site_amplitudes</span><span class="o">=</span><span class="p">{</span><span class="s2">"BSD"</span><span class="p">:</span> <span class="mf">2.0</span><span class="p">,</span> <span class="s2">"TAC"</span><span class="p">:</span> <span class="mf">2.5</span><span class="p">},</span>
+    <span class="n">amplitude_units</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">,</span>
+    <span class="n">tau_hours</span><span class="o">=</span><span class="p">{</span><span class="s2">"BSD"</span><span class="p">:</span> <span class="mf">24.0</span><span class="p">,</span> <span class="s2">"TAC"</span><span class="p">:</span> <span class="mf">18.0</span><span class="p">},</span>
+<span class="p">)</span>
 <span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_co2_inputs</span><span class="p">(</span>
     <span class="n">canonical_inputs</span><span class="p">,</span>
     <span class="n">reduction</span><span class="p">,</span>
-    <span class="n">aggregation_error_rank</span><span class="o">=</span><span class="mi">40</span><span class="p">,</span>
+    <span class="n">aggregation_error_rank</span><span class="o">=</span><span class="n">WhitenedRankRule</span><span class="p">(</span><span class="n">mu_threshold</span><span class="o">=</span><span class="mf">0.1</span><span class="p">),</span>
+    <span class="n">reference_covariance</span><span class="o">=</span><span class="n">reference</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="n">prepared</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"co2-coherent-low-rank.zarr"</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Supply <code class="docutils literal notranslate"><span class="pre">reference_covariance</span></code> as a labelled observation-by-observation
+covariance, whether evaluated as above or obtained from another mismatch
+model. Its rows and columns must follow the canonical observation order, and its
+units must be a squared mole-fraction unit such as <code class="docutils literal notranslate"><span class="pre">(ppb)^2</span></code>; it is
+converted to the observation units. An optional <code class="docutils literal notranslate"><span class="pre">description</span></code> attribute (a
+JSON object or text) is recorded in provenance.
+Preparation uses it as one dense matrix that must be numerically positive
+definite. At about 5,300 observations this costs a few seconds and about
+230 MB. <code class="docutils literal notranslate"><span class="pre">run_co2</span></code>
+and the staged <code class="docutils literal notranslate"><span class="pre">prepare</span></code> handoff accept the same <code class="docutils literal notranslate"><span class="pre">aggregation_error_rank</span></code>
+and <code class="docutils literal notranslate"><span class="pre">reference_covariance</span></code> when they create a preparation.</p>
+<p>Provenance <code class="docutils literal notranslate"><span class="pre">aggregation_error_rank_selection</span></code> records the reference’s name,
+units, conversion factor and description (for built references, the settings
+as supplied and the amplitudes converted to observation units) together with the
+criteria, the count above the threshold, the chosen rank and the dropped-mode
+KL <span class="math notranslate nohighlight">\(\tfrac12\sum_{i&gt;k}[\mu_i - \log(1 + \mu_i)]\)</span>. That KL describes
+the whitened truncation at <span class="math notranslate nohighlight">\(R_0\)</span> without the diagonal tail, not the
+stored representation, which keeps the leading ordinary eigenmodes of
+<span class="math notranslate nohighlight">\(A\)</span> instead. <code class="docutils literal notranslate"><span class="pre">stored_representation_kl</span></code> is the KL of what is stored,
+<span class="math notranslate nohighlight">\(\mathrm{KL}(N(0, R_0 + A)\,\|\,N(0, R_0 + F F^\top + \mathrm{diag}(d)))\)</span>
+at the same reference; it can be several times the spectral value, most of
+all when <span class="math notranslate nohighlight">\(R_0\)</span> has little white noise (see below). Computing it costs two more
+dense Cholesky factorizations and a dense solve. If a total cannot be Cholesky
+factorized, the KL is recorded as <code class="docutils literal notranslate"><span class="pre">None</span></code> with the reason under
+<code class="docutils literal notranslate"><span class="pre">stored_representation_kl_unavailable</span></code> and the low-rank approximation is
+kept. Roundoff is a possible cause: LRPD accepts small negative eigenvalues of
+<span class="math notranslate nohighlight">\(A\)</span> that <span class="math notranslate nohighlight">\(R_0\)</span> may not cover, and an <span class="math notranslate nohighlight">\(R_0\)</span> far below the
+scale of <span class="math notranslate nohighlight">\(A\)</span> can round away when added.</p>
+<p>Keep the likelihood’s white-noise floor in <span class="math notranslate nohighlight">\(R_0\)</span>. In the example above
+the white part comes from the reported observation error. If that is near
+zero, an OU reference is weak in high-frequency
+directions: with hourly data and a 5 h time scale, adjacent hours have
+correlation 0.82 and those directions get only about 10% of the site
+variance. The stored diagonal tail spreads discarded variance evenly across
+frequencies, so its error is magnified there, and <code class="docutils literal notranslate"><span class="pre">stored_representation_kl</span></code>
+can be an order of magnitude larger than the spectral KL. A white floor
+comparable to the OU amplitudes reduces that gap to a few-fold. If the
+likelihood adds a floor that <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> does not carry, such as a minimum
+error or a fixed model-error term, include the effective white variance when
+constructing the reference.</p>
+<p>The rule is a screening heuristic, not a bound on posterior error: the rank it
+selects depends on the reference covariance and should be checked for the
+intended likelihood.</p>
+<p>A large selected rank usually means the basis is too coarse for the data: the
+unresolved covariance <span class="math notranslate nohighlight">\(A\)</span> is large compared with the noise, typically
+near strong sources or domain borders. Increasing the rank keeps the
+likelihood faithful but raises its cost roughly as <span class="math notranslate nohighlight">\(O(n r^2)\)</span>; refining
+the basis there reduces <span class="math notranslate nohighlight">\(A\)</span> itself.</p>
+<p>An integer rank is an explicit override for benchmarking. With a
+<code class="docutils literal notranslate"><span class="pre">reference_covariance</span></code>, the spectrum is still computed and recorded, and
+preparation issues a <code class="docutils literal notranslate"><span class="pre">UserWarning</span></code> when the integer is below the rule rank.
+Without one, the integer is used as given and no rank selection is
+recorded:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_co2_inputs</span><span class="p">(</span><span class="n">canonical_inputs</span><span class="p">,</span> <span class="n">reduction</span><span class="p">,</span> <span class="n">aggregation_error_rank</span><span class="o">=</span><span class="mi">1024</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>The approximation preserves the dense covariance diagonal up to accepted

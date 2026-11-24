@@ -551,23 +551,38 @@ reduction products together with canonical RHIME observations, basis data,
 and site metadata. Load the canonical inputs from a checkpoint produced by
 the <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> workflow:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">PreparedInputs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models.fixed_ou</span><span class="w"> </span><span class="kn">import</span> <span class="n">fixed_ou_mismatch_covariance</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_co2_inputs</span>
 
 <span class="n">canonical_inputs</span> <span class="o">=</span> <span class="n">PreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"base-prepared-inputs.zarr"</span><span class="p">)</span>
-<span class="n">co2_inputs</span> <span class="o">=</span> <span class="n">prepare_co2_inputs</span><span class="p">(</span><span class="n">canonical_inputs</span><span class="p">,</span> <span class="n">reduction</span><span class="p">)</span>
+<span class="n">observations</span> <span class="o">=</span> <span class="n">canonical_inputs</span><span class="o">.</span><span class="n">inv_inputs</span>
+<span class="n">reference</span> <span class="o">=</span> <span class="n">fixed_ou_mismatch_covariance</span><span class="p">(</span>
+    <span class="n">observations</span><span class="p">[</span><span class="s2">"mf"</span><span class="p">],</span> <span class="n">observations</span><span class="p">[</span><span class="s2">"mf_error"</span><span class="p">],</span> <span class="n">fixed_site_amplitudes</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">amplitude_units</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">co2_inputs</span> <span class="o">=</span> <span class="n">prepare_co2_inputs</span><span class="p">(</span>
+    <span class="n">canonical_inputs</span><span class="p">,</span>
+    <span class="n">reduction</span><span class="p">,</span>
+    <span class="n">reference_covariance</span><span class="o">=</span><span class="n">reference</span><span class="p">,</span>
+<span class="p">)</span>
 </pre></div>
 </div>
 <p>The returned
-<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact uses at most
-512 low-rank modes by default, capped at the observation count. Pass
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact uses a
+low-rank-plus-diagonal representation by default, with the rank chosen from the
+unresolved covariance’s whitened spectrum
+(<a class="reference internal" href="../reference/openghg_inversions.observation_error.html#openghg_inversions.observation_error.WhitenedRankRule" title="openghg_inversions.observation_error.WhitenedRankRule"><code class="xref py py-class docutils literal notranslate"><span class="pre">WhitenedRankRule</span></code></a>; see
+<a class="reference internal" href="co2_models.html"><span class="doc">CO₂ model recipes</span></a>) and capped at the observation count. The rule needs a
+reference mismatch covariance chosen by the caller, here an independent 2 ppm
+amplitude on top of the reported observation error. Pass
 <code class="docutils literal notranslate"><span class="pre">aggregation_error_rank=None</span></code> to keep
 <code class="docutils literal notranslate"><span class="pre">reduction.unresolved_observation_covariance</span></code> as an exact dense aggregation
 covariance. The artifact records one representation, and the CO2 runners use
 it without a separate mode argument.
 This handoff does not alter the prepared-input contracts of the standard,
 or multisector paths.</p>
-<p>For larger cases, request an explicit low-rank-plus-diagonal (LRPD) rank at the
-handoff:</p>
+<p>For benchmarking, request an explicit low-rank-plus-diagonal (LRPD) rank at the
+handoff. With a <code class="docutils literal notranslate"><span class="pre">reference_covariance</span></code>, preparation warns when it is below
+the whitened-spectrum rule rank:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">co2_inputs</span> <span class="o">=</span> <span class="n">prepare_co2_inputs</span><span class="p">(</span>
     <span class="n">canonical_inputs</span><span class="p">,</span>
     <span class="n">reduction</span><span class="p">,</span>
@@ -578,16 +593,23 @@ handoff:</p>
 <p>This factorization is downstream of coherent reduction: it does not make the
 reduction approximate or change the retained prior and effective operator.
 Let <span class="math notranslate nohighlight">\(n\)</span> be the observation count and <span class="math notranslate nohighlight">\(r\)</span> the retained rank. The
-current preparation path first materializes the complete dense
-<span class="math notranslate nohighlight">\(n \times n\)</span> covariance and computes a full dense eigendecomposition,
-requiring <span class="math notranslate nohighlight">\(O(n^2)\)</span> peak storage and <span class="math notranslate nohighlight">\(O(n^3)\)</span> decomposition work.
+current preparation path materializes the complete dense <span class="math notranslate nohighlight">\(n \times n\)</span>
+covariance and computes a full dense eigendecomposition. When a
+<code class="docutils literal notranslate"><span class="pre">reference_covariance</span></code> is also supplied, it first materializes the dense
+reference, factorizes it and computes the dense whitened eigenvalues; this runs
+for an integer rank too, so the override is checked against the rule and
+recorded. A bare integer rank, as in the example above, skips the reference,
+the whitened eigenvalues and the rank-selection record. These steps are
+<span class="math notranslate nohighlight">\(O(n^3)\)</span> and need <span class="math notranslate nohighlight">\(O(n^2)\)</span> peak storage.
 The saved factor and diagonal use <span class="math notranslate nohighlight">\(O(nr+n)\)</span> storage. For an ordinary
 diagonal-plus-factor likelihood, Woodbury evaluation uses
 <span class="math notranslate nohighlight">\(O(nr^2+r^3)\)</span> work. Reducing <span class="math notranslate nohighlight">\(r\)</span> therefore shrinks the artifact and
 downstream structured-likelihood work; it does not make preparation
 matrix-free or avoid the dense eigendecomposition.</p>
-<p>The default 512-mode cap is not an adequacy claim; selecting or overriding the
-LRPD rank remains a caller-owned numerical and scientific decision. LRPD
+<p>The default rank rule is a screening heuristic, not an adequacy claim. The
+rank it selects depends on the reference covariance, and choosing the
+reference or overriding the rank remains a caller-owned numerical and
+scientific decision. LRPD
 preparation preserves the dense covariance diagonal up to accepted roundoff
 and diagonal-tail clipping, reported by <code class="docutils literal notranslate"><span class="pre">diagonal_preservation_error</span></code>. It
 does not automatically certify that a rank is adequate for a particular

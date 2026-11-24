@@ -47,6 +47,7 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.observation_error';</script>
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.21.0';
@@ -476,6 +477,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.rank_reference.html">openghg_inversions.rhime.co2.rank_reference</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.api.html">openghg_inversions.rhime.api</a></li>
@@ -584,7 +586,8 @@
                   
   <section id="module-openghg_inversions.observation_error">
 <span id="openghg-inversions-observation-error"></span><h1>openghg_inversions.observation_error<a class="headerlink" href="#module-openghg_inversions.observation_error" title="Link to this heading">#</a></h1>
-<p>Backend-neutral aggregation-error covariance contracts.</p>
+<p>Validate observation-error inputs and prepare aggregation-error covariances.</p>
+<p>Shared checks cover observations, reported errors and minimum errors.</p>
 <p>Aggregation error is fixed input data, separate from measurement error and
 the inferred RHIME model-error term.  Prepared inversion inputs may represent
 it exactly as a dense covariance, efficiently as a low-rank-plus-diagonal
@@ -713,6 +716,111 @@ columns.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)">tuple</a>[<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>, <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.observation_error.WhitenedRankRule">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">WhitenedRankRule</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mu_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kl_budget_per_observation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rank</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.observation_error.WhitenedRankRule" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Choose an LRPD aggregation-error rank from the R-whitened spectrum.</p>
+<p>The rule solves <span class="math notranslate nohighlight">\(A u_i = \mu_i R_0 u_i\)</span> for the aggregation
+covariance <span class="math notranslate nohighlight">\(A\)</span> against a reference mismatch covariance <span class="math notranslate nohighlight">\(R_0\)</span>
+supplied separately (in CO2 preparation, <code class="docutils literal notranslate"><span class="pre">reference_covariance</span></code>).
+<span class="math notranslate nohighlight">\(\mu_i\)</span> is the variance of mode <span class="math notranslate nohighlight">\(i\)</span> of <span class="math notranslate nohighlight">\(A\)</span> in units of
+reference noise. Dropping the modes after the leading <span class="math notranslate nohighlight">\(k\)</span> from the
+whitened representation costs</p>
+<div class="math notranslate nohighlight">
+\[\mathrm{KL}\big(N(0, R_0 + A)\,\|\,N(0, R_0 + A_k)\big)
+= \tfrac12 \sum_{i&gt;k} \big[\mu_i - \log(1 + \mu_i)\big].\]</div>
+<p>The rank is the larger of the count of <span class="math notranslate nohighlight">\(\mu_i\)</span> above
+<code class="docutils literal notranslate"><span class="pre">mu_threshold</span></code> and the smallest <span class="math notranslate nohighlight">\(k\)</span> whose dropped-mode KL per
+observation is at most <code class="docutils literal notranslate"><span class="pre">kl_budget_per_observation</span></code>; either criterion
+may be disabled with <code class="docutils literal notranslate"><span class="pre">None</span></code>. The stored factor is still the leading
+eigenmodes of <span class="math notranslate nohighlight">\(A\)</span> with the discarded marginal variance on the
+diagonal; only the number of modes comes from the whitened spectrum.</p>
+<p>The count depends strongly on <span class="math notranslate nohighlight">\(R_0\)</span>: larger reference variance
+whitens more of <span class="math notranslate nohighlight">\(A\)</span> away. The rule is a screening heuristic, not a
+bound on posterior error. It was checked only on four Verification Games
+CO2 cases (January and July 2021, two prior bases, Gaussian analytic
+posteriors), where a rank at least the <span class="math notranslate nohighlight">\(\mu &gt; 0.1\)</span> count, against
+either reported error plus 1 ppm independent mismatch or prior-median
+within-site OU mismatch, gave country totals within 0.5 Tg C/month of
+exact dense <span class="math notranslate nohighlight">\(A\)</span>. Check the chosen rank for the intended likelihood.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mu_threshold</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><em>None</em>) – Positive whitened-eigenvalue threshold for the count
+criterion, or <code class="docutils literal notranslate"><span class="pre">None</span></code> to disable it.</p></li>
+<li><p><strong>kl_budget_per_observation</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><em>None</em>) – Positive dropped-mode KL budget in nats per
+observation, or <code class="docutils literal notranslate"><span class="pre">None</span></code> to disable it. This spectral KL ignores
+the diagonal tail, so it is not the KL of the stored
+representation. In the four cases above, at the prior-median
+reference, it was about 3-10 times smaller than the stored
+representation’s KL: a budget of <code class="docutils literal notranslate"><span class="pre">1e-3</span></code> kept far too few modes
+(worst country error 0.6-1.3 Tg C/month), while the
+<code class="docutils literal notranslate"><span class="pre">mu</span> <span class="pre">&gt;</span> <span class="pre">0.1</span></code> count corresponded to about <code class="docutils literal notranslate"><span class="pre">2e-5</span></code>-<code class="docutils literal notranslate"><span class="pre">1.2e-4</span></code>.
+Calibrate any budget for the intended reference.</p></li>
+<li><p><strong>rank</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><em>None</em>) – Optional explicit rank for benchmarking. The spectrum and rule
+rank are still computed and recorded, and a <code class="docutils literal notranslate"><span class="pre">UserWarning</span></code> is
+issued when <code class="docutils literal notranslate"><span class="pre">rank</span></code> is below the rule rank.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If a value is invalid or no criterion or rank is set.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.observation_error.whitened_eigenvalue_kl">
+<span class="sig-name descname"><span class="pre">whitened_eigenvalue_kl</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">eigenvalues</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.observation_error.whitened_eigenvalue_kl" title="Link to this definition">#</a></dt>
+<dd><p>Return the Gaussian KL carried by whitened covariance eigenvalues.</p>
+<p>For eigenvalues <span class="math notranslate nohighlight">\(\lambda_i &gt; -1\)</span> of a covariance difference
+whitened by the approximate total covariance, or the generalized
+eigenvalues of dropped modes, the KL divergence is
+<span class="math notranslate nohighlight">\(\tfrac12 \sum_i (\lambda_i - \log(1 + \lambda_i))\)</span>. It is
+non-negative and zero only when every eigenvalue is zero.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>eigenvalues</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>) – Whitened eigenvalues, each greater than <code class="docutils literal notranslate"><span class="pre">-1</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>KL divergence in nats.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If any eigenvalue is not finite or is at most <code class="docutils literal notranslate"><span class="pre">-1</span></code>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.observation_error.select_whitened_rank">
+<span class="sig-name descname"><span class="pre">select_whitened_rank</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">eigenvalues</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rule</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.observation_error.select_whitened_rank" title="Link to this definition">#</a></dt>
+<dd><p>Apply a rank rule to whitened eigenvalues.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>eigenvalues</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>) – Non-empty, finite, non-negative whitened eigenvalues in
+descending order.</p></li>
+<li><p><strong>rule</strong> (<a class="reference internal" href="#openghg_inversions.observation_error.WhitenedRankRule" title="openghg_inversions.observation_error.WhitenedRankRule"><em>WhitenedRankRule</em></a>) – Rank criteria and optional explicit override.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The chosen rank, at least one and at most the eigenvalue count, and a
+JSON-safe record of the criteria, counts and dropped-mode KL. Issues a
+<code class="docutils literal notranslate"><span class="pre">UserWarning</span></code> when an explicit rank is below the rule rank.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">eigenvalues</span></code> is not a non-empty, finite,
+    non-negative vector in descending order.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)">tuple</a>[<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)">int</a>, <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -895,6 +1003,9 @@ covariance dimension.</p></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.LowRankAggregationErrorApproximation"><code class="docutils literal notranslate"><span class="pre">LowRankAggregationErrorApproximation</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.prepare_low_rank_aggregation_error"><code class="docutils literal notranslate"><span class="pre">prepare_low_rank_aggregation_error()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.aggregation_error_as_low_rank"><code class="docutils literal notranslate"><span class="pre">aggregation_error_as_low_rank()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.WhitenedRankRule"><code class="docutils literal notranslate"><span class="pre">WhitenedRankRule</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.whitened_eigenvalue_kl"><code class="docutils literal notranslate"><span class="pre">whitened_eigenvalue_kl()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.select_whitened_rank"><code class="docutils literal notranslate"><span class="pre">select_whitened_rank()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.validate_observation_error_arrays"><code class="docutils literal notranslate"><span class="pre">validate_observation_error_arrays()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.select_aggregation_error_mode"><code class="docutils literal notranslate"><span class="pre">select_aggregation_error_mode()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.aggregation_error_input_names"><code class="docutils literal notranslate"><span class="pre">aggregation_error_input_names()</span></code></a></li>
