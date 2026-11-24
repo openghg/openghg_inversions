@@ -477,10 +477,10 @@
 <a class="reference internal" href="../reference/openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">CorrelatedPrior</span></code></a>: the retained
 arithmetic mean <span class="math notranslate nohighlight">\(m\)</span> and covariance <span class="math notranslate nohighlight">\(B\)</span> from preparation, with a
 marginal family per state. The ordinary and cached CO₂ builders and the linked
-CO₂/O₂ builders take this one <code class="docutils literal notranslate"><span class="pre">retained_prior</span></code> value. The runners build it
-from the prepared mean and covariance; the linked runners convert the prepared
-<a class="reference internal" href="../reference/openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior</span></code></a> with
-<a class="reference internal" href="../reference/openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior.from_lognormal" title="openghg_inversions.correlated_state.CorrelatedPrior.from_lognormal"><code class="xref py py-meth docutils literal notranslate"><span class="pre">from_lognormal()</span></code></a>.</p>
+CO₂/O₂ builders take one <code class="docutils literal notranslate"><span class="pre">retained_prior</span></code> value. They also accept a validated
+<a class="reference internal" href="../reference/openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior</span></code></a> directly.
+The CO₂ runners build the prior from the prepared mean and covariance. The
+linked runners use the lognormal prior from their prepared inputs.</p>
 <section id="sampled-marginals">
 <span id="id1"></span><h2>Sampled marginals<a class="headerlink" href="#sampled-marginals" title="Link to this heading">#</a></h2>
 <p>The states are joined by a Gaussian copula that reproduces the arithmetic

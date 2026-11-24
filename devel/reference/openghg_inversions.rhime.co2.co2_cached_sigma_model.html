@@ -667,7 +667,7 @@ fixed after construction; rebuild the recipe for different inputs.</p>
 <li><p><strong>flux_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Reduced sensitivity with the output dimension and
 one labelled retained-state dimension, in concentration units per
 unit dimensionless flux scaling.</p></li>
-<li><p><strong>retained_prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><em>CorrelatedPrior</em></a>) – Complete labelled arithmetic moments and marginals
+<li><p><strong>retained_prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><em>CorrelatedLognormalPrior</em></a><em> | </em><a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><em>CorrelatedPrior</em></a>) – Complete labelled arithmetic moments and marginals
 for the dimensionless retained flux-scaling state.</p></li>
 <li><p><strong>fixed_prior_contribution</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Fixed coherent-reduction affine contribution
 on the output dimension, in the observations’ concentration units.</p></li>

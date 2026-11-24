@@ -1125,14 +1125,13 @@ inputs remain unchanged and shared Dask coordinate tasks run once.</p>
 <dt class="sig sig-object py" id="openghg_inversions.models.components.add_correlated_state_with_activity">
 <span class="sig-name descname"><span class="pre">add_correlated_state_with_activity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">activity</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior</span></span></em>, <em class="sig-param"><span class="positional-only-separator o"><abbr title="Positional-only parameter separator (PEP 570)"><span class="pre">/</span></abbr></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">var_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.add_correlated_state_with_activity" title="Link to this definition">#</a></dt>
 <dd><p>Construct a correlated state with each state’s marginal and exact fixed values.</p>
-<p>Every marginal is lognormal, so this is
-<a class="reference internal" href="#openghg_inversions.models.components.add_correlated_lognormal_state_with_activity" title="openghg_inversions.models.components.add_correlated_lognormal_state_with_activity"><code class="xref py py-func docutils literal notranslate"><span class="pre">add_correlated_lognormal_state_with_activity()</span></code></a> on the prior’s
-lognormal copula.</p>
+<p>Use <a class="reference internal" href="#openghg_inversions.models.components.add_correlated_lognormal_state_with_activity" title="openghg_inversions.models.components.add_correlated_lognormal_state_with_activity"><code class="xref py py-func docutils literal notranslate"><span class="pre">add_correlated_lognormal_state_with_activity()</span></code></a> with the
+validated lognormal prior carried by either input form.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><em>ResolvedStateActivity</em></a>) – Resolved activity in canonical full-state order.</p></li>
-<li><p><strong>prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><em>CorrelatedPrior</em></a>) – Arithmetic moments and marginals for the full state.</p></li>
+<li><p><strong>prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><em>CorrelatedLognormalPrior</em></a><em> | </em><a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><em>CorrelatedPrior</em></a>) – Arithmetic moments and marginals for the full state.</p></li>
 <li><p><strong>var_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Name of the full user-facing state vector.</p></li>
 </ul>
 </dd>
@@ -1156,7 +1155,7 @@ the lognormal copula, for
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><em>ResolvedStateActivity</em></a>) – Resolved activity in canonical full-state order.</p></li>
-<li><p><strong>prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><em>CorrelatedPrior</em></a>) – Arithmetic moments and marginals for the full state.</p></li>
+<li><p><strong>prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><em>CorrelatedLognormalPrior</em></a><em> | </em><a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><em>CorrelatedPrior</em></a>) – Arithmetic moments and marginals for the full state.</p></li>
 <li><p><strong>var_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Name of the full user-facing state vector.</p></li>
 </ul>
 </dd>
