@@ -140,7 +140,13 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     offset_prior = eager_priors["offset"]
     site_amplitude_prior = eager_priors["amplitude"]
     observations, fixed, co2, o2, error = materialized
-    flux_prior = CorrelatedPrior.from_lognormal(prepared.retained_prior)
+    flux_prior = CorrelatedPrior(
+        prepared.retained_prior.mean,
+        prepared.retained_prior.arithmetic_covariance,
+        marginal="lognormal" if prepared.retained_prior_marginal is None else prepared.retained_prior_marginal,
+        covariance_dim=prepared.retained_prior.covariance_dim,
+        latent_correlation_floor=prepared.latent_correlation_floor,
+    )
     outer = None if outer_flux is None else outer_flux.resolve_states(flux_prior)
     cached = _build_co2_o2_cached_sigma_model(
         observations=observations,
@@ -159,7 +165,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         offset_prior=offset_prior,
         offset_args=offset_args,
     )
-    metadata = _co2_o2_metadata(prepared, observations=observations)
+    metadata = _co2_o2_metadata(prepared, observations=observations, flux_prior=flux_prior)
     metadata.update(
         recipe="co2_o2_cached_sigma_fixed_ou",
         likelihood="joint Gaussian with fixed OU blocks by (species, site)",
