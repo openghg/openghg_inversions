@@ -290,9 +290,47 @@ The affine artifact APIs are described under :ref:`co2-affine-flux-summaries`.
 Sample replay uses the saved companion; later output choices cannot replace its
 scientific meaning. Native sources retain their identities; when reporting
 sectors differ, supply an explicit ``outputs.source_to_sector`` mapping.
-Source sums and sector transforms precede uncertainty statistics. Native-flux
-and country products carry ``retained_state_conditional`` uncertainty scope;
-they exclude unresolved native-state posterior uncertainty tracked in OPE-68.
+Source sums and sector transforms precede uncertainty statistics. Every
+native-flux and country product records its ``uncertainty_scope``, which has
+one of two values:
+
+``retained_state_conditional``
+   The spread of ``Q m + D (alpha - Pi m)`` only. The unresolved native state
+   is left out, so country totals miss its mean update and most of its
+   variance where retained regions cross country borders. Native-grid flux
+   products always have this scope.
+``complete_native``
+   Country totals that add, for each posterior draw, the conditional mean
+   and one conditional draw of the unresolved native state (prior draws add
+   its prior variance). With a Gaussian retained state and the exact ``A``
+   they are the native-grid posterior of each country total for any
+   retained partition.
+
+Country products are ``complete_native`` only when the preparation saved the
+country functional products; otherwise they stay
+``retained_state_conditional``. ``Co2Output.output_metadata`` records
+``country_uncertainty_scope`` beside the native ``uncertainty_scope``.
+Complete country outputs require all of the following at preparation:
+
+- Reduce with country functionals:
+  ``reduce_native_gaussian(..., functionals=co2_flux_country_functionals(flux, countries),
+  functional_dim="country_functional")``. Use the signed reference flux the
+  affine companion will carry, and a country file that covers every country
+  you will report. Replay may report any subset of the prepared countries.
+- Prepare with ``aggregation_error_rank=None``. The products use the exact
+  unresolved covariance, so the artifact and the fit must use the exact dense
+  ``A``; a low-rank artifact with products is rejected.
+- Use the full-restriction reduction. Its ``alpha_prior_covariance`` and ``H``
+  must be the reduction's own ``C_alpha`` and ``H_alpha``. This is checked
+  when the artifact is built, and on load through a fingerprint.
+
+At replay, the fit must use the additive-sigma, site-sigma or fixed-OU
+likelihood. Other likelihoods raise an error rather than reporting complete
+totals. Country outputs record the ``A`` and noise model used in
+``unresolved_conditioning`` (JSON). Replay refuses the complete label if
+conditioning had to clip a conditional-covariance eigenvalue beyond roundoff.
+Details are in the "Complete native functionals" section of the
+coherent-reduction guide.
 
 ``Co2Output`` borrows the preparation and complete annotated trace DataTree,
 retaining separate prior, posterior, predictive and diagnostic groups with

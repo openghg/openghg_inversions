@@ -288,10 +288,17 @@ artifact carries the country products:
    :func:`~openghg_inversions.coherent_reduction.reduce_native_gaussian` with
    ``functional_dim="country_functional"``.
 2. :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`
-   saves ``reduction.functional_products`` in the prepared artifact's
-   ``country_functionals`` node (schema version 4) and summarizes them under
-   ``provenance["country_functionals"]``. Only full-restriction products on
-   the ``country_functional`` axis are accepted.
+   with ``aggregation_error_rank=None`` saves ``reduction.functional_products``
+   in the prepared artifact's ``country_functionals`` node (schema version 4)
+   and summarizes them under ``provenance["country_functionals"]``. Only
+   full-restriction products on the ``country_functional`` axis are accepted,
+   and their own :math:`C_\alpha` and :math:`H_\alpha` must equal the
+   artifact's ``alpha_prior_covariance`` and ``H``. Because
+   :math:`H_\alpha = H U_*`, this ties the products to the native observation
+   operator, which the :math:`Q m` and :math:`D` checks cannot. The node stores
+   a ``reduction_fingerprint`` of :math:`C_\alpha`, :math:`H_\alpha` and their
+   labels, and load verifies it. The unresolved covariance must be symmetric
+   positive semidefinite.
 3. Replay (:func:`openghg_inversions.rhime.co2.handoffs.postprocess`, or
    :func:`~openghg_inversions.rhime.co2.execution.run_co2`) rebuilds each
    posterior draw's residual ``mf - model_mean`` and the fit's own
@@ -301,16 +308,19 @@ artifact carries the country products:
    outputs ``"complete_native"``. Without products they stay
    ``"retained_state_conditional"``. Native-grid flux is unchanged.
 
-The solve follows the recorded likelihood. Additive-sigma and site-sigma fits
-use the stored :math:`A` plus ``epsilon**2 - diag(A)`` for each draw. Fixed-OU
-fits, with fixed or inferred amplitudes, rebuild the fit's
+The products use the exact :math:`B_\perp`, so the joint covariance of the
+products and the observations is consistent only with the exact :math:`A`.
+An artifact with products must therefore store dense :math:`A`, and the fit
+samples the same :math:`A` it is conditioned on. The solve follows the
+recorded likelihood. Additive-sigma and site-sigma fits use the stored
+:math:`A` plus ``epsilon**2 - diag(A)`` for each draw. Fixed-OU fits, with
+fixed or inferred amplitudes, rebuild the fit's
 :class:`~openghg_inversions.models.fixed_ou.FixedOuLowRank` from the recorded
-observation error, OU site index and time scales, with each draw's
-amplitudes. Other likelihoods raise an error rather than claiming complete
-outputs. :math:`A` is the representation stored in the artifact, so the
-default rank-512 artifact pairs exact-:math:`B_\perp` products with its
-low-rank :math:`A`; prepare with ``aggregation_error_rank=None`` to condition
-on the exact :math:`A`, and check ``conditional_covariance_min_eigenvalue``.
+observation error, OU site index and time scales (numeric hours, or a
+timedelta), with each draw's amplitudes. Other likelihoods raise an error
+rather than claiming complete outputs. ``unresolved_conditioning`` records
+the :math:`A` and noise model as JSON. If a conditional-covariance eigenvalue
+is clipped below a relative :math:`-10^{-6}`, the complete label is refused.
 Country sector totals are summed from the same complete (country, source)
 draws. States marginalised at preparation are declared from
 ``state_information_marginalised`` when the artifact records it.

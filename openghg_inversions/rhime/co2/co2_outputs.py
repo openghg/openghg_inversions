@@ -415,6 +415,27 @@ def _affine_products(
     return native, country
 
 
+# Relative eigenvalue below which a clipped conditional covariance is not
+# roundoff but an inconsistent joint covariance of products, A and R.
+COMPLETE_CLIPPING_TOLERANCE = 1e-6
+
+
+def _require_consistent_conditioning(country: xr.Dataset) -> None:
+    """Refuse the complete-native label when conditioning clipped more than roundoff.
+
+    With the exact ``A`` and the fit's noise, ``Q B_perp Q.T - Q B_perp H.T
+    (A + R)^-1 H B_perp Q.T`` is positive semidefinite, so only roundoff can
+    make its eigenvalues negative.
+    """
+    eigenvalue = float(country.attrs["conditional_covariance_min_eigenvalue"])
+    if eigenvalue < -COMPLETE_CLIPPING_TOLERANCE:
+        raise ValueError(
+            f"Complete country conditioning clipped a relative eigenvalue of {eigenvalue:.3e} "
+            f"(tolerance {COMPLETE_CLIPPING_TOLERANCE:.0e}); the products, A and noise are inconsistent, "
+            "so complete_native country uncertainty is not reported."
+        )
+
+
 def _paris_products(
     components: xr.Dataset,
     native: xr.Dataset,
@@ -589,6 +610,8 @@ def calculate_co2_products(
         native, country = _affine_products(
             result.idata, bound, countries, source_to_sector, unresolved=unresolved
         )
+        if unresolved is not None and country is not None:
+            _require_consistent_conditioning(country)
         products["native_flux"] = native
         if country is not None:
             products["country_flux"] = country

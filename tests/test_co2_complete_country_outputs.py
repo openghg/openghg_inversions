@@ -33,7 +33,6 @@ from openghg_inversions.rhime.co2.co2_affine_output import (
 )
 from openghg_inversions.rhime.co2.co2_outputs import Co2OutputOptions
 from openghg_inversions.rhime.co2.co2_preparation import (
-    COUNTRY_FUNCTIONAL_DIM as PREPARED_COUNTRY_FUNCTIONAL_DIM,
     CO2_PREPARED_INPUTS_SCHEMA_VERSION,
     Co2PreparedInputs,
     prepare_co2_inputs,
@@ -178,7 +177,8 @@ def _case(*, functionals: bool = True, aggregation_error_rank: int | None = None
     affine = import_explicit_affine_flux_map(
         prepared, mean, flux, prolongation, prepared_inputs_id="unsaved"
     )
-    problem = {"B": dense_b, "h": h, "m": mean.values.reshape(-1), "y": observed - 400.0, "canonical": canonical}
+    problem = {"B": dense_b, "h": h, "m": mean.values.reshape(-1), "y": observed - 400.0, "canonical": canonical,
+               "native_mean": mean, "flux": flux, "sensitivity": sensitivity}
     return problem, reduction, prepared, affine
 
 
@@ -304,7 +304,10 @@ def test_staged_country_outputs_are_complete_native_from_prepare_to_replay(tmp_p
     assert country.attrs["uncertainty_scope"] == "complete_native"
     assert result.output_metadata["country_uncertainty_scope"] == "complete_native"
     assert result.output_metadata["uncertainty_scope"] == "retained_state_conditional"
-    assert "dense A" in country.attrs["unresolved_conditioning"]
+    conditioning = json.loads(country.attrs["unresolved_conditioning"])
+    assert conditioning["aggregation_error"] == "dense"
+    assert conditioning["aggregation_error_exact"] is True
+    assert conditioning["aggregation_error_rank"] is None
     assert country.attrs["marginalised_state_count"] == "0"
     assert float(country.attrs["conditional_covariance_min_eigenvalue"]) > -1e-8
     for variable in country.data_vars.values():
@@ -354,7 +357,6 @@ def test_prepared_country_functionals_round_trip(tmp_path) -> None:
     """Products survive NetCDF with their MultiIndex labels and the artifact's axes."""
     _, reduction, prepared, _ = _case()
     assert CO2_PREPARED_INPUTS_SCHEMA_VERSION == 4
-    assert PREPARED_COUNTRY_FUNCTIONAL_DIM == COUNTRY_FUNCTIONAL_DIM
     products = prepared.country_functionals
     assert products is not None
     xr.testing.assert_identical(products.effective_observation_operator, prepared.inv_inputs["H"])
@@ -425,7 +427,8 @@ def test_unprepared_country_is_rejected() -> None:
 @pytest.mark.parametrize("rank", [None, 3])
 def test_additive_sigma_solve_uses_each_draws_independent_variance(rank) -> None:
     """``(A + R)^-1`` uses the stored A and ``epsilon**2 - diag(A)`` at each draw."""
-    _, _, prepared, _ = _case(aggregation_error_rank=rank)
+    # The solve needs no products, so a low-rank artifact without them is used.
+    _, _, prepared, _ = _case(functionals=rank is None, aggregation_error_rank=rank)
     trace = _fit_fixture(_case()[2], count=3)
     a = _stored_a(prepared)
     variance = np.array([[0.1, 0.4, 0.9]])[..., None] * NOISE_DIAGONAL
@@ -451,21 +454,24 @@ def _stored_a(prepared: Co2PreparedInputs) -> np.ndarray:
     return factor @ factor.T + np.diag(inputs["diagonal_residual_variance"].values)
 
 
-@pytest.mark.parametrize("inferred", [True, False])
-def test_fixed_ou_solve_rebuilds_the_fits_covariance(inferred: bool) -> None:
-    """Fixed-OU fits condition on A + error**2 + OU at each draw's (or the fixed) amplitudes."""
-    _, _, prepared, _ = _case(aggregation_error_rank=3)
-    trace = _fit_fixture(_case()[2], count=2)
+OU_ERROR = 0.5 * np.sqrt(NOISE_DIAGONAL)
+OU_AMPLITUDES = np.array([[[0.6, 0.4], [0.2, 0.9]]])
+
+
+def _fixed_ou_trace(prepared: Co2PreparedInputs, *, inferred: bool, tau_attrs=None) -> xr.DataTree:
+    """Return a two-draw fixed-OU trace with the recorded noise constants of the fit."""
+    trace = _fit_fixture(prepared, count=2)
     observations = prepared.inv_inputs["mf"]
-    error = 0.5 * np.sqrt(NOISE_DIAGONAL)
-    amplitudes = np.array([[[0.6, 0.4], [0.2, 0.9]]])
+    error, amplitudes = OU_ERROR, OU_AMPLITUDES
     site = xr.DataArray(SITE_NAMES, dims="ou_site")
     trace["constant_data"] = xr.DataTree(
         xr.Dataset(
             {
                 "error": observations.copy(data=error),
                 "ou_site_index": observations.copy(data=SITES),
-                "ou_tau_hours": xr.DataArray(list(TAU.values()), dims="ou_site", coords={"ou_site": site}),
+                "ou_tau_hours": xr.DataArray(
+                    list(TAU.values()), dims="ou_site", coords={"ou_site": site}, attrs=tau_attrs or {}
+                ),
             }
         )
     )
@@ -481,13 +487,57 @@ def test_fixed_ou_solve_rebuilds_the_fits_covariance(inferred: bool) -> None:
     trace.attrs["rhime_likelihood_builder"] = json.dumps(
         {"module": "openghg_inversions.models.fixed_ou", "qualname": "add_fixed_ou_gaussian_likelihood"}
     )
-    solve = _observation_solve(trace, prepared, json.loads(trace.attrs["rhime_variable_roles"]))
+    return trace
+
+
+def _roles(trace: xr.DataTree) -> dict[str, str]:
+    """Return the trace's scientific roles."""
+    return json.loads(trace.attrs["rhime_variable_roles"])
+
+
+@pytest.mark.parametrize("inferred", [True, False])
+def test_fixed_ou_solve_rebuilds_the_fits_covariance(inferred: bool) -> None:
+    """Fixed-OU fits condition on A + error**2 + OU at each draw's (or the fixed) amplitudes."""
+    _, _, prepared, _ = _case()
+    trace = _fixed_ou_trace(prepared, inferred=inferred)
+    solve = _observation_solve(trace, prepared, _roles(trace))
     rhs = np.random.default_rng(5).normal(size=(N_OBSERVATION, 3))
     a = _stored_a(prepared)
     for draw in range(2):
-        amplitude = amplitudes[0, draw] if inferred else amplitudes[0, 0]
-        expected = np.linalg.solve(a + np.diag(error**2) + _ou(amplitude), rhs)
+        amplitude = OU_AMPLITUDES[0, draw] if inferred else OU_AMPLITUDES[0, 0]
+        expected = np.linalg.solve(a + np.diag(OU_ERROR**2) + _ou(amplitude), rhs)
         np.testing.assert_allclose(solve.solve(rhs, 0, draw), expected, rtol=1e-8)
+
+
+@pytest.mark.parametrize(
+    "tau_attrs",
+    [{"units": "hours"}, {"units": "hours", "dtype": "timedelta64[ns]"}],
+    ids=["cached-runner-hours", "linked-runner-timedelta"],
+)
+def test_saved_fixed_ou_trace_keeps_time_scales_in_hours(tmp_path, tau_attrs) -> None:
+    """A trace saved and loaded through the shared codec gives the in-memory fixed-OU solve.
+
+    The cached runner records ``ou_tau_hours`` as numbers with
+    ``units="hours"``; units alone must not decode them to a timedelta. The
+    linked runner tags them as a timedelta, which must still mean hours.
+    """
+    from openghg_inversions.serialization import load_trace, save_trace
+
+    _, _, prepared, _ = _case()
+    trace = _fixed_ou_trace(prepared, inferred=True, tau_attrs=tau_attrs)
+    path = tmp_path / "trace.nc"
+    save_trace(trace, path)
+    loaded = load_trace(path)
+    tau = loaded["constant_data"]["ou_tau_hours"]
+    if "dtype" in tau_attrs:
+        assert np.issubdtype(tau.dtype, np.timedelta64)
+    else:
+        np.testing.assert_array_equal(tau.values, list(TAU.values()))
+    rhs = np.random.default_rng(6).normal(size=(N_OBSERVATION, 2))
+    expected = _observation_solve(trace, prepared, _roles(trace))
+    actual = _observation_solve(loaded, prepared, _roles(loaded))
+    for draw in range(2):
+        np.testing.assert_allclose(actual.solve(rhs, 0, draw), expected.solve(rhs, 0, draw), rtol=1e-12)
 
 
 def test_unsupported_likelihood_is_rejected() -> None:
@@ -518,3 +568,75 @@ def test_preparation_rejects_non_country_functionals() -> None:
     with pytest.raises(ValueError, match="full-restriction"):
         replace(_case()[2], country_functionals=replace(products, marginalised=xr.zeros_like(
             reduction.retained_mean, dtype=bool)))
+
+
+def test_complete_products_require_the_exact_a() -> None:
+    """Products with a truncated A are refused at preparation and at construction."""
+    from dataclasses import replace
+
+    problem, reduction, prepared, _ = _case()
+    with pytest.raises(ValueError, match="aggregation_error_rank=None"):
+        prepare_co2_inputs(problem["canonical"], reduction, aggregation_error_rank=3)
+    low_rank = _case(functionals=False, aggregation_error_rank=3)[2]
+    with pytest.raises(ValueError, match="exact dense aggregation-error covariance"):
+        replace(low_rank, country_functionals=prepared.country_functionals)
+    bound = BoundCo2AffineFluxMap(_case(functionals=False, aggregation_error_rank=3)[3], low_rank.inv_inputs["alpha_prior_mean"])
+    with pytest.raises(ValueError, match="no country functional products"):
+        co2_unresolved_conditioning(_fit_fixture(prepared, count=2), low_rank, bound=bound, countries=_countries())
+
+
+def test_products_from_another_observation_operator_are_rejected() -> None:
+    """Products sharing C_alpha and every label but made with another H are not the reduction's."""
+    from dataclasses import replace
+
+    problem, reduction, _, _ = _case()
+    covariance, _ = _covariance()
+    products = reduction.functional_products
+    sensitivity = -problem["sensitivity"]
+    other = reduce_native_gaussian(
+        covariance=covariance,
+        strategy=SuppliedRestriction(_restriction(problem["canonical"].basis_functions)),
+        state_dim="region",
+        native_mean=problem["native_mean"],
+        native_sensitivity=sensitivity,
+        observation_dim="observation",
+        functionals=co2_flux_country_functionals(problem["flux"], _countries()),
+        functional_dim=COUNTRY_FUNCTIONAL_DIM,
+    ).functional_products
+    np.testing.assert_array_equal(other.retained_covariance.values, products.retained_covariance.values)
+    with pytest.raises(ValueError, match="H_alpha differs"):
+        prepare_co2_inputs(
+            problem["canonical"], replace(reduction, functional_products=other), aggregation_error_rank=None
+        )
+
+
+def test_saved_products_must_match_the_artifacts_reduction(tmp_path) -> None:
+    """Load verifies the reduction fingerprint against the restored C_alpha and H_alpha."""
+    _, _, prepared, _ = _case()
+    tree = prepared.to_datatree()
+    assert tree["country_functionals"].attrs["reduction_fingerprint"].startswith("sha256:")
+    Co2PreparedInputs.from_datatree(tree)
+    inputs = tree["rhime_inputs/inv_inputs"].to_dataset()
+    tree["rhime_inputs/inv_inputs"] = xr.DataTree(inputs.assign(H=inputs["H"] * 1.01))
+    with pytest.raises(ValueError, match="different coherent reduction"):
+        Co2PreparedInputs.from_datatree(tree)
+
+
+def test_products_require_a_positive_semidefinite_unresolved_covariance() -> None:
+    """An indefinite unresolved covariance cannot be persisted."""
+    from dataclasses import replace
+
+    _, _, prepared, _ = _case()
+    products = prepared.country_functionals
+    indefinite = replace(products, unresolved_covariance=-products.unresolved_covariance)
+    with pytest.raises(ValueError, match="positive semidefinite"):
+        replace(prepared, country_functionals=indefinite)
+
+
+def test_clipped_conditioning_is_not_reported_as_complete() -> None:
+    """Clipping beyond roundoff refuses the complete-native label."""
+    from openghg_inversions.rhime.co2.co2_outputs import _require_consistent_conditioning
+
+    _require_consistent_conditioning(xr.Dataset(attrs={"conditional_covariance_min_eigenvalue": "-1.000e-09"}))
+    with pytest.raises(ValueError, match="inconsistent"):
+        _require_consistent_conditioning(xr.Dataset(attrs={"conditional_covariance_min_eigenvalue": "-1.000e+00"}))

@@ -8,12 +8,13 @@ needs from the saved trace and prepared artifact alone: each posterior draw's
 observation residual and the fit's own ``(A + R)^-1`` at that draw's noise
 parameters.
 
-``A`` is the aggregation-error representation the fit used, as stored in the
-prepared artifact. With the default rank-512 LRPD artifact it is that
-approximation, not the exact unresolved covariance of the products; prepare
-with ``aggregation_error_rank=None`` to condition on the exact ``A``. The
-conditional-covariance diagnostic recorded on the outputs flags a large
-mismatch.
+``A`` is the aggregation-error covariance the fit used, as stored in the
+prepared artifact. The products use the exact unresolved covariance
+``B_perp``, so the joint covariance of the products and the observations is
+consistent only with the exact ``A``: an artifact carrying country products
+must store dense ``A`` (``aggregation_error_rank=None``), and the fit then
+samples the same ``A`` it is conditioned on. Each conditioning records a
+structured account of the ``A`` and noise model it used.
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ from openghg_inversions.observation_error import (
     aggregation_error_as_low_rank,
     resolve_aggregation_error,
 )
-from openghg_inversions.postprocessing.co2_flux_outputs import co2_country_functionals
+from openghg_inversions.postprocessing.co2_flux_outputs import COUNTRY_FUNCTIONAL_DIM, co2_country_functionals
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import trace_group
 from openghg_inversions.postprocessing.unresolved_functionals import (
@@ -44,7 +45,7 @@ from openghg_inversions.postprocessing.unresolved_functionals import (
 )
 
 from .co2_affine_output import BoundCo2AffineFluxMap
-from .co2_preparation import COUNTRY_FUNCTIONAL_DIM, Co2PreparedInputs
+from .co2_preparation import Co2PreparedInputs
 
 __all__ = ["co2_unresolved_conditioning"]
 
@@ -62,6 +63,20 @@ _DIAGONAL_LIKELIHOODS = {
 # Recorded independent variances may round below zero by this fraction of
 # the total marginal variance before the record is treated as inconsistent.
 _VARIANCE_ROUNDOFF = 1e-8
+
+
+def _conditioning_record(prepared: Co2PreparedInputs, *, noise: str, varies_by_draw: bool) -> str:
+    """Return the JSON account of ``A`` and ``R`` used to condition, for output metadata."""
+    return json.dumps(
+        {
+            "aggregation_error": prepared.aggregation_error_mode,
+            "aggregation_error_exact": prepared.aggregation_error_mode == "dense",
+            "aggregation_error_rank": prepared.provenance.get("aggregation_error_rank"),
+            "noise": noise,
+            "varies_by_draw": varies_by_draw,
+        },
+        sort_keys=True,
+    )
 
 
 def co2_unresolved_conditioning(
@@ -84,7 +99,8 @@ def co2_unresolved_conditioning(
 
     Products are restricted to the requested countries. States the
     preparation marginalised into ``A`` (``state_information_marginalised``)
-    are declared on the result.
+    are declared on the result. The solve's ``description`` is a JSON record
+    of the ``A`` (always the exact dense ``A`` here) and noise model used.
 
     Args:
         trace: Annotated CO2 trace generated from ``prepared``.
@@ -98,13 +114,19 @@ def co2_unresolved_conditioning(
         :func:`~openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs`.
 
     Raises:
-        ValueError: If the artifact has no country functionals, a requested
-            country or source was not prepared, the trace lacks the
-            residual or noise records, or the likelihood is unsupported.
+        ValueError: If the artifact has no country functionals or does not
+            store the exact ``A``, a requested country or source was not
+            prepared, the trace lacks the residual or noise records, or the
+            likelihood is unsupported.
     """
     products = prepared.country_functionals
     if products is None:
         raise ValueError("Prepared CO2 inputs carry no country functional products.")
+    if prepared.aggregation_error_mode != "dense":
+        raise ValueError(
+            "Complete CO2 country outputs require the exact dense A that the products were computed with; "
+            "prepare again with aggregation_error_rank=None."
+        )
     source_dim = bound.affine_map.native_dims[0] if len(bound.affine_map.native_dims) == 3 else None
     requested = co2_country_functionals(bound, countries, source_dim=source_dim).indexes[COUNTRY_FUNCTIONAL_DIM]
     products = _select_functionals(products, requested)
@@ -202,25 +224,26 @@ def _fixed_ou_solve(
     if tau.dims != (OU_SITE_DIM,):
         raise ValueError(f"Recorded {OU_TAU_HOURS!r} must have dimensions ({OU_SITE_DIM!r},).")
     labels = [str(label) for label in tau[OU_SITE_DIM].values]
+    tau_hours = _hours(tau)
     factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation)
     covariance = prepare_fixed_ou_low_rank(
         factor,
         np.square(np.asarray(error.values, dtype=np.float64)) + aggregation_diagonal,
         np.asarray(observations["time"].values),
         np.asarray(site_index.values, dtype=np.int64),
-        np.asarray(tau.values, dtype=np.float64),
+        tau_hours,
         site_labels=labels,
     )
     posterior = trace_group(trace, "posterior")
     if OU_SITE_AMPLITUDE in posterior:
         amplitude = posterior[OU_SITE_AMPLITUDE]
-        description = "prepared A + recorded observation error + fixed-tau OU at each draw's site amplitudes"
+        noise = "observation error + fixed-tau OU at each draw's site amplitudes"
     elif OU_SITE_AMPLITUDE in constant:
         state = posterior[json.loads(trace.attrs["rhime_variable_roles"])["flux_scale"]]
         amplitude = constant[OU_SITE_AMPLITUDE].expand_dims(
             {dim: state[dim].values for dim in SAMPLE_DIMS}
         )
-        description = "prepared A + recorded observation error + fixed-tau OU at fixed site amplitudes"
+        noise = "observation error + fixed-tau OU at fixed site amplitudes"
     else:
         raise ValueError(f"Complete fixed-OU CO2 outputs require {OU_SITE_AMPLITUDE!r} draws or constants.")
     amplitude = amplitude.assign_coords({OU_SITE_DIM: [str(label) for label in amplitude[OU_SITE_DIM].values]})
@@ -229,8 +252,24 @@ def _fixed_ou_solve(
         amplitude,
         site_dim=OU_SITE_DIM,
         observation_index=observations.indexes["nmeasure"],
-        description=f"{description} ({prepared.aggregation_error_mode} A)",
+        description=_conditioning_record(prepared, noise=noise, varies_by_draw=True),
     )
+
+
+def _hours(tau: xr.DataArray) -> np.ndarray:
+    """Return fixed-OU time scales in hours from numeric hours or a decoded timedelta.
+
+    The cached runner records numeric hours with ``units="hours"``; the
+    linked runner tags its time scales as ``timedelta64``. Both mean the
+    same durations.
+    """
+    values = np.asarray(tau.values)
+    if np.issubdtype(values.dtype, np.timedelta64):
+        return (values / np.timedelta64(1, "h")).astype(np.float64)
+    units = tau.attrs.get("units", "hours")
+    if str(units) not in {"hours", "hour", "h"}:
+        raise ValueError(f"Recorded {OU_TAU_HOURS!r} must be in hours, got units {units!r}.")
+    return np.asarray(values, dtype=np.float64)
 
 
 def _diagonal_solve(
@@ -259,7 +298,9 @@ def _diagonal_solve(
     draws = {label: position for position, label in enumerate(epsilon["draw"].values.tolist())}
     index = observations.indexes["nmeasure"]
     varies = not np.all(independent == independent[:1, :1])
-    description = f"prepared {prepared.aggregation_error_mode} A + recorded diagonal independent variance per draw"
+    description = _conditioning_record(
+        prepared, noise="diagonal independent variance epsilon**2 - diag(A)", varies_by_draw=bool(varies)
+    )
     if not varies:
         factorized = _diagonal_update(aggregation, independent[0, 0])
         return ObservationCovarianceSolve(

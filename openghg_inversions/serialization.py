@@ -26,6 +26,7 @@ from cf_xarray.coding import decode_compress_to_multi_index, encode_multi_index_
 import numpy as np
 import pandas as pd
 import xarray as xr
+from xarray.coders import CFTimedeltaCoder
 
 from openghg_inversions._serialization_codecs import (
     _TAGGED_JSON_VALUE_ENCODING,
@@ -381,6 +382,10 @@ def save_datatree(
         raise ValueError(f"Unsupported output_format: {output_format!r}")
 
 
+# Decode timedeltas only from xarray's own ``dtype`` marker, not from time units.
+_DECODE_SAVED_TIMEDELTAS = CFTimedeltaCoder(decode_via_units=False, decode_via_dtype=True)
+
+
 def open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
     """Open and eagerly load a DataTree artifact.
 
@@ -388,6 +393,13 @@ def open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
     rest of the default data-loading path. Loading happens while the file
     context is open, so the returned tree owns its data and does not retain
     references to closed file handles.
+
+    Only variables that xarray wrote as timedeltas (a ``dtype`` attribute of
+    ``timedelta64[...]``) are decoded to ``timedelta64``. A numeric variable
+    that merely carries a time unit, such as ``units="hours"`` on a fixed-OU
+    time scale, keeps its saved numeric values. This is xarray's announced
+    future default; without it, a float ``4.0`` in hours would be decoded to a
+    timedelta whose integer nanosecond count is easily misread as hours.
 
     Args:
         file_path: NetCDF or Zarr DataTree artifact to load.
@@ -401,7 +413,7 @@ def open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
         ValueError: If no backend can interpret the artifact.
     """
     engine = "zarr" if Path(file_path).suffix.lower() == ".zarr" else None
-    with xr.open_datatree(file_path, engine=engine) as dt:
+    with xr.open_datatree(file_path, engine=engine, decode_timedelta=_DECODE_SAVED_TIMEDELTAS) as dt:
         return dt.load()
 
 
