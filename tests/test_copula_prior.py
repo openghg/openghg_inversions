@@ -173,6 +173,33 @@ def test_backend_map_is_finite_with_finite_gradient_in_the_tails(family):
         assert np.isfinite(gradient).all()
 
 
+@pytest.mark.parametrize("float_x", ["float64", "float32"])
+@pytest.mark.parametrize("mode", [None, "JAX"], ids=["default", "jax"])
+def test_gamma_map_gradient_is_the_exact_derivative_at_narrow_and_wide_cvs(float_x, mode):
+    # PyTensor's own inverse-incomplete-gamma gradient overflows with Gamma(k): k > 35 (CV < 0.17) in float32.
+    if mode == "JAX":
+        pytest.importorskip("tensorflow_probability")
+    from scipy import stats
+
+    prior = wide_prior(["gamma"] * 5, cv=(0.05, 0.1, 0.14, 0.3, 2.0), correlation=np.eye(5))
+    shape, scale = prior.marginal_shape.to_numpy(), prior.marginal_scale.to_numpy()
+    activity = resolve_state_activity(xr.zeros_like(prior.mean, dtype=bool), StateActivity(active=True))
+    with pytensor.config.change_flags(floatX=float_x):
+        with registered_model() as model:
+            add_correlated_state_with_activity(activity, prior, var_name="flux_scaling")
+        state = model.replace_rvs_by_values([model["flux_scaling"]])[0]
+        jacobian = model.compile_fn(
+            pytensor.gradient.jacobian(state, model.value_vars[0]), inputs=model.value_vars, mode=mode
+        )
+        for value in (-30.0, -6.0, -1.0, 0.0, 2.0, 6.0, 7.9):
+            latent = np.full(5, value)
+            x = prior.transform_latent(latent)
+            expected = np.exp(stats.norm.logpdf(latent) - stats.gamma.logpdf(x, shape, scale=scale))
+            actual = np.diag(jacobian({"flux_scaling_latent": latent.astype(float_x)}))
+            assert np.isfinite(actual).all()
+            np.testing.assert_allclose(actual, expected, rtol=1e-8 if float_x == "float64" else 1e-3, atol=1e-30)
+
+
 @pytest.mark.parametrize("family", STATE_MARGINALS)
 def test_copula_map_compiles_for_jax_samplers(family):
     pytest.importorskip("jax")
