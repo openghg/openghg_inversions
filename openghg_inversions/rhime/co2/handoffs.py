@@ -48,6 +48,7 @@ from .inference import (
     annotate_co2_inference, build_co2_inference, sample_co2_inference, describe_co2_inference,
 )
 from .configuration import Co2ModelConfig, _resolve_co2_sampling
+from openghg_inversions.inference.sampling import numpy_callback_compile_kwargs
 
 
 @dataclass(frozen=True)
@@ -346,7 +347,10 @@ def prior_predictive(
     report.unlink(missing_ok=True)
     built, cached = build_co2_inference(preparation.prepared, model_options)
     with built.model:
-        prior = pm.sample_prior_predictive(draws, random_seed=random_seed)
+        options = numpy_callback_compile_kwargs(built.model)
+        prior = pm.sample_prior_predictive(
+            draws, random_seed=random_seed, **({"compile_kwargs": options} if options else {})
+        )
     registry = get_coord_registry(built.model)
     if registry is not None:
         prior = restore_inferencedata_coords(prior, registry)

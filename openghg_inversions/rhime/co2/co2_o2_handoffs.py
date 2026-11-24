@@ -42,6 +42,7 @@ from .co2_o2_outputs import (
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .co2_o2_runner import annotate_co2_o2_trace, build_rhime_co2_o2
 from .co2_preparation import requested_co2_facts
+from openghg_inversions.inference.sampling import numpy_callback_compile_kwargs
 
 
 @dataclass(frozen=True)
@@ -276,7 +277,10 @@ def prior_predictive(
     report.unlink(missing_ok=True)
     built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
     with built.model:
-        prior = pm.sample_prior_predictive(draws, random_seed=random_seed)
+        options = numpy_callback_compile_kwargs(built.model)
+        prior = pm.sample_prior_predictive(
+            draws, random_seed=random_seed, **({"compile_kwargs": options} if options else {})
+        )
     registry = get_coord_registry(built.model)
     if registry is not None:
         prior = restore_inferencedata_coords(prior, registry)
