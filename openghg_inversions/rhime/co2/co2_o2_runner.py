@@ -13,7 +13,6 @@ import xarray as xr
 from dask import compute as dask_compute
 
 from openghg_inversions.array_ops import select_gathered_data_array, to_dense_tree
-from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.boundary import Bound, Choice, bind_prepared
@@ -323,7 +322,7 @@ def build_rhime_co2_o2(
         co2_sensitivity=co2_sensitivity,
         o2_sensitivity=o2_sensitivity,
         aggregation_error=prepared.aggregation_error,
-        retained_prior=CorrelatedPrior.from_lognormal(prepared.retained_prior),
+        retained_prior=prepared.retained_prior,
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
         tau_hours=tau_hours,
