@@ -113,6 +113,7 @@ def _reduce_products(
         native_dims=tuple(str(dim) for dim in products.restriction.dims[1:]),
         state_dim=state_dim,
         observation_dim=str(native_sensitivity.dims[0]),
+        native_identity="sha256:synthetic-products",
     )
 def test_exact_reduction_matches_dense_nonzero_mean_oracle() -> None:
     """The retained prior, centred forward model, and residual match dense algebra."""

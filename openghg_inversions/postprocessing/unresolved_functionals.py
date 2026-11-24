@@ -246,16 +246,18 @@ def complete_functional_draws(
             ``None`` only conditional means are added, so the result's spread
             omits the unresolved conditional variance.
         clipping_tolerance: Largest magnitude of a negative eigenvalue,
-            relative to the largest absolute eigenvalue of the same
-            covariance, that is clipped to zero before drawing. Roundoff is
+            relative to the largest eigenvalue of the prior functional
+            covariance ``Q B Q.T = Q B_perp Q.T + D C_alpha D.T``, that is
+            clipped to zero before drawing. Roundoff is
             far smaller; a larger negative eigenvalue means the solve's ``A``
             is not the ``A`` of the products, and raises.
 
     Returns:
         Draws of ``Q x`` on ``(chain, draw, functional_dim)`` in the
         functional's units. ``attrs["conditional_covariance_min_eigenvalue"]``
-        records the most negative relative eigenvalue clipped before drawing
-        (zero when none was negative).
+        records the most negative eigenvalue clipped before drawing, relative
+        to the largest eigenvalue of ``Q B Q.T`` (zero when none was
+        negative).
 
     Raises:
         ValueError: If labels, units or sample axes differ, ``residual`` is
@@ -273,11 +275,12 @@ def complete_functional_draws(
     values = np.array(retained.values, dtype=np.float64)
     chains, draws, count = values.shape
     unresolved = np.asarray(products.unresolved_covariance.values, dtype=np.float64)
+    scale = _functional_covariance_scale(products, unresolved)
     min_eigenvalue = 0.0
 
     if residual is None:
         if rng is not None:
-            root, min_eigenvalue = _covariance_root(unresolved, clipping_tolerance, "Q B_perp Q.T")
+            root, min_eigenvalue = _covariance_root(unresolved, scale, clipping_tolerance, "Q B_perp Q.T")
             values += rng.standard_normal(values.shape) @ root.T
     else:
         if solve is None:
@@ -310,6 +313,7 @@ def complete_functional_draws(
                     conditional = unresolved - cross_values @ solution[:, 1:]
                     root, eigenvalue = _covariance_root(
                         conditional,
+                        scale,
                         clipping_tolerance,
                         f"the conditional covariance of draw {draw_labels[draw]!r}",
                     )
@@ -344,23 +348,60 @@ def _require_residual_units(residual: xr.DataArray, effective_operator: xr.DataA
         raise ValueError(f"Residual units {actual!r} differ in scale from H units {expected!r}.")
 
 
-def _covariance_root(covariance: FloatArray, tolerance: float, name: str) -> tuple[FloatArray, float]:
+def _functional_covariance_scale(products: NativeFunctionalProducts, unresolved: FloatArray) -> float:
+    """Return the largest eigenvalue of the prior functional covariance ``Q B Q.T``.
+
+    ``Q B Q.T = Q B_perp Q.T + D C_alpha D.T`` bounds every covariance the
+    reconstruction draws from, so it sets the roundoff scale of their
+    eigenvalues. ``Q B_perp Q.T`` alone can be zero, for example when the
+    retained states resolve every functional, and then cannot set a scale.
+    Marginalised products have the same sum.
+    """
+    covariance = products.retained_covariance
+    response_array = products.retained_response
+    count = response_array.sizes[products.state_dim]
+    if covariance.shape != (count, count):
+        raise ValueError("Functional response and retained covariance have different numbers of states.")
+    row_dim, state_dim = str(covariance.dims[0]), products.state_dim
+    # D, C_alpha and H_alpha follow Pi's state order; labels are checked when both carry them.
+    if row_dim in covariance.indexes and state_dim in response_array.indexes and not same_index(
+        covariance.indexes[row_dim], response_array.indexes[state_dim]
+    ):
+        raise ValueError("Functional response and retained covariance state labels differ.")
+    response = np.asarray(response_array.values, dtype=np.float64)
+    parent = unresolved + response @ np.asarray(covariance.values, dtype=np.float64) @ response.T
+    eigenvalues = np.linalg.eigvalsh((parent + parent.T) * 0.5)
+    return float(np.max(np.abs(eigenvalues), initial=0.0))
+
+
+def _covariance_root(
+    covariance: FloatArray, scale: float, tolerance: float, name: str
+) -> tuple[FloatArray, float]:
     """Return a square root of a symmetric covariance, clipping roundoff-sized negative eigenvalues.
+
+    Args:
+        covariance: Symmetric covariance to draw from.
+        scale: Largest eigenvalue of the parent covariance ``Q B Q.T`` that
+            ``covariance`` was formed from by subtraction. Roundoff in the
+            subtraction is relative to it, not to ``covariance``, which can
+            be zero.
+        tolerance: Largest negative eigenvalue, relative to ``scale``,
+            treated as roundoff.
+        name: Description of ``covariance`` for errors.
 
     Returns:
         ``S`` with ``S S.T`` the clipped covariance, and the most negative
-        eigenvalue relative to the largest absolute eigenvalue (zero if none).
+        eigenvalue relative to ``scale`` (zero if none).
 
     Raises:
         ValueError: If a relative negative eigenvalue exceeds ``tolerance``.
     """
     eigenvalues, vectors = np.linalg.eigh((covariance + covariance.T) * 0.5)
-    scale = float(np.max(np.abs(eigenvalues))) if eigenvalues.size else 0.0
-    relative = float(min(0.0, eigenvalues.min() / scale)) if scale > 0.0 else 0.0
+    relative = float(min(0.0, eigenvalues.min() / scale)) if scale > 0.0 and eigenvalues.size else 0.0
     if relative < -tolerance:
         raise ValueError(
-            f"{name} has a negative eigenvalue of {relative:.3e} relative to its largest, beyond the "
-            f"clipping tolerance {tolerance:.1e}; the observation-covariance solve probably uses a "
-            "different A from the functional products."
+            f"{name} has a negative eigenvalue of {relative:.3e} relative to the largest eigenvalue of "
+            f"Q B Q.T, beyond the clipping tolerance {tolerance:.1e}; the observation-covariance solve "
+            "probably uses a different A from the functional products."
         )
     return vectors * np.sqrt(np.clip(eigenvalues, 0.0, None)), relative

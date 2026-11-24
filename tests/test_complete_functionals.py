@@ -1170,3 +1170,82 @@ def test_negative_conditional_covariance_beyond_tolerance_raises() -> None:
         rng=np.random.default_rng(0),
     )
     assert exact.attrs["conditional_covariance_min_eigenvalue"] >= -1e-6
+
+
+def _two_cell_reduction(observed_cell: int, restriction: np.ndarray, state: list[str]):
+    """Reduce a two-cell native problem whose one observation sees ``observed_cell``.
+
+    The cells are exchangeable under ``B`` and the restriction weights them
+    equally, so which cell is observed is invisible to ``C_alpha``,
+    ``H_alpha`` and ``A``.
+    """
+    latitude = xr.DataArray([50.0], dims="lat", coords={"lat": [50.0]})
+    longitude = xr.DataArray([0.0, 1.0], dims="lon", coords={"lon": [0.0, 1.0]})
+    covariance = SeparableExponentialCovariance(latitude, longitude, sigma=0.8, correlation_length=1.5)
+    native = {"lat": [50.0], "lon": [0.0, 1.0]}
+    sensitivity = np.zeros((1, 1, 2))
+    sensitivity[0, 0, observed_cell] = 1.0
+    return reduce_native_gaussian(
+        covariance=covariance,
+        strategy=SuppliedRestriction(
+            xr.DataArray(
+                restriction[:, None, :], dims=("state", "lat", "lon"), coords={"state": state, **native},
+                attrs={"units": "1"},
+            )
+        ),
+        state_dim="state",
+        native_mean=xr.DataArray(np.ones((1, 2)), dims=("lat", "lon"), coords=native, attrs={"units": "1"}),
+        native_sensitivity=xr.DataArray(
+            sensitivity, dims=("observation", "lat", "lon"), coords={"observation": ["obs-0"], **native},
+            attrs={"units": "ppm"},
+        ),
+        observation_dim="observation",
+        functionals=xr.DataArray(
+            [[[1.0, 0.0]]], dims=("functional", "lat", "lon"), coords={"functional": ["cell-0"], **native},
+            attrs={"units": "g yr-1"},
+        ),
+    )
+
+
+def test_reduction_identity_binds_products_to_the_native_inputs() -> None:
+    """Swapping the observed cell keeps C_alpha, H_alpha and A but not the identity."""
+    mean = np.array([[0.5, 0.5]])
+    seen, swapped = (_two_cell_reduction(cell, mean, ["region"]) for cell in (0, 1))
+    for name in ("retained_covariance", "effective_observation_operator", "unresolved_observation_covariance"):
+        np.testing.assert_allclose(getattr(seen, name).values, getattr(swapped, name).values, rtol=1e-12)
+    cross = seen.functional_products.unresolved_observation_covariance.item()
+    swapped_cross = swapped.functional_products.unresolved_observation_covariance.item()
+    assert cross > 0.1 and np.isclose(swapped_cross, -cross)
+
+    assert seen.native_identity != swapped.native_identity
+    assert seen.identity != swapped.identity
+    assert seen.functional_products.reduction_identity == seen.identity
+    assert swapped.functional_products.reduction_identity == swapped.identity
+    # Recomputing from the reduced arrays needs the native identity; a changed A no longer matches.
+    doubled = replace(seen, unresolved_observation_covariance=seen.unresolved_observation_covariance * 2)
+    assert doubled.identity != seen.identity
+
+
+def test_fully_retained_functionals_reconstruct_without_clipping_errors() -> None:
+    """With every cell retained Q B_perp Q.T is zero up to roundoff, which is not an error."""
+    reduction = _two_cell_reduction(0, np.eye(2), ["cell-0", "cell-1"])
+    products = reduction.functional_products
+    assert np.max(np.abs(products.unresolved_covariance.values)) < 1e-12
+    state = xr.DataArray(
+        np.zeros((1, 2, 2)), dims=("chain", "draw", "state"),
+        coords={"chain": [0], "draw": [0, 1], "state": ["cell-0", "cell-1"]},
+    )
+    prior = complete_functional_draws(state, products, rng=np.random.default_rng(0))
+    assert prior.attrs["conditional_covariance_min_eigenvalue"] >= -1e-6
+    noise = xr.DataArray(
+        [[0.04]], dims=("observation", "observation_cov"),
+        coords={"observation": ["obs-0"], "observation_cov": ["obs-0"]},
+    )
+    residual = xr.DataArray(
+        np.ones((1, 2, 1)), dims=("chain", "draw", "observation"),
+        coords={"chain": [0], "draw": [0, 1], "observation": ["obs-0"]}, attrs={"units": "ppm"},
+    )
+    posterior = complete_functional_draws(
+        state, products, residual=residual, solve=dense_solve(noise), rng=np.random.default_rng(0)
+    )
+    assert posterior.attrs["conditional_covariance_min_eigenvalue"] >= -1e-6

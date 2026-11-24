@@ -225,14 +225,24 @@ conditioning description; without it they remain
 
 The products record the
 :func:`~openghg_inversions.coherent_reduction.reduction_identity` of their
-reduction, a hash of :math:`C_\alpha`, :math:`H_\alpha` and the exact
-:math:`A`, so it changes with :math:`H`, :math:`B` or :math:`\Pi`. The
-conditioning must carry the identity recorded when the fit was prepared, and
-the two must be equal. :math:`Q m` and :math:`D` do not depend on :math:`H`,
-so products built with another observation operator are caught only by the
-identity. The identity is an exact hash, not a tolerance: take it from the
-same ``reduce_native_gaussian(functionals=...)`` call that produced the
-products, rather than recomputing it from another reduction. In addition, the
+reduction. The reduced arrays alone cannot identify the native problem: if
+one observation sees either of two cells that :math:`B` and :math:`\Pi`
+treat alike, swapping the cells leaves :math:`C_\alpha`, :math:`H_\alpha`
+and :math:`A` unchanged but reverses the sign of :math:`Q B_\perp H^T`. The
+reduction therefore records a
+:func:`~openghg_inversions.coherent_reduction.native_reduction_identity`,
+a hash of the native :math:`H`, :math:`\Pi`, :math:`m`, the prolongation
+:math:`U_*` and, when the covariance action provides ``to_dataset()``, its
+description of :math:`B`. The reduction identity combines it with a hash of
+:math:`C_\alpha`, :math:`H_\alpha` and the exact :math:`A`, so anyone who
+stores the native identity and the reduced arrays, such as a prepared
+artifact, can recompute it and detect a changed :math:`A`. The conditioning
+must carry the identity recorded when the fit was prepared, and the two must
+be equal. :math:`Q m` and :math:`D` do not depend on :math:`H`, so products
+built with another observation operator are caught only by the identity.
+The identity is an exact hash, not a tolerance: take it from the same
+``reduce_native_gaussian(functionals=...)`` call that produced the products,
+rather than recomputing it from another reduction. In addition, the
 products' :math:`Q m` and :math:`D` must equal the map's own :math:`A F m` and
 :math:`A F U_*`, which rejects products prepared for another functional,
 partition or covariance.
@@ -242,8 +252,12 @@ exact :math:`B_\perp`, so pairing them with a truncated low-rank :math:`A`
 mixes two covariance models: the conditional mean update can be inflated and
 the conditional covariance can lose positive semidefiniteness. Negative
 eigenvalues up to ``clipping_tolerance`` (default ``1e-6``) relative to the
-largest are treated as roundoff and clipped before drawing, and the most
-negative is recorded as ``conditional_covariance_min_eigenvalue``. A larger
+largest eigenvalue of the prior functional covariance
+:math:`Q B Q^T = Q B_\perp Q^T + D C_\alpha D^T` are treated as roundoff and
+clipped before drawing. That scale is used because the drawn covariances are
+formed by subtracting terms of that size and can themselves be zero, as when
+the retained states resolve every functional. The most negative relative
+eigenvalue is recorded as ``conditional_covariance_min_eigenvalue``. A larger
 negative eigenvalue raises an error instead of producing ``complete_native``
 output. A
 :class:`~openghg_inversions.models.fixed_ou.FixedOuLowRank` prepared with a

@@ -136,6 +136,7 @@ def _reduction(canonical: PreparedInputs) -> CoherentGaussianReduction:
         ).assign_attrs(units="ppm"),
         unresolved_observation_covariance=unresolved,
         projection_strategy="unit-test-projection",
+        native_identity="sha256:unit-test-native-inputs",
     )
 
 

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from hashlib import sha256
+import json
 
 from dask.base import compute
 import numpy as np
@@ -87,8 +88,8 @@ class NativeFunctionalProducts:
             the sensitivity units the residuals must use.
         reduction_identity: :func:`reduction_identity` of that reduction. It
             depends on the native observation operator ``H``, the covariance
-            ``B`` and the restriction ``Pi``, which ``Q m`` and ``D`` alone do
-            not identify.
+            ``B``, the restriction ``Pi`` and the native mean, which ``Q m``
+            and ``D`` alone do not identify.
         marginalised: Boolean state mask of states already moved into the
             unresolved part by :func:`marginalise_functional_states`, or
             ``None`` for full-restriction products.
@@ -135,6 +136,9 @@ class CoherentGaussianReduction:
             and column axes. It is a positive-semidefinite covariance up to
             floating-point roundoff.
         projection_strategy: Scientific strategy that selected ``Pi``.
+        native_identity: :func:`native_reduction_identity` of the native
+            inputs ``H``, ``B``, ``Pi`` and ``m`` this reduction was computed
+            from. The reduced arrays alone cannot identify them.
         functional_products: Products for the requested native functionals,
             or ``None`` when none were requested.
     """
@@ -146,12 +150,14 @@ class CoherentGaussianReduction:
     observation_intercept: xr.DataArray
     unresolved_observation_covariance: xr.DataArray
     projection_strategy: str
+    native_identity: str
     functional_products: NativeFunctionalProducts | None = None
 
     @property
     def identity(self) -> str:
         """Return the :func:`reduction_identity` of this reduction."""
         return reduction_identity(
+            native_identity=self.native_identity,
             retained_covariance=self.retained_covariance,
             effective_observation_operator=self.effective_observation_operator,
             unresolved_observation_covariance=self.unresolved_observation_covariance,
@@ -160,43 +166,123 @@ class CoherentGaussianReduction:
 
 def reduction_identity(
     *,
+    native_identity: str,
     retained_covariance: xr.DataArray,
     effective_observation_operator: xr.DataArray,
     unresolved_observation_covariance: xr.DataArray,
 ) -> str:
-    """Return a content identity of one coherent reduction.
+    """Return the identity of one coherent reduction.
 
-    ``C_alpha``, ``H_alpha = H U_*`` and ``A = H B_perp H.T`` together depend
-    on the native observation operator, the native covariance and the
-    restriction. The identity hashes their float64 values in their stored
-    axis order together with their index labels (not dimension names), so it
-    survives dimension renaming but changes with any change to ``H``, ``B``
-    or ``Pi``. Compute it once, from the exact reduction, and carry it as a
-    string; it is not a tolerance-based comparison.
+    Different native problems can share ``C_alpha``, ``H_alpha`` and ``A``:
+    if one observation sees either of two exchangeable cells, swapping the
+    cells leaves all three unchanged but reverses the covariance between a
+    cell's functional and the observation. The identity therefore combines
+    the :func:`native_reduction_identity` of the native inputs with a hash
+    of the three reduced arrays. Anyone holding the native identity and the
+    stored arrays, such as a prepared artifact, can recompute it, so a
+    stored ``A`` or ``H_alpha`` that was changed after reduction no longer
+    matches.
+
+    Arrays are hashed as float64 values in their stored axis order together
+    with their index labels (not dimension names), so the identity survives
+    dimension renaming. It is an exact digest, not a tolerance-based
+    comparison.
 
     Args:
+        native_identity: :func:`native_reduction_identity` of the native
+            inputs, as recorded by the reduction.
         retained_covariance: ``C_alpha``.
         effective_observation_operator: ``H_alpha``.
         unresolved_observation_covariance: The exact dense ``A``.
 
     Returns:
         ``"sha256:<hex digest>"``.
+
+    Raises:
+        ValueError: If ``native_identity`` is not a native identity digest.
     """
+    if not native_identity.startswith("sha256:"):
+        raise ValueError("native_identity must be a native_reduction_identity digest.")
     digest = sha256()
+    digest.update(b"native\x1e" + native_identity.encode())
     for name, array in (
         ("C_alpha", retained_covariance),
         ("H_alpha", effective_observation_operator),
         ("A", unresolved_observation_covariance),
     ):
-        digest.update(name.encode())
-        for dim in array.dims:
-            labels = array.indexes[dim].tolist() if dim in array.indexes else list(range(array.sizes[dim]))
-            digest.update("\x1f".join(map(str, labels)).encode())
-            digest.update(b"\x1e")
-        values = np.ascontiguousarray(np.asarray(array.values, dtype=np.float64))
-        digest.update(np.asarray(values.shape, dtype=np.int64).tobytes())
-        digest.update(values.tobytes())
+        _update_digest(digest, name, array)
     return f"sha256:{digest.hexdigest()}"
+
+
+def native_reduction_identity(
+    *,
+    covariance: InvertibleNativeCovarianceAction,
+    products: NativeCovarianceProducts,
+    native_mean: xr.DataArray,
+    native_sensitivity: xr.DataArray,
+) -> str:
+    """Return the identity of the native inputs of one coherent reduction.
+
+    It hashes the native sensitivity ``H``, the restriction ``Pi``, the
+    native mean ``m`` and the prolongation ``U_* = B Pi.T C_alpha^-1``, each
+    with its index labels. ``B`` enters through ``U_*`` and, when the
+    covariance action can describe itself with ``to_dataset()`` (as
+    :class:`~openghg_inversions.native_covariance.SeparableExponentialCovariance`
+    does), through that description. Sparse payloads are hashed by their
+    coordinates and values without densifying.
+
+    Args:
+        covariance: The native covariance action ``B``.
+        products: Native covariance products for ``B``, ``H`` and ``Pi``.
+        native_mean: Native mean ``m`` on the covariance's native dims.
+        native_sensitivity: Native ``H``.
+
+    Returns:
+        ``"sha256:<hex digest>"``.
+    """
+    native_dims = tuple(covariance.native_dims)
+    digest = sha256()
+    digest.update(f"{type(covariance).__module__}.{type(covariance).__qualname__}".encode())
+    describe = getattr(covariance, "to_dataset", None)
+    if callable(describe):
+        description = describe()
+        digest.update(json.dumps(description.attrs, sort_keys=True, default=str).encode())
+        for name in sorted(map(str, description.variables)):
+            _update_digest(digest, f"B.{name}", description[name])
+    observation_dim = next(str(dim) for dim in native_sensitivity.dims if dim not in native_dims)
+    for name, array in (
+        ("H", native_sensitivity.transpose(observation_dim, *native_dims)),
+        ("Pi", products.restriction),
+        ("m", native_mean.transpose(*native_dims)),
+        ("U_star", products.prolongation),
+    ):
+        _update_digest(digest, name, array)
+    return f"sha256:{digest.hexdigest()}"
+
+
+def _update_digest(digest, name: str, array: xr.DataArray) -> None:
+    """Add one labelled array to ``digest``: its name, index labels, shape and values."""
+    digest.update(name.encode() + b"\x1e")
+    for dim in array.dims:
+        labels = array.indexes[dim].tolist() if dim in array.indexes else list(range(array.sizes[dim]))
+        digest.update("\x1f".join(map(str, labels)).encode())
+        digest.update(b"\x1e")
+    data = array.data
+    if isinstance(data, SparseArray):
+        sparse = data if isinstance(data, COO) else data.tocoo()
+        digest.update(np.asarray(sparse.shape, dtype=np.int64).tobytes())
+        digest.update(np.ascontiguousarray(sparse.coords, dtype=np.int64).tobytes())
+        digest.update(np.ascontiguousarray(sparse.data, dtype=np.float64).tobytes())
+        digest.update(np.asarray(float(sparse.fill_value), dtype=np.float64).tobytes())
+        return
+    values = np.asarray(array.values)
+    if values.dtype.kind in "biuf":
+        values = values.astype(np.float64)
+        digest.update(np.asarray(values.shape, dtype=np.int64).tobytes())
+        digest.update(np.ascontiguousarray(values).tobytes())
+    else:
+        digest.update(np.asarray(values.shape, dtype=np.int64).tobytes())
+        digest.update("\x1f".join(map(str, values.ravel().tolist())).encode())
 
 
 def reduce_native_gaussian(
@@ -275,6 +361,9 @@ def reduce_native_gaussian(
         native_dims=native_dims,
         state_dim=state_dim,
         observation_dim=observation_dim,
+        native_identity=native_reduction_identity(
+            covariance=covariance, products=products, native_mean=mean, native_sensitivity=sensitivity
+        ),
     )
     if functionals is None:
         return reduction
@@ -287,6 +376,7 @@ def reduce_native_gaussian(
         native_sensitivity=sensitivity,
         observation_dim=observation_dim,
         batch_size=observation_batch_size,
+        native_identity=reduction.native_identity,
     )
     return replace(reduction, functional_products=functional_products)
 
@@ -320,6 +410,7 @@ def project_native_functionals(
     native_sensitivity: xr.DataArray,
     observation_dim: str,
     batch_size: int = 64,
+    native_identity: str | None = None,
 ) -> NativeFunctionalProducts:
     """Compute the coherent-reduction products of native linear functionals.
 
@@ -347,6 +438,10 @@ def project_native_functionals(
             ``products``.
         observation_dim: Observation dimension of ``H``.
         batch_size: Positive number of functional rows per covariance block.
+        native_identity: :func:`native_reduction_identity` of these inputs
+            when the caller has already computed it, as
+            :func:`reduce_native_gaussian` does; otherwise it is computed
+            here.
 
     Returns:
         ``Q m``, ``D = Q U_*``, ``Q B_perp H.T`` and ``Q B_perp Q.T``.
@@ -454,6 +549,10 @@ def project_native_functionals(
         retained_covariance=products.state_covariance,
         effective_observation_operator=effective,
         reduction_identity=reduction_identity(
+            native_identity=native_identity
+            or native_reduction_identity(
+                covariance=covariance, products=products, native_mean=mean, native_sensitivity=sensitivity
+            ),
             retained_covariance=products.state_covariance.rename("retained_covariance"),
             effective_observation_operator=products.effective_observation_operator,
             unresolved_observation_covariance=products.native_observation_covariance.copy(
@@ -558,6 +657,7 @@ def _reduce_native_covariance_products(
     native_dims: tuple[str, ...],
     state_dim: str,
     observation_dim: str,
+    native_identity: str,
 ) -> CoherentGaussianReduction:
     """Apply the reduction equations to products constructed immediately above."""
     restriction = products.restriction
@@ -607,4 +707,5 @@ def _reduce_native_covariance_products(
         observation_intercept=observation_intercept,
         unresolved_observation_covariance=unresolved_covariance,
         projection_strategy=products.strategy,
+        native_identity=native_identity,
     )
