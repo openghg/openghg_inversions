@@ -48,7 +48,8 @@ def openghg_slice(flux, start, end):
     """Slice as OpenGHG 0.17 retrieval does (checked against the real store).
 
     The metastore search subtracts one second from ``end_date`` and ``_BaseData`` subtracts another
-    before slicing inclusively, so a row is kept only when it is at least 2 s before ``end_date``.
+    before slicing inclusively, so a row is kept only when it is at least 2 s before ``end_date``
+    (https://github.com/openghg/openghg/issues/1817).
     """
     start, end = pd.Timestamp(start), pd.Timestamp(end)
     return flux.sel(time=slice(start - pd.Timedelta(seconds=1), end - pd.Timedelta(seconds=2)))

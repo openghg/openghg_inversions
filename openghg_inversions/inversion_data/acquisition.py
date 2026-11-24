@@ -766,7 +766,8 @@ def acquire_surface_data(
     flux_last = max(last for _, last in support)
     # OpenGHG 0.17 subtracts one second from end_date twice, once when searching the metastore
     # (retrieve/_search.py) and again when slicing the retrieved data (dataobjects/_basedata.py,
-    # see its TODO), then slices inclusively. A one-second pad dropped the final integrated release.
+    # see its TODO; reported as https://github.com/openghg/openghg/issues/1817), then slices
+    # inclusively. A one-second pad dropped the final integrated release.
     # Pad by two seconds so the inclusive slice ends at the last instant before ``flux_last``.
     query_end = flux_last - pd.Timedelta("1ns") + _OPENGHG_END_DATE_PAD
     retrieved_flux = get_flux_data(
