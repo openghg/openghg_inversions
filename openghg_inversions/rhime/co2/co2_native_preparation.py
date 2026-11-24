@@ -97,9 +97,11 @@ def prepare_native_co2(
         )
     bc_time_method = acquisition.get("bc_time_method", "release_time")
     if use_bc:
-        # Supplied data must have been prepared with the configured boundary timing.
-        recorded = {site: data.attrs.get("bc_time_method") for site, data in merged_data.site_data.items()}
-        conflicting = sorted(site for site, method in recorded.items() if method not in (None, bc_time_method))
+        # Supplied data must have been prepared with the configured boundary timing. Data acquired before
+        # bc_time_method was recorded hold release-time operands.
+        recorded = {site: data.attrs.get("bc_time_method", "release_time")
+                    for site, data in merged_data.site_data.items()}
+        conflicting = sorted(site for site, method in recorded.items() if method != bc_time_method)
         if conflicting:
             raise ValueError(
                 f"Merged data for sites {conflicting} use a different bc_time_method from the "

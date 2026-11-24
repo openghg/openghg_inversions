@@ -169,6 +169,19 @@ def test_linked_channels_share_and_record_one_bc_time_method(inputs):
         assemble((co2, _with_bc_time_method(channels[1], "release_time")), prepared)
 
 
+def test_linked_legacy_channel_without_bc_time_method_counts_as_release_time(inputs):
+    channels, prepared = inputs
+    site = channels[1].site_data["SYNTH"]
+    legacy = replace(channels[1], site_data={
+        "SYNTH": site.drop_attrs(deep=False).assign_attrs(
+            {k: v for k, v in site.attrs.items() if k not in ("bc_time_method", "bc_time_policy")})
+    })
+    assert "bc_time_method" not in legacy.site_data["SYNTH"].attrs
+    with pytest.raises(ValueError, match="one boundary timing"):
+        assemble((_with_bc_time_method(channels[0], "mean_age"), legacy), prepared)
+    assemble((_with_bc_time_method(channels[0], "release_time"), legacy), prepared)
+
+
 def test_rejects_disagreeing_native_site_references(inputs):
     from openghg_inversions.inversion_data import SiteOptions
 

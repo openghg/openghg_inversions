@@ -249,7 +249,8 @@ def prepare_linked_surface_templates(
         o2.acquisition.domain, o2.acquisition.start_date, o2.acquisition.end_date,
     ):
         raise ValueError("Linked channels require the same declared acquisition domain and window.")
-    methods = {channel: {data.site_data[site].attrs.get("bc_time_method") for site in data.site_data} - {None}
+    # Channels acquired before bc_time_method was recorded hold release-time operands.
+    methods = {channel: {data.site_data[site].attrs.get("bc_time_method", "release_time") for site in data.site_data}
                for channel, data in (("co2", co2), ("o2", o2))}
     if len(methods["co2"] | methods["o2"]) > 1:
         raise ValueError(f"Linked channels require one boundary timing (bc_time_method); got {methods}.")
