@@ -13,6 +13,7 @@ from typing import Any
 import tomllib
 
 
+from openghg_inversions.inference.fixed_amplitudes import FixedSiteAmplitudeFile
 from openghg_inversions.models.boundary import AdditiveChoice, Choice, MultiplicativeChoice
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.priors import positive_prior_args
@@ -22,7 +23,7 @@ from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, normalise_optional_mapping
 
 from .co2_cached_sigma_runner import validate_cached_co2_sampler
-from .inference import uses_cached_ou
+from .inference import CACHED_STATE_QUADRATIC, uses_cached_ou, uses_fixed_theta_cached_ou
 
 
 def _frozen(values: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -65,6 +66,7 @@ _SAMPLING_OPTION_NAMES = frozenset({
 _LIKELIHOOD_OPTION_NAMES = frozenset({
     "kind", "no_model_error", "sigma_prior", "fixed_model_mismatch", "fixed_site_amplitudes",
     "site_amplitude_prior", "tau_hours", "initial_site_amplitudes", "eigenbasis_path",
+    CACHED_STATE_QUADRATIC,
 })
 _PRIOR_OPTION_NAMES = frozenset({
     "pdf", "mu", "sigma", "lower", "upper", "nu", "alpha", "beta", "lam", "mean", "stdev", "reparameterise",
@@ -137,6 +139,30 @@ def _number_or_mapping(
             {_string(key, f"{path} key"): checked(item, f"{path}.{key}") for key, item in table.items()}
         )
     return checked(value, path)
+
+
+_AMPLITUDE_FILE_OPTION_NAMES = frozenset({"path", "variable", "statistic", "group", "units"})
+
+
+def _fixed_ou_amplitudes(value: object, path: str, *, allow_file: bool) -> float | Mapping[str, float] | FixedSiteAmplitudeFile:
+    """Parse supplied OU amplitudes: a scalar, a site table, or a file table with ``path``.
+
+    The file is not opened here; the model builder reads it.
+    """
+    if allow_file and isinstance(value, Mapping) and "path" in value:
+        table = _table(value, path)
+        unknown = set(table) - _AMPLITUDE_FILE_OPTION_NAMES
+        if unknown:
+            raise ValueError(
+                f"{path} with a path accepts only {sorted(_AMPLITUDE_FILE_OPTION_NAMES)}; "
+                f"got {sorted(unknown)}."
+            )
+        options: dict[str, Any] = {"path": Path(_string(table.pop("path"), f"{path}.path"))}
+        for name in ("variable", "statistic", "group", "units"):
+            if name in table:
+                options[name] = _string(table.pop(name), f"{path}.{name}")
+        return FixedSiteAmplitudeFile(**options)
+    return _number_or_mapping(value, path, positive=False, nonnegative=True)
 
 
 def _prior(value: object, path: str, *, positive: bool = False) -> Mapping[str, Any]:
@@ -476,11 +502,10 @@ def _co2_likelihood(value: object, *, matched_ou: bool = False) -> dict[str, Any
             )
         }
         if "fixed_site_amplitudes" in options:
-            kwargs["fixed_site_amplitudes"] = _number_or_mapping(
+            kwargs["fixed_site_amplitudes"] = _fixed_ou_amplitudes(
                 options.pop("fixed_site_amplitudes"),
                 "likelihood.fixed_site_amplitudes",
-                positive=False,
-                nonnegative=True,
+                allow_file=matched_ou,
             )
         if "site_amplitude_prior" in options:
             kwargs["site_amplitude_prior"] = _prior(
@@ -491,6 +516,21 @@ def _co2_likelihood(value: object, *, matched_ou: bool = False) -> dict[str, Any
         if len(kwargs) != 2:
             raise ValueError(
                 "fixed_ou requires exactly one of fixed_site_amplitudes or site_amplitude_prior."
+            )
+        if matched_ou and CACHED_STATE_QUADRATIC in options:
+            cached_state = _bool(options.pop(CACHED_STATE_QUADRATIC), f"likelihood.{CACHED_STATE_QUADRATIC}")
+            if cached_state and "fixed_site_amplitudes" not in kwargs:
+                raise ValueError(
+                    f"likelihood.{CACHED_STATE_QUADRATIC} applies to fixed_site_amplitudes; "
+                    "inferred amplitudes always use the cached route."
+                )
+            if cached_state:  # false keeps the stock likelihood and leaves its keywords unchanged
+                kwargs[CACHED_STATE_QUADRATIC] = True
+        if isinstance(kwargs.get("fixed_site_amplitudes"), FixedSiteAmplitudeFile) and not kwargs.get(
+            CACHED_STATE_QUADRATIC
+        ):
+            raise ValueError(
+                f"likelihood.fixed_site_amplitudes read from a file require {CACHED_STATE_QUADRATIC} = true."
             )
         if matched_ou and "site_amplitude_prior" in kwargs and "initial_site_amplitudes" in options:
             kwargs["initial_site_amplitudes"] = _number_or_mapping(
@@ -578,6 +618,15 @@ class Co2ModelConfig:
             likelihood["likelihood_kwargs"] = _frozen({
                 **kwargs, "eigenbasis_path": kwargs["eigenbasis_path"].expanduser().resolve(),
             })
+        amplitude_file = kwargs.get("fixed_site_amplitudes")
+        if isinstance(amplitude_file, FixedSiteAmplitudeFile):
+            likelihood["likelihood_kwargs"] = _frozen({
+                **kwargs,
+                "fixed_site_amplitudes": FixedSiteAmplitudeFile(
+                    amplitude_file.path.expanduser().resolve(), amplitude_file.variable,
+                    amplitude_file.statistic, amplitude_file.group, amplitude_file.units,
+                ),
+            })
         return cls(**model, **likelihood)
 
     def model_arguments(self) -> dict[str, Any]:
@@ -610,10 +659,13 @@ def _resolve_co2_sampling(config: Mapping[str, object], *, model: Mapping[str, A
     if "nuts_sampler" in sampling:
         raise ValueError("Configured CO2 selects its sampler from the likelihood; remove sampling.nuts_sampler.")
     cached = uses_cached_ou(model)
+    fixed_theta = uses_fixed_theta_cached_ou(model)
     targets = {}
     for name, default in (("sigma_target_accept", 0.8), ("state_target_accept", 0.9)):
         if name in sampling and not cached:
             raise ValueError(f"sampling.{name} requires inferred fixed-OU amplitudes.")
+        if name == "sigma_target_accept" and name in sampling and fixed_theta:
+            raise ValueError("sampling.sigma_target_accept does not apply to fixed site amplitudes.")
         target = _number(sampling.pop(name, default), f"sampling.{name}")
         if not 0.0 < target < 1.0:
             raise ValueError(f"sampling.{name} must be between zero and one.")

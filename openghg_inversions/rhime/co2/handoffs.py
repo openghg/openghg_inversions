@@ -45,7 +45,8 @@ from .co2_preparation import (
     Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts,
 )
 from .inference import (
-    annotate_co2_inference, build_co2_inference, sample_co2_inference, describe_co2_inference,
+    annotate_co2_inference, build_co2_inference, co2_model_input_paths, describe_co2_inference,
+    recorded_co2_input_paths, sample_co2_inference,
 )
 from .configuration import Co2ModelConfig, _resolve_co2_sampling
 
@@ -220,7 +221,8 @@ def save_samples(
     )
     destination = start_checkpoint(
         output_dir, "sample", payloads=("posterior.nc",),
-        referenced=(preparation_path, prepared_path) + ((affine_path,) if affine_path is not None else ()),
+        referenced=(preparation_path, prepared_path) + ((affine_path,) if affine_path is not None else ())
+        + recorded_co2_input_paths(actual_inference),
     )
     save_trace(trace, destination / "posterior.nc")
     return finish_checkpoint(destination, "sample", {
@@ -251,7 +253,8 @@ def sample(
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
         referenced=(Path(preparation_manifest).resolve(), preparation.payload)
-        + ((preparation.affine_payload,) if preparation.affine_payload else ()),
+        + ((preparation.affine_payload,) if preparation.affine_payload else ())
+        + co2_model_input_paths(model_options),
     )
     trace, actual = sample_co2_inference(
         preparation.prepared, model_options, choices.sampler,
@@ -341,7 +344,8 @@ def prior_predictive(
     check_checkpoint_targets(
         destination, stage=None, payloads=("prior-predictive.nc", str(report.relative_to(destination))),
         referenced=(Path(preparation_manifest).resolve(), preparation.payload)
-        + ((preparation.affine_payload,) if preparation.affine_payload else ()),
+        + ((preparation.affine_payload,) if preparation.affine_payload else ())
+        + co2_model_input_paths(model_options),
     )
     report.unlink(missing_ok=True)
     built, cached = build_co2_inference(preparation.prepared, model_options)
