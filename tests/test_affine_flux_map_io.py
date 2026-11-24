@@ -274,3 +274,32 @@ def test_serialization_prunes_ancillary_attrs_without_mutating_inputs() -> None:
     assert operator.basis_flat.attrs["long_name"] == "Bucket IDs"
     assert artifact.affine_map.flux.attrs["long_name"] == "Signed flux"
     assert tree["flux"].to_dataset()["flux"].attrs == {"units": "kg m-2 s-1"}
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+@pytest.mark.parametrize("representation", ["bucket", "explicit"])
+def test_input_coordinate_metadata_is_dropped_on_save_so_reload_succeeds(
+    tmp_path: Path, suffix: str, representation: str
+) -> None:
+    # Regression: real-store flux carries a ``notes`` attribute on ``lat``; save wrote it and the
+    # strict reader then rejected the file, so save_preparation failed after writing.
+    artifact = _artifact(representation=representation)
+    value = artifact.affine_map
+    operator_grids = [value.prolongation.basis_flat] if representation == "bucket" else [value.prolongation]
+    for array in (value.native_mean, value.flux, *operator_grids):
+        array["lat"].attrs.update(units="degrees_north", notes="inventory provenance text")
+        assert array["lat"].attrs["notes"] == "inventory provenance text"
+    path = tmp_path / f"notes{suffix}"
+    save(artifact, path)
+    restored = load(path)
+    for array in (restored.affine_map.native_mean, restored.affine_map.flux):
+        assert array["lat"].attrs == {"units": "degrees_north"}
+    xr.testing.assert_equal(restored.affine_map.flux, value.flux)
+    assert value.flux["lat"].attrs["notes"] == "inventory provenance text"
+    # The reader stays strict about files that were not written by save.
+    tree = to_datatree(_artifact(representation=representation))
+    flux = tree["flux"].to_dataset()
+    flux["lat"].attrs["notes"] = "hand-edited"
+    tree["flux"] = xr.DataTree(flux)
+    with pytest.raises(ValueError, match="notes"):
+        from_datatree(tree)
