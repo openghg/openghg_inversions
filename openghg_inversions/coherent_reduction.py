@@ -17,6 +17,16 @@ The same reduction splits a native state as
 ``Q``, such as a country total, :func:`project_native_functionals` returns the
 products needed to condition ``Q x_perp`` on the data as well as on
 ``alpha``. Without them a functional reports only ``Q m + D (alpha - Pi m)``.
+
+:func:`marginalise_low_information_states` optionally applies a
+``StateActivity.min_information`` threshold to one reduction. Retained states
+whose prior-predicted information falls below the threshold are integrated out
+exactly at fit time: their effective-operator columns become zero, so model
+construction treats them as zero-sensitivity states, and their unresolved
+variance is added to ``A``. :func:`marginalisation_terms` computes those
+changes from ``C_alpha``, ``H_alpha`` and the mask alone, so a prepared
+artifact can store the full-restriction reduction and derive the fitted
+operator and ``A`` after loading.
 """
 
 from __future__ import annotations
@@ -24,9 +34,11 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from hashlib import sha256
 import json
+from typing import TYPE_CHECKING, Any
 
 from dask.base import compute
 import numpy as np
+from scipy.linalg import cho_factor, cho_solve
 from sparse import COO, SparseArray  # type: ignore[import-untyped]
 import xarray as xr
 
@@ -49,6 +61,9 @@ from openghg_inversions.basis.covariance_products import (
     project_native_covariance,
 )
 from openghg_inversions.native_covariance import InvertibleNativeCovarianceAction
+
+if TYPE_CHECKING:
+    from openghg_inversions.models.state_activity import StateActivity
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -708,4 +723,370 @@ def _reduce_native_covariance_products(
         unresolved_observation_covariance=unresolved_covariance,
         projection_strategy=products.strategy,
         native_identity=native_identity,
+    )
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class InformationSelection:
+    """A coherent reduction after applying a prior-information threshold.
+
+    Attributes:
+        reduction: The full-restriction reduction the threshold was applied
+            to, unchanged. Store this one; derive the fitted view with
+            :attr:`marginalised_reduction` or :func:`marginalisation_terms`.
+        information: Prior-predicted information
+            ``I_j = sum_o (H_alpha[o, j] s_j)**2 / sigma_o**2`` on the retained
+            state axis, where ``s_j`` is the retained prior standard deviation.
+        threshold: Threshold applied to each state; NaN where none applies.
+        marginalised: Boolean mask of states moved into ``A``.
+        unresolved_variance_increase: Change in ``diag A`` on the observation
+            axis, in squared observation units.
+    """
+
+    reduction: CoherentGaussianReduction
+    information: xr.DataArray
+    threshold: xr.DataArray
+    marginalised: xr.DataArray
+    unresolved_variance_increase: xr.DataArray
+
+    @property
+    def marginalised_reduction(self) -> CoherentGaussianReduction:
+        """Return the fitted view of :attr:`reduction` with the marginalised states integrated out."""
+        return marginalise_retained_states(self.reduction, self.marginalised)
+
+    def to_dataset(self) -> xr.Dataset:
+        """Return the per-state and per-observation diagnostics for saving."""
+        return xr.Dataset(
+            {
+                "state_information": self.information,
+                "state_information_threshold": self.threshold,
+                "state_information_marginalised": self.marginalised,
+                "unresolved_variance_increase": self.unresolved_variance_increase,
+            }
+        )
+
+    @property
+    def provenance(self) -> dict[str, Any]:
+        """Return a JSON-safe summary of the thresholds and marginalised states."""
+        state_dim = str(self.information.dims[0])
+        labels = self.information.indexes[state_dim]
+        mask = np.asarray(self.marginalised.values, dtype=bool)
+        information = np.asarray(self.information.values, dtype=float)
+        threshold = np.asarray(self.threshold.values, dtype=float)
+        increase = np.asarray(self.unresolved_variance_increase.values, dtype=float)
+        return {
+            "criterion": "I_j = sum_o (H_alpha[o, j] * s_j)**2 / sigma_o**2 < min_information_j",
+            "n_states": int(mask.size),
+            "n_marginalised": int(mask.sum()),
+            "marginalised_states": [
+                {
+                    "state": _json_label(labels[i]),
+                    "information": float(information[i]),
+                    "threshold": float(threshold[i]),
+                }
+                for i in np.flatnonzero(mask)
+            ],
+            "min_retained_information": (
+                float(information[~mask].min()) if (~mask).any() else None
+            ),
+            "max_unresolved_variance_increase": float(increase.max()) if increase.size else 0.0,
+            "total_unresolved_variance_increase": float(increase.sum()),
+        }
+
+
+def _json_label(label: Any) -> Any:
+    """Return a JSON-safe state label, keeping numbers numeric."""
+    if isinstance(label, tuple):
+        return [_json_label(item) for item in label]
+    if isinstance(label, np.generic):
+        label = label.item()
+    return json.loads(json.dumps(label, default=str))
+
+
+def retained_state_information(
+    reduction: CoherentGaussianReduction,
+    observation_variance: xr.DataArray,
+) -> xr.DataArray:
+    """Return each retained state's prior-predicted information.
+
+    For retained prior standard deviation ``s_j = sqrt(C_alpha[j, j])``,
+    effective operator ``H_alpha`` and prior error variance ``sigma_o**2``,
+    ``I_j = sum_o (H_alpha[o, j] s_j)**2 / sigma_o**2``. It is the expected
+    squared signal-to-noise ratio of one prior standard deviation of state
+    ``j`` and uses only the prior and the operator, never observed values.
+
+    Args:
+        reduction: Coherent reduction supplying ``H_alpha`` and ``C_alpha``.
+        observation_variance: Positive finite prior observation-error or
+            model-mismatch variance on the reduction's observation dimension
+            and exact labels, in squared observation units. Do not include
+            ``A`` itself.
+
+    Returns:
+        Dimensionless information on the retained-state axis, carrying the
+        reduction's state coordinates.
+
+    Raises:
+        ValueError: If the variance is not one-dimensional on the observation
+            axis with matching labels, or is non-finite or non-positive.
+    """
+    operator = reduction.effective_observation_operator
+    observation_dim = str(operator.dims[0])
+    if observation_variance.dims != (observation_dim,):
+        raise ValueError(
+            f"observation_variance must have dimensions ({observation_dim!r},); "
+            f"found {observation_variance.dims!r}."
+        )
+    variance, _ = xr.align(observation_variance, operator, join="exact", copy=False)
+    variance_values = np.asarray(to_dense(variance).values, dtype=np.float64)
+    if not np.isfinite(variance_values).all() or (variance_values <= 0).any():
+        raise ValueError("observation_variance must be finite and positive.")
+    operator_values = np.asarray(operator.values, dtype=np.float64)
+    prior_variance = np.diag(np.asarray(reduction.retained_covariance.values, dtype=np.float64))
+    information = prior_variance * np.sum(operator_values**2 / variance_values[:, None], axis=0)
+    return reduction.retained_mean.copy(data=information).rename("state_information").assign_attrs(
+        units="1",
+        long_name="prior-predicted state information",
+        mathematical_name="sum_o (H_alpha[o, j] s_j)**2 / sigma_o**2",
+    )
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class MarginalisationTerms:
+    """Fit-time changes from integrating marginalised retained states into ``A``.
+
+    Attributes:
+        effective_observation_operator: ``H'`` with ``H'_K = H_K + H_D G`` and
+            zero marginalised columns, labelled like ``H_alpha``.
+        unresolved_factor: ``F = H_D L`` on ``(observation_dim,
+            marginalised_dim)``, where ``S = L L.T`` is the Schur complement
+            ``C_DD - G C_KD``. The fitted unresolved covariance is
+            ``A + F F.T``, so a low-rank ``A`` gains ``F`` as extra factor
+            columns exactly.
+    """
+
+    effective_observation_operator: xr.DataArray
+    unresolved_factor: xr.DataArray
+
+
+def marginalisation_terms(
+    *,
+    retained_covariance: xr.DataArray,
+    effective_observation_operator: xr.DataArray,
+    marginalised: xr.DataArray,
+    marginalised_dim: str = "marginalised_state",
+) -> MarginalisationTerms:
+    """Return the exact fit-time operator and ``A`` increment of marginalising retained states.
+
+    Split the retained states into kept ``K`` and marginalised ``D``. With
+    ``G = C_DK C_KK^-1`` and ``S = C_DD - G C_KD``, the exact conditional
+    model given ``alpha_K`` is
+
+    ``y | alpha_K ~ N(H m + H'_K (alpha_K - Pi_K m), R + A + H_D S H_D.T)``,
+
+    where ``H'_K = H_K + H_D G``. This is the coherent reduction with
+    restriction ``Pi_K``. Only ``C_alpha``, ``H_alpha`` and the mask are
+    needed, so the terms can be derived from a stored full-restriction
+    reduction.
+
+    Args:
+        retained_covariance: Full-restriction ``C_alpha`` on state row and
+            column axes in the state order of ``effective_observation_operator``.
+        effective_observation_operator: Full-restriction ``H_alpha`` on
+            ``(observation_dim, state_dim)``.
+        marginalised: Boolean mask on ``state_dim`` with exactly the
+            operator's state labels.
+        marginalised_dim: Column dimension of ``unresolved_factor``, labelled
+            by the marginalised states.
+
+    Returns:
+        The fitted operator and the factor ``F`` of ``A' - A``. With no state
+        marginalised the operator is returned unchanged and ``F`` has no
+        columns.
+
+    Raises:
+        ValueError: If the mask is not a boolean state-aligned array, or the
+            arrays have the wrong dimensions.
+    """
+    if effective_observation_operator.ndim != 2:
+        raise ValueError("effective_observation_operator must be observation-by-state.")
+    observation_dim, state_dim = (str(dim) for dim in effective_observation_operator.dims)
+    if marginalised.dims != (state_dim,):
+        raise ValueError(f"marginalised must have dimensions ({state_dim!r},).")
+    mask, _ = xr.align(marginalised, effective_observation_operator[state_dim], join="exact", copy=False)
+    drop = np.asarray(mask.values)
+    if drop.dtype != np.dtype(bool):
+        raise ValueError("marginalised must contain only boolean values.")
+    count = effective_observation_operator.sizes[state_dim]
+    if retained_covariance.shape != (count, count):
+        raise ValueError("retained_covariance must be square on the operator's states.")
+    keep = ~drop
+    operator = np.asarray(effective_observation_operator.values, dtype=np.float64)
+    covariance = np.asarray(retained_covariance.values, dtype=np.float64)
+    operator_d = operator[:, drop]
+    c_dd = covariance[np.ix_(drop, drop)]
+    if keep.any() and drop.any():
+        c_kd = covariance[np.ix_(keep, drop)]
+        gain = cho_solve(cho_factor(covariance[np.ix_(keep, keep)]), c_kd).T
+        schur = c_dd - gain @ c_kd
+    else:
+        gain = np.zeros((int(drop.sum()), int(keep.sum())))
+        schur = c_dd
+    schur = (schur + schur.T) * 0.5
+    # S is a Schur complement of a positive-definite C_alpha, so it is PSD
+    # up to roundoff; an eigen square root tolerates rank deficiency.
+    eigenvalues, vectors = np.linalg.eigh(schur) if drop.any() else (np.zeros(0), np.zeros((0, 0)))
+    root = vectors * np.sqrt(np.clip(eigenvalues, 0.0, None))
+
+    updated = np.zeros_like(operator)
+    updated[:, keep] = operator[:, keep] + operator_d @ gain
+    labels = effective_observation_operator[state_dim].values[drop]
+    units = effective_observation_operator.attrs.get("units")
+    factor = xr.DataArray(
+        operator_d @ root,
+        dims=(observation_dim, marginalised_dim),
+        coords={
+            **coordinates_on_dims(effective_observation_operator, {observation_dim}),
+            marginalised_dim: np.arange(int(drop.sum())),
+            f"{marginalised_dim}_label": (marginalised_dim, [str(label) for label in labels]),
+        },
+        name="marginalisation_unresolved_factor",
+        attrs={"units": units, "mathematical_name": "H_D S^(1/2)"} if units is not None else {
+            "mathematical_name": "H_D S^(1/2)"
+        },
+    )
+    return MarginalisationTerms(
+        effective_observation_operator=effective_observation_operator.copy(data=updated),
+        unresolved_factor=factor,
+    )
+
+
+def marginalise_retained_states(
+    reduction: CoherentGaussianReduction,
+    marginalised: xr.DataArray,
+) -> CoherentGaussianReduction:
+    """Return the fitted view of a reduction with selected retained states integrated out.
+
+    Applies :func:`marginalisation_terms`: ``H'_K = H_K + H_D G`` with zero
+    marginalised columns, ``A' = A + H_D S H_D.T`` and the recomputed
+    intercept. The full retained-state axis, prior moments, native identity
+    and any full-restriction functional products are kept. The result is a
+    fit-time view: store the full-restriction reduction and the mask, not
+    this, because its ``A`` and ``H_alpha`` no longer reproduce the products'
+    :func:`reduction_identity`.
+
+    Args:
+        reduction: Full-restriction coherent reduction.
+        marginalised: Boolean mask on the retained-state axis with exactly the
+            reduction's state labels.
+
+    Returns:
+        ``reduction`` itself when no state is selected, otherwise its fitted
+        view.
+
+    Raises:
+        ValueError: If the mask is not a boolean state-aligned array.
+    """
+    terms = marginalisation_terms(
+        retained_covariance=reduction.retained_covariance,
+        effective_observation_operator=reduction.effective_observation_operator,
+        marginalised=marginalised,
+    )
+    if not terms.unresolved_factor.sizes[str(terms.unresolved_factor.dims[1])]:
+        return reduction
+    state_dim = str(reduction.retained_mean.dims[0])
+    factor = np.asarray(terms.unresolved_factor.values, dtype=np.float64)
+    unresolved = np.asarray(reduction.unresolved_observation_covariance.values, dtype=np.float64)
+    unresolved = unresolved + factor @ factor.T
+    unresolved = (unresolved + unresolved.T) * 0.5
+    effective = terms.effective_observation_operator
+    # H m - H' Pi m, written as a change of the stored intercept so that a
+    # prepared artifact, which keeps the intercept but not H m, derives the
+    # same value.
+    intercept = (
+        reduction.observation_intercept
+        + xr.dot(reduction.effective_observation_operator - effective, reduction.retained_mean, dim=state_dim)
+    ).rename("observation_intercept")
+    intercept = intercept.assign_attrs(reduction.observation_intercept.attrs)
+    return replace(
+        reduction,
+        effective_observation_operator=effective,
+        observation_intercept=intercept,
+        unresolved_observation_covariance=reduction.unresolved_observation_covariance.copy(data=unresolved),
+    )
+
+
+def marginalise_low_information_states(
+    reduction: CoherentGaussianReduction,
+    *,
+    observation_variance: xr.DataArray,
+    policy: StateActivity | None,
+) -> InformationSelection:
+    """Apply ``policy.min_information`` to one coherent reduction.
+
+    States with :func:`retained_state_information` below their threshold are
+    selected for marginalisation. The selection keeps the full-restriction
+    reduction unchanged; :attr:`InformationSelection.marginalised_reduction`
+    or :func:`marginalisation_terms` give the fitted view. Thresholds may
+    apply to every state or only to labelled groups, see
+    :class:`~openghg_inversions.models.StateActivity`. Only
+    ``min_information`` and ``group_coord`` are read from the policy; its
+    explicit activity mask, fixed values and fixed groups remain model-time
+    choices.
+
+    Marginalised states receive no posterior update. Retained-state
+    reconstructions hold them at their fixed values, which should equal the
+    retained prior mean, and uncertainty computed only from retained states
+    omits their contribution.
+
+    Args:
+        reduction: Coherent reduction whose states are screened.
+        observation_variance: Prior observation-error or model-mismatch
+            variance per observation; see :func:`retained_state_information`.
+        policy: Activity policy. ``None`` or ``min_information=None`` keeps
+            every state.
+
+    Returns:
+        The full-restriction reduction, the marginalised-state mask and the
+        diagnostics.
+
+    Raises:
+        ValueError: If the variance or grouped thresholds are invalid.
+    """
+    from openghg_inversions.models.state_activity import information_thresholds
+
+    information = retained_state_information(reduction, observation_variance)
+    if policy is None or policy.min_information is None:
+        threshold = xr.full_like(information, np.nan).rename("information_threshold")
+    else:
+        threshold = information_thresholds(reduction.retained_mean, policy)
+    threshold = threshold.assign_attrs(units="1")
+    marginalised = (information < threshold).rename("information_marginalised")
+    terms = marginalisation_terms(
+        retained_covariance=reduction.retained_covariance,
+        effective_observation_operator=reduction.effective_observation_operator,
+        marginalised=marginalised,
+    )
+    before = reduction.unresolved_observation_covariance
+    increase = np.sum(np.square(np.asarray(terms.unresolved_factor.values, dtype=np.float64)), axis=1)
+    observation_dim = str(before.dims[0])
+    increase_array = xr.DataArray(
+        increase,
+        dims=(observation_dim,),
+        coords={
+            name: coord
+            for name, coord in reduction.observation_intercept.coords.items()
+            if set(coord.dims) <= {observation_dim}
+        },
+        name="unresolved_variance_increase",
+        attrs={
+            key: value for key, value in (("units", before.attrs.get("units")),) if value is not None
+        },
+    )
+    return InformationSelection(
+        reduction=reduction,
+        information=information,
+        threshold=threshold,
+        marginalised=marginalised,
+        unresolved_variance_increase=increase_array,
     )

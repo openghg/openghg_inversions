@@ -434,6 +434,7 @@ def test_co2_operations_persists_fixed_mismatch_manifest(
     class PreparedInputsStub:
         inv_inputs = inputs
         rhime_inputs = None
+        fitted_rhime_inputs = None
         aggregation_error_mode = "dense"
 
     _mock_materialization(monkeypatch, lambda *_args, **_kwargs: inputs)
@@ -523,6 +524,7 @@ def test_co2_operations_derives_default_model_error_alignment(monkeypatch: Any) 
     class PreparedInputsStub:
         inv_inputs = inputs
         rhime_inputs = None
+        fitted_rhime_inputs = None
         aggregation_error_mode = "dense"
 
     materialized_names: list[tuple[str, ...]] = []
@@ -587,6 +589,7 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any, me
     class PreparedInputsStub:
         inv_inputs = inputs
         rhime_inputs = None
+        fitted_rhime_inputs = None
         aggregation_error_mode = "dense"
 
     materialized_names: list[tuple[str, ...]] = []
@@ -697,6 +700,7 @@ def test_co2_operations_does_not_auto_select_prepared_baseline(monkeypatch: Any)
     class PreparedInputsStub:
         inv_inputs = inputs
         rhime_inputs = None
+        fitted_rhime_inputs = None
         aggregation_error_mode = "dense"
 
     selected: list[tuple[str, ...]] = []
@@ -742,6 +746,7 @@ def _run_selected_co2_likelihood(
     class PreparedInputsStub:
         inv_inputs = inputs
         rhime_inputs = None
+        fitted_rhime_inputs = None
         aggregation_error_mode = "dense"
 
     _mock_materialization(monkeypatch, lambda *_args, **_kwargs: inputs)
@@ -886,6 +891,7 @@ def test_co2_operations_resolves_scalar_sigma_cache_before_model(
     class PreparedInputsStub:
         inv_inputs = inputs
         rhime_inputs = None
+        fitted_rhime_inputs = None
         aggregation_error_mode = "dense"
 
     _mock_materialization(monkeypatch, lambda *_args, **_kwargs: inputs)
@@ -971,6 +977,7 @@ def test_co2_operations_preserves_materialized_fixed_mismatch(monkeypatch: Any) 
     class PreparedInputsStub:
         inv_inputs = inputs
         rhime_inputs = None
+        fitted_rhime_inputs = None
         aggregation_error_mode = "dense"
 
     _mock_materialization(monkeypatch, lambda *_args, **_kwargs: inputs)

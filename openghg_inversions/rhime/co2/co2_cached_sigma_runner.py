@@ -255,7 +255,7 @@ def build_rhime_co2_cached_sigma(
     prepared = prepared_inputs
     names = co2_cached_sigma_input_names(prepared)
     model_inputs, eager_priors, bound = _materialize_co2_inputs(
-        prepared.rhime_inputs, names,
+        prepared.fitted_rhime_inputs, names,
         {"amplitude": site_amplitude_prior, **({"offset": offset_prior} if offset_prior is not None else {})},
         _bind_co2_boundary(prepared.inv_inputs, boundary),
     )

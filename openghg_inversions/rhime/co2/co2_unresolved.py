@@ -196,7 +196,8 @@ def _observation_solve(
     roles: dict[str, str],
 ) -> ObservationCovarianceSolve:
     """Select the fit's per-draw ``(A + R)^-1`` from its recorded likelihood."""
-    aggregation = resolve_aggregation_error(prepared.inv_inputs, prepared.aggregation_error_mode)
+    # The fit's A, with any marginalised states' variance added.
+    aggregation = resolve_aggregation_error(prepared.fitted_inputs, prepared.aggregation_error_mode)
     constant = trace_group(trace, "constant_data") if "constant_data" in trace.children else xr.Dataset()
     if OU_TAU_HOURS in constant:
         return _fixed_ou_solve(trace, prepared, aggregation, constant)

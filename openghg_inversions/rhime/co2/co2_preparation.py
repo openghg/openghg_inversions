@@ -28,7 +28,9 @@ from openghg_inversions._serialization_codecs import _copy_json_mapping, _decode
 from openghg_inversions.array_ops import require_unique_index, same_index, validate_covariance_coordinates
 from openghg_inversions.coherent_reduction import (
     CoherentGaussianReduction,
+    InformationSelection,
     NativeFunctionalProducts,
+    marginalisation_terms,
     reduction_identity,
 )
 from openghg_inversions.inversion_data import PreparedInputs
@@ -57,6 +59,7 @@ CO2_PREPARED_INPUTS_SCHEMA_VERSION = 4
 COUNTRY_FUNCTIONALS_NODE = "country_functionals"
 REDUCTION_IDENTITY = "reduction_identity"
 NATIVE_REDUCTION_IDENTITY = "native_reduction_identity"
+MARGINALISED_STATES = "state_information_marginalised"
 # Relative tolerances for the persisted unresolved functional covariance.
 _SYMMETRY_TOLERANCE = 1e-10
 _PSD_TOLERANCE = 1e-8
@@ -321,7 +324,9 @@ class Co2PreparedInputs:
     Invariant: ``alpha_prior_covariance`` and ``H`` are the full-restriction
     ``C_alpha`` and ``H_alpha`` of the coherent reduction. Marginalising
     country functional products relies on that; an artifact that stores
-    kept-state versions must use other variable names.
+    kept-state versions must use other variable names. Information-threshold
+    marginalisation keeps the full arrays and derives the fitted view with
+    :attr:`fitted_inputs`.
     """
 
     rhime_inputs: PreparedInputs
@@ -411,6 +416,33 @@ class Co2PreparedInputs:
         if self.native_reduction_identity is None:
             raise ValueError("This CO2 artifact records no native_reduction_identity; prepare again.")
         return _artifact_reduction_identity(self.inv_inputs, self.native_reduction_identity)
+
+    @property
+    def fitted_inputs(self) -> xr.Dataset:
+        """Return the dataset the CO2 fit uses, with marginalised states integrated out.
+
+        The artifact stores the full-restriction ``H``, ``C_alpha`` and
+        ``A``. When ``state_information_marginalised`` selects states, this
+        derives the fitted view with
+        :func:`~openghg_inversions.coherent_reduction.marginalisation_terms`:
+        ``H`` becomes ``H'`` (``H_K + H_D G``, zero marginalised columns),
+        ``fixed_prior_contribution`` becomes ``H m - H' Pi m``, and ``A``
+        becomes ``A + F F.T`` with ``F = H_D S^(1/2)``, added densely or as
+        extra low-rank factor columns. Otherwise it is :attr:`inv_inputs`.
+        Runners, concentration reconstruction and the complete-country
+        observation solve read this view; full-restriction consumers, such as
+        the reduction identity and country functional products, read
+        :attr:`inv_inputs`.
+        """
+        return _fitted_dataset(self.inv_inputs, self.aggregation_error_mode)
+
+    @property
+    def fitted_rhime_inputs(self) -> PreparedInputs:
+        """Return :attr:`rhime_inputs` with :attr:`fitted_inputs` as its dataset."""
+        fitted = self.fitted_inputs
+        if fitted is self.inv_inputs:
+            return self.rhime_inputs
+        return replace(self.rhime_inputs, inv_inputs=fitted)
 
     @property
     def basis_functions(self) -> Any:
@@ -837,6 +869,89 @@ def requested_co2_facts(
     return facts
 
 
+def _fitted_dataset(inputs: xr.Dataset, mode: Co2AggregationErrorMode) -> xr.Dataset:
+    """Return ``inputs`` with the marginalised states integrated out of ``H``, the intercept and ``A``."""
+    if MARGINALISED_STATES not in inputs or not bool(inputs[MARGINALISED_STATES].any()):
+        return inputs
+    state_dim = str(inputs["alpha_prior_mean"].dims[0])
+    operator = inputs["H"].transpose("nmeasure", state_dim)
+    terms = marginalisation_terms(
+        retained_covariance=inputs["alpha_prior_covariance"],
+        effective_observation_operator=operator,
+        marginalised=inputs[MARGINALISED_STATES].astype(bool),
+    )
+    fitted_operator = terms.effective_observation_operator
+    intercept = inputs["fixed_prior_contribution"] + xr.dot(
+        operator - fitted_operator, inputs["alpha_prior_mean"], dim=state_dim
+    )
+    fitted = inputs.assign(
+        H=fitted_operator.transpose(*inputs["H"].dims).assign_attrs(inputs["H"].attrs),
+        fixed_prior_contribution=intercept.transpose(*inputs["fixed_prior_contribution"].dims).assign_attrs(
+            inputs["fixed_prior_contribution"].attrs
+        ),
+    )
+    factor = np.asarray(terms.unresolved_factor.values, dtype=np.float64)
+    if mode == "dense":
+        covariance = inputs[AGGREGATION_ERROR_COVARIANCE]
+        values = np.asarray(covariance.values, dtype=np.float64) + factor @ factor.T
+        return fitted.assign(
+            {AGGREGATION_ERROR_COVARIANCE: covariance.copy(data=(values + values.T) * 0.5)}
+        )
+    low_rank = inputs[LOW_RANK_FACTOR].transpose("nmeasure", "agg_rank")
+    widened = np.concatenate([np.asarray(low_rank.values, dtype=np.float64), factor], axis=1)
+    on_rank = [name for name in fitted.variables if "agg_rank" in fitted[name].dims and name != "agg_rank"]
+    fitted = fitted.drop_vars([*on_rank, "agg_rank"], errors="ignore")
+    return fitted.assign(
+        {
+            LOW_RANK_FACTOR: xr.DataArray(
+                widened,
+                dims=("nmeasure", "agg_rank"),
+                coords={"agg_rank": np.arange(widened.shape[1])},
+                attrs=dict(low_rank.attrs),
+            )
+        }
+    )
+
+
+def _record_information_selection(
+    mapped: xr.Dataset,
+    selection: InformationSelection,
+    *,
+    state_dim: str,
+    reduced_state_dim: str,
+    observation_dim: str,
+) -> None:
+    """Save threshold diagnostics and deactivate marginalised states in place.
+
+    ``mapped`` is the dataset under construction by :func:`prepare_co2_inputs`.
+    """
+    diagnostics = {
+        "state_information": selection.information,
+        "state_information_threshold": selection.threshold,
+        "state_information_marginalised": selection.marginalised,
+    }
+    for name, array in diagnostics.items():
+        mapped[name] = _borrow_without_axis_coordinates(
+            _renamed(array, {reduced_state_dim: state_dim}, name=name), state_dim
+        )
+    increase = selection.unresolved_variance_increase
+    mapped["aggregation_error_variance_increase"] = _borrow_without_axis_coordinates(
+        _renamed(increase, {observation_dim: "nmeasure"}, name="aggregation_error_variance_increase"),
+        "nmeasure",
+    )
+    marginalised = mapped["state_information_marginalised"]
+    if not bool(marginalised.any()):
+        return
+    active = mapped["state_is_active"] if "state_is_active" in mapped else xr.ones_like(marginalised)
+    fixed = mapped["state_fixed_value"] if "state_fixed_value" in mapped else xr.full_like(
+        mapped["alpha_prior_mean"], 1.0, dtype=float
+    )
+    mapped["state_is_active"] = (active.astype(bool) & ~marginalised).rename("state_is_active")
+    mapped["state_fixed_value"] = xr.where(
+        marginalised, mapped["alpha_prior_mean"], fixed
+    ).rename("state_fixed_value").assign_attrs(units="1")
+
+
 def prepare_co2_inputs(
     canonical_inputs: PreparedInputs,
     reduction: CoherentGaussianReduction,
@@ -844,6 +959,7 @@ def prepare_co2_inputs(
     aggregation_error_rank: int | None = 512,
     bc_centering_weights: xr.DataArray | None = None,
     provenance: Mapping[str, Any] | None = None,
+    information_selection: InformationSelection | None = None,
 ) -> Co2PreparedInputs:
     """Map one coherent Gaussian reduction into the CO2 replay contract.
 
@@ -883,6 +999,20 @@ def prepare_co2_inputs(
         provenance: Optional JSON-serializable project or preparation
             provenance. The reduction strategy and LRPD diagnostics are added
             by this boundary.
+        information_selection: Optional result of
+            :func:`~openghg_inversions.coherent_reduction.marginalise_low_information_states`
+            whose ``reduction`` is ``reduction``, the full-restriction
+            reduction. The artifact keeps storing that reduction's ``H``,
+            ``C_alpha`` and ``A``. The per-state information, thresholds,
+            marginalised mask and ``diag A`` increase are saved as
+            ``state_information``, ``state_information_threshold``,
+            ``state_information_marginalised`` and
+            ``aggregation_error_variance_increase``, and summarized under
+            ``provenance["information_threshold"]``. Marginalised states are
+            made inactive with fixed value equal to their retained prior mean,
+            so they receive no posterior update, and
+            :attr:`Co2PreparedInputs.fitted_inputs` derives the fitted
+            operator, intercept and ``A`` from the stored arrays.
 
     When ``reduction.functional_products`` is present, it is persisted as the
     artifact's :attr:`Co2PreparedInputs.country_functionals` so staged outputs
@@ -1097,6 +1227,17 @@ def prepare_co2_inputs(
         mode = "low_rank"
 
     metadata = dict(provenance or {})
+    if information_selection is not None:
+        if information_selection.reduction is not reduction:
+            raise ValueError("information_selection must describe the supplied coherent reduction.")
+        _record_information_selection(
+            mapped,
+            information_selection,
+            state_dim=state_dim,
+            reduced_state_dim=reduced_state_dim,
+            observation_dim=observation_dim,
+        )
+        metadata["information_threshold"] = information_selection.provenance
     declared_strategy = metadata.get("projection_strategy")
     if declared_strategy is not None and declared_strategy != reduction.projection_strategy:
         raise ValueError("CO2 provenance projection_strategy conflicts with the coherent reduction.")

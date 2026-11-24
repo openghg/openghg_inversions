@@ -19,7 +19,12 @@ import xarray as xr
 from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.covariance_products import SuppliedRestriction, project_native_covariance
-from openghg_inversions.coherent_reduction import reduce_native_gaussian
+from openghg_inversions.coherent_reduction import (
+    marginalise_low_information_states,
+    reduce_native_gaussian,
+    retained_state_information,
+)
+from openghg_inversions.models import StateActivity
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.postprocessing.co2_flux_outputs import (
     COUNTRY_FUNCTIONAL_DIM,
@@ -109,8 +114,12 @@ def _country_dataset() -> xr.Dataset:
     )
 
 
-def _case(*, functionals: bool = True, aggregation_error_rank: int | None = None):
-    """Prepare the coherent CO2 case and its affine reconstruction, unsaved."""
+def _case(*, functionals: bool = True, aggregation_error_rank: int | None = None, marginalise: int = 0):
+    """Prepare the coherent CO2 case and its affine reconstruction, unsaved.
+
+    ``marginalise`` integrates that many lowest-information retained states
+    into ``A`` with an information threshold.
+    """
     rng = np.random.default_rng(68)
     covariance, dense_b = _covariance()
     mean = _labelled(1.0 + 0.2 * rng.normal(size=(2, 3, 4)), NATIVE_DIMS).assign_attrs(units="1")
@@ -163,11 +172,23 @@ def _case(*, functionals: bool = True, aggregation_error_rank: int | None = None
     canonical = PreparedInputs(
         inputs, basis, xr.Dataset({"averaging_period": ("site", ["1h"] * 2)}, coords={"site": SITE_NAMES})
     )
+    selection = None
+    if marginalise:
+        variance = xr.DataArray(
+            NOISE_DIAGONAL, dims="observation", coords=observation_coords, attrs={"units": "ppm**2"}
+        )
+        information = np.sort(retained_state_information(reduction, variance).values)
+        threshold = 0.5 * (information[marginalise - 1] + information[marginalise])
+        selection = marginalise_low_information_states(
+            reduction, observation_variance=variance, policy=StateActivity(min_information=float(threshold))
+        )
+        assert int(selection.marginalised.sum()) == marginalise
     prepared = prepare_co2_inputs(
         canonical,
         reduction,
         aggregation_error_rank=aggregation_error_rank,
         provenance={"start_date": "2020-01-01", "end_date": "2020-01-02", "domain": "EUROPE"},
+        information_selection=selection,
     )
     prolongation = project_native_covariance(
         covariance=covariance,
@@ -201,23 +222,35 @@ def _fit_fixture(prepared: Co2PreparedInputs, count: int = COUNT, *, noise: np.n
     The fit's observation covariance is ``A + diag(noise)`` with the
     prepared dense ``A``; ``epsilon`` records its marginal standard deviation.
     """
-    inputs = prepared.inv_inputs
+    # The fit sees the fitted view: marginalised states integrated out of H,
+    # the intercept and A, and held at their fixed values.
+    inputs = prepared.fitted_inputs
     noise = NOISE_DIAGONAL if noise is None else noise
     h = inputs["H"].values
     a = inputs["aggregation_error_covariance"].values
     c = inputs["alpha_prior_covariance"].values
     prior_mean = inputs["alpha_prior_mean"].values
     fixed = inputs["fixed_prior_contribution"].values
+    active = (
+        np.asarray(inputs["state_is_active"].values, dtype=bool)
+        if "state_is_active" in inputs
+        else np.ones(prior_mean.size, dtype=bool)
+    )
+    h_k, c_k = h[:, active], c[np.ix_(active, active)]
     weight = np.linalg.inv(a + np.diag(noise))
-    covariance = np.linalg.inv(np.linalg.inv(c) + h.T @ weight @ h)
+    covariance = np.linalg.inv(np.linalg.inv(c_k) + h_k.T @ weight @ h_k)
     # The fit's pollution is fixed + H alpha, so the innovation is y - H m.
     innovation = inputs["mf"].values - fixed - h @ prior_mean
-    posterior_mean = covariance @ h.T @ weight @ innovation
+    posterior_mean = covariance @ h_k.T @ weight @ innovation
     rng = np.random.default_rng(1084)
-    draws = {
-        "posterior": rng.multivariate_normal(posterior_mean, covariance, size=count),
-        "prior": rng.multivariate_normal(np.zeros_like(prior_mean), c, size=count),
-    }
+    draws = {}
+    for group, (centre, spread) in {
+        "posterior": (posterior_mean, covariance),
+        "prior": (np.zeros(int(active.sum())), c_k),
+    }.items():
+        delta = np.zeros((count, prior_mean.size))
+        delta[:, active] = rng.multivariate_normal(centre, spread, size=count)
+        draws[group] = delta
     observation_coords = xr.Coordinates.from_pandas_multiindex(inputs.indexes["nmeasure"], "nmeasure")
     state_coords = xr.Coordinates.from_pandas_multiindex(inputs.indexes["region"], "region")
     sample_coords = {"chain": [0], "draw": np.arange(count)}
@@ -247,7 +280,7 @@ def _fit_fixture(prepared: Co2PreparedInputs, count: int = COUNT, *, noise: np.n
         )
     # Fitted models record which states were sampled; here all of them.
     groups["constant_data"] = xr.Dataset(
-        {"flux_scaling_is_active": xr.DataArray(np.ones(len(prior_mean), dtype=bool), dims="region", coords=state_coords)}
+        {"flux_scaling_is_active": xr.DataArray(active, dims="region", coords=state_coords)}
     )
     groups["/"] = xr.Dataset(
         attrs={
@@ -704,3 +737,29 @@ def test_traces_without_the_activity_mask_are_rejected(tmp_path) -> None:
     del trace["constant_data"]
     with pytest.raises(ValueError, match="activity mask"):
         _staged(tmp_path, prepared, affine, trace)
+
+
+@pytest.mark.parametrize("rank", [None, 4])
+def test_marginalised_states_keep_complete_country_totals_native(tmp_path, rank) -> None:
+    """An information threshold integrates states out exactly, so complete totals stay the native posterior."""
+    problem, reduction, prepared, affine = _case(marginalise=2, functionals=rank is None, aggregation_error_rank=rank)
+    inputs = prepared.inv_inputs
+    # The artifact keeps the full-restriction reduction; the fit uses the derived view.
+    np.testing.assert_array_equal(inputs["H"].values, reduction.effective_observation_operator.values)
+    marginalised = inputs["state_information_marginalised"].values
+    assert np.all(prepared.fitted_inputs["H"].values[:, marginalised] == 0.0)
+    if rank is not None:
+        assert prepared.fitted_inputs.sizes["agg_rank"] == inputs.sizes["agg_rank"] + 2
+        return
+    assert prepared.reduction_identity == reduction.identity
+    trace = _fit_fixture(prepared)
+    result = _staged(tmp_path, prepared, affine, trace)
+    country = result.outputs["country_flux"]
+    assert country.attrs["uncertainty_scope"] == "complete_native"
+    assert country.attrs["marginalised_state_count"] == "2"
+    functionals = co2_flux_country_functionals(affine.affine_map.flux, _countries())
+    native_mean, native_sd = _native_country_totals(problem, functionals, NOISE_DIAGONAL)
+    posterior_mean = country.country_total_posterior_mean.sel(country=COUNTRY_NAMES).values
+    posterior_sd = country.country_total_posterior_stdev.sel(country=COUNTRY_NAMES).values
+    np.testing.assert_array_less(np.abs(posterior_mean - native_mean), 5 * native_sd / np.sqrt(COUNT))
+    np.testing.assert_allclose(posterior_sd, native_sd, rtol=0.03)

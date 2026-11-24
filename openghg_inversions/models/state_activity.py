@@ -7,6 +7,14 @@ follows the state coordinate order on the supplied sensitivity matrix, and
 resolution follows the resulting labelled mask; integer label ranges are never
 inferred.
 
+A policy may also set ``min_information``, a prior-predicted information
+threshold for coherent-reduction state selection. That threshold is applied
+once at the preparation boundary by
+:func:`openghg_inversions.coherent_reduction.marginalise_low_information_states`,
+which moves the unresolved variance of the selected states into the
+aggregation-error covariance; model construction then sees those states as
+zero-sensitivity states.
+
 Inactive states remain part of the public state vector and use labelled or
 scalar fixed values. The default fixed value is one, which preserves the prior
 forward-model contribution of a multiplicative flux-scaling state.
@@ -22,7 +30,9 @@ Prior alignment preserves laziness until the owning PyMC construction boundary.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, cast
 
 import numpy as np
@@ -36,6 +46,8 @@ from openghg_inversions.array_ops import to_dense
 ActivityValue = bool | np.ndarray | xr.DataArray
 #: Numeric scalar, positional vector, or labelled vector for inactive states.
 FixedValue = float | int | np.ndarray | xr.DataArray
+#: One threshold for every state, or thresholds keyed by state-group label.
+InformationThreshold = float | Mapping[str, float]
 
 
 @dataclass(frozen=True)
@@ -54,15 +66,105 @@ class StateActivity:
         fixed_groups: ``basis_group`` labels to freeze. Group selection is by
             coordinate value, never by state-number ranges.
         group_coord: Name of the state coordinate containing group labels.
+        min_information: Optional prior-predicted information threshold
+            ``I_min`` for coherent-reduction state selection. A retained state
+            ``j`` with ``I_j = sum_o (H_oj s_j)**2 / sigma_o**2 < I_min`` is
+            marginalised into the unresolved covariance and not sampled. Pass
+            one non-negative number to apply it to every state, or a mapping
+            from ``group_coord`` labels to thresholds to apply it only to those
+            groups, for example only to CO2-ocean and O2-ocean sources. The
+            default ``None`` keeps every retained state.
+
     Explicit ``active`` masks and fixed groups are combined with structural
     zero-column removal using logical AND. Structural removal is owned by
     sensitivity preparation and cannot be disabled as an activity policy.
+
+    ``min_information`` is consumed only by
+    :func:`openghg_inversions.coherent_reduction.marginalise_low_information_states`
+    at the preparation boundary, where the selected states' variance can move
+    into the unresolved covariance. :func:`resolve_state_activity` rejects a
+    policy that still carries a threshold, because fixing such a state during
+    model construction would silently discard its variance.
     """
 
     active: ActivityValue = True
     fixed_value: FixedValue = 1.0
     fixed_groups: tuple[str, ...] = ()
     group_coord: str = "basis_group"
+    min_information: InformationThreshold | None = None
+
+    def __post_init__(self) -> None:
+        threshold = self.min_information
+        if threshold is None:
+            return
+        if isinstance(threshold, Mapping):
+            if not threshold:
+                raise ValueError("min_information mapping must name at least one state group.")
+            values = {str(group): _threshold_value(value, name=f"min_information[{group!r}]")
+                      for group, value in threshold.items()}
+            object.__setattr__(self, "min_information", MappingProxyType(values))
+        else:
+            object.__setattr__(self, "min_information", _threshold_value(threshold, name="min_information"))
+
+
+def _threshold_value(value: Any, *, name: str) -> float:
+    """Return one finite non-negative information threshold."""
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be a finite non-negative number.")
+    try:
+        threshold = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a finite non-negative number.") from exc
+    if not np.isfinite(threshold) or threshold < 0:
+        raise ValueError(f"{name} must be a finite non-negative number.")
+    return threshold
+
+
+def information_thresholds(states: xr.DataArray, policy: StateActivity) -> xr.DataArray:
+    """Resolve ``policy.min_information`` to one threshold per state.
+
+    Args:
+        states: One-dimensional array whose sole dimension is the retained
+            state axis. A grouped threshold reads labels from its
+            ``policy.group_coord`` coordinate.
+        policy: Activity policy carrying ``min_information``.
+
+    Returns:
+        Float thresholds on the state axis. States to which no threshold
+        applies, including every state when ``min_information`` is ``None``,
+        hold NaN, so ``information < threshold`` is false for them.
+
+    Raises:
+        ValueError: If ``states`` is not one-dimensional, the group
+            coordinate is absent or not state-aligned, or a grouped threshold
+            names a label absent from it.
+    """
+    if states.ndim != 1:
+        raise ValueError(f"State thresholds require one state dimension; found {states.dims!r}.")
+    state_dim = str(states.dims[0])
+    threshold = policy.min_information
+    values = np.full(states.sizes[state_dim], np.nan)
+    if isinstance(threshold, Mapping):
+        if policy.group_coord not in states.coords:
+            raise ValueError(
+                f"Grouped min_information requires a {policy.group_coord!r} state coordinate."
+            )
+        groups = states.coords[policy.group_coord]
+        if groups.dims != (state_dim,):
+            raise ValueError(
+                f"Group coordinate {policy.group_coord!r} must be indexed only by {state_dim!r}."
+            )
+        labels = _materialize_1d(groups, name=policy.group_coord).astype(str)
+        missing = sorted(set(threshold) - set(labels.tolist()))
+        if missing:
+            raise ValueError(
+                f"min_information group label(s) {missing!r} are absent from {policy.group_coord!r}."
+            )
+        for group, value in threshold.items():
+            values[labels == group] = value
+    elif threshold is not None:
+        values[:] = threshold
+    return states.copy(data=values).rename("information_threshold").assign_attrs({})
 
 
 @dataclass(frozen=True)
@@ -431,8 +533,9 @@ def resolve_state_activity(
 
     Raises:
         ValueError: If the zero mask is not one-dimensional, boolean, and
-            uniquely labelled; supplied arrays cannot be aligned; or requested
-            group metadata is absent or not state-aligned.
+            uniquely labelled; supplied arrays cannot be aligned; requested
+            group metadata is absent or not state-aligned; or the policy still
+            carries ``min_information``.
 
     Notes:
         Policy vectors are materialized during model construction. Use
@@ -440,6 +543,13 @@ def resolve_state_activity(
         before calling this function.
     """
     policy = policy or StateActivity()
+    if policy.min_information is not None:
+        raise ValueError(
+            "min_information is applied when preparing a coherent reduction with "
+            "marginalise_low_information_states, which moves the selected states' "
+            "variance into the unresolved covariance; pass the prepared activity "
+            "without min_information to model construction."
+        )
     if zero_sensitivity.ndim != 1:
         raise ValueError(
             f"zero_sensitivity must be one-dimensional; found dimensions {zero_sensitivity.dims!r}."
