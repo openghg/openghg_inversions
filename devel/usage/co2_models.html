@@ -1639,8 +1639,11 @@ frequencies, so its error is magnified there, and <code class="docutils literal 
 can be an order of magnitude larger than the spectral KL. A white floor
 comparable to the OU amplitudes reduces that gap to a few-fold. If the
 likelihood adds a floor that <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> does not carry, such as a minimum
-error or a fixed model-error term, include the effective white variance when
-constructing the reference.</p>
+error or a fixed model-error term, include it in the reference. With
+<code class="docutils literal notranslate"><span class="pre">fixed_ou_mismatch_covariance</span></code>, pass as <code class="docutils literal notranslate"><span class="pre">observation_error</span></code> the combined
+white standard deviation, for example
+<code class="docutils literal notranslate"><span class="pre">np.sqrt(mf_error**2</span> <span class="pre">+</span> <span class="pre">floor**2).assign_attrs(units=mf_error.units)</span></code>
+(arithmetic drops the <code class="docutils literal notranslate"><span class="pre">units</span></code> attribute, which the evaluation requires).</p>
 <p>The rule is a screening heuristic, not a bound on posterior error: the rank it
 selects depends on the reference covariance and should be checked for the
 intended likelihood.</p>
