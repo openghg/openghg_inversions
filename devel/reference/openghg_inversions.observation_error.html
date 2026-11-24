@@ -591,7 +591,16 @@
 <p>Aggregation error is fixed input data, separate from measurement error and
 the inferred RHIME model-error term.  Prepared inversion inputs may represent
 it exactly as a dense covariance, efficiently as a low-rank-plus-diagonal
-covariance, or diagnostically as independent standard deviations.</p>
+covariance. Marginal standard deviations may accompany either representation.</p>
+<dl class="py data">
+<dt class="sig sig-object py" id="openghg_inversions.observation_error.AggregationErrorMode">
+<span class="sig-name descname"><span class="pre">AggregationErrorMode</span></span><a class="headerlink" href="#openghg_inversions.observation_error.AggregationErrorMode" title="Link to this definition">#</a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> selects the supplied dense or low-rank covariance, or <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code>
+when there is no aggregation-error input. It raises if both covariances
+are present or only marginal standard deviations are supplied.</p>
+<p>alias of <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Literal</span></code></a>[‘auto’, ‘none’, ‘dense’, ‘low_rank’]</p>
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.observation_error.AggregationError">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">AggregationError</span></span><span class="sig-paren">(</span>
@@ -618,7 +627,7 @@ covariance properties.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>mode</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>, </em><em>'diagonal'</em><em>]</em>) – Concrete covariance representation.</p></li>
+<li><p><strong>mode</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>]</em>) – Concrete covariance representation.</p></li>
 <li><p><strong>marginal_variance</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>) – Observation-aligned covariance diagonal.</p></li>
 <li><p><strong>covariance</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional dense covariance matrix.</p></li>
 <li><p><strong>factor</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional low-rank covariance factor.</p></li>
@@ -866,7 +875,7 @@ JSON-safe record of the criteria, counts and dropped-mode KL. Issues a
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>data</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Prepared inversion inputs containing any available aggregation-error
 representations.</p></li>
-<li><p><strong>requested</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'auto'</em><em>, </em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>, </em><em>'diagonal'</em><em>]</em>) – Requested representation, or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> to infer one from
+<li><p><strong>requested</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'auto'</em><em>, </em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>]</em>) – Requested representation, or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> to infer one from
 the available inputs.</p></li>
 </ul>
 </dd>
@@ -875,10 +884,10 @@ the available inputs.</p></li>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">requested</span></code> is invalid or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> finds both dense
-    and low-rank representations.</p>
+    and low-rank representations or a standalone standard deviation.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a>[‘none’, ‘dense’, ‘low_rank’, ‘diagonal’]</p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a>[‘none’, ‘dense’, ‘low_rank’]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -891,7 +900,7 @@ the available inputs.</p></li>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>data</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Prepared inputs containing available aggregation-error products.</p></li>
-<li><p><strong>requested</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'auto'</em><em>, </em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>, </em><em>'diagonal'</em><em>]</em>) – Requested representation, or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>.</p></li>
+<li><p><strong>requested</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'auto'</em><em>, </em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>]</em>) – Requested representation, or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -899,7 +908,7 @@ the available inputs.</p></li>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the requested mode is invalid or automatic selection is
-    ambiguous.</p>
+    ambiguous or finds only a standalone standard deviation.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)">tuple</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, …]</p>
@@ -921,16 +930,17 @@ the available inputs.</p></li>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.observation_error.resolve_aggregation_error" title="Link to this definition">#</a></dt>
 <dd><p>Validate and select an aggregation-error covariance representation.</p>
-<p>In <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> mode, a structured representation takes precedence over
-<code class="docutils literal notranslate"><span class="pre">aggregation_error_sd</span></code> because that vector is commonly retained as a
-marginal diagnostic beside the exact covariance.  Supplying both dense and
-low-rank forms is ambiguous and therefore requires an explicit selection.</p>
+<p>In <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> mode, <code class="docutils literal notranslate"><span class="pre">aggregation_error_sd</span></code> is a marginal diagnostic beside
+a dense or low-rank covariance. Automatic selection chooses the only
+covariance present, or <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code> when there is no aggregation-error input.
+Supplying both covariances or a standalone standard deviation requires an
+explicit selection.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>data</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Prepared inversion inputs containing the requested aggregation-
 error representation.</p></li>
-<li><p><strong>mode</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'auto'</em><em>, </em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>, </em><em>'diagonal'</em><em>]</em>) – Representation to use, or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> to select from available
+<li><p><strong>mode</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'auto'</em><em>, </em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>]</em>) – Representation to use, or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> to select from available
 inputs.</p></li>
 <li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Observation dimension used by error vectors and the first
 covariance dimension.</p></li>
@@ -999,6 +1009,7 @@ covariance dimension.</p></li>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.AggregationErrorMode"><code class="docutils literal notranslate"><span class="pre">AggregationErrorMode</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.AggregationError"><code class="docutils literal notranslate"><span class="pre">AggregationError</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.LowRankAggregationErrorApproximation"><code class="docutils literal notranslate"><span class="pre">LowRankAggregationErrorApproximation</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.prepare_low_rank_aggregation_error"><code class="docutils literal notranslate"><span class="pre">prepare_low_rank_aggregation_error()</span></code></a></li>
