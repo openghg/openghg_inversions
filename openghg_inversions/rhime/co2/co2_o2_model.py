@@ -34,7 +34,7 @@ from openghg_inversions.models.components import (
     warn_constant_offset_confounding,
 )
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
-from openghg_inversions.models.outer_flux import OuterFluxChoice, OuterStates
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.observation_error import AggregationError
 
@@ -370,12 +370,10 @@ def build_co2_o2_model(
         ValueError: If shared-state sensitivity preparation, activity
             resolution, or registered coordinate alignment fails.
     """
-    # Resolve the choice once on the shared prior the model samples.
-    outer = None if outer_flux is None else outer_flux.resolve_states(retained_prior)
-    (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd), boundary, outer, priors = (
+    (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd), boundary, priors = (
         dask_compute(*to_dense_tree((
             (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd),
-            dict(boundary or {}), outer,
+            dict(boundary or {}),
             {"amplitude": site_amplitude_prior, "offset": offset_prior},
         )))
     )
@@ -390,7 +388,7 @@ def build_co2_o2_model(
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
         boundary=boundary,
-        outer_flux=outer,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
         output_dim=output_dim,
@@ -411,7 +409,7 @@ def _build_co2_o2_model(
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
-    outer_flux: OuterStates | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -438,7 +436,8 @@ def _build_co2_o2_model(
     )
     activity = resolve_state_activity(prepared_sensitivity.removed, state_activity)
     if outer_flux is not None:
-        activity = outer_flux.fix_states(activity)
+        # Resolve the choice once on the shared prior the model samples.
+        activity = outer_flux.resolve_states(retained_prior).fix_states(activity)
 
     with registered_model() as model:
         state = add_correlated_state_with_activity(
