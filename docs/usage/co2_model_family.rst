@@ -321,9 +321,11 @@ Complete country outputs require all of the following at preparation:
   unresolved covariance, so the artifact and the fit must use the exact dense
   ``A``; a low-rank artifact with products is rejected.
 - Use the full-restriction reduction. Its ``alpha_prior_covariance`` and ``H``
-  must be the reduction's own ``C_alpha`` and ``H_alpha``. The products'
-  ``reduction_identity`` must equal the artifact's, which is checked when the
-  artifact is built and again on load.
+  must be the reduction's own ``C_alpha`` and ``H_alpha``. The artifact
+  records the reduction's native identity and recomputes its
+  ``reduction_identity`` from that and the stored ``C_alpha``, ``H_alpha``
+  and ``A``; the products' identity must equal it when the artifact is built
+  and again on load.
 
 At replay, the fit must use the additive-sigma, site-sigma or fixed-OU
 likelihood, and its trace must record the ``<flux_scale>_is_active`` mask

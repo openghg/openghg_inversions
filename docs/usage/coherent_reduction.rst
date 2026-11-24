@@ -293,11 +293,14 @@ artifact carries the country products:
    and summarizes them under ``provenance["country_functionals"]``. Only
    full-restriction products on the ``country_functional`` axis are accepted,
    and their ``reduction_identity`` must equal the artifact's
-   :attr:`~openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.reduction_identity`,
-   the identity of its ``alpha_prior_covariance``, ``H`` and dense :math:`A`.
-   This ties the products to the native observation operator, which the
-   :math:`Q m` and :math:`D` checks cannot. The node stores the identity, and
-   load requires the restored artifact to reproduce it. The unresolved
+   :attr:`~openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.reduction_identity`.
+   The artifact records the reduction's ``native_reduction_identity`` and
+   recomputes the reduction identity from it and its stored
+   ``alpha_prior_covariance``, ``H`` and dense :math:`A`. This ties the
+   products to the native observation operator, which the :math:`Q m` and
+   :math:`D` checks cannot, and to the stored :math:`A`. The node stores the
+   products' identity, and load requires the restored artifact to reproduce
+   it, so an operator or :math:`A` changed after preparation is rejected. The unresolved
    covariance must be symmetric positive semidefinite.
 3. Replay (:func:`openghg_inversions.rhime.co2.handoffs.postprocess`, or
    :func:`~openghg_inversions.rhime.co2.execution.run_co2`) rebuilds each

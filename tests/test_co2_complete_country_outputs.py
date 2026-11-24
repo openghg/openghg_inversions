@@ -629,9 +629,19 @@ def test_saved_products_must_match_the_artifacts_reduction(tmp_path) -> None:
     with pytest.raises(ValueError, match="no reduction_identity"):
         Co2PreparedInputs.from_datatree(unlabelled)
     inputs = tree["rhime_inputs/inv_inputs"].to_dataset()
-    tree["rhime_inputs/inv_inputs"] = xr.DataTree(inputs.assign(H=inputs["H"].copy(data=inputs["H"].values * 1.01)))
-    with pytest.raises(ValueError, match="different coherent reduction"):
-        Co2PreparedInputs.from_datatree(tree)
+    assert tree.attrs["native_reduction_identity"] == reduction.native_identity
+    for name, factor in (("H", 1.01), ("aggregation_error_covariance", 2.0)):
+        # A changed operator or A after preparation no longer reproduces the products' identity.
+        tampered = tree.copy()
+        tampered["rhime_inputs/inv_inputs"] = xr.DataTree(
+            inputs.assign({name: inputs[name].copy(data=inputs[name].values * factor)})
+        )
+        with pytest.raises(ValueError, match="different coherent reduction"):
+            Co2PreparedInputs.from_datatree(tampered)
+    unidentified = tree.copy()
+    del unidentified.attrs["native_reduction_identity"]
+    with pytest.raises(ValueError, match="native_reduction_identity"):
+        Co2PreparedInputs.from_datatree(unidentified)
 
 
 def test_products_require_a_positive_semidefinite_unresolved_covariance() -> None:

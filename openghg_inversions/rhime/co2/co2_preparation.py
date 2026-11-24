@@ -56,6 +56,7 @@ CO2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_prepared_inputs"
 CO2_PREPARED_INPUTS_SCHEMA_VERSION = 4
 COUNTRY_FUNCTIONALS_NODE = "country_functionals"
 REDUCTION_IDENTITY = "reduction_identity"
+NATIVE_REDUCTION_IDENTITY = "native_reduction_identity"
 # Relative tolerances for the persisted unresolved functional covariance.
 _SYMMETRY_TOLERANCE = 1e-10
 _PSD_TOLERANCE = 1e-8
@@ -310,6 +311,12 @@ class Co2PreparedInputs:
             artifact's arrays. Products require the exact dense
             aggregation-error covariance (``aggregation_error_mode``
             ``"dense"``), because they use the exact unresolved covariance.
+        native_reduction_identity: The reduction's
+            :func:`~openghg_inversions.coherent_reduction.native_reduction_identity`,
+            recorded by :func:`prepare_co2_inputs`. The reduced arrays alone
+            cannot identify the native problem; with this, the artifact can
+            recompute its :attr:`reduction_identity`. Required with
+            ``country_functionals``.
 
     Invariant: ``alpha_prior_covariance`` and ``H`` are the full-restriction
     ``C_alpha`` and ``H_alpha`` of the coherent reduction. Marginalising
@@ -321,6 +328,7 @@ class Co2PreparedInputs:
     aggregation_error_mode: Co2AggregationErrorMode
     provenance: Mapping[str, Any] = field(default_factory=dict)
     country_functionals: NativeFunctionalProducts | None = None
+    native_reduction_identity: str | None = None
 
     def __post_init__(self) -> None:
         if self.aggregation_error_mode not in ("dense", "low_rank"):
@@ -361,9 +369,18 @@ class Co2PreparedInputs:
                     "CO2 country_functionals require the exact dense aggregation-error covariance; "
                     "prepare with aggregation_error_rank=None."
                 )
+            if self.native_reduction_identity is None:
+                raise ValueError(
+                    "CO2 country_functionals require the reduction's native_reduction_identity; "
+                    "prepare with prepare_co2_inputs."
+                )
             object.__setattr__(
-                self, "country_functionals", _bound_country_functionals(self.country_functionals, inputs)
+                self,
+                "country_functionals",
+                _bound_country_functionals(self.country_functionals, inputs, self.native_reduction_identity),
             )
+        if self.native_reduction_identity is not None and not self.native_reduction_identity.startswith("sha256:"):
+            raise ValueError("CO2 native_reduction_identity must be a native_reduction_identity digest.")
 
     @property
     def inv_inputs(self) -> xr.Dataset:
@@ -375,19 +392,25 @@ class Co2PreparedInputs:
         """Return the identity of the coherent reduction this artifact stores.
 
         It is :func:`~openghg_inversions.coherent_reduction.reduction_identity`
-        of ``alpha_prior_covariance``, ``H`` and the dense aggregation-error
+        of the recorded :attr:`native_reduction_identity` and of
+        ``alpha_prior_covariance``, ``H`` and the dense aggregation-error
         covariance, which are the reduction's ``C_alpha``, ``H_alpha`` and
-        exact ``A``. Fits prepared from this artifact share it.
+        exact ``A``. It is recomputed from the stored arrays, so it changes
+        if any of them is changed after preparation. Fits prepared from this
+        artifact share it.
 
         Raises:
             ValueError: If the artifact stores a low-rank ``A``, which does
-                not identify the exact reduction.
+                not identify the exact reduction, or records no native
+                identity.
         """
         if self.aggregation_error_mode != "dense":
             raise ValueError(
                 "A low-rank CO2 artifact does not store the exact A that identifies its coherent reduction."
             )
-        return _artifact_reduction_identity(self.inv_inputs)
+        if self.native_reduction_identity is None:
+            raise ValueError("This CO2 artifact records no native_reduction_identity; prepare again.")
+        return _artifact_reduction_identity(self.inv_inputs, self.native_reduction_identity)
 
     @property
     def basis_functions(self) -> Any:
@@ -473,6 +496,8 @@ class Co2PreparedInputs:
             "aggregation_error_mode": self.aggregation_error_mode,
             "provenance_json": json.dumps(dict(self.provenance), sort_keys=True, allow_nan=False),
         }
+        if self.native_reduction_identity is not None:
+            tree.attrs[NATIVE_REDUCTION_IDENTITY] = self.native_reduction_identity
         return tree
 
     @classmethod
@@ -520,6 +545,7 @@ class Co2PreparedInputs:
             aggregation_error_mode=cast(Co2AggregationErrorMode, mode),
             provenance=provenance,
             country_functionals=country_functionals,
+            native_reduction_identity=cast(str | None, tree.attrs.get(NATIVE_REDUCTION_IDENTITY)),
         )
         resolve_aggregation_error(prepared.inv_inputs, prepared.aggregation_error_mode)
         return prepared
@@ -561,6 +587,7 @@ class Co2PreparedInputs:
 def _bound_country_functionals(
     products: NativeFunctionalProducts,
     inputs: xr.Dataset,
+    native_identity: str,
 ) -> NativeFunctionalProducts:
     """Validate country functional products against the artifact and rebind ``C_alpha`` and ``H_alpha``.
 
@@ -617,7 +644,7 @@ def _bound_country_functionals(
     for name in _COUNTRY_FUNCTIONAL_PAYLOAD:
         if not np.isfinite(np.asarray(getattr(products, name).values)).all():
             raise ValueError(f"CO2 country {name} must be finite.")
-    if products.reduction_identity != _artifact_reduction_identity(inputs):
+    if products.reduction_identity != _artifact_reduction_identity(inputs, native_identity):
         raise ValueError(
             "CO2 country functional products were computed for a different coherent reduction "
             "(native observation operator, covariance or restriction); prepare again."
@@ -654,10 +681,11 @@ def _require_functional_units(products: NativeFunctionalProducts, observation_un
         _require_equivalent_units(array.attrs.get("units"), expected, name=f"CO2 country {name}")
 
 
-def _artifact_reduction_identity(inputs: xr.Dataset) -> str:
+def _artifact_reduction_identity(inputs: xr.Dataset, native_identity: str) -> str:
     """Return the reduction identity of a dense CO2 artifact's ``C_alpha``, ``H_alpha`` and ``A``."""
     state_dim = str(inputs["alpha_prior_mean"].dims[0])
     return reduction_identity(
+        native_identity=native_identity,
         retained_covariance=inputs["alpha_prior_covariance"],
         effective_observation_operator=inputs["H"].transpose("nmeasure", state_dim),
         unresolved_observation_covariance=inputs[AGGREGATION_ERROR_COVARIANCE],
@@ -1104,6 +1132,7 @@ def prepare_co2_inputs(
         aggregation_error_mode=mode,
         provenance=metadata,
         country_functionals=country_functionals,
+        native_reduction_identity=reduction.native_identity,
     )
 
 
