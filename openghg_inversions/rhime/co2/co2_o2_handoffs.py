@@ -155,13 +155,16 @@ def load_preparation(manifest: str | Path, *, expected_generation: str | None = 
 
 def save_samples(
     preparation_manifest: str | Path, trace: xr.DataTree, *, actual_inference: Mapping[str, Any],
-    preparation_generation: str, output_dir: str | Path,
+    preparation_generation: str, output_dir: str | Path, referenced: tuple[str | Path, ...] = (),
 ) -> Path:
     """Write the annotated joint trace and record its preparation generation.
 
     The trace owns the sampled scientific roles and prior descriptions.
     Inference provenance is descriptive; current configuration is not a replay
     gate. Completion is published only after posterior serialization succeeds.
+    ``referenced`` names further inputs, such as consumed request files, that
+    the final write must not overwrite; it is checked again here because the
+    outputs may have changed during inference.
     """
     preparation_path, preparation = _preparation_record(preparation_manifest)
     if preparation["generation"] != preparation_generation:
@@ -169,7 +172,8 @@ def save_samples(
     validate_co2_o2_trace(trace)
     payload = reference(preparation_path, preparation["prepared_inputs"])
     destination = start_checkpoint(
-        output_dir, "sample", payloads=("posterior.nc",), referenced=(preparation_path, payload),
+        output_dir, "sample", payloads=("posterior.nc",),
+        referenced=(preparation_path, payload, *(Path(path).resolve() for path in referenced)),
     )
     save_trace(trace, destination / "posterior.nc")
     return finish_checkpoint(destination, "sample", {
@@ -203,10 +207,10 @@ def sample(
     preparation = load_preparation(preparation_manifest)
     if model_config.tau_hours is not None and active_sampler.nuts_sampler != "pymc":
         raise ValueError("Linked fixed-OU requires nuts_sampler='pymc'.")
+    protected = tuple(Path(path).resolve() for path in referenced)
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
-        referenced=(Path(preparation_manifest).resolve(), preparation.payload)
-        + tuple(Path(path).resolve() for path in referenced),
+        referenced=(Path(preparation_manifest).resolve(), preparation.payload) + protected,
     )
     model_options = model_config.bind(preparation.prepared)
     built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
@@ -214,7 +218,7 @@ def sample(
     trace = annotate_co2_o2_trace(trace, built=built)
     return save_samples(
         preparation_manifest, trace, actual_inference=active_sampler.describe(),
-        preparation_generation=preparation.generation, output_dir=output_dir,
+        preparation_generation=preparation.generation, output_dir=output_dir, referenced=protected,
     )
 
 

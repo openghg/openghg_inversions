@@ -100,14 +100,16 @@ class OuterFluxChoice:
         """
         mean = flux_prior.mean
 
-        groups = _state_labels(mean, self.group_coord)
+        # Selector labels are small; materialise them once so lazy coordinates
+        # can be matched and masked.
+        groups = _state_labels(mean, self.group_coord).compute()
         missing_groups = _missing(self.outer_groups, groups)
         if missing_groups:
             raise ValueError(f"No flux state has {self.group_coord} {missing_groups!r}.")
         outer = groups.isin(self.outer_groups)
         fixed = outer
         if self.fixed_sources:
-            sources = _state_labels(mean, self.source_coord)
+            sources = _state_labels(mean, self.source_coord).compute()
             missing_sources = _missing(self.fixed_sources, sources.where(outer, drop=True))
             if missing_sources:
                 raise ValueError(
@@ -176,15 +178,28 @@ class OuterStates:
         Raises:
             ValueError: If the activity's state labels differ from the prior's,
                 or the caller's policy explicitly fixes a held state at a value
-                other than its prior mean. States inactive only because their
-                sensitivity column is exactly zero are not explicit fixes.
+                other than its prior mean. A state the policy made inactive
+                counts as explicitly fixed even if its sensitivity column is
+                also exactly zero; one inactive only through exact-zero
+                pruning does not.
         """
-        active, fixed, prior_mean, caller_value, zero = xr.align(
-            activity.active, self.fixed, self.prior_mean.reset_coords(drop=True),
-            activity.fixed_value.reset_coords(drop=True), activity.zero_sensitivity.reset_coords(drop=True),
-            join="exact", copy=False,
+        # Without a recorded policy, any inactive state with a response was
+        # fixed explicitly; states removed only by exact-zero pruning were not.
+        explicit = (
+            activity.explicitly_inactive
+            if activity.explicitly_inactive is not None
+            else ~activity.active & ~activity.zero_sensitivity
         )
-        conflict = fixed & ~active & ~zero & (caller_value != prior_mean)
+        active, fixed, prior_mean, caller_value, explicit = xr.align(
+            activity.active,
+            self.fixed,
+            self.prior_mean.reset_coords(drop=True),
+            activity.fixed_value.reset_coords(drop=True),
+            explicit.reset_coords(drop=True),
+            join="exact",
+            copy=False,
+        )
+        conflict = fixed & explicit & (caller_value != prior_mean)
         if bool(conflict.any()):
             labels = conflict[conflict.dims[0]].where(conflict, drop=True).to_numpy().tolist()
             raise ValueError(
