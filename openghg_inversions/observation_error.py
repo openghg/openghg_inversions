@@ -5,7 +5,7 @@ Shared checks cover observations, reported errors and minimum errors.
 Aggregation error is fixed input data, separate from measurement error and
 the inferred RHIME model-error term.  Prepared inversion inputs may represent
 it exactly as a dense covariance, efficiently as a low-rank-plus-diagonal
-covariance, or diagnostically as independent standard deviations.
+covariance. Marginal standard deviations may accompany either representation.
 """
 
 from __future__ import annotations
@@ -24,7 +24,10 @@ import xarray as xr
 from openghg_inversions._linalg import cholesky_with_condition
 from openghg_inversions.array_ops import materialize_together, validate_covariance_coordinates
 
-AggregationErrorMode: TypeAlias = Literal["auto", "none", "dense", "low_rank", "diagonal"]
+#: ``"auto"`` selects the supplied dense or low-rank covariance, or ``"none"``
+#: when there is no aggregation-error input. It raises if both covariances
+#: are present or only marginal standard deviations are supplied.
+AggregationErrorMode: TypeAlias = Literal["auto", "none", "dense", "low_rank"]
 
 AGGREGATION_ERROR_SD = "aggregation_error_sd"
 AGGREGATION_ERROR_COVARIANCE = "aggregation_error_covariance"
@@ -55,7 +58,7 @@ class AggregationError:
             low-rank representation.
     """
 
-    mode: Literal["none", "dense", "low_rank", "diagonal"]
+    mode: Literal["none", "dense", "low_rank"]
     marginal_variance: np.ndarray
     covariance: xr.DataArray | None = None
     factor: xr.DataArray | None = None
@@ -280,9 +283,6 @@ def aggregation_error_as_low_rank(
             np.asarray(aggregation_error.factor.values, dtype=float),
             np.asarray(aggregation_error.diagonal_variance.values, dtype=float),
         )
-    if aggregation_error.mode == "diagonal":
-        assert aggregation_error.diagonal_variance is not None
-        return np.empty((nmeasure, 0)), np.asarray(aggregation_error.diagonal_variance.values, dtype=float)
     return np.empty((nmeasure, 0)), np.zeros(nmeasure)
 
 
@@ -886,7 +886,7 @@ def validate_observation_error_arrays(
 
 def select_aggregation_error_mode(
     data: xr.Dataset, requested: AggregationErrorMode
-) -> Literal["none", "dense", "low_rank", "diagonal"]:
+) -> Literal["none", "dense", "low_rank"]:
     """Select an aggregation-error representation without materializing it.
 
     Args:
@@ -900,12 +900,12 @@ def select_aggregation_error_mode(
 
     Raises:
         ValueError: If ``requested`` is invalid or ``"auto"`` finds both dense
-            and low-rank representations.
+            and low-rank representations or a standalone standard deviation.
     """
-    if requested not in ("auto", "none", "dense", "low_rank", "diagonal"):
+    if requested not in ("auto", "none", "dense", "low_rank"):
         raise ValueError(
             "`aggregation_error_mode` must be one of 'auto', 'none', 'dense', "
-            f"'low_rank', or 'diagonal'; got {requested!r}."
+            f"or 'low_rank'; got {requested!r}."
         )
     if requested != "auto":
         return requested
@@ -922,7 +922,10 @@ def select_aggregation_error_mode(
     if low_rank:
         return "low_rank"
     if AGGREGATION_ERROR_SD in data:
-        return "diagonal"
+        raise ValueError(
+            f"Prepared inputs contain {AGGREGATION_ERROR_SD!r} without an aggregation-error covariance. "
+            "Supply a covariance or select 'none' explicitly."
+        )
     return "none"
 
 
@@ -941,7 +944,7 @@ def aggregation_error_input_names(
 
     Raises:
         ValueError: If the requested mode is invalid or automatic selection is
-            ambiguous.
+            ambiguous or finds only a standalone standard deviation.
     """
     selected = select_aggregation_error_mode(data, requested)
     if selected == "dense":
@@ -954,8 +957,6 @@ def aggregation_error_input_names(
         if AGGREGATION_ERROR_SD in data:
             names.append(AGGREGATION_ERROR_SD)
         return tuple(names)
-    if selected == "diagonal":
-        return (AGGREGATION_ERROR_SD,)
     return ()
 
 
@@ -968,10 +969,11 @@ def resolve_aggregation_error(
 ) -> AggregationError:
     """Validate and select an aggregation-error covariance representation.
 
-    In ``"auto"`` mode, a structured representation takes precedence over
-    ``aggregation_error_sd`` because that vector is commonly retained as a
-    marginal diagnostic beside the exact covariance.  Supplying both dense and
-    low-rank forms is ambiguous and therefore requires an explicit selection.
+    In ``"auto"`` mode, ``aggregation_error_sd`` is a marginal diagnostic beside
+    a dense or low-rank covariance. Automatic selection chooses the only
+    covariance present, or ``"none"`` when there is no aggregation-error input.
+    Supplying both covariances or a standalone standard deviation requires an
+    explicit selection.
 
     Args:
         data: Prepared inversion inputs containing the requested aggregation-
@@ -996,33 +998,6 @@ def resolve_aggregation_error(
 
     if selected == "none":
         return AggregationError(mode="none", marginal_variance=np.zeros(nmeasure))
-
-    if selected == "diagonal":
-        if AGGREGATION_ERROR_SD not in data:
-            raise ValueError(
-                f"Diagonal aggregation error requires {AGGREGATION_ERROR_SD!r} in prepared inputs."
-            )
-        standard_deviation = data[AGGREGATION_ERROR_SD]
-        if standard_deviation.dims != (output_dim,):
-            raise ValueError(
-                f"Aggregation-error input {AGGREGATION_ERROR_SD!r} must have dims "
-                f"({output_dim!r},); got {standard_deviation.dims!r}."
-            )
-        if standard_deviation.sizes[output_dim] != nmeasure:
-            raise ValueError(f"Aggregation-error input {AGGREGATION_ERROR_SD!r} is not observation-aligned.")
-        (standard_deviation,) = materialize_together(
-            standard_deviation, purpose="aggregation-error standard deviation"
-        )
-        values = _numeric_finite(AGGREGATION_ERROR_SD, standard_deviation)
-        if (values < 0).any():
-            raise ValueError(
-                f"Aggregation-error input {AGGREGATION_ERROR_SD!r} must contain only non-negative values."
-            )
-        return AggregationError(
-            mode="diagonal",
-            marginal_variance=values**2,
-            diagonal_variance=standard_deviation**2,
-        )
 
     if selected == "dense":
         if AGGREGATION_ERROR_COVARIANCE not in data:

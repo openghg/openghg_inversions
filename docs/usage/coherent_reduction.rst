@@ -172,6 +172,9 @@ Inspect the recorded retained-spectrum and reconstruction metrics directly::
 These diagnostics describe the covariance approximation; they do not certify
 that the chosen rank is adequate for a particular likelihood.
 
+See :ref:`migrate-diagonal-aggregation-error` for older inputs that contain
+only aggregation-error standard deviations.
+
 Assumptions and limitations
 ---------------------------
 

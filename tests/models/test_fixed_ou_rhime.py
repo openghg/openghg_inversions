@@ -216,7 +216,7 @@ def test_fixed_ou_builder_samples_state_and_site_amplitudes_together() -> None:
     assert np.isfinite(trace.posterior["ou_site_amplitude"]).all()
 
 
-@pytest.mark.parametrize("mode", ["none", "diagonal", "low_rank", "dense"])
+@pytest.mark.parametrize("mode", ["none", "low_rank", "dense"])
 def test_builder_logp_matches_dense_covariance_for_every_aggregation_mode(
     mode: str,
 ) -> None:
@@ -225,12 +225,6 @@ def test_builder_logp_matches_dense_covariance_for_every_aggregation_mode(
     residual_variance = np.array([0.03, 0.04, 0.05, 0.06])
     if mode == "none":
         aggregation = np.zeros((4, 4))
-    elif mode == "diagonal":
-        aggregation = np.diag(residual_variance)
-        data["aggregation_error_sd"] = (
-            "nmeasure",
-            np.sqrt(residual_variance),
-        )
     else:
         aggregation = factor @ factor.T + np.diag(residual_variance)
         if mode == "low_rank":
