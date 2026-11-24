@@ -24,6 +24,7 @@ import pytensor.tensor as pt
 from pytensor.tensor.variable import TensorVariable
 import xarray as xr
 
+from openghg_inversions._linalg import check_symmetric, roundoff_tolerance
 from openghg_inversions.array_ops import materialize_together, validate_covariance_coordinates
 from openghg_inversions.models.components import add_model_data
 from openghg_inversions.models.priors import parse_prior
@@ -70,15 +71,6 @@ def _finite_values(name: str, array: xr.DataArray) -> NDArray[np.float64]:
     if not np.isfinite(values).all():
         raise ValueError(f"Scalar-sigma input {name!r} must contain only finite values.")
     return values
-
-
-def _scale_relative_tolerance(values: NDArray[np.float64]) -> float:
-    """Return a unit-invariant tolerance relative to the numerical scale."""
-    scale = max(
-        float(np.max(np.abs(values), initial=0.0)),
-        np.finfo(values.dtype).tiny,
-    )
-    return 1.0e-10 * scale
 
 
 def _base_covariance_sha256(covariance: NDArray[np.float64]) -> str:
@@ -211,14 +203,7 @@ def scalar_sigma_base_covariance(
         covariance_values += factor_values @ factor_values.T
         covariance_values.flat[:: n_observation + 1] += diagonal_values
 
-    tolerance = _scale_relative_tolerance(covariance_values)
-    if not np.allclose(
-        covariance_values,
-        covariance_values.T,
-        rtol=0.0,
-        atol=tolerance,
-    ):
-        raise ValueError("Scalar-sigma base covariance must be symmetric.")
+    check_symmetric(covariance_values, owner="Scalar-sigma base covariance")
     covariance_values = (covariance_values + covariance_values.T) * 0.5
     return cast(NDArray[np.float64], covariance_values)
 
@@ -418,7 +403,7 @@ def prepare_scalar_sigma_eigenbasis(
         output_dim=output_dim,
     )
     eigenvalues, eigenvectors = np.linalg.eigh(covariance)
-    tolerance = _scale_relative_tolerance(eigenvalues)
+    tolerance = roundoff_tolerance(eigenvalues)
     if float(eigenvalues.min(initial=0.0)) < -tolerance:
         raise ValueError("Scalar-sigma base covariance must be positive semidefinite.")
     mode = np.arange(observations.sizes[output_dim])

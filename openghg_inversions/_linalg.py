@@ -76,6 +76,61 @@ def cholesky_logdet(cholesky: np.ndarray) -> float:
     return float(2.0 * np.log(np.diag(cholesky)).sum())
 
 
+ROUNDOFF_RELATIVE_TOLERANCE = 1e-10
+"""Relative roundoff allowance for dense covariance symmetry and PSD checks."""
+
+
+def roundoff_tolerance(values: np.ndarray) -> float:
+    """Return the absolute roundoff tolerance for values on their own scale.
+
+    The tolerance is :data:`ROUNDOFF_RELATIVE_TOLERANCE` times the largest
+    absolute value, with no absolute floor, so it is unit-invariant. A
+    tolerance computed on a transformed matrix, for example after whitening,
+    is on the transformed scale; compute it from the values being checked.
+
+    Args:
+        values: Array whose largest magnitude sets the scale, such as a
+            covariance matrix or its eigenvalues.
+
+    Returns:
+        The absolute tolerance, or zero for an empty or all-zero array.
+    """
+    return ROUNDOFF_RELATIVE_TOLERANCE * float(np.max(np.abs(values), initial=0.0))
+
+
+def check_symmetric(values: np.ndarray, *, owner: str) -> float:
+    """Require a materialized square matrix to be symmetric within roundoff.
+
+    Rows are compared with ``numpy.allclose`` against the transposed columns
+    in blocks, so no transposed copy of a large matrix is formed. Both the
+    relative and the absolute allowance are :data:`ROUNDOFF_RELATIVE_TOLERANCE`
+    on the scale of ``values``.
+
+    Args:
+        values: Materialized square matrix.
+        owner: Scientific owner named in the error.
+
+    Returns:
+        The absolute tolerance from :func:`roundoff_tolerance`, for a
+        subsequent check on the same scale, such as positive semidefiniteness.
+
+    Raises:
+        ValueError: If ``values`` is not symmetric within the tolerance.
+    """
+    tolerance = roundoff_tolerance(values)
+    block_rows = 256
+    for start in range(0, values.shape[0], block_rows):
+        stop = min(start + block_rows, values.shape[0])
+        if not np.allclose(
+            values[start:stop],
+            values[:, start:stop].T,
+            rtol=ROUNDOFF_RELATIVE_TOLERANCE,
+            atol=tolerance,
+        ):
+            raise ValueError(f"{owner} must be symmetric.")
+    return tolerance
+
+
 def _reciprocal_condition(cholesky: np.ndarray, matrix: np.ndarray) -> float:
     """Return the LAPACK ``dpocon`` estimate for ``matrix`` from its lower factor."""
     reciprocal_condition, condition_info = dpocon(cholesky, np.linalg.norm(matrix, ord=1), uplo="L")

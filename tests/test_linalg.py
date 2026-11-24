@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from openghg_inversions._linalg import cholesky_logdet, conditioned_cholesky
+from openghg_inversions._linalg import check_symmetric, cholesky_logdet, conditioned_cholesky
 
 THRESHOLD = float(np.sqrt(np.finfo(np.float64).eps))
 
@@ -32,3 +32,14 @@ def test_conditioned_cholesky_returns_the_lower_factor_and_its_logdet() -> None:
 def test_conditioned_cholesky_rejects_unsafe_matrices(matrix: np.ndarray) -> None:
     """A factorization that succeeds is still rejected when its condition estimate is too small."""
     assert conditioned_cholesky(matrix, THRESHOLD) is None
+
+
+def test_symmetry_check_is_unit_invariant() -> None:
+    """The same relative asymmetry passes or fails identically in ppm**2 and in mol/mol squared."""
+    nearly = np.array([[2.0, 1.0], [1.0 + 1e-12, 2.0]])
+    clearly = np.array([[2.0, 1.0], [1.0 + 1e-6, 2.0]])
+
+    for scale in (1.0, 1e-12):
+        assert check_symmetric(nearly * scale, owner="C") == pytest.approx(2e-10 * scale)
+        with pytest.raises(ValueError, match="C must be symmetric"):
+            check_symmetric(clearly * scale, owner="C")
