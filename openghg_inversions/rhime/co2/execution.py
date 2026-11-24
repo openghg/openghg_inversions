@@ -190,6 +190,7 @@ def run_co2(
     trace, actual = sample_co2_inference(
         prepared, model, sampler, sigma_target_accept=sampling.sigma_target_accept,
         state_target_accept=sampling.state_target_accept, method=sampling.method,
+        substitute_marginals=sampling.substitute_marginals,
     )
     result = make_co2_output(prepared=prepared, trace=trace, bound=bound,
                             output_metadata={"sampler": actual,

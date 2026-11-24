@@ -246,8 +246,8 @@ rather than NUTS draws, select the Gaussian estimator. NUTS stays the default.
    sample_prior_predictive = 1000
 
 The retained flux state then has a Gaussian prior with the prepared arithmetic
-moments ``alpha_prior_mean`` and ``alpha_prior_covariance`` (the moments the
-default correlated LogNormal prior matches), and the likelihood covariance is
+moments ``alpha_prior_mean`` and ``alpha_prior_covariance`` (the moments every
+sampled marginal matches; see :ref:`sampled-marginals`), and the likelihood covariance is
 the fixed ``mf_error**2 + fixed_model_mismatch**2`` on the diagonal plus the
 prepared aggregation covariance. The posterior is solved by Paige's generalised
 least squares (:func:`~openghg_inversions.inference.gls.paige_gls`) from a
@@ -333,12 +333,33 @@ below ``1e-6`` of the mean aggregation variance, the run is refused unless
 OU-correlated mismatch is not yet supported. The prior-predictive check stage
 maps a per-site table but refuses an empirical-Bayes one.
 
-A Gaussian run logs a warning (Python ``logging``, which reaches stderr when
-the application configures no logging handlers, as the ``rhime`` CLI does not)
-that the LogNormal flux prior was replaced by its moment-matched Normal, and
-records ``state_prior_substitution = "lognormal→normal (moment-matched)"`` in
-``rhime_actual_inference`` and the ``gaussian_posterior`` attributes. An
-empirical-Bayes run logs one more warning with the mode and the per-site sigma.
+The Gaussian prior is exact for states whose prepared ``alpha_prior_marginal``
+is ``"normal"``. LogNormal states (the default, also when no marginal is
+stored) are replaced by their moment-matched Normal, which choosing the
+estimator implies. Weibull and gamma states are refused unless
+``sampling.substitute_marginals = true``, which replaces them too:
+
+.. code-block:: toml
+
+   [sampling]
+   method = "gaussian"
+   substitute_marginals = true   # accept moment-matched Normals for weibull and gamma states
+
+When any state is replaced, the run logs one warning (Python ``logging``, which
+reaches stderr when the application configures no logging handlers, as the
+``rhime`` CLI does not) naming the replaced families and their state counts.
+``rhime_actual_inference`` and the ``gaussian_posterior`` attributes record:
+
+- ``state_prior_substitution``: ``"none"`` when every state is Normal, otherwise
+  ``"<family>→normal (moment-matched)"`` for each replaced family, joined by
+  ``"; "`` (only LogNormal states give exactly ``"lognormal→normal (moment-matched)"``);
+- ``state_prior_marginals`` and ``state_prior_substituted``: state counts per
+  prepared and per replaced family;
+- ``state_prior_unused_latent_correlation_floor``: a prepared copula repair
+  floor (``latent_correlation_floor``), which changes the NUTS prior's
+  covariance but not the Gaussian prior's, which keeps the prepared covariance.
+
+An empirical-Bayes run logs one more warning with the mode and the per-site sigma.
 
 The estimator refuses what it cannot solve exactly: an inferred model-error
 scale, fixed-OU or other replacement likelihoods, non-Normal boundary or offset
@@ -410,8 +431,8 @@ A short smoke test is not evidence of convergence.
 
 Neither ``prior-predictive`` nor ``diagnose`` validates the exact estimator
 selected by ``sampling.method = "gaussian"``. ``prior-predictive`` always builds the NUTS
-graph, so with the default flux prior it draws from the correlated LogNormal
-prior, not the moment-matched Normal prior the estimator uses. The estimator's
+graph, so it draws from the prepared copula prior (the correlated LogNormal by
+default), not the moment-matched Normal prior the estimator uses. The estimator's
 own prior is in the sample trace: the ``prior`` and ``prior_predictive`` groups
 when ``sampling.sample_prior_predictive`` is set, and ``prior_mean`` and
 ``prior_covariance`` in the ``gaussian_posterior`` group, which also holds the

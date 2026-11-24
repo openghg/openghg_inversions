@@ -308,7 +308,7 @@ def sample(
     trace, actual = sample_co2_inference(
         preparation.prepared, model_options, choices.sampler,
         sigma_target_accept=choices.sigma_target_accept, state_target_accept=choices.state_target_accept,
-        method=choices.method,
+        method=choices.method, substitute_marginals=choices.substitute_marginals,
     )
     return save_samples(
         preparation_manifest, trace, actual_inference=actual, preparation_generation=preparation.generation,
