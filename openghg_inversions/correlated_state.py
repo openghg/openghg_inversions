@@ -253,7 +253,7 @@ def _matrix_tolerance(values: np.ndarray) -> float:
     return 1e-10 * max(float(np.max(np.abs(values))), 1.0)
 
 
-def _warn_large_dense_state(state_size: int) -> None:
+def _warn_large_dense_state(state_size: int, *, stacklevel: int = 3) -> None:
     """Warn when a dense reduced state exceeds the operational size threshold.
 
     Args:
@@ -270,8 +270,88 @@ def _warn_large_dense_state(state_size: int) -> None:
             f"{_DENSE_STATE_WARNING_THRESHOLD} (not a mathematical limit). This "
             "representation is unsuitable for a native-grid covariance.",
             UserWarning,
-            stacklevel=3,
+            stacklevel=stacklevel,
         )
+
+
+def _validate_arithmetic_moments(
+    mean: xr.DataArray,
+    arithmetic_covariance: xr.DataArray | np.ndarray,
+    *,
+    covariance_dim: str | None,
+    stacklevel: int = 4,
+) -> tuple[str, str, np.ndarray, xr.DataArray]:
+    """Validate a positive arithmetic mean and a symmetric PSD covariance.
+
+    Args:
+        mean: One-dimensional arithmetic mean with a unique labelled state
+            coordinate.
+        arithmetic_covariance: Dense covariance, as accepted by
+            :class:`CorrelatedLognormalPrior`.
+        covariance_dim: Optional covariance column dimension name.
+        stacklevel: Warning stack level for the dense-state warning.
+
+    Returns:
+        State dimension, covariance dimension, owned mean values and the
+        canonical symmetrized covariance.
+
+    Raises:
+        TypeError: If ``mean`` is not an xarray ``DataArray``.
+        ValueError: If dimensions, labels or values are invalid, the mean is
+            not positive, or the covariance is not symmetric PSD.
+    """
+    if not isinstance(mean, xr.DataArray):
+        raise TypeError("Arithmetic mean must be an xarray DataArray.")
+    if mean.ndim != 1:
+        raise ValueError(f"Arithmetic mean must be one-dimensional; got dimensions {mean.dims!r}.")
+    state_dim = str(mean.dims[0])
+    covariance_dim = covariance_dim or f"{state_dim}_covariance"
+    if covariance_dim == state_dim:
+        raise ValueError("Covariance matrix axes must use distinct dimension names.")
+    reserved_coord_names = _SERIALIZED_VARIABLE_NAMES | {f"{covariance_dim}_label"}
+    auxiliary_names = {name for name in mean.coords if isinstance(name, str) and name != state_dim}
+    reserved_auxiliary_names = auxiliary_names & reserved_coord_names
+    if reserved_auxiliary_names:
+        raise ValueError(
+            "State auxiliary coordinate names must not use reserved correlated-state "
+            f"dataset names; got {sorted(reserved_auxiliary_names)!r}."
+        )
+    if covariance_dim in mean.coords:
+        raise ValueError(
+            "Covariance matrix column dimension must not collide with a state or auxiliary "
+            f"coordinate name; got {covariance_dim!r}."
+        )
+    if f"{covariance_dim}_label" in mean.coords:
+        raise ValueError(
+            "Covariance matrix label coordinate must not collide with a state auxiliary "
+            f"coordinate name; got {covariance_dim + '_label'!r}."
+        )
+    _require_state_index(mean, state_dim, name="Arithmetic mean")
+    mean_values = _materialize_numeric(mean, name="Arithmetic mean")
+    if (mean_values <= 0).any():
+        raise ValueError("Arithmetic mean must contain only positive values.")
+    _warn_large_dense_state(mean.sizes[state_dim], stacklevel=stacklevel)
+
+    covariance = _covariance_array(
+        arithmetic_covariance,
+        mean=mean,
+        state_dim=state_dim,
+        covariance_dim=covariance_dim,
+    )
+    covariance_values = np.asarray(covariance.values, dtype=np.float64)
+    tolerance = _matrix_tolerance(covariance_values)
+    if not np.allclose(
+        covariance_values,
+        covariance_values.T,
+        rtol=1e-10,
+        atol=tolerance,
+    ):
+        raise ValueError("Arithmetic covariance must be symmetric.")
+    covariance_values = 0.5 * (covariance_values + covariance_values.T)
+    covariance = covariance.copy(data=covariance_values)
+    if float(np.linalg.eigvalsh(covariance_values).min()) < -tolerance:
+        raise ValueError("Arithmetic covariance must be positive semidefinite.")
+    return state_dim, covariance_dim, mean_values, covariance
 
 
 class CorrelatedLognormalPrior:
@@ -403,57 +483,10 @@ class CorrelatedLognormalPrior:
             implementation uses ``numpy.log1p`` for that scalar operation and
             does not take a matrix logarithm.
         """
-        if not isinstance(mean, xr.DataArray):
-            raise TypeError("Arithmetic mean must be an xarray DataArray.")
-        if mean.ndim != 1:
-            raise ValueError(f"Arithmetic mean must be one-dimensional; got dimensions {mean.dims!r}.")
-        state_dim = str(mean.dims[0])
-        covariance_dim = covariance_dim or f"{state_dim}_covariance"
-        if covariance_dim == state_dim:
-            raise ValueError("Covariance matrix axes must use distinct dimension names.")
-        reserved_coord_names = _SERIALIZED_VARIABLE_NAMES | {f"{covariance_dim}_label"}
-        auxiliary_names = {name for name in mean.coords if isinstance(name, str) and name != state_dim}
-        reserved_auxiliary_names = auxiliary_names & reserved_coord_names
-        if reserved_auxiliary_names:
-            raise ValueError(
-                "State auxiliary coordinate names must not use reserved correlated-state "
-                f"dataset names; got {sorted(reserved_auxiliary_names)!r}."
-            )
-        if covariance_dim in mean.coords:
-            raise ValueError(
-                "Covariance matrix column dimension must not collide with a state or auxiliary "
-                f"coordinate name; got {covariance_dim!r}."
-            )
-        if f"{covariance_dim}_label" in mean.coords:
-            raise ValueError(
-                "Covariance matrix label coordinate must not collide with a state auxiliary "
-                f"coordinate name; got {covariance_dim + '_label'!r}."
-            )
-        _require_state_index(mean, state_dim, name="Arithmetic mean")
-        mean_values = _materialize_numeric(mean, name="Arithmetic mean")
-        if (mean_values <= 0).any():
-            raise ValueError("Arithmetic mean must contain only positive values.")
-        _warn_large_dense_state(mean.sizes[state_dim])
-
-        covariance = _covariance_array(
-            arithmetic_covariance,
-            mean=mean,
-            state_dim=state_dim,
-            covariance_dim=covariance_dim,
+        state_dim, covariance_dim, mean_values, covariance = _validate_arithmetic_moments(
+            mean, arithmetic_covariance, covariance_dim=covariance_dim
         )
         covariance_values = np.asarray(covariance.values, dtype=np.float64)
-        tolerance = _matrix_tolerance(covariance_values)
-        if not np.allclose(
-            covariance_values,
-            covariance_values.T,
-            rtol=1e-10,
-            atol=tolerance,
-        ):
-            raise ValueError("Arithmetic covariance must be symmetric.")
-        covariance_values = 0.5 * (covariance_values + covariance_values.T)
-        covariance = covariance.copy(data=covariance_values)
-        if float(np.linalg.eigvalsh(covariance_values).min()) < -tolerance:
-            raise ValueError("Arithmetic covariance must be positive semidefinite.")
 
         with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
             relative_covariance = covariance_values / np.outer(mean_values, mean_values)
@@ -635,29 +668,304 @@ class CorrelatedLognormalPrior:
         return prior
 
 
-STATE_MARGINALS = ("lognormal",)
+STATE_MARGINALS = ("lognormal", "normal", "weibull", "gamma")
 """Marginal families a :class:`CorrelatedPrior` state may use."""
+
+_HERMITE_TERMS = 60
+"""Hermite terms in the latent-correlation series for Weibull and gamma states."""
+
+_HERMITE_NODES, _HERMITE_WEIGHTS = np.polynomial.hermite_e.hermegauss(300)
+_HERMITE_WEIGHTS = _HERMITE_WEIGHTS / np.sqrt(2.0 * np.pi)
+
+_SERIES_VARIANCE_TOLERANCE = 1e-6
+"""Largest relative variance the truncated series may miss for one state."""
+
+_WEIBULL_SHAPE_BOUNDS = (0.02, 1000.0)
+
+GAMMA_LATENT_CAP = 8.0
+"""Gamma states are held at their quantile for latent ``u = 8`` above it.
+
+TensorFlow Probability's JAX inverse incomplete gamma overflows for upper-tail
+probabilities below about 1e-22 (``u`` near 10). ``Phi(-8)`` is 6e-16, so the
+cap changes the moments negligibly and keeps every backend identical.
+"""
+
+
+def _weibull_shape(cv: np.ndarray) -> np.ndarray:
+    """Solve ``Gamma(1 + 2/k) / Gamma(1 + 1/k)**2 - 1 = cv**2`` for each shape ``k``."""
+    from scipy import optimize, special
+
+    def excess(log_shape: float, target: float) -> float:
+        inverse = np.exp(-log_shape)
+        return float(np.expm1(special.gammaln(1 + 2 * inverse) - 2 * special.gammaln(1 + inverse)) - target)
+
+    low, high = np.log(_WEIBULL_SHAPE_BOUNDS[0]), np.log(_WEIBULL_SHAPE_BOUNDS[1])
+    shapes = np.empty(cv.shape)
+    for index, value in enumerate(cv):
+        target = float(value) ** 2
+        if not excess(high, target) < 0 < excess(low, target):
+            raise ValueError(
+                f"Weibull marginal cannot reach coefficient of variation {float(value):.6g}; "
+                f"its shape would lie outside {_WEIBULL_SHAPE_BOUNDS!r}."
+            )
+        shapes[index] = np.exp(optimize.brentq(excess, low, high, args=(target,), xtol=1e-14, rtol=1e-14))
+    return shapes
+
+
+def _marginal_parameters(family: np.ndarray, mean: np.ndarray, sd: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Return each state's ``(shape, scale)`` for its family, mean and SD.
+
+    Lognormal: log-scale SD and median. Normal: no shape (NaN) and the SD.
+    Gamma and Weibull: the usual shape and scale.
+    """
+    from scipy import special
+
+    cv = sd / mean
+    shape = np.full(mean.shape, np.nan)
+    scale = np.full(mean.shape, np.nan)
+    lognormal = family == "lognormal"
+    shape[lognormal] = np.sqrt(np.log1p(np.square(cv[lognormal])))
+    scale[lognormal] = mean[lognormal] * np.exp(-0.5 * np.square(shape[lognormal]))
+    normal = family == "normal"
+    scale[normal] = sd[normal]
+    gamma = family == "gamma"
+    shape[gamma] = 1.0 / np.square(cv[gamma])
+    scale[gamma] = mean[gamma] * np.square(cv[gamma])
+    weibull = family == "weibull"
+    if weibull.any():
+        shape[weibull] = _weibull_shape(cv[weibull])
+        scale[weibull] = mean[weibull] / special.gamma(1.0 + 1.0 / shape[weibull])
+    return shape, scale
+
+
+def _marginal_quantile(
+    family: np.ndarray, mean: np.ndarray, shape: np.ndarray, scale: np.ndarray, latent: np.ndarray
+) -> np.ndarray:
+    """Map standard-normal latent values ``u`` (last axis = state) to ``F^-1(Phi(u))``."""
+    from scipy import special
+
+    latent = np.asarray(latent, dtype=np.float64)
+    result = np.empty(np.broadcast_shapes(latent.shape, mean.shape))
+    for name in np.unique(family):
+        index = np.flatnonzero(family == name)
+        u = latent[..., index]
+        k, theta = shape[index], scale[index]
+        if name == "lognormal":
+            values = theta * np.exp(k * u)
+        elif name == "normal":
+            values = mean[index] + theta * u
+        elif name == "gamma":
+            u = np.minimum(u, GAMMA_LATENT_CAP)
+            with np.errstate(over="ignore", under="ignore"):
+                values = theta * np.where(
+                    u > 0,
+                    special.gammainccinv(k, special.ndtr(-np.maximum(u, 0))),
+                    special.gammaincinv(k, special.ndtr(np.minimum(u, 0))),
+                )
+        else:
+            with np.errstate(over="ignore", under="ignore", divide="ignore"):
+                values = theta * np.power(-special.log_ndtr(-u), 1.0 / k)
+        result[..., index] = values
+    return result
+
+
+def _hermite_coefficients(
+    family: np.ndarray, mean: np.ndarray, sd: np.ndarray, shape: np.ndarray, scale: np.ndarray
+) -> np.ndarray:
+    """Return normalized Hermite coefficients ``E[F^-1(Phi(U)) He_k(U)] / sqrt(k!)``, k >= 1.
+
+    Lognormal and normal coefficients are exact; Weibull and gamma use
+    Gauss-Hermite quadrature.
+    """
+    from scipy import special
+
+    order = np.arange(1, _HERMITE_TERMS + 1)
+    coefficients = np.zeros((mean.size, _HERMITE_TERMS))
+    lognormal = family == "lognormal"
+    if lognormal.any():
+        coefficients[lognormal] = mean[lognormal, None] * np.exp(
+            order * np.log(shape[lognormal, None]) - 0.5 * special.gammaln(order + 1.0)
+        )
+    coefficients[family == "normal", 0] = sd[family == "normal"]
+    series = np.isin(family, ("weibull", "gamma"))
+    if series.any():
+        values = _marginal_quantile(
+            family[series], mean[series], shape[series], scale[series],
+            np.broadcast_to(_HERMITE_NODES[:, None], (_HERMITE_NODES.size, int(series.sum()))),
+        ).T
+        weighted = values * _HERMITE_WEIGHTS
+        previous, current = np.ones_like(_HERMITE_NODES), _HERMITE_NODES.copy()
+        for k in order:
+            coefficients[series, k - 1] = weighted @ current
+            previous, current = current, (_HERMITE_NODES * current - np.sqrt(k) * previous) / np.sqrt(k + 1.0)
+        captured = np.square(coefficients[series]).sum(axis=1) / np.square(sd[series])
+        worst = int(np.argmax(np.abs(captured - 1.0)))
+        if abs(captured[worst] - 1.0) > _SERIES_VARIANCE_TOLERANCE:
+            raise ValueError(
+                "A Weibull or gamma state is too skewed for the copula series: coefficient of "
+                f"variation {float((sd / mean)[series][worst]):.6g} keeps only "
+                f"{float(captured[worst]):.6g} of its variance in {_HERMITE_TERMS} terms."
+            )
+    return coefficients
+
+
+def _solve_latent_correlation(
+    family: np.ndarray,
+    mean: np.ndarray,
+    shape: np.ndarray,
+    coefficients: np.ndarray,
+    covariance: np.ndarray,
+    labels: list[Any],
+) -> np.ndarray:
+    """Return the latent correlation that reproduces ``covariance`` through the marginals.
+
+    Pairs with a normal state, or two lognormal states, have closed forms.
+    Other pairs solve ``sum_k c_ik c_jk r**k = C_ij`` by bisection; the series
+    is nondecreasing in ``r`` because every marginal map is increasing.
+
+    Raises:
+        ValueError: If a pair's covariance is outside what its marginals can
+            reach, or the latent correlation is not positive definite.
+    """
+    size = mean.size
+    rows, cols = np.triu_indices(size, 1)
+    target = covariance[rows, cols]
+    first, second = family[rows], family[cols]
+    correlation = np.zeros(target.shape)
+    infeasible = np.zeros(target.shape, dtype=bool)
+    nonzero = target != 0
+
+    linear = nonzero & ((first == "normal") | (second == "normal"))
+    correlation[linear] = target[linear] / (coefficients[rows[linear], 0] * coefficients[cols[linear], 0])
+
+    both = nonzero & (first == "lognormal") & (second == "lognormal")
+    relative = target[both] / (mean[rows[both]] * mean[cols[both]])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        correlation[both] = np.log1p(relative) / (shape[rows[both]] * shape[cols[both]])
+    infeasible[both] = relative <= -1
+
+    series = nonzero & ~linear & ~both
+    if series.any():
+        # Highest order first, one row per order, for Horner evaluation.
+        product = np.ascontiguousarray((coefficients[rows[series]] * coefficients[cols[series]]).T[::-1])
+
+        def pair_covariance(r: np.ndarray) -> np.ndarray:
+            value = product[0].copy()
+            for row in product[1:]:
+                value *= r
+                value += row
+            return value * r
+
+        wanted = target[series]
+        low, high = -np.ones(wanted.shape), np.ones(wanted.shape)
+        infeasible[series] = (wanted < pair_covariance(low)) | (wanted > pair_covariance(high))
+        for _ in range(64):
+            middle = 0.5 * (low + high)
+            above = pair_covariance(middle) < wanted
+            low, high = np.where(above, middle, low), np.where(above, high, middle)
+        correlation[series] = 0.5 * (low + high)
+
+    infeasible |= ~np.isfinite(correlation) | (np.abs(correlation) > 1 + 1e-12)
+    if infeasible.any():
+        pairs = [
+            f"({labels[i]!r}, {labels[j]!r})"
+            for i, j in zip(rows[infeasible][:5], cols[infeasible][:5], strict=True)
+        ]
+        raise ValueError(
+            f"No latent correlation reproduces the arithmetic covariance of {int(infeasible.sum())} "
+            f"state pair(s) with their marginals, e.g. {', '.join(pairs)}."
+        )
+    result = np.eye(size)
+    result[rows, cols] = result[cols, rows] = np.clip(correlation, -1.0, 1.0)
+    return result
+
+
+def _implied_covariance(
+    family: np.ndarray, mean: np.ndarray, shape: np.ndarray, coefficients: np.ndarray,
+    sd: np.ndarray, correlation: np.ndarray,
+) -> np.ndarray:
+    """Return the arithmetic covariance a latent correlation implies through the marginals.
+
+    The inverse of :func:`_solve_latent_correlation`, with the same closed forms
+    and Hermite series. Variances are the marginals' own, since the latent
+    correlation has a unit diagonal.
+    """
+    size = mean.size
+    rows, cols = np.triu_indices(size, 1)
+    r = correlation[rows, cols]
+    first, second = family[rows], family[cols]
+    covariance = np.zeros(r.shape)
+    linear = (first == "normal") | (second == "normal")
+    covariance[linear] = r[linear] * coefficients[rows[linear], 0] * coefficients[cols[linear], 0]
+    both = (first == "lognormal") & (second == "lognormal")
+    covariance[both] = mean[rows[both]] * mean[cols[both]] * np.expm1(
+        shape[rows[both]] * shape[cols[both]] * r[both]
+    )
+    series = ~linear & ~both
+    if series.any():
+        product = (coefficients[rows[series]] * coefficients[cols[series]]).T[::-1]
+        value = product[0].copy()
+        for row in product[1:]:
+            value *= r[series]
+            value += row
+        covariance[series] = value * r[series]
+    result = np.diag(np.square(sd))
+    result[rows, cols] = result[cols, rows] = covariance
+    return result
+
+
+def _floor_latent_correlation(correlation: np.ndarray, floor: float) -> tuple[np.ndarray, np.ndarray]:
+    """Raise a correlation matrix's eigenvalues to ``floor`` and restore its unit diagonal.
+
+    Returns the repaired correlation and the eigenvalues before the repair.
+    The rescaling is a congruence, so the result stays positive definite.
+    """
+    eigenvalues, vectors = np.linalg.eigh(correlation)
+    repaired = (vectors * np.maximum(eigenvalues, floor)) @ vectors.T
+    scale = np.sqrt(np.diag(repaired))
+    repaired = repaired / np.outer(scale, scale)
+    repaired = 0.5 * (repaired + repaired.T)
+    np.fill_diagonal(repaired, 1.0)
+    return repaired, eigenvalues
 
 
 class CorrelatedPrior:
     """Correlated state prior given by arithmetic moments and per-state marginals.
 
-    The prior is a Gaussian copula. One correlated latent normal vector is
-    mapped through each state's marginal, with the latent correlations chosen
-    so that the arithmetic mean and covariance are matched exactly. Changing a
-    marginal changes only the shape of that state's distribution.
+    The prior is a Gaussian copula. A whitened standard-normal vector ``z`` is
+    correlated as ``u = L z`` and each state is ``x_i = F_i^-1(Phi(u_i))``,
+    where ``F_i`` is the state's marginal with its arithmetic mean and SD. The
+    latent correlations ``L L^T`` are chosen pair by pair so that the
+    arithmetic covariance is matched exactly (the NORTA construction).
+    Changing a marginal changes only the shape of that state's distribution.
 
-    Only the ``"lognormal"`` marginal is available. With it on every state, the
-    copula is the :class:`CorrelatedLognormalPrior` construction, available as
-    ``lognormal``.
+    Marginals (:data:`STATE_MARGINALS`):
+
+    - ``"lognormal"`` (default). With it on every state, the copula is the
+      :class:`CorrelatedLognormalPrior` construction, available as
+      ``lognormal``, and models are built exactly as before.
+    - ``"normal"``: a Gaussian state, which may be negative.
+    - ``"weibull"`` and ``"gamma"``: positive and less right-skewed than the
+      lognormal at the same mean and SD, so a posterior constrained only in
+      a sum of states is pulled less towards small values.
+
+    Pairs with a normal state, and lognormal pairs, have closed-form latent
+    correlations. Weibull and gamma pairs solve a Hermite series. A pair whose
+    covariance no latent correlation can reach is rejected. A latent
+    correlation that is not positive definite is rejected too, unless
+    ``latent_correlation_floor`` is given: then its eigenvalues are raised to
+    the floor and its unit diagonal restored, which moves the implied
+    arithmetic covariance slightly off the target. The size of that change is
+    recorded in :attr:`latent_correlation_repair`.
 
     Attributes:
-        lognormal: Validated lognormal copula for these arithmetic moments.
+        lognormal: Validated lognormal copula when every marginal is
+            lognormal, otherwise ``None``.
         marginal: Marginal family name on the state dimension, in mean-label
             order. Treat it as read-only.
     """
 
-    lognormal: CorrelatedLognormalPrior
+    lognormal: CorrelatedLognormalPrior | None
     marginal: xr.DataArray
 
     def __init__(
@@ -667,8 +975,9 @@ class CorrelatedPrior:
         *,
         marginal: str | xr.DataArray = "lognormal",
         covariance_dim: str | None = None,
+        latent_correlation_floor: float | None = None,
     ) -> None:
-        """Validate the arithmetic moments and marginal families.
+        """Validate the arithmetic moments and marginals and solve the copula.
 
         Args:
             mean: Positive one-dimensional arithmetic mean with a unique
@@ -678,14 +987,120 @@ class CorrelatedPrior:
             marginal: One family name for every state, or names on the state
                 dimension with the mean's labels.
             covariance_dim: Optional name for the covariance column dimension.
+            latent_correlation_floor: Opt-in repair for a copula prior whose
+                latent correlation is not positive definite, in ``(0, 0.1]``.
+                Eigenvalues below it are raised to it and the unit diagonal
+                is restored. ``None`` (the default) rejects such priors. It
+                does not apply when every marginal is lognormal.
 
         Raises:
             TypeError: If ``mean`` is not an xarray ``DataArray``.
             ValueError: If a marginal is not in :data:`STATE_MARGINALS`, its
-                labels differ from the mean's, or the moments are invalid for
-                the lognormal copula.
+                labels differ from the mean's, a state has zero variance
+                under a non-lognormal marginal, a pair covariance is out of
+                reach of its marginals, the latent correlation is not
+                positive definite and no floor is given, or the floor is
+                outside ``(0, 0.1]``.
         """
-        self._set(CorrelatedLognormalPrior(mean, arithmetic_covariance, covariance_dim=covariance_dim), marginal)
+        if latent_correlation_floor is not None and not 0.0 < float(latent_correlation_floor) <= 0.1:
+            raise ValueError(f"latent_correlation_floor must be in (0, 0.1]; got {latent_correlation_floor!r}.")
+        names = marginal if isinstance(marginal, str) else np.asarray(marginal.values).astype(str)
+        if np.all(np.asarray(names) == "lognormal"):
+            self._set(CorrelatedLognormalPrior(mean, arithmetic_covariance, covariance_dim=covariance_dim), marginal)
+            return
+        mean_values, covariance = self._set_copula_moments(mean, arithmetic_covariance, covariance_dim, marginal)
+        family = np.asarray(self.marginal.values).astype(str)
+        covariance_values = np.asarray(covariance.values, dtype=np.float64)
+        sd = np.sqrt(np.clip(np.diag(covariance_values), 0.0, None))
+        if (sd <= 0).any():
+            raise ValueError("Every state of a copula prior must have positive arithmetic variance.")
+        shape, scale = _marginal_parameters(family, mean_values, sd)
+        coefficients = _hermite_coefficients(family, mean_values, sd, shape, scale)
+        correlation = _solve_latent_correlation(
+            family, mean_values, shape, coefficients, covariance_values,
+            list(self._mean.indexes[self._state_dim]),
+        )
+        self._latent_repair: dict[str, Any] | None = None
+        if latent_correlation_floor is not None:
+            floor = float(latent_correlation_floor)
+            repaired, eigenvalues = _floor_latent_correlation(correlation, floor)
+            applied = bool(eigenvalues.min() < floor)
+            record: dict[str, Any] = {
+                "method": "eigenvalue_floor",
+                "floor": floor,
+                "applied": applied,
+                "minimum_eigenvalue": float(eigenvalues.min()),
+                "eigenvalues_raised": int(np.count_nonzero(eigenvalues < floor)),
+            }
+            if applied:
+                implied = _implied_covariance(family, mean_values, shape, coefficients, sd, repaired)
+                change = np.abs(implied - covariance_values)
+                record.update(
+                    max_abs_latent_correlation_change=float(np.max(np.abs(repaired - correlation))),
+                    max_abs_state_covariance_change=float(change.max()),
+                    max_abs_state_correlation_change=float(np.max(change / np.outer(sd, sd))),
+                )
+                correlation = repaired
+            self._latent_repair = record
+        try:
+            cholesky = np.linalg.cholesky(correlation)
+        except np.linalg.LinAlgError as exc:
+            minimum = float(np.linalg.eigvalsh(correlation).min())
+            raise ValueError(
+                "The latent correlation that reproduces the arithmetic covariance with these marginals "
+                f"is not positive definite; minimum eigenvalue is {minimum:.6g}. Pass "
+                "latent_correlation_floor to repair it, or choose other marginals."
+            ) from exc
+        self._shape, self._scale = shape, scale
+        self._latent_correlation, self._latent_correlation_cholesky = correlation, cholesky
+
+    def _set_copula_moments(
+        self,
+        mean: xr.DataArray,
+        arithmetic_covariance: xr.DataArray | np.ndarray,
+        covariance_dim: str | None,
+        marginal: str | xr.DataArray,
+    ) -> tuple[np.ndarray, xr.DataArray]:
+        """Validate and store a copula prior's moments and marginal names; return the mean values and covariance."""
+        state_dim, covariance_dim, mean_values, covariance = _validate_arithmetic_moments(
+            mean, arithmetic_covariance, covariance_dim=covariance_dim, stacklevel=6
+        )
+        canonical_mean = _copy_state_auxiliary_coords(
+            xr.DataArray(
+                mean_values,
+                dims=(state_dim,),
+                coords={state_dim: mean.coords[state_dim]},
+                name="arithmetic_mean",
+                attrs=dict(mean.attrs),
+            ),
+            mean,
+            state_dim=state_dim,
+        )
+        self.lognormal = None
+        self._mean = canonical_mean
+        self._arithmetic_covariance = covariance
+        self._state_dim = state_dim
+        self._covariance_dim = covariance_dim
+        self._set_marginal(marginal)
+        return mean_values, covariance
+
+    def _restrict(self, mean: xr.DataArray, marginal: xr.DataArray, indices: np.ndarray) -> CorrelatedPrior:
+        """Return the prior of the states at ``indices``, relabelled by ``mean`` and ``marginal``.
+
+        The latent correlation is the block of this prior's, repaired or not,
+        so the result is this prior's marginal on those states. Its repair
+        record is this prior's.
+        """
+        if self.lognormal is not None:
+            raise ValueError("Restrict an all-lognormal prior through its CorrelatedLognormalPrior.")
+        block = np.ix_(indices, indices)
+        result = CorrelatedPrior.__new__(CorrelatedPrior)
+        result._set_copula_moments(mean, np.asarray(self._arithmetic_covariance.values)[block], None, marginal)
+        result._shape, result._scale = self._shape[indices].copy(), self._scale[indices].copy()
+        result._latent_correlation = self._latent_correlation[block].copy()
+        result._latent_correlation_cholesky = np.linalg.cholesky(result._latent_correlation)
+        result._latent_repair = None if self._latent_repair is None else dict(self._latent_repair)
+        return result
 
     @classmethod
     def from_lognormal(cls, prior: CorrelatedLognormalPrior) -> CorrelatedPrior:
@@ -702,19 +1117,33 @@ class CorrelatedPrior:
         return result
 
     def _set(self, lognormal: CorrelatedLognormalPrior, marginal: str | xr.DataArray) -> None:
-        """Store the copula and the marginal names after checking them."""
-        mean = lognormal._mean
+        """Store an all-lognormal copula and its marginal names after checking them."""
+        self.lognormal = lognormal
+        self._mean = lognormal._mean
+        self._arithmetic_covariance = lognormal._arithmetic_covariance
+        self._state_dim = lognormal.state_dim
+        self._covariance_dim = lognormal.covariance_dim
+        self._set_marginal(marginal)
+        latent_sd = np.sqrt(np.diag(lognormal._latent_covariance.values))
+        self._shape = latent_sd
+        self._scale = np.exp(lognormal._latent_mean.values)
+        self._latent_correlation = lognormal._latent_covariance.values / np.outer(latent_sd, latent_sd)
+        self._latent_correlation_cholesky = lognormal._latent_cholesky.values / latent_sd[:, None]
+        self._latent_repair = None
+
+    def _set_marginal(self, marginal: str | xr.DataArray) -> None:
+        """Store the marginal names on the mean's state labels after checking them."""
+        mean = self._mean
         if isinstance(marginal, str):
             marginal = mean.copy(data=np.full(mean.size, marginal, dtype=object))
-        elif marginal.dims != (lognormal.state_dim,) or not marginal.indexes[lognormal.state_dim].equals(
-            mean.indexes[lognormal.state_dim]
+        elif marginal.dims != (self._state_dim,) or not marginal.indexes[self._state_dim].equals(
+            mean.indexes[self._state_dim]
         ):
             raise ValueError("Marginal families must use the prior mean's state labels in the same order.")
         unsupported = sorted(set(map(str, marginal.values)) - set(STATE_MARGINALS))
         if unsupported:
             raise ValueError(f"Unsupported state marginal(s) {unsupported!r}; available: {STATE_MARGINALS!r}.")
-        self.lognormal = lognormal
-        self.marginal = marginal.copy(deep=True).rename("marginal")
+        self.marginal = mean.copy(data=np.asarray(marginal.values).astype(str).astype(object)).rename("marginal")
         self.marginal.attrs = {}
 
     @property
@@ -724,7 +1153,7 @@ class CorrelatedPrior:
         Returns:
             An independent deep copy of the labelled arithmetic mean.
         """
-        return self.lognormal.mean
+        return self._mean.copy(deep=True)
 
     @property
     def arithmetic_covariance(self) -> xr.DataArray:
@@ -733,14 +1162,117 @@ class CorrelatedPrior:
         Returns:
             An independent deep copy of the dense labelled covariance.
         """
-        return self.lognormal.arithmetic_covariance
+        return self._arithmetic_covariance.copy(deep=True)
 
     @property
     def state_dim(self) -> str:
         """Return the name of the state dimension."""
-        return self.lognormal.state_dim
+        return self._state_dim
 
     @property
     def covariance_dim(self) -> str:
         """Return the name of the same-order covariance column dimension."""
-        return self.lognormal.covariance_dim
+        return self._covariance_dim
+
+    @property
+    def is_lognormal(self) -> bool:
+        """Whether every state has the lognormal marginal."""
+        return self.lognormal is not None
+
+    def _state_matrix(self, values: np.ndarray, name: str) -> xr.DataArray:
+        coords = {key: coord for key, coord in self._mean.coords.items()}
+        return xr.DataArray(values.copy(), dims=(self._state_dim, self._covariance_dim), coords=coords, name=name)
+
+    @property
+    def latent_correlation(self) -> xr.DataArray:
+        """Return the copula's latent correlation ``L L^T``.
+
+        Returns:
+            A dense labelled copy on ``(state_dim, covariance_dim)``.
+        """
+        return self._state_matrix(self._latent_correlation, "latent_correlation")
+
+    @property
+    def latent_correlation_cholesky(self) -> xr.DataArray:
+        """Return the lower Cholesky factor ``L`` of the latent correlation.
+
+        Returns:
+            A dense labelled copy on ``(state_dim, covariance_dim)``.
+        """
+        return self._state_matrix(self._latent_correlation_cholesky, "latent_correlation_cholesky")
+
+    @property
+    def latent_correlation_repair(self) -> dict[str, Any] | None:
+        """Return the record of an opt-in latent-correlation repair.
+
+        ``None`` when no ``latent_correlation_floor`` was given. Otherwise a
+        JSON-safe dictionary: ``method`` (``"eigenvalue_floor"``), ``floor``,
+        ``applied``, ``minimum_eigenvalue`` before the repair and the number
+        of ``eigenvalues_raised``. When applied it also holds
+        ``max_abs_latent_correlation_change`` and the resulting change in the
+        implied arithmetic covariance, ``max_abs_state_covariance_change`` (in
+        squared mean units) and ``max_abs_state_correlation_change``.
+        """
+        return None if self._latent_repair is None else dict(self._latent_repair)
+
+    def metadata(self) -> dict[str, Any]:
+        """Describe the prior for model and trace metadata.
+
+        Returns:
+            JSON-safe ``prior`` description, state counts per marginal family
+            (``prior_marginals``) and the latent-correlation repair record
+            (``prior_latent_correlation_repair``, ``None`` without one).
+        """
+        families, counts = np.unique(np.asarray(self.marginal.values).astype(str), return_counts=True)
+        return {
+            "prior": (
+                "correlated arithmetic-moment lognormal" if self.is_lognormal
+                else "correlated arithmetic-moment Gaussian copula"
+            ),
+            "prior_marginals": {str(name): int(count) for name, count in zip(families, counts, strict=True)},
+            "prior_latent_correlation_repair": self.latent_correlation_repair,
+        }
+
+    @property
+    def marginal_shape(self) -> xr.DataArray:
+        """Return each state's marginal shape.
+
+        Lognormal: SD of the log state. Weibull and gamma: the shape ``k``.
+        Normal: NaN.
+        """
+        return self._mean.copy(data=self._shape.copy()).rename("marginal_shape").assign_attrs(units="1")
+
+    @property
+    def marginal_scale(self) -> xr.DataArray:
+        """Return each state's marginal scale, in the mean's units.
+
+        Lognormal: the median. Normal: the SD. Weibull and gamma: the scale.
+        """
+        return self._mean.copy(data=self._scale.copy()).rename("marginal_scale")
+
+    def transform_latent(self, latent: np.ndarray) -> np.ndarray:
+        """Map correlated standard-normal values ``u`` to states ``F^-1(Phi(u))``.
+
+        Args:
+            latent: Array whose last axis is the state, in mean-label order,
+                holding ``u = L z``.
+
+        Returns:
+            The states, with the shape of ``latent``.
+        """
+        family = np.asarray(self.marginal.values).astype(str)
+        return _marginal_quantile(family, self._mean.values, self._shape, self._scale, latent)
+
+    def sample(self, size: int, *, rng: np.random.Generator | int | None = None) -> np.ndarray:
+        """Draw states from the prior with NumPy and SciPy.
+
+        Args:
+            size: Number of draws.
+            rng: Generator or seed.
+
+        Returns:
+            Draws with shape ``(size, n_state)``, in mean-label order.
+        """
+        generator = np.random.default_rng(rng)
+        whitened = generator.standard_normal((size, self._mean.size))
+        return self.transform_latent(whitened @ self._latent_correlation_cholesky.T)

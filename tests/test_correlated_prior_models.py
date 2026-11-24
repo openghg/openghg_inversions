@@ -176,9 +176,9 @@ def test_prior_draws_match_joint_moments():
     assert np.all(draws > 0)
 
 
-def test_correlated_prior_accepts_only_the_lognormal_marginal():
+def test_correlated_prior_rejects_unknown_or_misaligned_marginals():
     prior = correlated_prior()
-    marginal = prior.marginal.copy(data=["lognormal", "lognormal", "weibull", "lognormal", "lognormal"])
+    marginal = prior.marginal.copy(data=["lognormal", "lognormal", "beta", "lognormal", "lognormal"])
     with pytest.raises(ValueError, match="Unsupported state marginal"):
         CorrelatedPrior(prior.mean, prior.arithmetic_covariance, marginal=marginal)
     with pytest.raises(ValueError, match="same order"):
@@ -220,6 +220,9 @@ def test_partial_activity_samples_the_exact_active_lognormal_marginal():
 
 def physical_state(prior, z):
     """Independent NumPy arithmetic-moment map, with no model/cache expressions."""
+    if getattr(prior, "lognormal", True) is None:
+        # Copula marginals: SciPy quantiles of the correlated latent normal.
+        return prior.transform_latent(prior.latent_correlation_cholesky.to_numpy() @ z)
     m = prior.mean.to_numpy()
     b = prior.arithmetic_covariance.to_numpy()
     v = np.log1p(b / np.outer(m, m))

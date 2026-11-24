@@ -169,6 +169,30 @@ def _require_equivalent_units(actual: Any, expected: str, *, name: str) -> None:
         raise ValueError(f"{name} units {actual!r} do not have the same numeric scale as {expected!r}.")
 
 
+ALPHA_PRIOR_MARGINAL = "alpha_prior_marginal"
+"""Optional prepared variable naming each retained state's marginal family."""
+
+LATENT_CORRELATION_FLOOR = "latent_correlation_floor"
+"""Optional attribute of ``alpha_prior_marginal``: the opt-in latent-correlation eigenvalue floor."""
+
+
+def retained_prior_options(inputs: Mapping[Any, Any]) -> dict[str, Any]:
+    """Return the :class:`~openghg_inversions.correlated_state.CorrelatedPrior` options a preparation stores.
+
+    Args:
+        inputs: Prepared or materialized model inputs.
+
+    Returns:
+        ``marginal`` (``"lognormal"`` when not stored) and
+        ``latent_correlation_floor`` (``None`` when not stored).
+    """
+    if ALPHA_PRIOR_MARGINAL not in inputs:
+        return {"marginal": "lognormal", "latent_correlation_floor": None}
+    marginal = inputs[ALPHA_PRIOR_MARGINAL]
+    floor = marginal.attrs.get(LATENT_CORRELATION_FLOOR)
+    return {"marginal": marginal, "latent_correlation_floor": None if floor is None else float(floor)}
+
+
 def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     """Validate the scientific layout owned by the CO2 artifact."""
     from openghg_inversions.boundary_sensitivity import validate_boundary_operands
@@ -201,6 +225,26 @@ def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     if mean.dims != (state_dim,):
         raise ValueError("CO2 alpha_prior_mean must use the H retained-state dimension.")
     _require_same_axis(mean, state_dim, state_index, name="CO2 alpha_prior_mean")
+    if ALPHA_PRIOR_MARGINAL in inputs:
+        from openghg_inversions.correlated_state import STATE_MARGINALS
+
+        marginal = inputs[ALPHA_PRIOR_MARGINAL]
+        if marginal.dims != (state_dim,):
+            raise ValueError(f"CO2 {ALPHA_PRIOR_MARGINAL} must use the H retained-state dimension.")
+        _require_same_axis(marginal, state_dim, state_index, name=f"CO2 {ALPHA_PRIOR_MARGINAL}")
+        unknown = sorted(set(map(str, np.asarray(marginal.values).ravel())) - set(STATE_MARGINALS))
+        if unknown:
+            raise ValueError(f"CO2 {ALPHA_PRIOR_MARGINAL} has unsupported marginal(s) {unknown!r}.")
+        if LATENT_CORRELATION_FLOOR in marginal.attrs:
+            floor = marginal.attrs[LATENT_CORRELATION_FLOOR]
+            if (
+                isinstance(floor, bool) or not isinstance(floor, (int, float, np.number))
+                or not 0.0 < float(floor) <= 0.1
+            ):
+                raise ValueError(
+                    f"CO2 {ALPHA_PRIOR_MARGINAL} attribute {LATENT_CORRELATION_FLOOR!r} must be a number in "
+                    f"(0, 0.1]; got {floor!r}."
+                )
     covariance_dim = f"{state_dim}_cov"
     covariance = inputs["alpha_prior_covariance"]
     validate_covariance_coordinates(
@@ -525,6 +569,7 @@ def prepare_co2_inputs(
     aggregation_error_rank: int | None = 512,
     bc_centering_weights: xr.DataArray | None = None,
     provenance: Mapping[str, Any] | None = None,
+    prior_marginal: xr.DataArray | None = None,
 ) -> Co2PreparedInputs:
     """Map one coherent Gaussian reduction into the CO2 replay contract.
 
@@ -564,6 +609,12 @@ def prepare_co2_inputs(
         provenance: Optional JSON-serializable project or preparation
             provenance. The reduction strategy and LRPD diagnostics are added
             by this boundary.
+        prior_marginal: Optional marginal family name per retained state, on
+            the reduction's retained-state labels. It is stored as
+            ``alpha_prior_marginal`` and selects each state's marginal in the
+            runners' :class:`~openghg_inversions.correlated_state.CorrelatedPrior`.
+            Its ``latent_correlation_floor`` attribute, if any, is kept and
+            passed to that prior. Omit it for the lognormal prior.
 
     Returns:
         A structurally validated, serializable artifact accepted by both CO2
@@ -696,6 +747,13 @@ def prepare_co2_inputs(
         {reduced_state_dim: state_dim, reduced_covariance_dim: state_covariance_dim},
         name="alpha_prior_covariance",
     )
+    mapped = mapped.drop_vars(ALPHA_PRIOR_MARGINAL, errors="ignore")
+    if prior_marginal is not None:
+        if prior_marginal.dims != (reduced_state_dim,):
+            raise ValueError("prior_marginal must use the reduction's retained-state dimension.")
+        _require_same_axis(prior_marginal, reduced_state_dim, state_index, name="prior_marginal")
+        marginal = _renamed(prior_marginal, {reduced_state_dim: state_dim}, name=ALPHA_PRIOR_MARGINAL)
+        mapped[ALPHA_PRIOR_MARGINAL] = marginal.copy(data=np.asarray(marginal.values).astype(str))
     mapped["fixed_prior_contribution"] = _borrow_without_axis_coordinates(
         _renamed(
             intercept,
