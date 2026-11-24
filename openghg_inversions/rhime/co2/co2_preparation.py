@@ -38,9 +38,8 @@ from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_SD,
     DIAGONAL_RESIDUAL_VARIANCE,
     LOW_RANK_FACTOR,
-    ReferenceMismatchCovariance,
     WhitenedRankRule,
-    prepare_whitened_low_rank_aggregation_error,
+    _prepare_whitened_low_rank_aggregation_error,
     resolve_aggregation_error,
 )
 from openghg_inversions.serialization import open_datatree_loaded, save_datatree
@@ -50,7 +49,6 @@ from .rank_reference import (
     Co2ReferenceCovariance,
     require_reference_labels,
     squared_mole_fraction_scale,
-    supplied_reference_covariance,
 )
 
 
@@ -540,53 +538,57 @@ def _rank_reference(
     observation_index: Any,
     observation_dim: str,
     observation_units: str,
-) -> tuple[xr.DataArray, ReferenceMismatchCovariance]:
-    """Check the rank reference while labelled, materialize it with A, and build R0.
+) -> tuple[xr.DataArray, np.ndarray, dict[str, Any]]:
+    """Resolve the rank reference to dense values through the labelled-covariance contract.
+
+    Settings are first built into a labelled covariance by
+    :meth:`Co2ReferenceCovariance.covariance`, after ``mf_error`` has been
+    checked. Built and supplied covariances then follow one route: both axes
+    are checked against the canonical observation order and the squared
+    mole-fraction units are resolved while the array is labelled, and only
+    then is it materialized with the unresolved covariance.
 
     Returns:
-        The materialized unresolved covariance and the reference covariance.
+        The materialized unresolved covariance, the reference values in
+        observation units squared, and the JSON-safe reference description.
     """
-    if isinstance(reference_covariance, xr.DataArray):
-        require_reference_labels(
-            reference_covariance,
-            observation_index=observation_index,
-            row_dims=("nmeasure", observation_dim),
+    if reference_covariance is None or isinstance(reference_covariance, Co2ReferenceCovariance):
+        settings = Co2ReferenceCovariance() if reference_covariance is None else reference_covariance
+        observations = inputs["mf"]
+        error = inputs["mf_error"]
+        if error.dims != ("nmeasure",):
+            raise ValueError("CO2 mf_error must have dimensions ('nmeasure',).")
+        _require_same_axis(error, "nmeasure", observation_index, name="CO2 mf_error")
+        _require_equivalent_units(error.attrs.get("units"), observation_units, name="CO2 mf_error")
+        unresolved, error = materialize_together(
+            unresolved, error, purpose="aggregation-error covariance and observation error for the rank rule"
         )
-        reference_units = reference_covariance.attrs.get("units")
-        unit_scale = squared_mole_fraction_scale(reference_units, observation_units, name="reference_covariance")
-        unresolved, supplied = materialize_together(
-            unresolved,
-            reference_covariance,
-            purpose="aggregation-error and reference covariances for the rank rule",
-        )
-        return unresolved, supplied_reference_covariance(
-            np.asarray(supplied.values),
-            units=str(reference_units),
-            observation_units=observation_units,
-            unit_scale=unit_scale,
-            name=None if supplied.name is None else str(supplied.name),
-        )
+        reference_covariance = settings.covariance(observations, error)
 
-    settings = Co2ReferenceCovariance() if reference_covariance is None else reference_covariance
-    observations = inputs["mf"]
-    error = inputs["mf_error"]
-    if error.dims != ("nmeasure",):
-        raise ValueError("CO2 mf_error must have dimensions ('nmeasure',).")
-    _require_same_axis(error, "nmeasure", observation_index, name="CO2 mf_error")
-    _require_equivalent_units(error.attrs.get("units"), observation_units, name="CO2 mf_error")
-    if "site" not in observations.coords or (settings.tau_hours is not None and "time" not in observations.coords):
-        raise ValueError("The rank reference requires observation 'site' (and, with OU, 'time') coordinates.")
-    unresolved, error = materialize_together(
-        unresolved,
-        error,
-        purpose="aggregation-error covariance and observation error for the rank rule",
+    require_reference_labels(
+        reference_covariance,
+        observation_index=observation_index,
+        row_dims=("nmeasure", observation_dim),
     )
-    return unresolved, settings.build(
-        np.asarray(error.values, dtype=float),
-        np.asarray(observations["site"].values),
-        observation_units=observation_units,
-        observation_times=None if settings.tau_hours is None else np.asarray(observations["time"].values),
+    reference_units = reference_covariance.attrs.get("units")
+    unit_scale = squared_mole_fraction_scale(reference_units, observation_units, name="reference_covariance")
+    unresolved, reference = materialize_together(
+        unresolved, reference_covariance, purpose="aggregation-error and reference covariances for the rank rule"
     )
+    supplied = reference.attrs.get("description")
+    try:
+        supplied_description = json.loads(supplied) if isinstance(supplied, str) else supplied
+    except ValueError:
+        supplied_description = supplied
+    description = {
+        "description": supplied_description,
+        "name": None if reference.name is None else str(reference.name),
+        "units": str(reference_units),
+        "observation_units": observation_units,
+        "unit_scale_to_observation_units_squared": unit_scale,
+        "representation": "dense",
+    }
+    return unresolved, np.asarray(reference.values, dtype=float) * unit_scale, description
 
 
 def prepare_co2_inputs(
@@ -620,9 +622,9 @@ def prepare_co2_inputs(
     values are not converted.
 
     Selecting LRPD storage eagerly materializes the complete unresolved
-    covariance and computes its full dense eigendecomposition, plus one dense
-    whitened eigenvalue decomposition for the rank rule; a supplied dense
-    reference adds its Cholesky factorization and smallest eigenvalue. The retained rank
+    covariance and computes its full dense eigendecomposition, plus, for the
+    rank rule, a dense reference covariance, its Cholesky factorization and
+    one dense whitened eigenvalue decomposition. The retained rank
     reduces the saved payload and downstream structured-likelihood cost, not
     this preparation cost.
 
@@ -652,8 +654,10 @@ def prepare_co2_inputs(
             time scales where known, or a labelled observation-by-observation
             covariance whose rows and columns follow the canonical
             observation order, with squared mole-fraction units (converted to
-            the observation units). A supplied covariance is treated as one
-            dense block. Only valid with low-rank storage.
+            the observation units) and an optional ``description`` attribute
+            recorded in provenance. Settings are built into the same labelled
+            form, and both are used as one dense matrix, which must be
+            numerically positive definite. Only valid with low-rank storage.
         bc_centering_weights: Positive dimensionless averaging weights on
             ``(bc_curtain, bc_period)``, with interval start times as period
             labels. Raw transport stays spatial and reusable; binding stacks
@@ -832,7 +836,7 @@ def prepare_co2_inputs(
             "nmeasure",
         )
     else:
-        unresolved, reference = _rank_reference(
+        unresolved, reference, reference_description = _rank_reference(
             reference_covariance,
             unresolved=unresolved,
             inputs=inputs,
@@ -840,10 +844,11 @@ def prepare_co2_inputs(
             observation_dim=observation_dim,
             observation_units=str(observation_units),
         )
-        approximation, rank_selection = prepare_whitened_low_rank_aggregation_error(
+        approximation, rank_selection = _prepare_whitened_low_rank_aggregation_error(
             unresolved,
             reference,
             rank_rule,
+            reference_description=reference_description,
             output_dim=observation_dim,
             covariance_dim=observation_covariance_dim,
         )

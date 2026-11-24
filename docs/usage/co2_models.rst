@@ -1191,13 +1191,20 @@ site in the preparation::
 covariance, for example a mismatch model evaluated at fixed parameter values.
 Its rows and columns must follow the canonical observation order, and its
 units must be a squared mole-fraction unit such as ``(ppb)^2``; it is
-converted to the observation units and treated as one dense block. ``run_co2``
+converted to the observation units. An optional ``description`` attribute (a
+JSON object or text) is recorded in provenance.
+:meth:`Co2ReferenceCovariance.covariance
+<openghg_inversions.rhime.co2.Co2ReferenceCovariance.covariance>` builds the
+default in exactly this form, and preparation treats built and supplied
+references the same way: as one dense matrix that must be numerically
+positive definite. At about 5,300 observations this costs a few seconds and
+about 230 MB. ``run_co2``
 and the staged ``prepare`` handoff accept the same ``aggregation_error_rank``
 and ``reference_covariance`` when they create a preparation.
 
-Provenance ``aggregation_error_rank_selection`` records the reference's own
-description (settings as supplied and amplitudes converted to observation
-units, or the supplied covariance's units and conversion) together with the
+Provenance ``aggregation_error_rank_selection`` records the reference's name,
+units, conversion factor and description (for built references, the settings
+as supplied and the amplitudes converted to observation units) together with the
 criteria, the count above the threshold, the chosen rank and the dropped-mode
 KL :math:`\tfrac12\sum_{i>k}[\mu_i - \log(1 + \mu_i)]`. That KL describes
 the whitened truncation at :math:`R_0` without the diagonal tail, not the

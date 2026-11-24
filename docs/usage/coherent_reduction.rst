@@ -128,9 +128,10 @@ This factorization is downstream of coherent reduction: it does not make the
 reduction approximate or change the retained prior and effective operator.
 Let :math:`n` be the observation count and :math:`r` the retained rank. The
 current preparation path first materializes the complete dense
-:math:`n \times n` covariance, computes the dense whitened eigenvalues for the
-rank rule, and then computes a full dense eigendecomposition. Both are
-:math:`O(n^3)` and need :math:`O(n^2)` peak storage. The whitened eigenvalue
+:math:`n \times n` covariance and a dense reference covariance for the rank
+rule, factorizes the reference and computes the dense whitened eigenvalues, and
+then computes a full dense eigendecomposition. These steps are :math:`O(n^3)`
+and need :math:`O(n^2)` peak storage. The whitened eigenvalue
 calculation also runs when an integer rank is passed, so the override is still
 checked and recorded.
 The saved factor and diagonal use :math:`O(nr+n)` storage. For an ordinary

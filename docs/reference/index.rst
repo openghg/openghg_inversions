@@ -279,11 +279,7 @@ mathematical contracts and eager-computation boundaries.
    openghg_inversions.observation_error.prepare_low_rank_aggregation_error
    openghg_inversions.observation_error.resolve_aggregation_error
    openghg_inversions.observation_error.WhitenedRankRule
-   openghg_inversions.observation_error.ReferenceMismatchCovariance
-   openghg_inversions.observation_error.whitened_aggregation_spectrum
    openghg_inversions.observation_error.select_whitened_rank
-   openghg_inversions.observation_error.choose_whitened_aggregation_rank
-   openghg_inversions.observation_error.prepare_whitened_low_rank_aggregation_error
    openghg_inversions.observation_error.whitened_eigenvalue_kl
 
 Compose a RHIME model

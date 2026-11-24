@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import json
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -11,14 +12,15 @@ import numpy as np
 import xarray as xr
 
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
-from openghg_inversions.observation_error import ReferenceMismatchCovariance, _is_positive_real
+from openghg_inversions._labelled_matrices import matrix_column_dim, square_matrix
+from openghg_inversions.observation_error import _is_positive_real
 
 
 @dataclass(frozen=True)
 class Co2ReferenceCovariance:
     r"""Settings for the default CO2 reference mismatch covariance :math:`R_0`.
 
-    Preparation builds
+    :meth:`covariance` builds the dense labelled covariance
 
     .. math::
 
@@ -60,124 +62,90 @@ class Co2ReferenceCovariance:
             raise ValueError("Co2ReferenceCovariance units must be a non-empty string.")
         mole_fraction_unit_scale(self.units, context="Co2ReferenceCovariance units")
 
-    def build(
-        self,
-        observation_error_sd: np.ndarray,
-        sites: np.ndarray,
-        *,
-        observation_units: str,
-        observation_times: np.ndarray | None = None,
-    ) -> ReferenceMismatchCovariance:
-        """Build :math:`R_0` in observation units for one set of observations.
+    def covariance(self, observations: xr.DataArray, observation_error: xr.DataArray) -> xr.DataArray:
+        """Return :math:`R_0` as a dense labelled covariance in observation units squared.
+
+        The result uses the same labelled-covariance contract as a
+        caller-supplied ``reference_covariance``: rows on the observation
+        dimension of ``observations`` with its coordinates, columns on a
+        distinct companion dimension, ``units`` of the observation units
+        squared, and a JSON ``description`` attribute recording the supplied
+        settings and the amplitudes converted to observation units.
 
         Args:
-            observation_error_sd: Per-row reported observation error in
-                ``observation_units``, finite and non-negative.
-            sites: Per-row site labels.
-            observation_units: Mole-fraction units of the observations.
-            observation_times: Per-row ``datetime64`` times or hours.
-                Required with ``tau_hours``.
+            observations: One-dimensional observations with units and a
+                ``site`` coordinate, plus a ``time`` coordinate with
+                ``tau_hours``.
+            observation_error: Reported observation error on the same axis, in
+                the observation units, finite and non-negative.
 
         Returns:
-            The reference covariance, with a JSON-safe ``description`` of the
-            supplied settings and the amplitudes converted to observation
-            units.
+            The labelled ``n x n`` reference covariance.
 
         Raises:
-            ValueError: If shapes disagree, values are invalid, a mapping omits
-                a site, or a site block is not positive definite.
+            ValueError: If coordinates, units or values are missing or
+                invalid, or a site mapping omits a site.
         """
-        labels = np.asarray(sites).astype(str)
-        error = np.asarray(observation_error_sd, dtype=float)
-        n = labels.size
-        if labels.ndim != 1 or n == 0 or error.shape != (n,):
-            raise ValueError("observation_error_sd and sites must be non-empty and one per row.")
+        if observations.ndim != 1:
+            raise ValueError("Co2ReferenceCovariance needs one-dimensional observations.")
+        dim = str(observations.dims[0])
+        observation_units = observations.attrs.get("units")
+        if not isinstance(observation_units, str) or not observation_units.strip():
+            raise ValueError("Co2ReferenceCovariance needs observation units.")
+        if observation_error.dims != (dim,) or (
+            dim in observations.indexes
+            and not observation_error.indexes[dim].equals(observations.indexes[dim])
+        ):
+            raise ValueError("Co2ReferenceCovariance observation error must share the observation axis.")
+        if "site" not in observations.coords or (
+            self.tau_hours is not None and "time" not in observations.coords
+        ):
+            raise ValueError(
+                "Co2ReferenceCovariance needs a 'site' coordinate (and, with tau_hours, 'time')."
+            )
+        labels = np.asarray(observations["site"].values).astype(str)
+        error = np.asarray(observation_error.values, dtype=float)
         if not np.isfinite(error).all() or np.any(error < 0.0):
-            raise ValueError("observation_error_sd must be finite and non-negative.")
+            raise ValueError("Co2ReferenceCovariance observation error must be finite and non-negative.")
         scale = mole_fraction_unit_scale(self.units, context="Co2ReferenceCovariance units") / (
             mole_fraction_unit_scale(observation_units, context="CO2 observations")
         )
         amplitude = _site_rows(self.reference_sd, labels, "reference_sd") * scale
-        tau = None if self.tau_hours is None else _site_rows(self.tau_hours, labels, "tau_hours")
-        unique_labels = np.unique(labels)
-        description: dict[str, Any] = {
+        values = np.diag(np.square(error) + np.square(amplitude))
+        if self.tau_hours is not None:
+            tau = _site_rows(self.tau_hours, labels, "tau_hours")
+            hours = _hours(np.asarray(observations["time"].values))
+            if not np.isfinite(hours).all():
+                raise ValueError("Co2ReferenceCovariance observation times must be finite.")
+            for label in np.unique(labels):
+                rows = np.flatnonzero(labels == label)
+                block = np.square(amplitude[rows[0]]) * np.exp(
+                    -np.abs(hours[rows, None] - hours[None, rows]) / tau[rows[0]]
+                )
+                block[np.diag_indices(rows.size)] = values[rows, rows]
+                values[np.ix_(rows, rows)] = block
+        description = {
             "source": "Co2ReferenceCovariance",
             "reference_sd": _json_site_values(self.reference_sd),
             "units": self.units,
             "tau_hours": None if self.tau_hours is None else _json_site_values(self.tau_hours),
-            "correlation": "independent" if tau is None else "within-site OU",
-            "observation_units": observation_units,
+            "correlation": "independent" if self.tau_hours is None else "within-site OU",
             "reference_sd_observation_units_by_site": {
-                str(label): float(amplitude[np.flatnonzero(labels == label)[0]]) for label in unique_labels
+                str(label): float(amplitude[np.flatnonzero(labels == label)[0]])
+                for label in np.unique(labels)
             },
             "observation_error": "reported observation-error variance included",
             "observation_error_sd_min": float(error.min()),
             "observation_error_sd_median": float(np.median(error)),
         }
-        variance = np.square(error) + np.square(amplitude)
-        if tau is None:
-            return ReferenceMismatchCovariance(variance=variance, description=description)
-
-        if observation_times is None:
-            raise ValueError("An OU reference covariance requires observation times.")
-        hours = _hours(observation_times)
-        if hours.shape != (n,) or not np.isfinite(hours).all():
-            raise ValueError("Observation times must be finite and one per row.")
-        site_rows = []
-        blocks = []
-        for label in unique_labels:
-            rows = np.flatnonzero(labels == label)
-            block = np.square(amplitude[rows[0]]) * np.exp(
-                -np.abs(hours[rows, None] - hours[None, rows]) / tau[rows[0]]
-            )
-            block[np.diag_indices(rows.size)] = variance[rows]
-            site_rows.append(rows)
-            blocks.append(block)
-        return ReferenceMismatchCovariance(
-            variance=variance, site_rows=tuple(site_rows), blocks=tuple(blocks), description=description
+        return square_matrix(
+            values,
+            observations,
+            row_dim=dim,
+            column_dim=matrix_column_dim(dim, observations.dims),
+            name="reference_covariance",
+            attrs={"units": f"({observation_units})**2", "description": json.dumps(description)},
         )
-
-
-def supplied_reference_covariance(
-    values: np.ndarray,
-    *,
-    units: str,
-    observation_units: str,
-    unit_scale: float,
-    name: str | None,
-) -> ReferenceMismatchCovariance:
-    """Wrap validated, materialized, observation-ordered supplied :math:`R_0` values.
-
-    The caller has checked both axes against the canonical observation order
-    and resolved ``unit_scale`` from ``units`` to observation units squared.
-    The covariance is treated as one dense block.
-
-    Args:
-        values: Dense covariance values in the supplied units.
-        units: Supplied covariance units.
-        observation_units: Mole-fraction units of the observations.
-        unit_scale: Multiplier converting ``units`` to observation units
-            squared.
-        name: Supplied array name, recorded if present.
-
-    Returns:
-        The reference covariance with a JSON-safe description.
-    """
-    converted = np.asarray(values, dtype=float) * float(unit_scale)
-    n = converted.shape[0]
-    return ReferenceMismatchCovariance(
-        variance=np.diag(converted).copy(),
-        site_rows=(np.arange(n),),
-        blocks=(converted,),
-        description={
-            "source": "supplied labelled covariance",
-            "name": name,
-            "units": units,
-            "observation_units": observation_units,
-            "unit_scale_to_observation_units_squared": float(unit_scale),
-            "structure": "dense",
-        },
-    )
 
 
 _SQUARED_UNITS = re.compile(r"^\s*\(?\s*(?P<base>[^()]+?)\s*\)?\s*(?:\*\*|\^)\s*2\s*$")

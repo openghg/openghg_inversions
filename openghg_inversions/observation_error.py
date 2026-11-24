@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from numbers import Real
 from typing import Any, Literal, TypeAlias
 import warnings
@@ -19,6 +19,7 @@ import numpy as np
 from scipy.linalg import solve_triangular
 import xarray as xr
 
+from openghg_inversions._linalg import cholesky_with_condition
 from openghg_inversions.array_ops import materialize_together, validate_covariance_coordinates
 
 AggregationErrorMode: TypeAlias = Literal["auto", "none", "dense", "low_rank", "diagonal"]
@@ -289,7 +290,7 @@ class WhitenedRankRule:
 
     The rule solves :math:`A u_i = \mu_i R_0 u_i` for the aggregation
     covariance :math:`A` against a reference mismatch covariance :math:`R_0`
-    supplied separately as a :class:`ReferenceMismatchCovariance`.
+    supplied separately (in CO2 preparation, ``reference_covariance``).
     :math:`\mu_i` is the variance of mode :math:`i` of :math:`A` in units of
     reference noise. Dropping the modes after the leading :math:`k` from the
     whitened representation costs
@@ -379,138 +380,6 @@ def whitened_eigenvalue_kl(eigenvalues: np.ndarray) -> float:
     return 0.5 * float(np.sum(values - np.log1p(values)))
 
 
-@dataclass(frozen=True, eq=False)
-class ReferenceMismatchCovariance:
-    r"""Diagonal or block-diagonal reference mismatch covariance :math:`R_0`.
-
-    :math:`R_0` is used only to screen the aggregation-error rank. It is
-    either diagonal or block diagonal, with dense blocks on disjoint row sets
-    that together cover every row; one block over every row is a general
-    dense covariance. Whoever builds it owns ``description``, one JSON-safe
-    record of the supplied settings and any converted values, which is stored
-    with the rank diagnostics. CO2 preparation builds its default reference
-    with :class:`~openghg_inversions.rhime.co2.Co2ReferenceCovariance`.
-
-    Attributes:
-        variance: Per-row variance, the diagonal of :math:`R_0`.
-        site_rows: Integer row indices of each block, partitioning every row.
-            Empty for a diagonal reference.
-        blocks: Dense symmetric positive definite block for each entry of
-            ``site_rows``, with diagonal equal to ``variance`` on those rows.
-            Blocks are symmetrized after validation.
-        description: JSON-safe description of how the reference was built.
-        minimum_eigenvalue: Smallest eigenvalue of :math:`R_0`, computed at
-            construction.
-
-    Raises:
-        ValueError: If the variance is not finite and positive, the row sets
-            are not non-empty integer vectors partitioning the rows, a block
-            is not symmetric positive definite with the stated diagonal, or
-            the description is not JSON-safe.
-    """
-
-    variance: np.ndarray
-    site_rows: tuple[np.ndarray, ...] = ()
-    blocks: tuple[np.ndarray, ...] = ()
-    description: Mapping[str, Any] = field(default_factory=dict)
-    minimum_eigenvalue: float = field(init=False)
-
-    def __post_init__(self) -> None:
-        """Validate the structure and record the smallest eigenvalue."""
-        variance = np.asarray(self.variance, dtype=float)
-        if (
-            variance.ndim != 1
-            or variance.size == 0
-            or not np.isfinite(variance).all()
-            or np.any(variance <= 0.0)
-        ):
-            raise ValueError(
-                "Reference mismatch variance must be a non-empty vector of positive finite values."
-            )
-        if len(self.site_rows) != len(self.blocks):
-            raise ValueError("Reference mismatch covariance needs one block per site row set.")
-        site_rows = tuple(np.asarray(rows) for rows in self.site_rows)
-        for rows in site_rows:
-            if rows.ndim != 1 or rows.size == 0 or not np.issubdtype(rows.dtype, np.integer):
-                raise ValueError(
-                    "Each reference mismatch block's row indices must be a non-empty one-dimensional "
-                    "integer array."
-                )
-        try:
-            description = json.loads(json.dumps(dict(self.description), allow_nan=False))
-        except (TypeError, ValueError) as exc:
-            raise ValueError("Reference mismatch description must be JSON-safe.") from exc
-        minimum = float(variance.min())
-        blocks: tuple[np.ndarray, ...] = ()
-        if site_rows:
-            covered = np.sort(np.concatenate(site_rows))
-            if not np.array_equal(covered, np.arange(variance.size)):
-                raise ValueError(
-                    "Reference mismatch site blocks must partition every observation row exactly once."
-                )
-            minimum = np.inf
-            checked = []
-            for rows, block in zip(site_rows, self.blocks, strict=True):
-                values = np.asarray(block, dtype=float)
-                if values.shape != (rows.size, rows.size) or not np.isfinite(values).all():
-                    raise ValueError("Each reference mismatch block must be finite and match its rows.")
-                _validate_dense_covariance_symmetry(values, owner="Reference mismatch block")
-                values = 0.5 * (values + values.T)
-                if not np.allclose(np.diag(values), variance[rows], rtol=1e-12, atol=0.0):
-                    raise ValueError("Each reference mismatch block must have diagonal equal to variance.")
-                minimum = min(minimum, float(np.linalg.eigvalsh(values)[0]))
-                checked.append(values)
-            if minimum <= 0.0:
-                raise ValueError(
-                    "Reference mismatch covariance is not positive definite; check for repeated observation "
-                    "times with zero observation error."
-                )
-            blocks = tuple(checked)
-        object.__setattr__(self, "variance", variance)
-        object.__setattr__(self, "site_rows", site_rows)
-        object.__setattr__(self, "blocks", blocks)
-        object.__setattr__(self, "description", description)
-        object.__setattr__(self, "minimum_eigenvalue", minimum)
-
-
-def whitened_aggregation_spectrum(
-    aggregation_error_covariance: np.ndarray,
-    reference_covariance: ReferenceMismatchCovariance,
-) -> np.ndarray:
-    r"""Return generalized eigenvalues of aggregation error against a reference.
-
-    Solves :math:`A u = \mu R_0 u` by forming :math:`L^{-1} A L^{-T}`, where
-    :math:`L` is the block-diagonal Cholesky factor of :math:`R_0`, and taking
-    its eigenvalues. Only eigenvalues are computed. Cost is one dense
-    ``n x n`` copy, block triangular solves and one symmetric eigenvalue
-    decomposition, :math:`O(n^3)`.
-
-    :math:`A` must be a finite, square and symmetric matrix at its own scale
-    (the tolerance used by :func:`prepare_low_rank_aggregation_error`).
-    Positive semidefiniteness is owned by that factorization: a negative
-    whitened eigenvalue is rejected only when it implies an eigenvalue of
-    :math:`A` below the negative roundoff tolerance, and accepted roundoff is
-    clipped to zero.
-
-    Args:
-        aggregation_error_covariance: Dense symmetric aggregation covariance
-            :math:`A`.
-        reference_covariance: Reference mismatch covariance :math:`R_0` in
-            the same units squared and row order.
-
-    Returns:
-        Whitened eigenvalues in descending order, with accepted roundoff
-        below zero clipped to zero.
-
-    Raises:
-        ValueError: If ``aggregation_error_covariance`` is not a finite square
-            symmetric matrix matching ``reference_covariance``, or is
-            materially indefinite.
-    """
-    values, tolerance = _validated_aggregation_values(aggregation_error_covariance, reference_covariance)
-    return _whitened_spectrum(values, reference_covariance, tolerance)
-
-
 def select_whitened_rank(
     eigenvalues: np.ndarray,
     rule: WhitenedRankRule,
@@ -581,69 +450,56 @@ def select_whitened_rank(
     }
 
 
-def choose_whitened_aggregation_rank(
-    aggregation_error_covariance: np.ndarray,
-    reference_covariance: ReferenceMismatchCovariance,
-    rule: WhitenedRankRule,
-) -> tuple[int, dict[str, Any]]:
-    """Choose an LRPD rank from a dense aggregation covariance and a reference.
-
-    This is an eager numerical boundary: it computes the whitened spectrum
-    with :func:`whitened_aggregation_spectrum` and applies
-    :func:`select_whitened_rank`.
-
-    Args:
-        aggregation_error_covariance: Dense symmetric aggregation covariance
-            :math:`A`.
-        reference_covariance: Reference mismatch covariance :math:`R_0` in
-            the same units squared and row order.
-        rule: Rank criteria and optional explicit rank.
-
-    Returns:
-        The chosen rank and a JSON-safe record: the reference's own
-        ``description`` under ``reference_covariance`` and the rule's
-        criteria, counts and dropped-mode KL.
-
-    Raises:
-        ValueError: If the covariance or reference is invalid.
-    """
-    eigenvalues = whitened_aggregation_spectrum(aggregation_error_covariance, reference_covariance)
-    rank, selection = select_whitened_rank(eigenvalues, rule)
-    return rank, {"reference_covariance": dict(reference_covariance.description), **selection}
+REFERENCE_MIN_RECIPROCAL_CONDITION = float(np.sqrt(np.finfo(np.float64).eps))
 
 
-def prepare_whitened_low_rank_aggregation_error(
+def _prepare_whitened_low_rank_aggregation_error(
     aggregation_error_covariance: xr.DataArray,
-    reference_covariance: ReferenceMismatchCovariance,
+    reference_covariance: np.ndarray,
     rule: WhitenedRankRule,
     *,
+    reference_description: Mapping[str, Any],
     output_dim: str = "nmeasure",
     covariance_dim: str = "nmeasure_cov",
 ) -> tuple[LowRankAggregationErrorApproximation, dict[str, Any]]:
-    """Choose the LRPD rank from the whitened spectrum and factorize once.
+    r"""Choose the LRPD rank from the whitened spectrum and factorize once.
 
-    The integrated path used by preparation: the covariance coordinates are
-    checked, the payload is materialized once, finite and symmetric values
-    are checked once at the covariance scale, and that tolerance is shared by
-    the whitened spectrum and the eigendecomposition with a diagonal tail.
+    Solves :math:`A u = \mu R_0 u` by forming :math:`L^{-1} A L^{-T}` with the
+    Cholesky factor :math:`L` of the dense reference :math:`R_0`, then applies
+    ``rule`` and factorizes :math:`A` at the chosen rank. The caller owns the
+    labels and units of :math:`R_0`: it must already be ordered like the rows
+    of :math:`A` and expressed in the same units squared.
+
+    Validation has one owner per property. :math:`A` is checked once for
+    finite and symmetric values at its own scale; positive semidefiniteness
+    and roundoff of :math:`A` are owned by the LRPD factorization, so negative
+    whitened eigenvalues are clipped to zero for rank scoring. :math:`R_0` is
+    checked here to be finite, symmetric and numerically positive definite,
+    using its Cholesky factor and the LAPACK reciprocal condition estimate.
 
     Args:
-        aggregation_error_covariance: Labelled symmetric positive
-            semidefinite covariance :math:`A`.
-        reference_covariance: Reference mismatch covariance :math:`R_0` in
-            the same units squared and row order.
+        aggregation_error_covariance: Labelled covariance :math:`A`.
+        reference_covariance: Dense reference covariance :math:`R_0` values.
         rule: Rank criteria and optional explicit rank.
+        reference_description: JSON-safe description of :math:`R_0` from its
+            owner, stored with the rank diagnostics.
         output_dim: Observation dimension on the covariance rows.
         covariance_dim: Repeated observation dimension on the columns.
 
     Returns:
         The low-rank approximation at the chosen rank, as from
-        :func:`prepare_low_rank_aggregation_error`, and the rank-selection
-        record from :func:`choose_whitened_aggregation_rank`.
+        :func:`prepare_low_rank_aggregation_error`, and a JSON-safe record of
+        the reference description, criteria, counts and dropped-mode KL.
 
     Raises:
-        ValueError: If coordinates, values or the reference are invalid.
+        ValueError: If coordinates or values are invalid, :math:`R_0` is not
+            numerically positive definite, or the description is not
+            JSON-safe.
     """
+    try:
+        description = json.loads(json.dumps(dict(reference_description), allow_nan=False))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("The reference covariance description must be JSON-safe.") from exc
     validate_covariance_coordinates(
         aggregation_error_covariance, dim=output_dim, covariance_dim=covariance_dim
     )
@@ -651,72 +507,68 @@ def prepare_whitened_low_rank_aggregation_error(
         aggregation_error_covariance,
         purpose="aggregation-error covariance for rank selection and factorization",
     )
-    values, tolerance = _validated_aggregation_values(
-        _numeric_finite("covariance", covariance, owner="Low-rank approximation input"),
-        reference_covariance,
-        check_finite=False,
+    values = np.asarray(
+        _numeric_finite("covariance", covariance, owner="Low-rank approximation input"), dtype=float
     )
-    eigenvalues = _whitened_spectrum(values, reference_covariance, tolerance)
+    tolerance = _validate_dense_covariance_symmetry(values, owner="Low-rank approximation input covariance")
+    cholesky = _reference_cholesky(reference_covariance, values.shape[0])
+    eigenvalues = _whitened_spectrum(values, cholesky)
+    del cholesky
     rank, selection = select_whitened_rank(eigenvalues, rule)
     approximation = _low_rank_approximation(
         covariance, values, rank=rank, roundoff_tolerance=tolerance, output_dim=output_dim
     )
-    return approximation, {"reference_covariance": dict(reference_covariance.description), **selection}
+    return approximation, {"reference_covariance": description, **selection}
 
 
-def _validated_aggregation_values(
-    covariance: np.ndarray,
-    reference_covariance: ReferenceMismatchCovariance,
-    *,
-    check_finite: bool = True,
-) -> tuple[np.ndarray, float]:
-    """Check a dense aggregation covariance against a reference and return its tolerance."""
-    values = np.asarray(covariance, dtype=float)
-    if values.ndim != 2 or values.shape[0] != values.shape[1] or values.shape[0] == 0:
-        raise ValueError("Aggregation covariance must be a non-empty square matrix.")
-    if values.shape[0] != reference_covariance.variance.size:
+def _reference_cholesky(reference_covariance: np.ndarray, n_observation: int) -> np.ndarray:
+    """Check a dense reference covariance and return its lower Cholesky factor.
+
+    A successful Cholesky factorization alone does not show that the matrix is
+    numerically nonsingular, so the reciprocal condition estimate from the
+    same factor is also required to exceed
+    :data:`REFERENCE_MIN_RECIPROCAL_CONDITION` (see
+    ``docs/development/validation_and_xarray.rst``).
+
+    Raises:
+        ValueError: If the reference is not a finite symmetric
+            ``n_observation`` square matrix or is not numerically positive
+            definite.
+    """
+    values = np.asarray(reference_covariance, dtype=float)
+    if values.shape != (n_observation, n_observation):
         raise ValueError(
-            f"Aggregation covariance has {values.shape[0]} rows but the reference covariance has "
-            f"{reference_covariance.variance.size}."
+            f"The reference covariance must be {n_observation} x {n_observation}; got shape {values.shape}."
         )
-    if check_finite and not np.isfinite(values).all():
-        raise ValueError("Aggregation covariance must be finite.")
-    return values, _validate_dense_covariance_symmetry(values, owner="Aggregation covariance")
+    if not np.isfinite(values).all():
+        raise ValueError("The reference covariance must be finite.")
+    _validate_dense_covariance_symmetry(values, owner="The reference covariance")
+    try:
+        (factor, _), reciprocal_condition = cholesky_with_condition(0.5 * (values + values.T))
+    except np.linalg.LinAlgError as exc:
+        raise ValueError("The reference covariance must be positive definite.") from exc
+    if not reciprocal_condition > REFERENCE_MIN_RECIPROCAL_CONDITION:
+        raise ValueError(
+            "The reference covariance is numerically singular: estimated reciprocal 1-norm condition "
+            f"{reciprocal_condition:.3e} is not above {REFERENCE_MIN_RECIPROCAL_CONDITION:.3e}."
+        )
+    return factor
 
 
-def _whitened_spectrum(
-    values: np.ndarray,
-    reference_covariance: ReferenceMismatchCovariance,
-    tolerance: float,
-) -> np.ndarray:
-    """Return clipped descending whitened eigenvalues of already validated values."""
-    if not reference_covariance.site_rows:
-        scale = np.sqrt(reference_covariance.variance)
-        whitened = values / scale[:, None]
-        whitened /= scale[None, :]
-    else:
-        # Form L^{-1} A L^{-T} for the block-diagonal Cholesky factor L of R0: the first pass solves on
-        # each block's rows (L^{-1} A), the second on each block's columns ((L^{-1} A) L^{-T}).
-        whitened = values.copy()
-        factors = [
-            (rows, np.linalg.cholesky(block))
-            for rows, block in zip(reference_covariance.site_rows, reference_covariance.blocks, strict=True)
-        ]
-        for rows, cholesky in factors:
-            whitened[rows, :] = solve_triangular(cholesky, whitened[rows, :], lower=True)
-        for rows, cholesky in factors:
-            whitened[:, rows] = solve_triangular(cholesky, whitened[:, rows].T, lower=True).T
-        whitened += whitened.T
-        whitened *= 0.5
+def _whitened_spectrum(values: np.ndarray, cholesky: np.ndarray) -> np.ndarray:
+    """Return descending whitened eigenvalues of checked ``A`` with negative roundoff clipped.
 
+    Forms ``L^{-1} A L^{-T}`` with two triangular solves: the first gives
+    ``L^{-1} A`` and the second, applied to its transpose, ``L^{-1} A L^{-T}``.
+    Only the lower triangle of ``cholesky`` is read.
+    """
+    whitened = solve_triangular(cholesky, values, lower=True, check_finite=False)
+    whitened = solve_triangular(cholesky, whitened.T, lower=True, check_finite=False)
+    whitened += whitened.T
+    whitened *= 0.5
     eigenvalues = np.linalg.eigvalsh(whitened)[::-1]
     del whitened
-    # v'Av >= lambda_min(A) |v|^2 and v'R0v >= lambda_min(R0) |v|^2, so a negative whitened eigenvalue
-    # satisfies mu >= lambda_min(A) / lambda_min(R0). Every A accepted at its own roundoff tolerance
-    # therefore has mu >= -tolerance / lambda_min(R0); allow the whitening's own roundoff on top.
-    floor = tolerance / reference_covariance.minimum_eigenvalue + 1e-10 * float(np.max(np.abs(eigenvalues)))
-    if float(eigenvalues[-1]) < -floor:
-        raise ValueError("Aggregation covariance must be positive semidefinite.")
+    # The LRPD factorization owns positive semidefiniteness of A at its own scale.
     return np.maximum(eigenvalues, 0.0)
 
 
