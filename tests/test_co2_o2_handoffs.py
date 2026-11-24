@@ -289,3 +289,26 @@ def test_fixed_ou_prior_stage_keeps_joint_prediction_labels(tmp_path):
     prior = load_trace(tmp_path / "prior" / "prior-predictive.nc")
     assert prior.prior_predictive.indexes["observation"].equals(synthetic_inputs().observations.indexes["observation"])
     assert json.loads(prior.attrs["rhime_model_metadata"])["likelihood"] == "joint Gaussian with fixed OU blocks by (species, site)"
+
+
+def test_final_linked_sample_write_rechecks_the_request(tmp_path, monkeypatch):
+    """A request hardlinked to the posterior during linked inference is not overwritten."""
+    source = tmp_path / "linked.nc"
+    synthetic_inputs().save(source)
+    prep = handoffs.prepare(prepared_path=source, output_dir=tmp_path / "prepare")
+    request = tmp_path / "request.json"
+    request.write_text("consumed request")
+    destination = tmp_path / "sample"
+
+    def infer(*args, **kwargs):
+        destination.mkdir()
+        (destination / "posterior.nc").hardlink_to(request)
+        return object()
+
+    monkeypatch.setattr(handoffs, "build_rhime_co2_o2", lambda *a, **kw: object())
+    monkeypatch.setattr(handoffs, "sample_rhime_model", infer)
+    monkeypatch.setattr(handoffs, "annotate_co2_o2_trace", lambda trace, **kw: trace)
+    monkeypatch.setattr(handoffs, "validate_co2_o2_trace", lambda *a, **kw: None)
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+        handoffs.sample(prep, model=MODEL, output_dir=destination, referenced=(request,))
+    assert request.read_text() == "consumed request"

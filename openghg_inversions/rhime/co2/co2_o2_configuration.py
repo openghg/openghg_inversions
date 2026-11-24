@@ -61,7 +61,7 @@ def load_co2_o2_params(
         options = _table(params, "config")
     _validate_co2_o2_option_names(options, overrides or {})
     for name, value in (overrides or {}).items():
-        if name in {"prepared_inputs", "channels", "likelihood", "sampling", "outputs"} and isinstance(value, Mapping):
+        if name in {"prepared_inputs", "channels", "outer_flux", "likelihood", "sampling", "outputs"} and isinstance(value, Mapping):
             previous = _table(options.get(name, {}), name)
             if name == "channels":
                 for channel, choices in value.items():

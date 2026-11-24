@@ -320,7 +320,6 @@ def build_rhime_co2_o2(
         materialized
     )
     flux_prior = CorrelatedPrior.from_lognormal(prepared.retained_prior)
-    outer = None if outer_flux is None else outer_flux.resolve_states(flux_prior)
     model = _build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
@@ -334,7 +333,7 @@ def build_rhime_co2_o2(
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
         boundary=bound,
-        outer_flux=outer,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
     )
@@ -347,8 +346,8 @@ def build_rhime_co2_o2(
     if bound or offset_prior:
         variable_roles["baseline_concentration"] = "baseline_concentration"
     metadata = {**_co2_o2_metadata(prepared, observations=observations), **boundary_metadata}
-    if outer is not None:
-        metadata.update(outer.outputs().metadata)
+    if outer_flux is not None:
+        metadata.update(outer_flux.outputs().metadata)
     if tau_hours is not None:
         variable_roles.update(
             {

@@ -194,7 +194,7 @@ def test_configured_outer_flux_matches_python_option(cached):
     assert choices["outer_flux"] == OuterFluxChoice("marginalise", ("outer",))
     built, _ = build_co2_inference(prepared, choices)
     metadata = json.loads(json.dumps(built.output_contract.metadata))
-    assert metadata["outer_flux_mode"] == "marginalise" and metadata["outer_marginal_rank"] == 1
+    assert metadata["outer_flux_mode"] == "marginalise"
 
     prior = CorrelatedPrior(inv.alpha_prior_mean, inv.alpha_prior_covariance, covariance_dim="region_cov")
     expected = build_co2_model(
@@ -205,7 +205,7 @@ def test_configured_outer_flux_matches_python_option(cached):
         observation_error=inv.mf_error,
         aggregation_error=resolve_aggregation_error(inv, prepared.aggregation_error_mode),
         boundary=AnomalyScalingChoice(mean_shift_prior, 0.3).bind(inv.mf, RawCenteredSensitivity.validate(inv)),
-        outer_flux=OuterFluxChoice("marginalise", ("outer",)).resolve_states(prior),
+        outer_flux=OuterFluxChoice("marginalise", ("outer",)),
         **(
             {"likelihood_builder": add_fixed_ou_gaussian_likelihood,
              "likelihood_kwargs": {k: v for k, v in likelihood.items() if k != "kind"}}
@@ -264,9 +264,7 @@ def test_linked_configured_outer_flux_matches_python_option(monkeypatch, cached)
         configured = built[0]
     else:
         configured = build_rhime_co2_o2(prepared_inputs=prepared, **choices).model
-    outer_flux = OuterFluxChoice("fixed", ("outer",), ("ocean",)).resolve_states(
-        CorrelatedPrior.from_lognormal(prepared.retained_prior),
-    )
+    outer_flux = OuterFluxChoice("fixed", ("outer",), ("ocean",))
     expected = build_co2_o2_model(**kwargs, boundary=expected_boundary, outer_flux=outer_flux, **(ou if cached else {}))
     _parity(configured, expected)
 
@@ -343,6 +341,22 @@ def test_toml_outer_flux_choice_is_the_python_choice():
     """)
     config = Co2ModelConfig.from_params(load_co2_params(params=request))
     assert config.outer_flux == OuterFluxChoice("marginalise", ("outer",), ("ocean",))
+
+
+def test_partial_outer_flux_overrides_merge_with_the_base_table():
+    base = {"mode": "fixed", "outer_groups": ["outer"]}
+    expected = OuterFluxChoice("fixed", ("outer",), ("ocean",))
+    single = load_co2_params(
+        params={"model": {"outer_flux": dict(base)}, "likelihood": {"kind": "additive_sigma"}},
+        overrides={"model": {"outer_flux": {"fixed_sources": ["ocean"]}}},
+    )
+    assert Co2ModelConfig.from_params(single).outer_flux == expected
+    linked = load_co2_o2_params(
+        params={"outer_flux": dict(base), "channels": {"co2": {"units": "ppm"}, "o2": {"units": "ppm"}}},
+        overrides={"outer_flux": {"fixed_sources": ["ocean"]}},
+    )
+    assert linked["outer_flux"] == {**base, "fixed_sources": ["ocean"]}
+    assert Co2O2ModelConfig.from_params(linked).outer_flux == expected
 
 
 @pytest.mark.parametrize("request_kind", ["params_file", "config_file"])
