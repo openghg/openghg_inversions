@@ -165,7 +165,7 @@ def test_unsupported_units_templates_and_missing_components():
     with pytest.raises(ValueError, match="boundary_concentration"):
         make_co2_o2_paris_outputs(trace, prepared)
     prepared, trace = _joint_fixture(baseline=False, o2_units="per meg")
-    with pytest.raises(ValueError, match="cannot represent"):
+    with pytest.raises(ValueError, match="require a delta\\(O2/N2\\) declaration"):
         make_co2_o2_paris_outputs(trace, prepared)
 
 
@@ -493,3 +493,21 @@ def test_paris_keeps_co2_concentration_and_omits_per_meg_o2_concentration(tmp_pa
     assert products["co2"]["concentration"].mf_posterior.attrs["units"] == "mol mol-1"
     written = sorted(path.name for path in (tmp_path / "outputs").iterdir())
     assert written == ["co2_concentration.nc", "o2_flux.nc"]
+
+
+def test_direct_output_api_rejects_per_meg_declaration_on_ppm_o2_rows(tmp_path):
+    """A delta(O2/N2) declaration cannot relabel ppm O2 rows on the public output helpers."""
+    declaration = DeltaO2N2Declaration(0.20946 / 0.78084, "CORSO TM5 O2 and N2 curtains")
+    prepared, trace = _joint_fixture(baseline=False, o2_units="ppm")
+    mismatched = replace(
+        prepared,
+        provenance={**prepared.provenance, O2_OBSERVABLE_PROVENANCE_KEY: declaration.to_provenance()},
+    )
+
+    with pytest.raises(ValueError, match="do not match the declared delta"):
+        reconstruct_co2_o2_concentrations(trace, mismatched)
+    with pytest.raises(ValueError, match="do not match the declared delta"):
+        reconstruct_co2_o2_concentrations(trace, mismatched, require_prior=False)
+    with pytest.raises(ValueError, match="do not match the declared delta"):
+        make_co2_o2_paris_outputs(trace, mismatched, output_path=tmp_path / "outputs")
+    assert not (tmp_path / "outputs").exists()

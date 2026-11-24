@@ -114,7 +114,7 @@ def test_per_meg_without_declaration_or_matching_units_is_rejected():
     relabelled = declared.observations.assign_coords(
         observation_units=("observation", ["per meg"] * 2 + ["per meg"] * 3)
     )
-    with pytest.raises(ValueError, match="CO2 observation_units must be a mole fraction"):
+    with pytest.raises(ValueError, match="ratio anomaly.*CO2 observation_units"):
         validate_co2_o2_channel_units(replace(declared, observations=relabelled))
 
 

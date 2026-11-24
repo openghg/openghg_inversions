@@ -5,11 +5,43 @@ validates unit compatibility and derives numeric scales for output formats.
 ``mole_fraction_unit_scale`` parses an OpenGHG unit expression relative to
 ``mol/mol`` and raises ``ValueError`` for invalid or incompatible units; it
 does not mutate datasets or perform cross-site conversion.
+
+OpenGHG's unit registry defines ``per meg`` as 1e-6 and ``per mil`` (``‰``) as
+1e-3, so a ratio anomaly such as delta(O2/N2) or Delta14CO2 would otherwise
+parse as a dimensionless mole-fraction scale. ``mole_fraction_unit_scale``
+rejects those labels (see :func:`is_ratio_anomaly_unit`) before parsing.
+Pre-transformed per-meg delta(O2/N2) artifacts are accepted only through the
+explicit :class:`~openghg_inversions.inversion_data.o2n2.DeltaO2N2Declaration`
+path, which never treats them as mole fractions.
 """
 
 from openghg.util import (
     cf_ureg,  # pyright: ignore[reportPrivateImportUsage, reportAttributeAccessIssue]
 )
+
+# Per mille, per ten thousand and (casefolded) delta symbols.
+_RATIO_ANOMALY_SYMBOLS = ("‰", "‱", "δ")
+_RATIO_ANOMALY_COMPACT = frozenset({"permil", "permill", "permille", "permyriad"})
+
+
+def is_ratio_anomaly_unit(unit: object) -> bool:
+    """Return whether a unit label is a ratio anomaly rather than a mole fraction.
+
+    Covers per meg (``"per meg"``, ``"per_meg"``, ``"permeg"``), per mil
+    (``"per mil"``, ``"permil"``, ``"per mille"``, ``"‰"``), per ten thousand
+    (``"‱"``) and labels naming a delta (``"delta"``, ``"δ"``, ``"Δ"``). Unit
+    parsers read ``"per meg"`` as 1e-6 mol/mol and ``"per mil"`` as 1e-3
+    mol/mol, so mole-fraction checks must reject these labels before
+    converting units. Case, spaces and punctuation are ignored.
+    """
+    label = str(unit).casefold()
+    compact = "".join(character for character in label if character.isalnum())
+    return (
+        "meg" in compact
+        or "delta" in compact
+        or any(symbol in label for symbol in _RATIO_ANOMALY_SYMBOLS)
+        or compact in _RATIO_ANOMALY_COMPACT
+    )
 
 
 def mole_fraction_unit_scale(raw_units: str, *, context: str) -> float:
@@ -23,8 +55,15 @@ def mole_fraction_unit_scale(raw_units: str, *, context: str) -> float:
         The numeric scale relative to ``mol/mol``.
 
     Raises:
-        ValueError: If the units cannot be converted to ``mol/mol``.
+        ValueError: If the units are a ratio anomaly such as per meg or per
+            mil (see :func:`is_ratio_anomaly_unit`), or cannot be converted to
+            ``mol/mol``.
     """
+    if is_ratio_anomaly_unit(raw_units):
+        raise ValueError(
+            f"Cannot use ratio anomaly units {raw_units!r} for {context} as a mole fraction. "
+            "Declare per-meg delta(O2/N2) O2 with DeltaO2N2Declaration instead of converting it to mol/mol."
+        )
     try:
         quantity = cf_ureg.parse_expression(raw_units)
         if not hasattr(quantity, "to"):

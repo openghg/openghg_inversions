@@ -1013,7 +1013,8 @@ starts. Concentration products hold dry-air mole fractions convertible to
 concentration product (``products["o2"]`` holds only a requested flux product);
 its per-meg values, residuals and offsets are in the linked basic products,
 labelled by the ``units``, ``observable`` and ``o2_n2_reference_ratio``
-attributes. Undeclared per-meg O2 raises an explicit error. Prior flux-scale draws and
+attributes. Undeclared per-meg O2, or a declaration whose units do not match the
+O2 rows, raises an explicit error before any product is chosen. Prior flux-scale draws and
 prior draws for selected boundary/offset terms are required; keep the sampler's
 prior-predictive sampling enabled. Prior and posterior may have different
 numbers of draws or chains. Fixed states use their actual prior draws rather

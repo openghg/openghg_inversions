@@ -15,6 +15,7 @@ from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.operators import BucketBasisOperator
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data.o2n2 import DELTA_O2_N2, MOLE_FRACTION, DeltaO2N2Declaration
+from openghg_inversions.rhime.co2.co2_o2_configuration import validate_co2_o2_channel_units
 from openghg_inversions.rhime.co2.co2_o2_model import _gather_co2_o2_sensitivity
 from openghg_inversions.postprocessing.boundary_outputs import decode_saved_boundaries, reconstruct_boundary
 from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
@@ -84,11 +85,16 @@ def reconstruct_co2_o2_concentrations(
         Inputs remain borrowed; computation is deferred to product creation.
 
     Raises:
-        ValueError: If roles/prior baseline draws are missing or independently
-            supplied posterior and preparation labels differ.
+        ValueError: If roles/prior baseline draws are missing, independently
+            supplied posterior and preparation labels differ, or the channel
+            units do not match the declared O2 observable (see
+            :func:`~openghg_inversions.rhime.co2.co2_o2_configuration.validate_co2_o2_channel_units`).
     """
     if trace.attrs.get("rhime_recipe") not in {"co2_o2", "co2_o2_cached_sigma_fixed_ou"}:
         raise ValueError("Linked PARIS outputs require one joint co2_o2 posterior.")
+    # Same per-channel unit/observable check as the configured and handoff paths,
+    # so a declaration cannot relabel mole-fraction rows (or vice versa).
+    channel_units = validate_co2_o2_channel_units(prepared)
     roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
     sensitivity = _gather_co2_o2_sensitivity(prepared.co2_sensitivity, prepared.o2_sensitivity)
     state_dim = prepared.retained_prior.state_dim
@@ -171,7 +177,7 @@ def reconstruct_co2_o2_concentrations(
             species=species,
             has_offset=int(f"{species}_offset_concentration" in roles),
             source_components=json.dumps(sources),
-            units=str(observed.observation_units.values[0]),
+            units=channel_units[species],
             observable=DELTA_O2_N2 if species == "o2" and declaration is not None else MOLE_FRACTION,
         )
         if species == "o2" and declaration is not None:
@@ -192,12 +198,8 @@ def _concentration_product(
     """Apply existing v04 names, units, time conventions, and dtypes."""
     species = components.attrs["species"]
     raw_units = components.attrs["units"]
-    # A per-meg ratio anomaly is dimensionless but not a dry-air mole fraction.
-    if "meg" in raw_units.lower() or "delta" in raw_units.lower():
-        raise ValueError(
-            f"PARIS {species} concentration cannot represent {raw_units!r} as dry-air mole fraction."
-        )
-    scale = mole_fraction_unit_scale(raw_units, context=f"linked PARIS {species}")
+    # The shared parser rejects ratio anomalies such as per meg: v04 holds dry-air mole fractions.
+    scale = mole_fraction_unit_scale(raw_units, context=f"linked PARIS {species} concentration")
     if "time" not in components.coords or "site" not in components.coords:
         raise ValueError("Linked PARIS concentration requires observation-aligned site and time coordinates.")
     if not np.issubdtype(components.time.dtype, np.datetime64):
@@ -293,7 +295,8 @@ def make_co2_o2_paris_outputs(
             The v04 concentration template holds dry-air mole fractions, so a
             declared delta(O2/N2) O2 channel gets no PARIS concentration
             product; its per-meg values stay in the linked basic products.
-            Undeclared per-meg O2 is rejected.
+            Undeclared per-meg O2, and a declaration whose units do not
+            match the O2 rows, are rejected before any product is chosen.
         native_flux_bases: Optional species-to-basis mapping for total native
             flux. Each single-source bucket basis uses the full retained state labels
             and zero flux response for the other tracer's private states.

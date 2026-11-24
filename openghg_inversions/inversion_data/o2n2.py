@@ -20,6 +20,8 @@ from dataclasses import dataclass
 import math
 from typing import Any, Literal
 
+from ._units import is_ratio_anomaly_unit
+
 O2_OBSERVABLE_PROVENANCE_KEY = "o2_observable"
 MOLE_FRACTION = "mole_fraction"
 DELTA_O2_N2 = "delta_o2_n2"
@@ -31,24 +33,6 @@ def is_per_meg_unit(unit: object) -> bool:
     """Return whether a unit label names per meg (``"per meg"``, ``"per_meg"``, ``"permeg"``)."""
     label = str(unit).casefold()
     return "".join(character for character in label if character.isalnum()) == "permeg"
-
-
-def is_ratio_anomaly_unit(unit: object) -> bool:
-    """Return whether a unit label is a ratio anomaly (per meg, per mil, delta) rather than a mole fraction.
-
-    Unit parsers read ``"per meg"`` as 1e-6 mol/mol and ``"per mil"`` or ``"‰"`` as
-    1e-3 mol/mol, so mole-fraction checks must reject these labels explicitly
-    before converting units. The check covers any tracer reported as a ratio
-    anomaly (for example delta(O2/N2) in per meg or Delta14CO2 in per mil).
-    """
-    label = str(unit).casefold()
-    compact = "".join(character for character in label if character.isalnum())
-    return (
-        "meg" in label
-        or "delta" in label
-        or "\u2030" in label
-        or compact in {"permil", "permill", "permille"}
-    )
 
 
 @dataclass(frozen=True)

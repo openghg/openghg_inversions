@@ -139,9 +139,7 @@ class Co2O2PreparationConfig:
 
 
 def _mole_fraction_unit(unit: str, context: str) -> str:
-    """Check one mole-fraction label, rejecting per-meg labels that unit parsers read as 1e-6."""
-    if is_ratio_anomaly_unit(unit):
-        raise ValueError(f"{context} must be a mole fraction, not {unit!r}.")
+    """Check one mole-fraction label; the shared parser rejects ratio-anomaly labels such as per meg."""
     mole_fraction_unit_scale(unit, context=context)
     return unit
 

@@ -391,7 +391,9 @@ errors and covariance blocks must already be in per meg; OpenGHG Inversions
 does not apply the transform. Configure ``channels.o2.observable =
 "delta_o2_n2"`` and ``channels.o2.units`` equal to the declared label. CO2
 stays a mole fraction. Undeclared per-meg or delta labels are rejected, because
-unit parsers otherwise read ``"per meg"`` as 1e-6 mol/mol.
+unit parsers otherwise read ``"per meg"`` as 1e-6 mol/mol. The shared
+mole-fraction parser used by surface preparation and reporting rejects
+ratio-anomaly labels (per meg, per mil, ``‰``) for the same reason.
 
 Linked boundary corrections and fixed OU still require identical channel
 units, so a per-meg run currently uses the fixed-error likelihood without
