@@ -360,6 +360,23 @@ scientific arrays with
 :class:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs` artifact to NetCDF
 or Zarr. Product discovery and campaign policy belong to the caller.
 
+To prepare them from native responses instead, use
+:func:`~openghg_inversions.rhime.co2.co2_o2_native_preparation.prepare_multisource_native_co2_o2_inputs`.
+It takes each tracer's observations and native per-source responses, a
+per-source basis, and the per-source native priors of the configured CO₂
+route (:class:`~openghg_inversions.rhime.co2.configuration.Co2MultiSourceNativePrior`,
+including ``marginal`` and ``latent_correlation_floor``). It also takes an
+explicit map from each native source to its retained ``(source,
+tracer_scope)``. GPP, TER and fossil fuel are ``"shared"``. The CO₂ and O₂
+ocean sources are separate sources scoped ``"co2"`` and ``"o2"``, each with its
+own prior, and they are uncorrelated. Nothing is copied from one to the other.
+One coherent reduction over both tracers' rows gives the retained prior, both
+effective sensitivities and the joint unresolved covariance with its CO₂/O₂
+cross block. The O₂ responses must already contain each source's signed O₂
+flux, so no oxidative ratio is applied. Configured acquisition of the two
+channels is not wired yet
+(`#1051 <https://github.com/openghg/openghg_inversions/issues/1051>`_).
+
 The packaged ``co2_o2.toml`` template configures these saved phases. It has no
 ``variant`` selector. A minimal request using the saved independent-error vector
 is:
