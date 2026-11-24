@@ -2,11 +2,16 @@
 
 import json
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 import xarray as xr
 
-from openghg_inversions.inference.fixed_amplitudes import FixedSiteAmplitudeFile, FixedSiteAmplitudes
+from openghg_inversions.inference.fixed_amplitudes import (
+    FixedSiteAmplitudeFile,
+    FixedSiteAmplitudes,
+    fixed_amplitude_input_paths,
+)
 from openghg_inversions.inference.sampling import describe_recorded_sampler
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
@@ -43,6 +48,18 @@ def uses_cached_ou(model: Mapping[str, Any]) -> bool:
 def uses_fixed_theta_cached_ou(model: Mapping[str, Any]) -> bool:
     """Identify cached fixed-OU state sampling at supplied site amplitudes."""
     return uses_cached_ou(model) and "fixed_site_amplitudes" in (model.get("likelihood_kwargs") or {})
+
+
+def co2_model_input_paths(model: Mapping[str, Any]) -> tuple[Path, ...]:
+    """Files the selected model reads while it is built, which outputs must not overwrite."""
+    return fixed_amplitude_input_paths((model.get("likelihood_kwargs") or {}).get("fixed_site_amplitudes"))
+
+
+def recorded_co2_input_paths(recorded: object) -> tuple[Path, ...]:
+    """Files recorded as read by a completed inference, from its actual-inference record."""
+    if not isinstance(recorded, Mapping):
+        return ()
+    return fixed_amplitude_input_paths(recorded.get("ou_site_amplitude_source"))
 
 
 def validate_co2_inference(model: Mapping[str, Any], sampler: RhimeSampler) -> None:

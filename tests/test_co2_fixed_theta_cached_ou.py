@@ -8,7 +8,9 @@ the ordinary fixed-amplitude fixed-OU distribution.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 
@@ -26,12 +28,13 @@ from openghg_inversions.inference.cached_sigma import make_cached_state_nuts_ste
 from openghg_inversions.inference.fixed_amplitudes import (
     FixedSiteAmplitudeFile,
     FixedSiteAmplitudes,
+    in_concentration_units,
     load_fixed_site_amplitudes,
     resolve_fixed_site_amplitudes,
 )
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
-from openghg_inversions.rhime.co2 import build_co2_cached_sigma_model, inference
+from openghg_inversions.rhime.co2 import build_co2_cached_sigma_model, execution, handoffs, inference
 from openghg_inversions.rhime.co2.configuration import Co2ModelConfig, _resolve_co2_sampling
 from test_co2_affine_output import _prepared
 from test_co2_cached_sigma import _dense_fixed_ou_covariance, _inputs
@@ -147,9 +150,9 @@ def test_fixed_amplitudes_reject_inferred_options_and_singular_covariance():
         _build(state_activity=StateActivity(active=np.zeros(2, dtype=bool), fixed_value=1.0), inputs=inputs)
 
 
-def _posterior_file(path: Path, values: np.ndarray) -> Path:
+def _posterior_file(path: Path, values: np.ndarray, units: str | None = "ppm") -> Path:
     posterior = xr.Dataset(
-        {"ou_site_amplitude": (("chain", "draw", "ou_site"), values)},
+        {"ou_site_amplitude": (("chain", "draw", "ou_site"), values, {} if units is None else {"units": units})},
         coords={"ou_site": ["MHD"]},
     )
     xr.DataTree.from_dict({"posterior": posterior}).to_netcdf(path)
@@ -166,12 +169,15 @@ def test_amplitude_file_summarises_posterior_draws_and_records_source(tmp_path):
     assert median.source["group"] == "posterior"
     assert median.source["statistic"] == "median"
     assert median.source["n_samples"] == 6
+    assert median.source["units"] == "ppm" and median.units == "ppm"
     assert len(median.source["sha256"]) == 64
     mean = load_fixed_site_amplitudes(FixedSiteAmplitudeFile(path, statistic="mean"))
     assert mean.values == {"MHD": pytest.approx(draws.mean())}
 
     flat = tmp_path / "amplitudes.nc"
-    xr.Dataset({"ou_site_amplitude": ("ou_site", [0.25])}, coords={"ou_site": ["MHD"]}).to_netcdf(flat)
+    xr.Dataset(
+        {"ou_site_amplitude": ("ou_site", [0.25], {"units": "ppm"})}, coords={"ou_site": ["MHD"]},
+    ).to_netcdf(flat)
     plain = load_fixed_site_amplitudes(FixedSiteAmplitudeFile(flat))
     assert plain.values == {"MHD": 0.25}
     assert plain.source["statistic"] is None and plain.source["group"] is None
@@ -184,6 +190,108 @@ def test_amplitude_file_summarises_posterior_draws_and_records_source(tmp_path):
         load_fixed_site_amplitudes(FixedSiteAmplitudeFile(negative))
     with pytest.raises(ValueError, match="statistic"):
         FixedSiteAmplitudeFile(path, statistic="mode")  # type: ignore[arg-type]
+
+
+def test_amplitude_file_units_are_declared_and_converted(tmp_path):
+    ppb = load_fixed_site_amplitudes(FixedSiteAmplitudeFile(_posterior_file(tmp_path / "ppb.nc", np.full((1, 2, 1), 400.0), "ppb")))
+    assert ppb.values == {"MHD": 400.0} and ppb.units == "ppb"
+    converted = in_concentration_units(ppb, "ppm")
+    assert converted.values == {"MHD": pytest.approx(0.4)}
+    assert converted.units == "ppm"
+    assert converted.source["units"] == "ppb" and converted.source["fit_units"] == "ppm"
+    assert converted.source["unit_factor"] == pytest.approx(1e-3)
+    assert in_concentration_units(FixedSiteAmplitudes(0.4), "ppm") == FixedSiteAmplitudes(0.4)
+    with pytest.raises(ValueError, match="Could not convert"):
+        in_concentration_units(FixedSiteAmplitudes({"MHD": 1.0}, units="K"), "ppm")
+
+    unitless = _posterior_file(tmp_path / "unitless.nc", np.full((1, 2, 1), 0.4), None)
+    with pytest.raises(ValueError, match="no units attribute"):
+        load_fixed_site_amplitudes(FixedSiteAmplitudeFile(unitless))
+    declared = load_fixed_site_amplitudes(FixedSiteAmplitudeFile(unitless, units="ppm"))
+    assert declared.units == "ppm" and declared.source["units"] == "ppm"
+    ppb_path = Path(ppb.source["path"])
+    with pytest.raises(ValueError, match="declares units 'ppb'"):
+        load_fixed_site_amplitudes(FixedSiteAmplitudeFile(ppb_path, units="ppm"))
+    assert load_fixed_site_amplitudes(FixedSiteAmplitudeFile(ppb_path, units="1e-9")).units == "ppb"
+
+
+def test_amplitude_file_units_are_converted_to_the_fit_units(tmp_path):
+    prepared, _ = _prepared()
+    assert prepared.inv_inputs.mf.attrs["units"] == "ppm"
+    path = _posterior_file(tmp_path / "ppb.nc", np.full((1, 3, 1), 400.0), "ppb")
+    request = _request({"path": str(path)})
+    model = Co2ModelConfig.from_params(request).model_arguments()
+    sampling = _resolve_co2_sampling(request, model=model)
+    trace, actual = inference.sample_co2_inference(
+        prepared, model, sampling.sampler, state_target_accept=sampling.state_target_accept,
+    )
+    np.testing.assert_allclose(trace.constant_data["ou_site_amplitude"], [0.4])
+    assert trace.constant_data["ou_site_amplitude"].attrs["units"] == "ppm"
+    source = actual["ou_site_amplitude_source"]
+    assert source["units"] == "ppb" and source["fit_units"] == "ppm"
+    assert source["unit_factor"] == pytest.approx(1e-3)
+
+    unitless = _posterior_file(tmp_path / "unitless.nc", np.full((1, 3, 1), 400.0), None)
+    request = _request({"path": str(unitless)})
+    model = Co2ModelConfig.from_params(request).model_arguments()
+    with pytest.raises(ValueError, match="no units attribute"):
+        inference.sample_co2_inference(prepared, model, _resolve_co2_sampling(request, model=model).sampler)
+    request = _request({"path": str(unitless), "units": "ppb"})
+    model = Co2ModelConfig.from_params(request).model_arguments()
+    assert model["likelihood_kwargs"]["fixed_site_amplitudes"].units == "ppb"
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _forbid_sampling(*args, **kwargs):
+    pytest.fail("Output overlap must be rejected before sampling.")
+
+
+@pytest.mark.parametrize("alias", ["same", "symlink", "hardlink"])
+def test_full_run_outputs_cannot_overwrite_the_amplitude_file(tmp_path, monkeypatch, alias):
+    prepared, _ = _prepared()
+    source = _posterior_file(tmp_path / "amplitudes.nc", np.full((1, 3, 1), 0.4))
+    before = _sha256(source)
+    trace_path = tmp_path / "trace.nc"
+    if alias == "same":
+        trace_path = source
+    elif alias == "symlink":
+        trace_path.symlink_to(source)
+    else:
+        os.link(source, trace_path)
+    params = _request({"path": str(source)})
+    params["prepared_inputs"] = {"domain": "EUROPE", "start_date": "2019-01-01", "end_date": "2019-02-01"}
+    params["outputs"] = {"output_format": "basic", "output_path": str(tmp_path / "out"), "save_trace": str(trace_path)}
+    monkeypatch.setattr(execution, "sample_co2_inference", _forbid_sampling)
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+        execution.run_co2(params=params, prepared=prepared)
+    assert _sha256(source) == before
+
+
+def test_staged_sampling_cannot_overwrite_the_amplitude_file(tmp_path, monkeypatch):
+    prepared, _ = _prepared()
+    preparation = handoffs.save_preparation(
+        prepared, output_dir=tmp_path / "prepared", domain="EUROPE", start_date="2019-01-01", end_date="2019-02-01",
+    )
+    samples = tmp_path / "samples"
+    samples.mkdir()
+    source = _posterior_file(samples / "posterior.nc", np.full((1, 3, 1), 0.4))
+    before = _sha256(source)
+    params = _request({"path": str(source)})
+    monkeypatch.setattr(handoffs, "sample_co2_inference", _forbid_sampling)
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+        handoffs.sample(preparation, model=params, sampling=params["sampling"], output_dir=samples)
+    generation = json.loads(preparation.read_text())["generation"]
+    recorded = {"ou_site_amplitude_source": {"kind": "file", "path": str(source)}}
+    monkeypatch.setattr(handoffs, "validate_co2_trace", lambda *args: None)
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+        handoffs.save_samples(
+            preparation, xr.DataTree(), actual_inference=recorded, preparation_generation=generation,
+            output_dir=samples,
+        )
+    assert _sha256(source) == before
 
 
 def _request(fixed: object, *, cached_state: bool = True) -> dict:

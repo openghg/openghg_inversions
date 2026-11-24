@@ -141,7 +141,7 @@ def _number_or_mapping(
     return checked(value, path)
 
 
-_AMPLITUDE_FILE_OPTION_NAMES = frozenset({"path", "variable", "statistic", "group"})
+_AMPLITUDE_FILE_OPTION_NAMES = frozenset({"path", "variable", "statistic", "group", "units"})
 
 
 def _fixed_ou_amplitudes(value: object, path: str, *, allow_file: bool) -> float | Mapping[str, float] | FixedSiteAmplitudeFile:
@@ -158,7 +158,7 @@ def _fixed_ou_amplitudes(value: object, path: str, *, allow_file: bool) -> float
                 f"got {sorted(unknown)}."
             )
         options: dict[str, Any] = {"path": Path(_string(table.pop("path"), f"{path}.path"))}
-        for name in ("variable", "statistic", "group"):
+        for name in ("variable", "statistic", "group", "units"):
             if name in table:
                 options[name] = _string(table.pop(name), f"{path}.{name}")
         return FixedSiteAmplitudeFile(**options)
@@ -624,7 +624,7 @@ class Co2ModelConfig:
                 **kwargs,
                 "fixed_site_amplitudes": FixedSiteAmplitudeFile(
                     amplitude_file.path.expanduser().resolve(), amplitude_file.variable,
-                    amplitude_file.statistic, amplitude_file.group,
+                    amplitude_file.statistic, amplitude_file.group, amplitude_file.units,
                 ),
             })
         return cls(**model, **likelihood)

@@ -1306,7 +1306,18 @@ A file table reads ``variable`` (default ``"ou_site_amplitude"``) labelled by
 one, and the root otherwise; set ``group`` to choose another. When the
 variable has ``chain`` and ``draw`` dimensions, ``statistic`` (``"median"``,
 the default, or ``"mean"``) summarises them. Site labels must cover every
-observed site. The file is read when the model is built. In Python, pass
+observed site. The file is read when the model is built.
+
+Amplitudes are concentrations. Configured values are taken to be in the
+observations' concentration units. A file must declare its units in the
+variable's ``units`` attribute; posteriors written by this package do. For a
+file without one, set ``units`` in the table (for example ``units = "ppb"``).
+A file without either is rejected rather than assumed to match. Values in a
+different mole-fraction unit are converted to the observation units, and the
+source records the declared units and the factor applied. Units that are not
+mole fractions are rejected. Outputs, including ``save_trace`` and a staged
+sample directory, may not overwrite the amplitude file, and an overlap is
+rejected before sampling starts. In Python, pass
 values, a :class:`~openghg_inversions.inference.fixed_amplitudes.FixedSiteAmplitudeFile`
 or resolved
 :class:`~openghg_inversions.inference.fixed_amplitudes.FixedSiteAmplitudes`

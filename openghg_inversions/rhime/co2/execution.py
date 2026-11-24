@@ -17,11 +17,11 @@ from openghg_inversions.rhime._stage_artifacts import _validate_filename_compone
 
 from .co2_affine_output import _bind_affine_flux_map, prepared_inputs_content_id
 from .co2_outputs import (
-    Co2Output, Co2OutputOptions, calculate_co2_products, save_co2_products, make_co2_output,
-    validate_co2_product_request,
+    Co2Output, Co2OutputOptions, calculate_co2_products, check_co2_output_targets, save_co2_products,
+    make_co2_output, validate_co2_product_request,
 )
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts
-from .inference import sample_co2_inference
+from .inference import co2_model_input_paths, sample_co2_inference
 from .configuration import (
     load_co2_family_config, validate_co2_config, _validate_co2_option_names, Co2PreparationConfig,
     Co2ModelConfig, _resolve_co2_sampling,
@@ -147,6 +147,12 @@ def run_co2(
     )
     if bound is not None and output.output_format != "none" and not sampler.sample_prior_predictive:
         raise ValueError("CO2 affine products require prior draws; enable sample_prior_predictive.")
+    consumed = tuple(
+        path for path in (source if not supplied_prepared and canonical_inputs is None else None,
+                          affine_path if affine_artifact is None else None)
+        if path is not None
+    ) + co2_model_input_paths(model)
+    check_co2_output_targets(output, domain=facts["domain"], start_date=facts["start_date"], referenced=consumed)
     trace, actual = sample_co2_inference(
         prepared, model, sampler, sigma_target_accept=sampling.sigma_target_accept,
         state_target_accept=sampling.state_target_accept,
@@ -156,7 +162,7 @@ def run_co2(
                             "provenance": installed_ogi_provenance()}, **facts)
     calculate_co2_products(result=result, prepared=prepared, bound=bound,
                            source_to_sector=output_choices["source_to_sector"], countries=countries, output=output)
-    save_co2_products(result, output=output)
+    save_co2_products(result, output=output, referenced=consumed)
     return result
 
 

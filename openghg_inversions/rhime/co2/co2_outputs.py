@@ -23,7 +23,7 @@ from openghg_inversions.rhime.outputs import (
     _define_output_filename,
     _resolve_output_path,
 )
-from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
+from openghg_inversions.rhime._stage_artifacts import _validate_filename_component, check_checkpoint_targets
 from openghg_inversions.serialization import reset_serialisation_multiindexes, save_datatree, save_trace
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
@@ -581,25 +581,68 @@ def calculate_co2_products(
     result.outputs.update(products, concentration_components=components)
 
 
-def save_co2_products(
-    result: Co2Output, *, output: Co2OutputOptions,
-) -> None:
-    """Export configured products and the optional trace.
+_CO2_PRODUCT_NAMES = ("basic", "native_flux", "country_flux", "paris_concentration", "paris_flux")
 
-    Full concentration-component draws remain available in memory. Product
-    filenames follow the configured RHIME naming convention.
-    """
+
+def _co2_output_paths(
+    output: Co2OutputOptions, *, domain: str, start_date: str, names: tuple[str, ...],
+) -> tuple[dict[str, Path], Path | None]:
     if output.output_format == "none":
-        return
-    domain = result.domain
-    start_date = result.start_date
+        return {}, None
     product_paths = {
         name: _define_output_filename(
             output.output_path, "co2", domain, f"{output.output_name}_{name}", start_date,
             filename_convention="rhime",
         )
-        for name in result.outputs if name != "concentration_components"
+        for name in names if name != "concentration_components"
     } if output.output_path is not None else {}
+    trace_path = _resolve_output_path(output.save_trace, output.output_path,
+                                      f"{output.output_name}{start_date}_trace.nc")
+    return product_paths, trace_path
+
+
+def check_co2_output_targets(
+    output: Co2OutputOptions, *, domain: str, start_date: str, referenced: tuple[Path, ...] = (),
+    names: tuple[str, ...] = _CO2_PRODUCT_NAMES,
+) -> None:
+    """Reject output files that alias each other or any input the run reads.
+
+    Call before sampling with the run's inputs (prepared inputs, affine map,
+    fixed OU amplitude file) so that a clash fails before any work is done.
+    Symlinks and hard links to an input count as the same file.
+
+    Raises:
+        ValueError: If an output path overlaps an input or another output.
+    """
+    product_paths, trace_path = _co2_output_paths(output, domain=domain, start_date=start_date, names=names)
+    protected = tuple(Path(path).resolve() for path in referenced)
+    for path in (*product_paths.values(), *([trace_path] if trace_path is not None else [])):
+        check_checkpoint_targets(path.parent.resolve(), stage=None, payloads=(path.name,), referenced=protected)
+        protected += ((path.parent.resolve() / path.name).resolve(),)
+
+
+def save_co2_products(
+    result: Co2Output, *, output: Co2OutputOptions, referenced: tuple[Path, ...] = (),
+) -> None:
+    """Export configured products and the optional trace.
+
+    Full concentration-component draws remain available in memory. Product
+    filenames follow the configured RHIME naming convention. Outputs may not
+    overwrite ``referenced`` inputs or a fixed OU amplitude file recorded in
+    the result's sampler metadata.
+    """
+    if output.output_format == "none":
+        return
+    from .inference import recorded_co2_input_paths
+
+    domain = result.domain
+    start_date = result.start_date
+    names = tuple(result.outputs)
+    check_co2_output_targets(
+        output, domain=domain, start_date=start_date, names=names,
+        referenced=(*referenced, *recorded_co2_input_paths(result.output_metadata.get("sampler"))),
+    )
+    product_paths, trace_path = _co2_output_paths(output, domain=domain, start_date=start_date, names=names)
     for name, path in product_paths.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         product = result.outputs[name]
@@ -608,8 +651,6 @@ def save_co2_products(
         else:
             write_netcdf_preserving_bounds_attrs(product, path)
         result.output_metadata[f"{name}_path"] = str(path)
-    trace_path = _resolve_output_path(output.save_trace, output.output_path,
-                                      f"{output.output_name}{start_date}_trace.nc")
     if trace_path is not None:
         trace_path.parent.mkdir(parents=True, exist_ok=True)
         save_trace(result.idata, trace_path)
@@ -622,6 +663,7 @@ __all__ = [
     "make_co2_output",
     "calculate_co2_products",
     "save_co2_products",
+    "check_co2_output_targets",
     "validate_co2_trace",
     "validate_co2_product_request",
     "validate_co2_output_spec",

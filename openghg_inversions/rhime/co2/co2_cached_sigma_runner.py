@@ -24,6 +24,7 @@ from openghg_inversions.inference.cached_sigma import (
 from openghg_inversions.inference.fixed_amplitudes import (
     FixedSiteAmplitudeFile,
     FixedSiteAmplitudes,
+    in_concentration_units,
     resolve_fixed_site_amplitudes,
 )
 from openghg_inversions.models.boundary import Choice
@@ -262,7 +263,9 @@ def build_rhime_co2_cached_sigma(
             units, instead of ``site_amplitude_prior``: a scalar, a site
             mapping, a :class:`FixedSiteAmplitudeFile` (for example a previous
             run's posterior, summarised by its median), or resolved
-            :class:`FixedSiteAmplitudes`. The state quadratic is then built
+            :class:`FixedSiteAmplitudes`. File amplitudes must declare units;
+            compatible mole-fraction units are converted to the observation
+            units and others are rejected. The state quadratic is then built
             once and only the states are sampled; the returned model records
             the amplitude source in ``fixed_amplitude_source``.
         boundary: Optional boundary choice, bound once to the prepared
@@ -297,6 +300,8 @@ def build_rhime_co2_cached_sigma(
     )
     site_amplitude_prior = eager_priors.get("amplitude")
     offset_prior = eager_priors.get("offset")
+    if fixed is not None:
+        fixed = in_concentration_units(fixed, str(model_inputs["mf"].attrs["units"]))
     aggregation_error = resolve_aggregation_error(
         model_inputs,
         prepared.aggregation_error_mode,
