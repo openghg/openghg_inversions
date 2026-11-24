@@ -190,7 +190,7 @@ operands and supported model routes.
    openghg_inversions.rhime.co2.co2_o2_handoffs.prior_predictive
    openghg_inversions.rhime.co2.co2_o2_handoffs.postprocess
    openghg_inversions.rhime.co2.prepare_co2_inputs
-   openghg_inversions.rhime.co2.Co2ReferenceCovariance
+   openghg_inversions.models.fixed_ou.fixed_ou_mismatch_covariance
    openghg_inversions.rhime.co2.handoffs.prepare
    openghg_inversions.rhime.co2.handoffs.save_preparation
    openghg_inversions.rhime.co2.handoffs.load_preparation

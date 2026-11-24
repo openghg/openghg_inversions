@@ -47,7 +47,6 @@ from openghg_inversions.serialization import open_datatree_loaded, save_datatree
 
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .rank_reference import (
-    Co2ReferenceCovariance,
     require_reference_labels,
     squared_mole_fraction_scale,
 )
@@ -532,40 +531,22 @@ _PREPARATION_AGGREGATION_KEYS = ("aggregation_error", "aggregation_error_rank_se
 
 
 def _rank_reference(
-    reference_covariance: Co2ReferenceCovariance | xr.DataArray,
+    reference_covariance: xr.DataArray,
     *,
     unresolved: xr.DataArray,
-    inputs: xr.Dataset,
     observation_index: Any,
     observation_dim: str,
     observation_units: str,
 ) -> tuple[xr.DataArray, np.ndarray, dict[str, Any]]:
     """Resolve the rank reference to dense values through the labelled-covariance contract.
 
-    Settings are first built into a labelled covariance by
-    :meth:`Co2ReferenceCovariance.covariance`, after ``mf_error`` has been
-    checked. Built and supplied covariances then follow one route: both axes
-    are checked against the canonical observation order and the squared
-    mole-fraction units are resolved while the array is labelled, and only
-    then is it materialized with the unresolved covariance.
+    Check both axes and resolve squared mole-fraction units while the
+    reference is labelled, then materialize it with the unresolved covariance.
 
     Returns:
         The materialized unresolved covariance, the reference values in
         observation units squared, and the JSON-safe reference description.
     """
-    if isinstance(reference_covariance, Co2ReferenceCovariance):
-        settings = reference_covariance
-        observations = inputs["mf"]
-        error = inputs["mf_error"]
-        if error.dims != ("nmeasure",):
-            raise ValueError("CO2 mf_error must have dimensions ('nmeasure',).")
-        _require_same_axis(error, "nmeasure", observation_index, name="CO2 mf_error")
-        _require_equivalent_units(error.attrs.get("units"), observation_units, name="CO2 mf_error")
-        unresolved, error = materialize_together(
-            unresolved, error, purpose="aggregation-error covariance and observation error for the rank rule"
-        )
-        reference_covariance = settings.covariance(observations, error)
-
     require_reference_labels(
         reference_covariance,
         observation_index=observation_index,
@@ -589,7 +570,10 @@ def _rank_reference(
         "unit_scale_to_observation_units_squared": unit_scale,
         "representation": "dense",
     }
-    return unresolved, np.asarray(reference.values, dtype=float) * unit_scale, description
+    values = np.asarray(reference.values, dtype=float)
+    if unit_scale != 1.0:
+        values = values * unit_scale
+    return unresolved, values, description
 
 
 def prepare_co2_inputs(
@@ -597,7 +581,7 @@ def prepare_co2_inputs(
     reduction: CoherentGaussianReduction,
     *,
     aggregation_error_rank: int | WhitenedRankRule | None = WhitenedRankRule(),
-    reference_covariance: Co2ReferenceCovariance | xr.DataArray | None = None,
+    reference_covariance: xr.DataArray | None = None,
     bc_centering_weights: xr.DataArray | None = None,
     provenance: Mapping[str, Any] | None = None,
 ) -> Co2PreparedInputs:
@@ -651,16 +635,13 @@ def prepare_co2_inputs(
             description, the count above the threshold, the chosen rank and
             the dropped-mode KL.
         reference_covariance: Reference mismatch covariance :math:`R_0` for
-            the rank rule, required with a ``WhitenedRankRule``. Pass a
-            :class:`~openghg_inversions.rhime.co2.Co2ReferenceCovariance`
-            with the run's floored or prior-median site amplitudes and OU
-            time scales where known, or a labelled observation-by-observation
-            covariance whose rows and columns follow the canonical
-            observation order, with squared mole-fraction units (converted to
-            the observation units) and an optional ``description`` attribute
-            recorded in provenance. Settings are built into the same labelled
-            form, and both are used as one dense matrix, which must be
-            numerically positive definite. Only valid with low-rank storage.
+            the rank rule, required with a ``WhitenedRankRule``. Supply a
+            labelled positive-definite covariance in canonical observation
+            order on both axes, with squared mole-fraction units and an
+            optional ``description`` attribute recorded in provenance. For
+            example, evaluate a mismatch covariance at fixed parameters with
+            :func:`~openghg_inversions.models.fixed_ou.fixed_ou_mismatch_covariance`.
+            Only valid with low-rank storage.
         bc_centering_weights: Positive dimensionless averaging weights on
             ``(bc_curtain, bc_period)``, with interval start times as period
             labels. Raw transport stays spatial and reusable; binding stacks
@@ -771,15 +752,15 @@ def prepare_co2_inputs(
     else:
         rank_rule = WhitenedRankRule(rank=aggregation_error_rank)
     if reference_covariance is not None:
-        if not isinstance(reference_covariance, Co2ReferenceCovariance | xr.DataArray):
-            raise TypeError("reference_covariance must be a Co2ReferenceCovariance, a labelled DataArray or None.")
+        if not isinstance(reference_covariance, xr.DataArray):
+            raise TypeError("reference_covariance must be a labelled DataArray or None.")
         if rank_rule is None:
             raise ValueError("reference_covariance applies only to low-rank storage, not aggregation_error_rank=None.")
     elif isinstance(aggregation_error_rank, WhitenedRankRule):
         raise ValueError(
             "The whitened rank rule needs reference_covariance; there is no universal reference mismatch "
-            "covariance. Pass Co2ReferenceCovariance(reference_sd=...) with the run's floored or prior-median "
-            "site amplitudes (and tau_hours where known), or a labelled covariance. Alternatively pass an "
+            "covariance. Pass a labelled covariance, for example from fixed_ou_mismatch_covariance "
+            "evaluated at representative amplitudes and time scales. Alternatively pass an "
             "explicit integer aggregation_error_rank, or None to store the covariance exactly."
         )
 
@@ -858,7 +839,6 @@ def prepare_co2_inputs(
         unresolved, reference, reference_description = _rank_reference(
             reference_covariance,
             unresolved=unresolved,
-            inputs=inputs,
             observation_index=observation_index,
             observation_dim=observation_dim,
             observation_units=str(observation_units),

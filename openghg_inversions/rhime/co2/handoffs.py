@@ -35,7 +35,6 @@ from openghg_inversions.serialization import load_trace, save_trace
 
 from .execution import load_co2_params
 
-from .rank_reference import Co2ReferenceCovariance
 from .co2_affine_output import (
     _bind_affine_flux_map, load_and_bind_affine_flux_map, prepared_inputs_content_id,
 )
@@ -130,7 +129,7 @@ def prepare(
     canonical_inputs: PreparedInputs | None = None,
     reduction: CoherentGaussianReduction | None = None,
     aggregation_error_rank: int | WhitenedRankRule | None = WhitenedRankRule(),
-    reference_covariance: Co2ReferenceCovariance | xr.DataArray | None = None,
+    reference_covariance: xr.DataArray | None = None,
     bc_centering_weights: xr.DataArray | None = None,
     affine_artifact: AffineFluxMapArtifact | None = None, affine_path: str | Path | None = None,
 ) -> Path:
@@ -150,8 +149,7 @@ def prepare(
     a :class:`~openghg_inversions.observation_error.WhitenedRankRule` (the
     default), an integer override, or ``None`` for exact storage. So does
     ``reference_covariance``, the rank rule's reference, which the rule
-    requires: a :class:`~openghg_inversions.rhime.co2.Co2ReferenceCovariance`
-    or a labelled covariance in the canonical observation order.
+    requires a labelled covariance in the canonical observation order.
     """
     if (canonical_inputs is None) != (reduction is None):
         raise ValueError("Pass canonical_inputs and reduction together.")
