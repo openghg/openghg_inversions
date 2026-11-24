@@ -54,7 +54,12 @@ def load_co2_params(
             previous = options.get(name, {})
             if not isinstance(previous, Mapping):
                 raise ValueError(f"CO2 {name} must be a mapping.")
-            options[name] = {**previous, **value}
+            merged = {**previous, **value}
+            # A partial outer-flux override keeps the base table's other choices.
+            outer = previous.get("outer_flux") if name == "model" else None
+            if isinstance(outer, Mapping) and isinstance(value.get("outer_flux"), Mapping):
+                merged["outer_flux"] = {**outer, **value["outer_flux"]}
+            options[name] = merged
         else:
             options[name] = value
     return validate_co2_config(options)
