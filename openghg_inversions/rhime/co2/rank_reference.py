@@ -18,7 +18,7 @@ from openghg_inversions.observation_error import _is_positive_real
 
 @dataclass(frozen=True)
 class Co2ReferenceCovariance:
-    r"""Settings for the default CO2 reference mismatch covariance :math:`R_0`.
+    r"""Settings for a CO2 reference mismatch covariance :math:`R_0`.
 
     :meth:`covariance` builds the dense labelled covariance
 
@@ -34,6 +34,18 @@ class Co2ReferenceCovariance:
     :math:`R_0` only screens the low-rank aggregation-error rank (see
     :class:`~openghg_inversions.observation_error.WhitenedRankRule`); it is
     not the likelihood. Use floored or prior-median amplitudes, never zero.
+
+    Keep the white-noise floor the likelihood has. The only white part of
+    this :math:`R_0` is the reported error :math:`e`. When that is near zero,
+    an OU reference is weak at high frequency: with hourly data and a 5 h
+    time scale, adjacent hours have correlation 0.82 and the high-frequency
+    directions get only about 10% of the site variance. The stored diagonal
+    tail spreads discarded variance evenly across frequencies, so its error
+    is magnified in those directions. The spectral dropped-mode KL then
+    understates the stored-representation KL (both are recorded) by several
+    times. If the likelihood adds a white floor that ``mf_error`` does not
+    carry, such as a minimum error or a fixed model-error term, pass
+    ``reference_covariance`` as a labelled covariance that includes it.
 
     Args:
         reference_sd: Positive reference amplitude: one value for every site

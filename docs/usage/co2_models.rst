@@ -1211,11 +1211,26 @@ the whitened truncation at :math:`R_0` without the diagonal tail, not the
 stored representation, which keeps the leading ordinary eigenmodes of
 :math:`A` instead. ``stored_representation_kl`` is the KL of what is stored,
 :math:`\mathrm{KL}(N(0, R_0 + A)\,\|\,N(0, R_0 + F F^\top + \mathrm{diag}(d)))`
-at the same reference; it can be several times the spectral value, more so
-when :math:`R_0` differs strongly between sites. Computing it costs two more
-dense Cholesky factorizations and a dense solve. The rule is a screening
-heuristic, not a bound on posterior error: the rank it selects depends on the
-reference covariance and should be checked for the intended likelihood.
+at the same reference; it can be several times the spectral value, most of
+all when :math:`R_0` has little white noise (see below). Computing it costs two more
+dense Cholesky factorizations and a dense solve.
+
+Keep the likelihood's white-noise floor in :math:`R_0`. With
+``Co2ReferenceCovariance`` the only white part is the reported observation
+error. If that is near zero, an OU reference is weak in high-frequency
+directions: with hourly data and a 5 h time scale, adjacent hours have
+correlation 0.82 and those directions get only about 10% of the site
+variance. The stored diagonal tail spreads discarded variance evenly across
+frequencies, so its error is magnified there, and ``stored_representation_kl``
+can be an order of magnitude larger than the spectral KL. A white floor
+comparable to the OU amplitudes reduces that gap to a few-fold. If the
+likelihood adds a floor that ``mf_error`` does not carry, such as a minimum
+error or a fixed model-error term, supply ``reference_covariance`` as a
+labelled covariance that includes it.
+
+The rule is a screening heuristic, not a bound on posterior error: the rank it
+selects depends on the reference covariance and should be checked for the
+intended likelihood.
 
 A large selected rank usually means the basis is too coarse for the data: the
 unresolved covariance :math:`A` is large compared with the noise, typically
