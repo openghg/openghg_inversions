@@ -20,7 +20,6 @@ from ._stage_artifacts import (
     reference,
 )
 from ._stage_authentication import _load_stage_manifest
-from openghg_inversions.inference.sampling import numpy_callback_compile_kwargs
 
 CHECK_SCHEMA_VERSION = 1
 CONVERGENCE_CHECK_NAME = "sampler-convergence"
@@ -85,17 +84,12 @@ def prior_predictive_check(
         OSError: If writing the evidence or report fails.
     """
     report.unlink(missing_ok=True)
-    import pymc as pm
-
+    from openghg_inversions.inference.sampling import sample_prior_predictive
     from openghg_inversions.serialization import save_trace
 
     try:
         built = build()
-        with built.model:
-            options = numpy_callback_compile_kwargs(built.model)
-            prior = pm.sample_prior_predictive(
-                draws, built.model, **({"compile_kwargs": options} if options else {})
-            )
+        prior = sample_prior_predictive(built.model, draws=draws)
     except (KeyError, ValueError) as exc:
         non_finite, status, artifacts = None, "fail", []
         message = f"Prior-predictive readiness failed: {type(exc).__name__}: {exc}"

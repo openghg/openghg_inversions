@@ -15,12 +15,12 @@ from typing import Any, Literal
 from uuid import uuid4
 
 import numpy as np
-import pymc as pm
 import xarray as xr
 from dask.array import Array as DaskArray
 
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.inference.sampling import RhimeSampler, describe_recorded_sampler, resolve_sampler
+from openghg_inversions.inference.sampling import sample_prior_predictive
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime._stage_artifacts import (
     _output_path, check_checkpoint_targets, finish_checkpoint, read_manifest,
@@ -42,7 +42,6 @@ from .co2_o2_outputs import (
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .co2_o2_runner import annotate_co2_o2_trace, build_rhime_co2_o2
 from .co2_preparation import requested_co2_facts
-from openghg_inversions.inference.sampling import numpy_callback_compile_kwargs
 
 
 @dataclass(frozen=True)
@@ -276,11 +275,7 @@ def prior_predictive(
     )
     report.unlink(missing_ok=True)
     built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
-    with built.model:
-        options = numpy_callback_compile_kwargs(built.model)
-        prior = pm.sample_prior_predictive(
-            draws, random_seed=random_seed, **({"compile_kwargs": options} if options else {})
-        )
+    prior = sample_prior_predictive(built.model, draws=draws, random_seed=random_seed)
     registry = get_coord_registry(built.model)
     if registry is not None:
         prior = restore_inferencedata_coords(prior, registry)

@@ -9,7 +9,7 @@ import xarray as xr
 from pytensor.compile.mode import get_mode
 from pytensor.link.numba.linker import NumbaLinker
 
-from openghg_inversions.inference.sampling import RhimeSampler, numpy_callback_compile_kwargs
+from openghg_inversions.inference.sampling import RhimeSampler, sample_prior_predictive
 from openghg_inversions.models import registered_model
 from openghg_inversions.models.additive_sigma import add_additive_sigma_likelihood
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
@@ -53,13 +53,6 @@ def _is_numba(compile_kwargs) -> bool:
     return isinstance(get_mode((compile_kwargs or {}).get("mode")).linker, NumbaLinker)
 
 
-def test_helper_selects_the_c_linker_only_for_callback_ops():
-    selected = numpy_callback_compile_kwargs(_model("fixed_ou"))
-    assert not _is_numba(selected)
-    assert get_mode(selected["mode"]).linker.__class__.__name__ != "NumbaLinker"
-    assert numpy_callback_compile_kwargs(_model("additive")) == {}
-
-
 @pytest.fixture
 def recorded(monkeypatch):
     """Record the compile options PyMC receives at each step, then run it."""
@@ -73,6 +66,16 @@ def recorded(monkeypatch):
 
         monkeypatch.setattr(pm, step, wrapper)
     return calls
+
+
+def test_staged_prior_predictive_selects_the_c_linker(recorded):
+    """The standalone inference operation selects C/VM for its own model."""
+    sample_prior_predictive(_model("fixed_ou"), draws=2, random_seed=1104)
+    (selected,) = recorded["sample_prior_predictive"]
+    assert get_mode(selected["mode"]).linker.use_cloop
+
+    sample_prior_predictive(_model("additive"), draws=2, random_seed=1104)
+    assert recorded["sample_prior_predictive"][-1] is None
 
 
 def _sample(model: pm.Model):
@@ -100,9 +103,32 @@ def test_ordinary_models_keep_the_default_compile_mode(recorded):
     assert "y" in trace["log_likelihood"]
 
 
-def test_explicit_caller_compile_options_win(recorded):
-    explicit = {"mode": "FAST_COMPILE"}
+@pytest.mark.parametrize("overrides", [{"compile_kwargs": {"mode": "FAST_COMPILE"}}, {"backend": "c"}])
+def test_explicit_caller_compile_options_win(recorded, overrides):
+    """A caller can select PyMC's mode or its backend shorthand."""
+    RhimeSampler(draws=5, tune=5, chains=1, sample_kwargs={"random_seed": 1, "cores": 1, **overrides}).sample(
+        _model("fixed_ou")
+    )
+    (selected,) = recorded["sample"]
+    if "compile_kwargs" in overrides:
+        assert selected["mode"] == "FAST_COMPILE"
+    else:
+        assert selected is None
+
+
+def test_posterior_prediction_uses_its_own_model_for_compile_options(recorded, monkeypatch):
+    """An alternate prediction model can require C/VM after ordinary sampling."""
+    trace = xr.DataTree.from_dict(
+        {
+            "posterior": xr.Dataset({"level": (("chain", "draw"), [[1.0, 1.5]])}),
+        }
+    )
+    monkeypatch.setattr(pm, "sample", lambda **kwargs: trace)
+
     RhimeSampler(
-        draws=5, tune=5, chains=1, sample_kwargs={"random_seed": 1, "cores": 1, "compile_kwargs": explicit}
-    ).sample(_model("fixed_ou"))
-    assert recorded["sample"][0]["mode"] == "FAST_COMPILE"
+        sample_prior_predictive=False,
+        posterior_predictive_kwargs={"model": _model("fixed_ou"), "random_seed": 1104},
+    ).sample(_model("additive"))
+
+    (selected,) = recorded["sample_posterior_predictive"]
+    assert get_mode(selected["mode"]).linker.use_cloop

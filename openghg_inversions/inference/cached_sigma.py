@@ -91,7 +91,7 @@ class PytensorMarginalQuadraticCache:
 class _PytensorSigmaLikelihoodOp(Op):
     """Exact sigma conditional with a chain-local residual in prepared mode coordinates."""
 
-    # Compile with the C/VM linker; see inference.sampling.numpy_callback_compile_kwargs.
+    # Keep the prepared arrays out of Numba's object-mode callbacks.
     holds_numpy_target = True
 
     def __init__(self, target: FixedOuCachedSigmaTarget) -> None:

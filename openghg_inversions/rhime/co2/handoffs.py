@@ -15,13 +15,13 @@ from typing import Any, cast
 from uuid import uuid4
 
 import numpy as np
-import pymc as pm
 import xarray as xr
 
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine, save as save_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import PreparedInputs
+from openghg_inversions.inference.sampling import sample_prior_predictive
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime._stage_artifacts import (
     _output_path, check_checkpoint_targets, finish_checkpoint, read_manifest,
@@ -48,7 +48,6 @@ from .inference import (
     annotate_co2_inference, build_co2_inference, sample_co2_inference, describe_co2_inference,
 )
 from .configuration import Co2ModelConfig, _resolve_co2_sampling
-from openghg_inversions.inference.sampling import numpy_callback_compile_kwargs
 
 
 @dataclass(frozen=True)
@@ -346,11 +345,7 @@ def prior_predictive(
     )
     report.unlink(missing_ok=True)
     built, cached = build_co2_inference(preparation.prepared, model_options)
-    with built.model:
-        options = numpy_callback_compile_kwargs(built.model)
-        prior = pm.sample_prior_predictive(
-            draws, random_seed=random_seed, **({"compile_kwargs": options} if options else {})
-        )
+    prior = sample_prior_predictive(built.model, draws=draws, random_seed=random_seed)
     registry = get_coord_registry(built.model)
     if registry is not None:
         prior = restore_inferencedata_coords(prior, registry)

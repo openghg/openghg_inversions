@@ -449,8 +449,8 @@ prepared NumPy/SciPy arrays in a Python Op, so
 :class:`~openghg_inversions.inference.sampling.RhimeSampler` compiles such
 models (sampling, log likelihood and predictive draws) with PyTensor's C/VM
 linker rather than the default Numba linker, whose object-mode callback would
-copy the prepared arrays into every compiled function
-(:func:`~openghg_inversions.inference.sampling.numpy_callback_compile_kwargs`).
+copy the prepared arrays into every compiled function. The staged
+prior-predictive checks use the same inference policy.
 Explicit ``sample_kwargs["compile_kwargs"]`` still take precedence. Sampled tau is a
 separate extension; the package-supported cached sampler is the matched recipe
 described in :ref:`co2-cached-sigma-recipe`.
