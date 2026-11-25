@@ -426,6 +426,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_error.html">openghg_inversions.models.fixed_error</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html">openghg_inversions.models.fixed_ou</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.outer_flux.html">openghg_inversions.models.outer_flux</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html">openghg_inversions.models.scalar_sigma</a></li>
@@ -1300,6 +1301,12 @@ component boundary and when to copy a complete recipe instead.</p>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.to_dense_tree" title="openghg_inversions.array_ops.to_dense_tree"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.array_ops.to_dense_tree</span></code></a></p></td>
 <td><p>Apply <code class="xref py py-func docutils literal notranslate"><span class="pre">to_dense()</span></code> to every labelled array in a nested value.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.outer_flux.html#openghg_inversions.models.outer_flux.OuterFluxChoice" title="openghg_inversions.models.outer_flux.OuterFluxChoice"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.outer_flux.OuterFluxChoice</span></code></a></p></td>
+<td><p>Outer-region flux option, chosen before any arrays are attached.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.outer_flux.html#openghg_inversions.models.outer_flux.OuterStates" title="openghg_inversions.models.outer_flux.OuterStates"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.outer_flux.OuterStates</span></code></a></p></td>
+<td><p>Held outer states on the flux prior's state axis, shared by every channel.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_linked_linear_component" title="openghg_inversions.models.add_linked_linear_component"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.add_linked_linear_component</span></code></a></p></td>
 <td><p>Apply a prepared sensitivity to an already constructed linked state.</p></td>

@@ -426,6 +426,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_error.html">openghg_inversions.models.fixed_error</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html">openghg_inversions.models.fixed_ou</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.outer_flux.html">openghg_inversions.models.outer_flux</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html">openghg_inversions.models.scalar_sigma</a></li>
@@ -606,7 +607,7 @@
 <dd><em class="sig-param"><span class="n"><span class="pre">modelled_mean</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">cached_state_logp</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_values</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">boundary_outputs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel" title="Link to this definition">#</a></dt>
@@ -638,6 +639,7 @@ resolves them separately for construction and each sampling chain.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">outer_flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_drop_first</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
@@ -688,6 +690,10 @@ observed site. Defaults to the prior support point.</p></li>
 <li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled active/fixed policy for retained flux
 states. Fixed values are dimensionless flux scalings.</p></li>
 <li><p><strong>boundary</strong> (<a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Bound" title="openghg_inversions.models.boundary.Bound"><em>Bound</em></a><em> | </em><em>None</em>) – Resolved boundary component bound to this fit.</p></li>
+<li><p><strong>outer_flux</strong> (<a class="reference internal" href="openghg_inversions.models.outer_flux.html#openghg_inversions.models.outer_flux.OuterFluxChoice" title="openghg_inversions.models.outer_flux.OuterFluxChoice"><em>OuterFluxChoice</em></a><em> | </em><em>None</em>) – Optional outer-flux choice, resolved here on
+<code class="docutils literal notranslate"><span class="pre">retained_prior</span></code>; its fixed outer states are held at their prior
+mean. See
+<a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html#openghg_inversions.rhime.co2.co2_model.build_co2_model" title="openghg_inversions.rhime.co2.co2_model.build_co2_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">build_co2_model()</span></code></a>.</p></li>
 <li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior for additive offsets. Its location and
 scale parameters use the observations’ concentration units. When
 omitted, no offset is added.</p></li>

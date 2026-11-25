@@ -426,6 +426,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_error.html">openghg_inversions.models.fixed_error</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html">openghg_inversions.models.fixed_ou</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.outer_flux.html">openghg_inversions.models.outer_flux</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html">openghg_inversions.models.scalar_sigma</a></li>
@@ -683,7 +684,17 @@ and provenance.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.models.state_activity.ResolvedStateActivity">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ResolvedStateActivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dim</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">active</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zero_sensitivity</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.state_activity.ResolvedStateActivity" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ResolvedStateActivity</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">state_dim</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">active</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fixed_value</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">zero_sensitivity</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">explicitly_inactive</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.state_activity.ResolvedStateActivity" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>A state-activity policy aligned to one detected sensitivity matrix.</p>
 <dl class="field-list simple">
@@ -695,6 +706,10 @@ and provenance.</p>
 <li><p><strong>zero_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Labelled mask identifying exactly-zero design
 columns and carrying the state coordinates used for graph
 construction.</p></li>
+<li><p><strong>explicitly_inactive</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>xarray.core.dataarray.DataArray</em></a><em> | </em><em>None</em>) – Mask of states the policy itself made inactive,
+through <code class="docutils literal notranslate"><span class="pre">active</span></code> or <code class="docutils literal notranslate"><span class="pre">fixed_groups</span></code>, whatever their
+sensitivity. <code class="docutils literal notranslate"><span class="pre">None</span></code> when the activity was not resolved from a
+policy.</p></li>
 </ul>
 </dd>
 </dl>

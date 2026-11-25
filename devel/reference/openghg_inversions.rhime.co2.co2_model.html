@@ -426,6 +426,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_error.html">openghg_inversions.models.fixed_error</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html">openghg_inversions.models.fixed_ou</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.outer_flux.html">openghg_inversions.models.outer_flux</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html">openghg_inversions.models.scalar_sigma</a></li>
@@ -614,6 +615,7 @@ boundary and offset terms, and finally constructs the observation likelihood.</p
 <dd><em class="sig-param"><span class="n"><span class="pre">fixed_model_mismatch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">outer_flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
@@ -682,6 +684,10 @@ standard deviation.</p></li>
 <li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled activity policy for retained flux
 states.</p></li>
 <li><p><strong>boundary</strong> (<a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Bound" title="openghg_inversions.models.boundary.Bound"><em>Bound</em></a><em> | </em><em>None</em>) – Resolved boundary component bound to this fit.</p></li>
+<li><p><strong>outer_flux</strong> (<a class="reference internal" href="openghg_inversions.models.outer_flux.html#openghg_inversions.models.outer_flux.OuterFluxChoice" title="openghg_inversions.models.outer_flux.OuterFluxChoice"><em>OuterFluxChoice</em></a><em> | </em><em>None</em>) – Optional outer-flux choice, resolved here on
+<code class="docutils literal notranslate"><span class="pre">retained_prior</span></code>. Its fixed outer states are held at their prior
+mean with zero uncertainty after exact-zero pruning. See
+<a class="reference internal" href="openghg_inversions.models.outer_flux.html#module-openghg_inversions.models.outer_flux" title="openghg_inversions.models.outer_flux"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.models.outer_flux</span></code></a>.</p></li>
 <li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior for an offset component. When omitted, no
 offset is added. Site codes are derived from the <code class="docutils literal notranslate"><span class="pre">site</span></code> coordinate
 on <code class="docutils literal notranslate"><span class="pre">observations</span></code>.</p></li>

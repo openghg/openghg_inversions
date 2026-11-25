@@ -426,6 +426,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_error.html">openghg_inversions.models.fixed_error</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html">openghg_inversions.models.fixed_ou</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.outer_flux.html">openghg_inversions.models.outer_flux</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html">openghg_inversions.models.scalar_sigma</a></li>
@@ -916,9 +917,9 @@ defaults <code class="docutils literal notranslate"><span class="pre">bc_freq_an
 first. Its labels select and order the sensitivity rows; its
 <code class="docutils literal notranslate"><span class="pre">time</span></code> values assign rows to boundary periods.</p></li>
 <li><p><strong>sensitivity</strong> (<a class="reference internal" href="openghg_inversions.models.boundary.contracts.html#openghg_inversions.models.boundary.contracts.RawCenteredSensitivity" title="openghg_inversions.models.boundary.contracts.RawCenteredSensitivity"><em>RawCenteredSensitivity</em></a>) – Raw centered sensitivity on its <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> or <code class="docutils literal notranslate"><span class="pre">time</span></code>
-axis. Weighted anomalies also need its
+axis. Weighted anomalies with a positive scale also need its
 <code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code> on <code class="docutils literal notranslate"><span class="pre">(bc_curtain,</span> <span class="pre">bc_period)</span></code>; other
-structures ignore them.</p></li>
+choices ignore them.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
