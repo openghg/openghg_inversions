@@ -687,8 +687,10 @@ a preparation replaced after sampling.</p>
 <p>Compatible baseline and fixed mismatch changes reuse preparation; defining
 retained priors, operators and cross-channel covariance remain prepared facts.
 The full prepared-input runner and this route use the same construction,
-sampling and scientific annotation operations.
-<code class="docutils literal notranslate"><span class="pre">referenced</span></code> names consumed request files, such as the CLI configuration,
+sampling and scientific annotation operations. Fixed-OU fits use the cached
+fixed-OU sampler (state quadratic built once, state NUTS only), with the
+resolved <code class="docutils literal notranslate"><span class="pre">target_accept</span></code> (default 0.95) tuning that state step.</p>
+<p><code class="docutils literal notranslate"><span class="pre">referenced</span></code> names consumed request files, such as the CLI configuration,
 that this stage’s outputs must not overwrite or enclose.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>

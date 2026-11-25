@@ -705,7 +705,9 @@ by model construction at its materialization boundary.</p>
 <span class="sig-name descname"><span class="pre">resolve_co2_o2_sampler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_sampler" title="Link to this definition">#</a></dt>
 <dd><p>Resolve live sampling controls and the backend required by the likelihood.</p>
 <p>Fixed OU requires PyMC; fixed independent error defaults to NumPyro.
-Channel, prepared-input and output choices remain unused.</p>
+<code class="docutils literal notranslate"><span class="pre">target_accept</span></code> defaults to 0.95; for fixed OU it tunes the state NUTS
+step of the cached fixed-OU sampler. Channel, prepared-input and output
+choices remain unused.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a></p>

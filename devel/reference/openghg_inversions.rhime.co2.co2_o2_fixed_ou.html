@@ -597,14 +597,54 @@
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_fixed_ou.linked_fixed_ou_alignment">
 <span class="sig-name descname"><span class="pre">linked_fixed_ou_alignment</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">observations</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_fixed_ou.linked_fixed_ou_alignment" title="Link to this definition">#</a></dt>
 <dd><p>Group joint rows by <code class="docutils literal notranslate"><span class="pre">species:site</span></code>, preserving their original order.</p>
-<p>Observations must have a labelled <code class="docutils literal notranslate"><span class="pre">observation</span></code> axis, aligned <code class="docutils literal notranslate"><span class="pre">species</span></code>,
-<code class="docutils literal notranslate"><span class="pre">site</span></code> and <code class="docutils literal notranslate"><span class="pre">time</span></code> coordinates, and one common <code class="docutils literal notranslate"><span class="pre">observation_units</span></code>
-value. This first linked OU target excludes heterogeneous channel units.
+<p>Observations must have a labelled <code class="docutils literal notranslate"><span class="pre">observation</span></code> axis and aligned
+<code class="docutils literal notranslate"><span class="pre">species</span></code>, <code class="docutils literal notranslate"><span class="pre">site</span></code>, <code class="docutils literal notranslate"><span class="pre">time</span></code> and <code class="docutils literal notranslate"><span class="pre">observation_units</span></code> coordinates. Each
+group has one unit, so CO2 and O2 may use different units (for example
+ppm and per meg); OU amplitudes are then in each group’s channel units.
 Scalar amplitudes and tau apply independently to each group; mappings use
-the explicit <code class="docutils literal notranslate"><span class="pre">co2:SITE</span></code> and <code class="docutils literal notranslate"><span class="pre">o2:SITE</span></code> labels.</p>
+the explicit <code class="docutils literal notranslate"><span class="pre">co2:SITE</span></code> and <code class="docutils literal notranslate"><span class="pre">o2:SITE</span></code> labels. See
+<a class="reference internal" href="#openghg_inversions.rhime.co2.co2_o2_fixed_ou.validate_linked_ou_amplitude_units" title="openghg_inversions.rhime.co2.co2_o2_fixed_ou.validate_linked_ou_amplitude_units"><code class="xref py py-func docutils literal notranslate"><span class="pre">validate_linked_ou_amplitude_units()</span></code></a> for the amplitude rules with
+mixed units.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.sigma.html#openghg_inversions.sigma.SigmaAlignment" title="openghg_inversions.sigma.SigmaAlignment"><em>SigmaAlignment</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_fixed_ou.linked_channel_units">
+<span class="sig-name descname"><span class="pre">linked_channel_units</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">observations</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_fixed_ou.linked_channel_units" title="Link to this definition">#</a></dt>
+<dd><p>Return the unit label of each channel present on the joint observation axis.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_fixed_ou.validate_linked_ou_amplitude_units">
+<span class="sig-name descname"><span class="pre">validate_linked_ou_amplitude_units</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">observations</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fixed_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_fixed_ou.validate_linked_ou_amplitude_units" title="Link to this definition">#</a></dt>
+<dd><p>Require OU amplitudes that state their units when CO2 and O2 units differ.</p>
+<p>With one common unit nothing changes. With mixed units (for example ppm
+CO2 and per-meg O2), a nonzero scalar amplitude would mean different
+things on each channel, so fixed amplitudes must be a <code class="docutils literal notranslate"><span class="pre">co2:SITE</span></code>/
+<code class="docutils literal notranslate"><span class="pre">o2:SITE</span></code> mapping, each value in its own channel’s units. One inferred
+amplitude prior cannot hold two units, so inferred amplitudes are refused.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If channel units differ and amplitudes are a nonzero scalar
+    or inferred.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -659,6 +699,8 @@ the explicit <code class="docutils literal notranslate"><span class="pre">co2:SI
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_fixed_ou.linked_fixed_ou_alignment"><code class="docutils literal notranslate"><span class="pre">linked_fixed_ou_alignment()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_fixed_ou.linked_channel_units"><code class="docutils literal notranslate"><span class="pre">linked_channel_units()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_fixed_ou.validate_linked_ou_amplitude_units"><code class="docutils literal notranslate"><span class="pre">validate_linked_ou_amplitude_units()</span></code></a></li>
 </ul>
   </nav></div>
 

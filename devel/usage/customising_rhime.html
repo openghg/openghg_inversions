@@ -495,8 +495,9 @@ documented interfaces.</p>
 <ul class="simple">
 <li><p>To change only the likelihood, pass a Python function to <code class="docutils literal notranslate"><span class="pre">run_standard</span></code>.</p></li>
 <li><p>To run the matched fixed-tau Ornstein–Uhlenbeck (OU) CO₂ model with inferred
-site amplitudes, use <a class="reference internal" href="co2_models.html#co2-cached-sigma-recipe"><span class="std std-ref">the package-supported cached-sigma CO₂ recipe</span></a> in
-the <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a>.</p></li>
+or fixed site amplitudes, use <a class="reference internal" href="co2_models.html#co2-cached-sigma-recipe"><span class="std std-ref">the package-supported cached-sigma CO₂
+recipe</span></a> in the <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a>. Fixed amplitudes use the same sampler without its
+amplitude step.</p></li>
 <li><p>To resume from externally supplied merged observations, footprints, and
 fluxes, pass a borrowed <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> object as <code class="docutils literal notranslate"><span class="pre">merged_data</span></code>.</p></li>
 <li><p>To change a preparation stage such as basis construction, copy the visible

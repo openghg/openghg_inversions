@@ -529,11 +529,13 @@ Full and shared saved operations resolve their own applicable choices.</p></td>
 Python runners retain their separate configuration resolver.</p></td>
 </tr>
 <tr class="row-even"><td><p>Fixed-OU mismatch</p></td>
-<td><p>Fixed tau and fixed or inferred site amplitudes. Inferred amplitudes
-automatically use the matched cached quadratic sampler.</p></td>
+<td><p>Fixed tau and fixed or inferred site amplitudes. Both automatically use
+the matched cached quadratic sampler; fixed amplitudes build the
+quadratic once and sample only the states.</p></td>
 <td><p>Fixed tau and fixed or inferred amplitudes by species/site, preserving
 cross-channel aggregation covariance. The matched cached sampler
-updates all active affine coefficients. Requires the same channel units.</p></td>
+updates all active affine coefficients; fixed amplitudes build its
+quadratic once. Inferred amplitudes require the same channel units.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Boundary conditions and offsets</p></td>
 <td><p>Model configuration can select prepared <code class="docutils literal notranslate"><span class="pre">H_bc</span></code>
@@ -673,8 +675,10 @@ counts, tuning length, chains and seed in <code class="docutils literal notransl
 fixed-amplitude OU use PyMC. The <a class="reference internal" href="co2_models.html"><span class="doc">inference policy table</span></a>
 explains which choices are technical requirements and which are defaults.
 Inferred-OU tuning belongs to <code class="docutils literal notranslate"><span class="pre">sampling.sigma_target_accept</span></code> and
-<code class="docutils literal notranslate"><span class="pre">sampling.state_target_accept</span></code>. Saved Python sampling takes the same
-<code class="docutils literal notranslate"><span class="pre">sampling</span></code> mapping as the full configuration.</p>
+<code class="docutils literal notranslate"><span class="pre">sampling.state_target_accept</span></code>. Fixed-amplitude OU uses the same cached
+sampler without the amplitude step; <code class="docutils literal notranslate"><span class="pre">sampling.state_target_accept</span></code> or
+<code class="docutils literal notranslate"><span class="pre">sampling.target_accept</span></code> tunes its state step. Saved Python sampling takes
+the same <code class="docutils literal notranslate"><span class="pre">sampling</span></code> mapping as the full configuration.</p>
 <p>The configured <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--model</span> <span class="pre">co2</span></code> CLI route uses
 <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> and writes requested products. Python
 <code class="docutils literal notranslate"><span class="pre">rhime.run(model=&quot;co2&quot;,</span> <span class="pre">config_file=&quot;co2.toml&quot;)</span></code> selects the same configured
@@ -850,9 +854,10 @@ joint aggregation covariance once. Alternatively configure
 <code class="docutils literal notranslate"><span class="pre">likelihood.kind</span> <span class="pre">=</span> <span class="pre">&quot;fixed_ou&quot;</span></code> with positive <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> and nonnegative
 <code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code>. Linked OU mappings use <code class="docutils literal notranslate"><span class="pre">&quot;co2:MHD&quot;</span></code> and
 <code class="docutils literal notranslate"><span class="pre">&quot;o2:MHD&quot;</span></code> species/site keys. The installed route supports fixed OU
-amplitudes and requires PyMC for OU sampling. Inferred OU amplitude and cached
-sampler consolidation remain separate work; existing direct Python runners
-retain those interfaces.</p>
+amplitudes, requires PyMC for OU sampling, and samples them with the cached
+fixed-OU sampler (quadratic built once, state NUTS only). Configured inferred
+OU amplitudes remain separate work; existing direct Python runners retain
+that interface.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>rhime<span class="w"> </span>prepare<span class="w"> </span>--model<span class="w"> </span>co2_o2<span class="w"> </span>-c<span class="w"> </span>co2_o2.toml<span class="w"> </span>--output-dir<span class="w"> </span>run/prepare
 rhime<span class="w"> </span>prior-predictive<span class="w"> </span>--model<span class="w"> </span>co2_o2<span class="w"> </span>-c<span class="w"> </span>co2_o2.toml<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--preparation-manifest<span class="w"> </span>run/prepare/prepare-manifest.json<span class="w"> </span><span class="se">\</span>

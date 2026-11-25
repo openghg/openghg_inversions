@@ -592,7 +592,7 @@
                   
   <section id="module-openghg_inversions.rhime.co2.co2_cached_sigma_model">
 <span id="openghg-inversions-rhime-co2-co2-cached-sigma-model"></span><h1>openghg_inversions.rhime.co2.co2_cached_sigma_model<a class="headerlink" href="#module-openghg_inversions.rhime.co2.co2_cached_sigma_model" title="Link to this heading">#</a></h1>
-<p>CO2 graph for cached fixed-OU site-amplitude sampling.</p>
+<p>CO2 graph for cached fixed-OU sampling with inferred or fixed site amplitudes.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Co2CachedSigmaModel</span></span><span class="sig-paren">(</span>
@@ -608,6 +608,7 @@
 <dd><em class="sig-param"><span class="n"><span class="pre">cached_state_logp</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_values</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">boundary_outputs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fixed_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">outer_flux_outputs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
@@ -619,6 +620,9 @@ when the bound boundary is centered; the named concentration output stays absolu
 <code class="docutils literal notranslate"><span class="pre">initial_values</span></code> contains untransformed sampling overrides or PyMC
 initialization strategies, lifted from graph metadata. The matched runner
 resolves them separately for construction and each sampling chain.
+<code class="docutils literal notranslate"><span class="pre">fixed_amplitudes</span></code> is true when <code class="docutils literal notranslate"><span class="pre">amplitude</span></code> is registered model data
+rather than a sampled variable; <code class="docutils literal notranslate"><span class="pre">initial_cache</span></code> is then the exact state
+quadratic for the whole run and the sampler has no amplitude step.
 <code class="docutils literal notranslate"><span class="pre">boundary_outputs</span></code> and <code class="docutils literal notranslate"><span class="pre">outer_flux_outputs</span></code> declare the bound
 boundary’s and outer-flux option’s roles, units and metadata.</p>
 <dl class="field-list simple">
@@ -638,8 +642,9 @@ boundary’s and outer-flux option’s roles, units and metadata.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">observation_error</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fixed_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">outer_flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -685,11 +690,18 @@ observations’ concentration units.</p></li>
 squared concentration units.</p></li>
 <li><p><strong>tau_hours</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>]</em>) – Fixed OU decorrelation time in hours. A scalar applies to
 every site; a mapping must cover every observed site label.</p></li>
-<li><p><strong>site_amplitude_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Independent positive prior specification for site
-amplitudes, in the observations’ concentration units.</p></li>
+<li><p><strong>site_amplitude_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Independent positive prior specification for site
+amplitudes, in the observations’ concentration units. Exactly one
+of this or <code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code> is required.</p></li>
 <li><p><strong>initial_site_amplitudes</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Optional positive initial amplitude in the
 same units, supplied as one scalar or a mapping covering every
-observed site. Defaults to the prior support point.</p></li>
+observed site. Defaults to the prior support point. Only valid
+with <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code>.</p></li>
+<li><p><strong>fixed_site_amplitudes</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Fixed non-negative site amplitudes in the
+observations’ concentration units, as one scalar or a mapping
+covering every observed site. They are registered as
+<code class="docutils literal notranslate"><span class="pre">ou_site_amplitude</span></code> model data, the state quadratic is built
+once, and the matched sampler has no amplitude step.</p></li>
 <li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled active/fixed policy for retained flux
 states. Fixed values are dimensionless flux scalings.</p></li>
 <li><p><strong>boundary</strong> (<a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Bound" title="openghg_inversions.models.boundary.Bound"><em>Bound</em></a><em> | </em><em>None</em>) – Resolved boundary component bound to this fit.</p></li>
@@ -713,12 +725,14 @@ global offset and does not accept <code class="docutils literal notranslate"><sp
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>The registered model, fixed-OU target and caches, ordered sampler
-states, and completed likelihood mean. The latter is centered when
+states, completed likelihood mean, and whether amplitudes are fixed. The latter is centered when
 a centered boundary is supplied; <code class="docutils literal notranslate"><span class="pre">modelled_concentration</span></code> stays absolute.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If scientific arrays, coordinates, covariance inputs,
-    priors, or activity policies are invalid; if boundary options are
+    priors, or activity policies are invalid; if not exactly one
+    amplitude option is given or fixed amplitudes do not give a
+    positive-definite covariance; if boundary options are
     supplied without a boundary representation; or if non-default
     offset options are supplied without <code class="docutils literal notranslate"><span class="pre">offset_prior</span></code>. Also raised
     for incompatible global-offset options.</p>

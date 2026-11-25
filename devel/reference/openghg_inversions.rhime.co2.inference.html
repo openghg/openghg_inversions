@@ -596,7 +596,21 @@
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.inference.uses_cached_ou">
 <span class="sig-name descname"><span class="pre">uses_cached_ou</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.inference.uses_cached_ou" title="Link to this definition">#</a></dt>
-<dd><p>Identify the inferred independent-amplitude fixed-OU target.</p>
+<dd><p>Identify the fixed-OU likelihood, sampled by the cached fixed-OU sampler.</p>
+<p>Inferred amplitudes (<code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code>) use the sigma-then-state
+sweep; fixed amplitudes (<code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code>) are its specialisation
+with one state quadratic built once and only the state NUTS step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)">bool</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.inference.uses_fixed_ou_amplitudes">
+<span class="sig-name descname"><span class="pre">uses_fixed_ou_amplitudes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.inference.uses_fixed_ou_amplitudes" title="Link to this definition">#</a></dt>
+<dd><p>Identify the cached fixed-OU target with fixed (not inferred) site amplitudes.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)">bool</a></p>
@@ -626,7 +640,9 @@
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.inference.annotate_co2_inference">
 <span class="sig-name descname"><span class="pre">annotate_co2_inference</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trace</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">built</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cached</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.inference.annotate_co2_inference" title="Link to this definition">#</a></dt>
-<dd><p>Keep exact joint prediction and likelihood semantics on inferred OU output.</p>
+<dd><p>Keep exact joint prediction and likelihood semantics on cached fixed-OU output.</p>
+<p>Fixed-amplitude output also keeps the likelihood-builder provenance that
+the plain NUTS route used to record.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
@@ -654,12 +670,16 @@
 <dd><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">sigma_target_accept</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.8</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">state_target_accept</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.9</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sigma_target_accept</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">state_target_accept</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.inference.sample_co2_inference" title="Link to this definition">#</a></dt>
 <dd><p>Build the selected graph, sample its matched steps and record their settings.</p>
+<p>Inferred OU amplitudes default to 0.8 (amplitude step) and 0.9 (state
+step). Fixed OU amplitudes have only the state step: <code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code>
+is rejected, and the state target is <code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code>, else
+<code class="docutils literal notranslate"><span class="pre">sampler.sample_kwargs['target_accept']</span></code>, else 0.8.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)">tuple</a>[<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a>, <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]]</p>
@@ -717,6 +737,7 @@
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.inference.uses_cached_ou"><code class="docutils literal notranslate"><span class="pre">uses_cached_ou()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.inference.uses_fixed_ou_amplitudes"><code class="docutils literal notranslate"><span class="pre">uses_fixed_ou_amplitudes()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.inference.validate_co2_inference"><code class="docutils literal notranslate"><span class="pre">validate_co2_inference()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.inference.build_co2_inference"><code class="docutils literal notranslate"><span class="pre">build_co2_inference()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.inference.annotate_co2_inference"><code class="docutils literal notranslate"><span class="pre">annotate_co2_inference()</span></code></a></li>

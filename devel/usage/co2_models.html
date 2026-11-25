@@ -726,8 +726,9 @@ automatic policy:</p>
 <td><p>Conservative default; this likelihood does not inherently require PyMC.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code> with fixed amplitudes</p></td>
-<td><p>PyMC NUTS</p></td>
-<td><p>The custom likelihood operation has no JAX implementation.</p></td>
+<td><p>PyMC cached state NUTS (state quadratic built once)</p></td>
+<td><p>Fixed amplitudes make the covariance factorization constant, so the
+matched cached sampler computes it once instead of on every gradient.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code> with inferred amplitudes</p></td>
 <td><p>PyMC cached amplitude update, then state NUTS when states exist</p></td>
@@ -736,9 +737,13 @@ automatic policy:</p>
 </tbody>
 </table>
 </div>
-<p>The inferred-amplitude OU path needs its custom cached amplitude update, and
-an ordered compound step when states exist. These require PyMC; NumPyro cannot
-execute the matched custom step.
+<p>Both fixed-OU choices use the matched cached sampler. The inferred-amplitude
+path needs its custom cached amplitude update, and an ordered compound step when
+states exist. Fixed amplitudes are its specialisation: there is no amplitude
+step, the state-likelihood quadratic is built once for the fixed values and
+never refreshed, and the compound step holds only the state NUTS step. A
+fixed-amplitude model needs at least one active flux, boundary or offset state.
+These require PyMC; NumPyro cannot execute the matched custom step.
 Timing evidence does not cover PyMC’s Numba mode or nutpie and does not establish
 NumPyro as the fastest backend. Site/scalar choices remain conservative policy
 choices. Configured execution exposes no backend selector.</p>
@@ -748,7 +753,11 @@ PyMC. Configured CO₂ now rejects <code class="docutils literal notranslate"><s
 when migrating. <code class="docutils literal notranslate"><span class="pre">draws</span></code>, <code class="docutils literal notranslate"><span class="pre">tune</span></code>, <code class="docutils literal notranslate"><span class="pre">chains</span></code> and <code class="docutils literal notranslate"><span class="pre">random_seed</span></code> remain
 configurable. Inferred OU uses <code class="docutils literal notranslate"><span class="pre">sampling.sigma_target_accept</span></code> (default 0.8)
 and <code class="docutils literal notranslate"><span class="pre">sampling.state_target_accept</span></code> (default 0.9), each strictly between zero
-and one. These tuning controls are not likelihood options.
+and one. Fixed-amplitude OU has only the state step: it rejects
+<code class="docutils literal notranslate"><span class="pre">sampling.sigma_target_accept</span></code> and takes either
+<code class="docutils literal notranslate"><span class="pre">sampling.state_target_accept</span></code> or, as before the cached route, the generic
+<code class="docutils literal notranslate"><span class="pre">sampling.target_accept</span></code> (not both), defaulting to PyMC’s 0.8. These tuning
+controls are not likelihood options.
 For example, replace the likelihood section with:</p>
 <div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[likelihood]</span>
 <span class="n">kind</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"fixed_ou"</span>
@@ -898,8 +907,10 @@ false). A global offset (<code class="docutils literal notranslate"><span class=
 <p>CO2 fixed OU with inferred amplitudes also accepts positive
 <code class="docutils literal notranslate"><span class="pre">initial_site_amplitudes</span></code> in <code class="docutils literal notranslate"><span class="pre">[likelihood]</span></code>. The zero-to-one controls
 <code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code> and <code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code> belong in <code class="docutils literal notranslate"><span class="pre">[sampling]</span></code>.
-Posterior-predictive name lists may contain only <code class="docutils literal notranslate"><span class="pre">y</span></code> or <code class="docutils literal notranslate"><span class="pre">concentration</span></code>.
-The implementation selects the matched cached sampler automatically.</p>
+With fixed amplitudes only <code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code> (or <code class="docutils literal notranslate"><span class="pre">target_accept</span></code>)
+applies. Posterior-predictive name lists may contain only <code class="docutils literal notranslate"><span class="pre">y</span></code> or
+<code class="docutils literal notranslate"><span class="pre">concentration</span></code>. The implementation selects the matched cached sampler
+automatically for both amplitude choices.</p>
 <p>The optional <code class="docutils literal notranslate"><span class="pre">[sampling]</span></code> table is shared by the supported setups.
 Defaults below apply when an option is omitted; linked fixed-error sampling
 uses NumPyro, while configured linked fixed OU defaults to and requires PyMC.</p>
@@ -969,7 +980,8 @@ listed names are restricted to <code class="docutils literal notranslate"><span 
 <td><p><code class="docutils literal notranslate"><span class="pre">0.8</span></code> for ordinary NUTS</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0.95</span></code></p></td>
 <td><p>Number strictly between zero and one. Inferred fixed-OU amplitudes use
-the separate controls below instead.</p></td>
+the separate controls below instead. With fixed OU amplitudes it tunes
+the cached state step (linked default 0.95).</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0.8</span></code></p></td>
@@ -977,9 +989,10 @@ the separate controls below instead.</p></td>
 <td><p>CO2 inferred fixed-OU only; number strictly between zero and one.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">0.9</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.9</span></code> (inferred); <code class="docutils literal notranslate"><span class="pre">target_accept</span></code> or <code class="docutils literal notranslate"><span class="pre">0.8</span></code> (fixed)</p></td>
 <td><p>Not available</p></td>
-<td><p>CO2 inferred fixed-OU only; used when flux, boundary or offset states exist.</p></td>
+<td><p>CO2 fixed-OU only; used when flux, boundary or offset states exist.
+Fixed amplitudes accept this or <code class="docutils literal notranslate"><span class="pre">target_accept</span></code>, not both.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">random_seed</span></code></p></td>
 <td><p>Not set</p></td>
@@ -1713,6 +1726,22 @@ and <code class="docutils literal notranslate"><span class="pre">state_target_ac
 <code class="docutils literal notranslate"><span class="pre">sampling.target_accept</span></code> is rejected for this model. The state-likelihood
 quadratic cache and fixed-OU generalized eigenbasis are runtime numerical state
 derived from materialized prepared inputs, not external cache artifacts.</p>
+<section id="fixed-site-amplitudes">
+<h3>Fixed site amplitudes<a class="headerlink" href="#fixed-site-amplitudes" title="Link to this heading">#</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code> selects the same graph and sampler with known
+amplitudes. They are stored as <code class="docutils literal notranslate"><span class="pre">ou_site_amplitude</span></code> model data, so traces
+carry them in <code class="docutils literal notranslate"><span class="pre">constant_data</span></code> rather than <code class="docutils literal notranslate"><span class="pre">posterior</span></code>. The exact
+state-likelihood quadratic is built once, for those values, before sampling;
+there is no amplitude step and no refresh, and stock state NUTS samples
+<code class="docutils literal notranslate"><span class="pre">model.logp(free_RVs)</span> <span class="pre">+</span> <span class="pre">cached</span> <span class="pre">quadratic</span></code>. Previously this choice used plain
+PyMC NUTS, which rebuilt the whitened low-rank factor and the Woodbury Cholesky
+factor on every density and gradient evaluation even though they cannot change.
+<code class="docutils literal notranslate"><span class="pre">sampling.sigma_target_accept</span></code> is rejected; <code class="docutils literal notranslate"><span class="pre">sampling.state_target_accept</span></code>
+or <code class="docutils literal notranslate"><span class="pre">sampling.target_accept</span></code> (not both) tunes the state step, defaulting to
+0.8. At least one flux, boundary or offset state must be active. Fixed
+amplitudes must be finite and non-negative and must give a positive-definite
+covariance. The recorded inference algorithm is
+<code class="docutils literal notranslate"><span class="pre">cached_fixed_ou_state_nuts</span></code>.</p>
 <p>The graph exposes one exact observed <code class="docutils literal notranslate"><span class="pre">y</span></code> distribution. Native
 <code class="docutils literal notranslate"><span class="pre">pm.sample_prior_predictive</span></code>, <code class="docutils literal notranslate"><span class="pre">pm.sample_posterior_predictive</span></code> and
 <code class="docutils literal notranslate"><span class="pre">pm.compute_log_likelihood</span></code> therefore use each draw’s complete mean and
@@ -1767,6 +1796,7 @@ A custom pipeline that constructs an <code class="docutils literal notranslate">
 completeness, coherence, and numerical covariance guarantees of that object;
 there is no separate public complete-covariance validator.</p>
 </section>
+</section>
 <section id="linked-fixed-ou-mismatch-and-cached-sampling">
 <h2>Linked fixed-OU mismatch and cached sampling<a class="headerlink" href="#linked-fixed-ou-mismatch-and-cached-sampling" title="Link to this heading">#</a></h2>
 <p>The linked prepared-input runner accepts <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> together with either
@@ -1783,8 +1813,8 @@ cross-channel blocks. <code class="docutils literal notranslate"><span class="pr
 Each term enters exactly once. Rows may be irregular and interleaved; the
 OU groups preserve their original row positions. Different channels at the
 same site have separate amplitudes and no cross-channel OU contribution.
-Both channels must already use the same concentration units. Heterogeneous
-covariance units are not supported by this option.</p>
+Inferred amplitudes require the same concentration units in both channels;
+fixed amplitudes may use mixed channel units as described below.</p>
 <p>Numerically centered boundary operands support the ordinary fixed-OU likelihood
 with either multiplicative scales or additive corrections. The linked model may
 combine centered multiplicative CO2 boundaries with centered additive O2
@@ -1796,8 +1826,14 @@ absolute; trace annotation restores observed and predictive concentrations once.
 This composition is also supported by the cached fixed-OU route.</p>
 <p>Tau is fixed in hours. A scalar tau or fixed amplitude applies independently
 to every observed group. Mappings must cover labels such as <code class="docutils literal notranslate"><span class="pre">co2:MHD</span></code> and
-<code class="docutils literal notranslate"><span class="pre">o2:MHD</span></code>. Amplitudes and their prior scales use the common concentration unit.
-For example, the ordinary linked configuration can include:</p>
+<code class="docutils literal notranslate"><span class="pre">o2:MHD</span></code>. Each amplitude is in its own channel’s units. When the channels
+share a unit, amplitudes and their prior scales use that unit. With mixed units,
+such as CO2 in ppm and per-meg delta(O2/N2) O2, a nonzero fixed amplitude must be
+a <code class="docutils literal notranslate"><span class="pre">co2:SITE</span></code>/<code class="docutils literal notranslate"><span class="pre">o2:SITE</span></code> mapping, and inferred amplitudes (one prior for every
+group) are rejected. For mixed units, call the prepared-input Python runner
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.co2_o2_runner.html#openghg_inversions.rhime.co2.co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs" title="openghg_inversions.rhime.co2.co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs()</span></code></a>.
+Trace amplitudes then carry an <code class="docutils literal notranslate"><span class="pre">ou_units</span></code> coordinate. For channels using the
+same concentration unit, the linked TOML configuration can include:</p>
 <div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="n">recipe</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"co2_o2"</span>
 <span class="k">[likelihood]</span>
 <span class="n">kind</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"fixed_ou"</span>
@@ -1805,6 +1841,14 @@ For example, the ordinary linked configuration can include:</p>
 <span class="n">fixed_site_amplitudes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="s2">"co2:MHD"</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mf">0.4</span><span class="p">,</span><span class="w"> </span><span class="s2">"o2:MHD"</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mf">0.7</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
+<p>Fixed linked amplitudes are sampled by the cached fixed-OU sampler, whether
+they come from this configuration, the saved <code class="docutils literal notranslate"><span class="pre">sample</span></code> phase or the direct
+prepared-input runner: the joint state quadratic is built once and only the
+state NUTS step runs, tuned by <code class="docutils literal notranslate"><span class="pre">target_accept</span></code> (default 0.95). The trace
+keeps the <code class="docutils literal notranslate"><span class="pre">co2_o2</span></code> recipe annotations, with <code class="docutils literal notranslate"><span class="pre">ou_site_amplitude</span></code> (and its
+<code class="docutils literal notranslate"><span class="pre">ou_units</span></code>) in <code class="docutils literal notranslate"><span class="pre">constant_data</span></code>, and records the algorithm
+<code class="docutils literal notranslate"><span class="pre">cached_fixed_ou_state_nuts</span></code>. <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.co2_o2_runner.html#openghg_inversions.rhime.co2.co2_o2_runner.build_rhime_co2_o2" title="openghg_inversions.rhime.co2.co2_o2_runner.build_rhime_co2_o2"><code class="xref py py-func docutils literal notranslate"><span class="pre">build_rhime_co2_o2()</span></code></a>
+still builds the plain graph for prior prediction.</p>
 <p>In direct Python calls to the linked prepared-input runner, replace the
 <code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code> argument with <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code> to infer
 amplitudes with stock PyMC. The optimized runner
@@ -1812,7 +1856,9 @@ amplitudes with stock PyMC. The optimized runner
 uses independent positive amplitude priors and the existing CO2
 sigma-then-state <code class="docutils literal notranslate"><span class="pre">CompoundStep</span></code>. It refreshes the exact state quadratic only
 when returned amplitude values change, then updates all active flux, boundary,
-and offset coefficients against that cache. Its builder is
+and offset coefficients against that cache. It also accepts
+<code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code> (then without the amplitude step and without
+<code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code>). Its builder is
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.build_co2_o2_cached_sigma_model" title="openghg_inversions.rhime.co2.build_co2_o2_cached_sigma_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.build_co2_o2_cached_sigma_model()</span></code></a>.</p>
 <p>For inferred linked amplitudes, use the direct Python scientific APIs with
 explicit <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code>, <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> and optional
@@ -1893,7 +1939,10 @@ The joint likelihood must not be treated as pointwise observation densities.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#signed-oxidation-ratios">Signed oxidation ratios</a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#fixed-ou-with-inferred-site-amplitudes">Fixed OU with inferred site amplitudes</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#fixed-ou-with-inferred-site-amplitudes">Fixed OU with inferred site amplitudes</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#fixed-site-amplitudes">Fixed site amplitudes</a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#linked-fixed-ou-mismatch-and-cached-sampling">Linked fixed-OU mismatch and cached sampling</a></li>
 </ul>
   </nav></div>

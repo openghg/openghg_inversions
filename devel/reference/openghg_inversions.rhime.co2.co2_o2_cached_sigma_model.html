@@ -607,8 +607,9 @@
 <dd><em class="sig-param"><span class="n"><span class="pre">retained_prior</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">independent_error_sd</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fixed_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">outer_flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -622,14 +623,20 @@
 <p>Inputs have the same coherent-reduction, optional channel-baseline, and
 embedded O2-ratio contract as
 <a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html#openghg_inversions.rhime.co2.co2_o2_model.build_co2_o2_model" title="openghg_inversions.rhime.co2.co2_o2_model.build_co2_o2_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">build_co2_o2_model()</span></code></a>.
-Both channels must use the same concentration unit. OU blocks are independent by
-<code class="docutils literal notranslate"><span class="pre">(species,</span> <span class="pre">site)</span></code> while the prepared aggregation covariance retains all
-cross-channel entries. <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> is fixed, in hours; mappings use
-<code class="docutils literal notranslate"><span class="pre">co2:SITE</span></code>/<code class="docutils literal notranslate"><span class="pre">o2:SITE</span></code> keys. Amplitudes have independent positive priors
-specified by <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code> in concentration units. Optional positive
-initial amplitudes use the same scalar or species/site mapping convention.
-The returned graph must be sampled with the CO2 sigma-then-state
-CompoundStep and its explicit cached state function. The observed joint
+OU blocks are
+independent by <code class="docutils literal notranslate"><span class="pre">(species,</span> <span class="pre">site)</span></code> while the prepared aggregation
+covariance retains all cross-channel entries. <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> is fixed, in
+hours; mappings use <code class="docutils literal notranslate"><span class="pre">co2:SITE</span></code>/<code class="docutils literal notranslate"><span class="pre">o2:SITE</span></code> keys. Exactly one amplitude
+option is required. Inferred amplitudes have independent positive priors
+specified by <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code> in concentration units and need
+identical channel units; optional positive initial amplitudes use the same
+scalar or species/site mapping convention. Fixed amplitudes
+(<code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code>) are in each group’s channel units; with mixed
+channel units (for example ppm CO2 and per-meg O2) a nonzero value must be
+a <code class="docutils literal notranslate"><span class="pre">co2:SITE</span></code>/<code class="docutils literal notranslate"><span class="pre">o2:SITE</span></code> mapping.
+The returned graph must be sampled with the CO2 cached CompoundStep
+(sigma-then-state, or state only for fixed amplitudes) and its explicit
+cached state function. The observed joint
 Gaussian remains exact independently of that cache. Scientific initial
 values are returned separately for sampling; observations, designs,
 activity masks, and covariance stay fixed after construction.</p>
@@ -668,21 +675,27 @@ so offsets allow mixed units (for example ppm CO2 and per-meg O2).
 Boundary terms still require identical channel units.</p></li>
 <li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Joint observation dimension used by the likelihood.</p></li>
 <li><p><strong>tau_hours</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>]</em>) – Fixed OU timescale in hours, scalar or mapping keyed
-by <code class="docutils literal notranslate"><span class="pre">co2:SITE</span></code>/<code class="docutils literal notranslate"><span class="pre">o2:SITE</span></code>. Requires common channel units.</p></li>
-<li><p><strong>site_amplitude_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Prior for inferred species/site OU amplitudes in
-concentration units.</p></li>
+by <code class="docutils literal notranslate"><span class="pre">co2:SITE</span></code>/<code class="docutils literal notranslate"><span class="pre">o2:SITE</span></code>.</p></li>
+<li><p><strong>site_amplitude_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Prior for inferred species/site OU amplitudes in
+concentration units. Requires common channel units.</p></li>
 <li><p><strong>initial_site_amplitudes</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Positive initial amplitudes, as a scalar or
-species/site mapping, returned separately for sampling.</p></li>
+species/site mapping, returned separately for sampling. Only
+valid with <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code>.</p></li>
+<li><p><strong>fixed_site_amplitudes</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Fixed non-negative species/site amplitudes in
+each group’s channel units, as a scalar or species/site mapping,
+registered as <code class="docutils literal notranslate"><span class="pre">ou_site_amplitude</span></code> model data.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>A registered joint PyMC model, fixed-OU target, matched cache, affine
 coefficient variables and sampling initial values. Use the paired
-sigma-then-state CompoundStep to keep the state cache current.</p>
+CompoundStep to keep the state cache current.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If channel options, labels, units, activity, covariance,
-    positive amplitudes or explicit double precision are invalid.</p>
+    amplitude options or explicit double precision are invalid, or if
+    channel units differ and amplitudes are inferred or a nonzero
+    scalar.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html#openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel" title="openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel"><em>Co2CachedSigmaModel</em></a></p>
