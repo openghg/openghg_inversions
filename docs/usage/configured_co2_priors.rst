@@ -83,7 +83,8 @@ and adds their contribution to the observation covariance. If they are
 correlated with the remaining states, it also transfers their conditional
 mean into the concentration model. This is exact for a Gaussian prior and
 a moment approximation under the LogNormal copula. The configured CO2
-route rejects ``"marginalise"`` with a scalar-sigma eigenbasis.
+route and the Python builder reject ``"marginalise"`` with a scalar-sigma
+eigenbasis.
 See :doc:`atmospheric_baseline` for equations, evidence and flux-output
 limitations. ``outer_groups`` selects outer
 states by the ``basis_group`` coordinate of the prepared retained prior;

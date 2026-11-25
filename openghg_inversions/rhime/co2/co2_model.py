@@ -37,6 +37,7 @@ from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likelihood
 from openghg_inversions.models.state_activity import (
     StateActivity,
     prepare_linear_sensitivity,
@@ -129,6 +130,21 @@ def _check_co2_model_options(
             "A selected likelihood_builder cannot be combined with default "
             "additive-sigma or fixed-mismatch options; pass its options in "
             "likelihood_kwargs."
+        )
+
+
+def _check_outer_flux_likelihood(
+    outer_flux: OuterFluxChoice | None,
+    likelihood_builder: RhimeLikelihoodBuilder | None,
+) -> None:
+    """Reject a scalar-sigma eigenbasis that omits marginalised outer covariance."""
+    if (
+        outer_flux is not None and outer_flux.mode == "marginalise"
+        and likelihood_builder is add_scalar_sigma_eigen_likelihood
+    ):
+        raise ValueError(
+            'outer_flux mode = "marginalise" changes the aggregation-error covariance, so it cannot use a '
+            "scalar-sigma eigenbasis prepared for the unchanged covariance."
         )
 
 
@@ -238,9 +254,9 @@ def build_co2_model(
         ValueError: If shared preparation, prior construction, or registered
             coordinate alignment fails, or if ``sigma_prior`` is supplied
             without ``sigma_alignment``, or if a centered boundary is combined
-            with a custom likelihood callback or wrapper. Conflicting
-            likelihood and boundary options are rejected before any input is
-            computed.
+            with a custom likelihood callback or wrapper, or if marginalised
+            outer flux is combined with a scalar-sigma eigenbasis.
+            Conflicting model options fail before any input is computed.
     """
     # Cheap option conflicts fail before any lazy input is executed.
     _check_co2_model_options(
@@ -251,6 +267,7 @@ def build_co2_model(
         sigma_prior=sigma_prior,
         fixed_model_mismatch=fixed_model_mismatch,
     )
+    _check_outer_flux_likelihood(outer_flux, likelihood_builder)
     (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, priors = dask_compute(
         *to_dense_tree((
             (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary,

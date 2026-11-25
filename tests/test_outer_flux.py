@@ -11,6 +11,7 @@ from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models.boundary import AnomalyScalingChoice
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.outer_flux import OuterFluxChoice
+from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likelihood, prepare_scalar_sigma_eigenbasis
 from openghg_inversions.models.state_activity import (
     StateActivity,
     prepare_linear_sensitivity,
@@ -276,6 +277,26 @@ def test_outputs_record_the_mode_and_selectors():
     assert outputs.metadata == {
         "outer_flux_mode": "fixed", "outer_groups": ["outer"], "outer_fixed_sources": ["ocean"],
     }
+
+
+def test_direct_co2_builder_rejects_marginalised_outer_flux_with_a_scalar_sigma_eigenbasis():
+    """Reject a likelihood whose precomputed covariance omits the marginalised flux."""
+    obs, flux_prior, h = inputs()
+    options = model_inputs(obs, flux_prior)
+    eigenbasis = prepare_scalar_sigma_eigenbasis(
+        observations=obs,
+        observation_error=options["observation_error"],
+        aggregation_error=options["aggregation_error"],
+    )
+
+    with pytest.raises(ValueError, match="cannot use a scalar-sigma eigenbasis"):
+        build_co2_model(
+            h,
+            **options,
+            outer_flux=MARGINAL,
+            likelihood_builder=add_scalar_sigma_eigen_likelihood,
+            likelihood_kwargs={"eigenbasis": eigenbasis, "sigma_prior": {"pdf": "halfnormal", "sigma": 0.4}},
+        )
 
 
 def aggregation_forms(obs):

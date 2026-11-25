@@ -53,7 +53,7 @@ from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.sigma import SigmaAlignment
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
-from .co2_model import _build_co2_model, _normalise_offset_args
+from .co2_model import _build_co2_model, _check_outer_flux_likelihood, _normalise_offset_args
 from .co2_preparation import Co2PreparedInputs
 
 _CO2_SCIENTIFIC_INPUT_NAMES = (
@@ -523,14 +523,7 @@ def build_co2_from_materialized(
         raise ValueError("CO2 model inputs and enabled priors must be materialized before building.")
     if likelihood_builder is None and not no_model_error and sigma_alignment is None:
         sigma_alignment = SigmaAlignment.from_observations(model_inputs["mf"])
-    if (
-        outer_flux is not None and outer_flux.mode == "marginalise"
-        and likelihood_builder is add_scalar_sigma_eigen_likelihood
-    ):
-        raise ValueError(
-            'outer_flux mode = "marginalise" changes the aggregation-error covariance, so it cannot use a '
-            "scalar-sigma eigenbasis prepared for the unchanged covariance."
-        )
+    _check_outer_flux_likelihood(outer_flux, likelihood_builder)
     aggregation_error = resolve_aggregation_error(
         model_inputs,
         prepared.aggregation_error_mode,
