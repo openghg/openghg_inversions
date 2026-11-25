@@ -222,13 +222,8 @@ def sample(
     )
 
 
-def load_samples(sample_manifest: str | Path) -> Co2O2Output:
-    """Reopen the joint posterior and scientific context without constructing a graph.
-
-    Saved inference provenance remains descriptive. Original requested dates and
-    domain come from preparation; replay does not resolve current inference
-    choices or generate missing predictions.
-    """
+def _load_samples(sample_manifest: str | Path) -> tuple[Co2O2Output, tuple[Path, ...]]:
+    """Reopen the joint posterior and return the paths consumed by that read."""
     path, record = read_manifest(sample_manifest, "openghg_inversions.co2_o2.sample", (
         "preparation", "preparation_generation", "posterior", "inference_kind",
     ), schema_version=2)
@@ -237,9 +232,12 @@ def load_samples(sample_manifest: str | Path) -> Co2O2Output:
     generation = record["preparation_generation"]
     if not isinstance(generation, str) or not generation:
         raise ValueError(f"Linked samples {path} require a nonempty preparation generation.")
-    preparation = load_preparation(reference(path, record["preparation"]), expected_generation=generation)
-    trace = load_trace(reference(path, record["posterior"]))
-    return make_co2_o2_output(
+    preparation_path = reference(path, record["preparation"])
+    posterior_path = reference(path, record["posterior"])
+    preparation = load_preparation(preparation_path, expected_generation=generation)
+    trace = load_trace(posterior_path)
+
+    result = make_co2_o2_output(
         prepared=preparation.prepared, trace=trace, start_date=preparation.start_date,
         end_date=preparation.end_date, domain=preparation.domain,
         output_metadata={
@@ -247,6 +245,17 @@ def load_samples(sample_manifest: str | Path) -> Co2O2Output:
             "provenance": record.get("provenance") if isinstance(record.get("provenance"), Mapping) else {},
         },
     )
+    return result, (path, preparation_path, preparation.payload, posterior_path)
+
+
+def load_samples(sample_manifest: str | Path) -> Co2O2Output:
+    """Reopen the joint posterior and scientific context without constructing a graph.
+
+    Saved inference provenance remains descriptive. Original requested dates and
+    domain come from preparation; replay does not resolve current inference
+    choices or generate missing predictions.
+    """
+    return _load_samples(sample_manifest)[0]
 
 
 def postprocess(
@@ -260,15 +269,11 @@ def postprocess(
     ``referenced`` names consumed request files, such as the CLI configuration,
     that this stage's outputs must not overwrite or enclose.
     """
-    result = load_samples(sample_manifest)
+    result, consumed = _load_samples(sample_manifest)
     calculate_co2_o2_products(result=result, output=output)
-    path, record = read_manifest(sample_manifest, "openghg_inversions.co2_o2.sample", schema_version=2)
-    preparation_path = reference(path, record["preparation"])
-    _, preparation = _preparation_record(preparation_path)
-    save_co2_o2_products(result, output=output, referenced=(
-        path, preparation_path, reference(preparation_path, preparation["prepared_inputs"]),
-        reference(path, record["posterior"]),
-    ) + tuple(Path(path).resolve() for path in referenced))
+    save_co2_o2_products(
+        result, output=output, referenced=consumed + tuple(Path(path).resolve() for path in referenced),
+    )
     return result
 
 

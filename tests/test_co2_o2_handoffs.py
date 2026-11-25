@@ -197,6 +197,29 @@ def test_graph_free_replay_retains_roles_labels_and_inference(tmp_path, joint_tr
         )
 
 
+def test_postprocess_protects_the_posterior_it_loaded_after_manifest_replacement(tmp_path, monkeypatch, joint_trace):
+    """A concurrent manifest replacement cannot remove the consumed posterior from write protection."""
+    prep = handoffs.save_preparation(synthetic_inputs(), output_dir=tmp_path / "prepare")
+    sample = handoffs.save_samples(
+        prep, joint_trace, actual_inference={"draws": 4},
+        preparation_generation=handoffs.load_preparation(prep).generation, output_dir=tmp_path / "sample",
+    )
+    posterior = sample.parent / "posterior.nc"
+    original = posterior.read_bytes()
+
+    def replace_manifest(**kwargs):
+        """Redirect the manifest after the original posterior has been loaded."""
+        record = json.loads(sample.read_text())
+        record["posterior"] = "replacement.nc"
+        sample.write_text(json.dumps(record))
+
+    monkeypatch.setattr(handoffs, "calculate_co2_o2_products", replace_manifest)
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+        handoffs.postprocess(sample, output=Co2O2OutputOptions(output_format="basic", save_trace=posterior))
+
+    assert posterior.read_bytes() == original
+
+
 def test_heterogeneous_import_fails_before_checkpoint(tmp_path, no_inference):
     from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
     from test_rhime_co2_o2 import _inputs
