@@ -234,27 +234,115 @@ def _log_sample_stats(trace: xr.DataTree, *, label: str) -> None:
         log_timing(label, 0.0, **fields)
 
 
-def _reset_retained_draws(trace: xr.DataTree, *, burn: int) -> xr.DataTree:
-    """Relabel retained draws and preserve the discarded burn-in count.
+def _burn_retained_draws(trace: xr.DataTree, *, burn: int) -> xr.DataTree:
+    """Discard and relabel post-tuning draws, preserving independent groups.
 
     Args:
-        trace: Trace tree whose draw-bearing groups are relabelled in place.
-        burn: Number of discarded burn-in draws to record in metadata.
+        trace: Owned trace tree whose posterior-aligned groups are sliced
+            in place. Other groups, such as a ``posterior_predictive`` group
+            supplied through ``idata_kwargs``, are sliced too when their chain
+            and draw indexes match the original posterior's; warmup and prior
+            groups keep their own axes.
+        burn: Number of post-tuning draws to discard and record in metadata.
 
     Returns:
-        The mutated trace tree, with each draw coordinate reset to
+        The mutated trace tree, with retained draw coordinates reset to
         consecutive zero-based integers and ``burn`` stored on the trace and
-        draw-bearing groups.
+        posterior-aligned groups.
     """
     trace.attrs["burn"] = burn
-    for group_name, node in trace.children.items():
-        group = node.to_dataset()
+    # PyMC computes both log-density groups from the same posterior states, and
+    # ZarrTrace(include_transformed=True) records those states' transformed values.
+    aligned = ["posterior", "unconstrained_posterior", "sample_stats", "log_likelihood", "log_prior"]
+    if "posterior" in trace.children:
+        posterior = trace["posterior"].to_dataset()
+        indexes = {name: posterior.indexes[name] for name in ("chain", "draw") if name in posterior.indexes}
+        for name, child in trace.children.items():
+            group = child.to_dataset()
+            if (
+                name not in aligned
+                and not name.startswith(("warmup_", "prior"))
+                and len(indexes) == 2
+                and all(dim in group.indexes and group.indexes[dim].equals(index) for dim, index in indexes.items())
+            ):
+                aligned.append(name)
+
+    for group_name in aligned:
+        if group_name not in trace.children:
+            continue
+        group = trace[group_name].to_dataset()
         if "draw" not in group.dims:
             continue
+        group = group.isel(draw=slice(burn, None))
         group = group.assign_coords(draw=np.arange(group.sizes["draw"]))
         group.attrs["burn"] = burn
         trace[group_name] = group
     return trace
+
+
+def _extend_log_likelihood(
+    trace: xr.DataTree,
+    model: pm.Model,
+    selection: Literal[True] | Sequence[str],
+    *,
+    compile_kwargs: dict[str, Any],
+    progressbar: bool = False,
+) -> xr.DataTree:
+    """Attach posterior log likelihood with the selected model compiler."""
+    with model:
+        return cast(
+            xr.DataTree,
+            pm.compute_log_likelihood(
+                trace,
+                model=model,
+                var_names=None if selection is True else list(selection),
+                extend_inferencedata=True,
+                progressbar=progressbar,
+                compile_kwargs=compile_kwargs,
+            ),
+        )
+
+
+def _restore_deterministics(
+    posterior: xr.Dataset,
+    model: pm.Model,
+    *,
+    compile_kwargs: Mapping[str, Any] | None = None,
+) -> xr.Dataset:
+    """Evaluate the unchanged graph after pm.sample returns.
+
+    PyMC allocates the final arrays once and evaluates one state at a time.
+    Merging borrows those arrays.
+
+    Args:
+        posterior: Labelled posterior or warmup samples of the free states.
+        model: Model that produced the samples.
+        compile_kwargs: Compiler options resolved for the fitted model.
+
+    Returns:
+        The supplied samples with all deterministic values on the same axes.
+    """
+    if not model.deterministics:
+        return posterior
+
+    # Match ordinary recording's observed-value and transform conventions.
+    options = dict(compile_kwargs or {})
+    givens = dict(options.get("givens") or ())
+    for rv in model.observed_RVs:
+        value = model.rvs_to_values[rv]
+        transform = model.rvs_to_transforms.get(rv)
+        if transform is not None:
+            value = transform.backward(value, *rv.owner.inputs)
+            value = rv.type.filter_variable(value, allow_convert=True)
+        givens[rv] = value
+    options["givens"] = givens
+
+    derived = cast(
+        xr.Dataset,
+        pm.compute_deterministics(posterior, model=model, progressbar=False, compile_kwargs=options),
+    )
+    derived = derived.assign_coords(chain=posterior.chain, draw=posterior.draw)
+    return xr.merge([posterior, derived], join="exact", compat="override")
 
 
 def _numpy_callback_compile_kwargs(model: pm.Model) -> dict[str, Any]:
@@ -482,6 +570,27 @@ class RhimeSampler:
             ValueError: If the sampler or predictive options are invalid, or
                 the JAX runtime is incompatible with the model's precision.
         """
+        return RhimeSampler._sample(self, model, variable_roles=variable_roles, defer_deterministics=False)
+
+    def _sample(
+        self,
+        model: pm.Model,
+        *,
+        variable_roles: Mapping[str, str] | None = None,
+        defer_deterministics: bool,
+    ) -> xr.DataTree:
+        """Sample with deferred recording when the recipe and backend support it.
+
+        Args:
+            model: Concrete PyMC graph to sample.
+            variable_roles: Semantic names for requested predictions.
+            defer_deterministics: Whether the recipe supports recording free
+                variables first and evaluating deterministics for the retained
+                posterior and saved warmup after sampling.
+
+        Returns:
+            Sampled trace with deterministics and requested predictions.
+        """
         _validate_idata_options(self.sample_kwargs, label="sample_kwargs")
         sample_kwargs = _copy_sampler_options(self.sample_kwargs or {})
         sample_kwargs.pop("return_inferencedata", None)
@@ -489,12 +598,28 @@ class RhimeSampler:
         idata_kwargs.setdefault("log_likelihood", True)
 
         compile_kwargs = _numpy_callback_compile_kwargs(model) if self.nuts_sampler == "pymc" else {}
-        deferred_log_likelihood: Any = False
         if compile_kwargs:
             compile_kwargs.update(sample_kwargs.get("compile_kwargs") or {})
             if sample_kwargs.get("backend") is None:
                 sample_kwargs["compile_kwargs"] = compile_kwargs
 
+        compact = (
+            defer_deterministics
+            and self.nuts_sampler == "pymc"
+            and not idata_kwargs.get("include_transformed", False)
+            and sample_kwargs.get("trace") is None
+            and sample_kwargs.get("callback") is None
+            and self.burn < self.draws
+            # A different conversion model owns observed data and labels.
+            and idata_kwargs.get("model", model) is model
+        )
+        deferred_log_likelihood: bool | Sequence[str] = False
+        if compact:
+            sample_kwargs["var_names"] = [rv.name for rv in model.free_RVs]
+            # Compute likelihood using only retained posterior states.
+            deferred_log_likelihood = idata_kwargs["log_likelihood"]
+            idata_kwargs["log_likelihood"] = False
+        elif compile_kwargs:
             # PyMC's automatic log-likelihood calculation ignores compile options.
             deferred_log_likelihood = idata_kwargs.pop("log_likelihood")
 
@@ -502,6 +627,7 @@ class RhimeSampler:
         sample_kwargs.setdefault("compute_convergence_checks", False)
         sample_kwargs.setdefault("progressbar", self.progressbar)
         sample_kwargs.setdefault("cores", self.chains)
+
         if not isinstance(self.sample_prior_predictive, bool | int | np.integer) or self.sample_prior_predictive < 0:
             raise ValueError("sample_prior_predictive must be a boolean or non-negative integer.")
         posterior_kwargs = self._posterior_predictive_options(model, variable_roles)
@@ -541,19 +667,10 @@ class RhimeSampler:
                 ),
             )
 
-        if deferred_log_likelihood:
-            with model:
-                raw_trace = cast(
-                    xr.DataTree,
-                    pm.compute_log_likelihood(
-                        raw_trace,
-                        var_names=None if deferred_log_likelihood is True else list(deferred_log_likelihood),
-                        model=model,
-                        extend_inferencedata=True,
-                        progressbar=False,
-                        compile_kwargs=compile_kwargs,
-                    ),
-                )
+        if deferred_log_likelihood and not compact:
+            raw_trace = _extend_log_likelihood(
+                raw_trace, model, deferred_log_likelihood, compile_kwargs=compile_kwargs,
+            )
 
         log_timing(
             "rhime.sampler.pm_sample",
@@ -566,9 +683,27 @@ class RhimeSampler:
         _log_sample_stats(raw_trace, label="rhime.sampler.sample_stats")
 
         timing_start = timer_start()
-        trace = raw_trace.isel(draw=slice(self.burn, None), missing_dims="ignore")
-        trace = _reset_retained_draws(trace, burn=self.burn)
+        trace = raw_trace.copy(deep=False)
+        trace = _burn_retained_draws(trace, burn=self.burn)
         log_timing("rhime.sampler.burn_slicing", timer_seconds(timing_start), burn=self.burn)
+
+        if compact:
+            evaluation_compile_kwargs = compile_kwargs or sample_kwargs.get("compile_kwargs") or {}
+            if deferred_log_likelihood:
+                timing_start = timer_start()
+                trace = _extend_log_likelihood(
+                    trace, model, deferred_log_likelihood, compile_kwargs=evaluation_compile_kwargs,
+                    progressbar=self.progressbar,
+                )
+                log_timing("rhime.sampler.log_likelihood", timer_seconds(timing_start))
+
+            timing_start = timer_start()
+            for group_name in ("posterior", "warmup_posterior"):
+                if group_name in trace.children:
+                    trace[group_name] = _restore_deterministics(
+                        trace[group_name].to_dataset(), model, compile_kwargs=evaluation_compile_kwargs,
+                    )
+            log_timing("rhime.sampler.deterministics", timer_seconds(timing_start))
 
         trace = self._extend_predictive(
             trace,
@@ -577,8 +712,8 @@ class RhimeSampler:
             posterior_predictive_kwargs=posterior_kwargs,
             compile_kwargs=compile_kwargs,
         )
-        for group in trace.children.values():
-            if "draw" in group.dims:
+        for name, group in trace.children.items():
+            if not name.startswith("warmup_") and "draw" in group.dims:
                 group.attrs.setdefault("burn", self.burn)
         timing_start = timer_start()
         registry = get_coord_registry(model)

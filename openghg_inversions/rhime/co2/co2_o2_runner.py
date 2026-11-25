@@ -20,7 +20,7 @@ from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
-from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
+from openghg_inversions.rhime.sampling import RhimeSampler, _sample_linked_rhime_model
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
 from .co2_o2_fixed_ou import linked_channel_units
@@ -488,7 +488,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
     )
-    trace = sample_rhime_model(built, sampler)
+    trace = _sample_linked_rhime_model(built, sampler)
     return annotate_co2_o2_trace(trace, built=built)
 
 
