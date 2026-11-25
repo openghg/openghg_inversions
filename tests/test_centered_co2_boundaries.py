@@ -11,7 +11,7 @@ import xarray as xr
 from openghg_inversions.boundary_sensitivity import validate_boundary_operands
 from openghg_inversions.models import StateActivity, get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.observation_error import resolve_aggregation_error
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.rhime.co2 import build_co2_model, Co2PreparedInputs, Co2O2PreparedInputs
 from openghg_inversions.models.boundary import AdditiveChoice, CenteredMultiplicativeBoundary, MultiplicativeChoice
 from openghg_inversions.postprocessing.boundary_outputs import restore_absolute_predictives
@@ -68,7 +68,7 @@ def _single_models(constant, fixed, frequency=None, default_prior=False):
     aligned = BoundCenteredSensitivity.bind(raw_transport(operands), inputs.mf, frequency=frequency)
     absolute = aligned.H_bc_anomaly + aligned.bc_reference * aligned.H_bc_mass
     options = dict(
-        retained_prior=CorrelatedLognormalPrior(
+        retained_prior=CorrelatedPrior(
             inputs.alpha_prior_mean, inputs.alpha_prior_covariance, covariance_dim="region_cov"
         ),
         fixed_prior_contribution=inputs.fixed_prior_contribution,
@@ -113,7 +113,7 @@ def test_centered_operand_dimensions_use_observation_dimension_labels(frequency)
     )
     operands = _operands(inputs.mf)
     options = dict(
-        retained_prior=CorrelatedLognormalPrior(
+        retained_prior=CorrelatedPrior(
             inputs.alpha_prior_mean, inputs.alpha_prior_covariance, covariance_dim="region_cov"
         ),
         fixed_prior_contribution=inputs.fixed_prior_contribution,

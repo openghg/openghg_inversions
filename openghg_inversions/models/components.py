@@ -38,7 +38,7 @@ import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.array_ops import select_gathered_data_array
 from openghg_inversions.inversion_inputs import make_freq_indicator, make_site_indicator
 from openghg_inversions.models.coords import add_component_data, add_coords, add_model_data as add_model_data, component_coords
@@ -850,6 +850,61 @@ def prepare_active_correlated_lognormal_prior(
         {state_dim: active_indices, prior.covariance_dim: active_indices}
     ).values
     return CorrelatedLognormalPrior(active_mean, active_covariance)
+
+
+def _as_lognormal_prior(prior: CorrelatedLognormalPrior | CorrelatedPrior) -> CorrelatedLognormalPrior:
+    """Reuse a validated lognormal prior directly or from its marginal-aware wrapper."""
+    return prior.lognormal if isinstance(prior, CorrelatedPrior) else prior
+
+
+def add_correlated_state_with_activity(
+    activity: ResolvedStateActivity,
+    prior: CorrelatedLognormalPrior | CorrelatedPrior,
+    /,
+    *,
+    var_name: str,
+) -> StateVectorResult:
+    """Construct a correlated state with each state's marginal and exact fixed values.
+
+    Use :func:`add_correlated_lognormal_state_with_activity` with the
+    validated lognormal prior carried by either input form.
+
+    Args:
+        activity: Resolved activity in canonical full-state order.
+        prior: Arithmetic moments and marginals for the full state.
+        var_name: Name of the full user-facing state vector.
+
+    Returns:
+        Effective whitened latent, full state vector, and supplied activity.
+    """
+    return add_correlated_lognormal_state_with_activity(activity, _as_lognormal_prior(prior), var_name=var_name)
+
+
+def prepare_active_correlated_prior(
+    activity: ResolvedStateActivity,
+    prior: CorrelatedLognormalPrior | CorrelatedPrior,
+    /,
+    *,
+    var_name: str,
+) -> CorrelatedLognormalPrior | None:
+    """Subset a correlated prior to its active states before graph construction.
+
+    Every marginal is lognormal, so the active prior is the active subset of
+    the lognormal copula, for
+    ``_add_prepared_correlated_lognormal_state_with_activity``.
+
+    Args:
+        activity: Resolved activity in canonical full-state order.
+        prior: Arithmetic moments and marginals for the full state.
+        var_name: Name of the full user-facing state vector.
+
+    Returns:
+        The active lognormal prior, or ``None`` when every state is fixed.
+
+    Raises:
+        ValueError: If the prior and activity labels differ.
+    """
+    return prepare_active_correlated_lognormal_prior(activity, _as_lognormal_prior(prior), var_name=var_name)
 
 
 def add_sigma_component(

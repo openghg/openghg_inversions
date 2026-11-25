@@ -9,34 +9,18 @@ from typing import cast
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy.linalg import cho_solve
-from scipy.linalg.lapack import dpocon  # type: ignore[attr-defined]  # Generated SciPy wrapper.
 
+from openghg_inversions._linalg import cholesky_logdet, conditioned_cholesky
 from openghg_inversions.models.fixed_ou import (
     FixedOuLikelihoodEvaluation,
     FixedOuLowRank,
+    _matrix,
     _site_values,
+    _vector,
 )
 
 
 FloatArray = NDArray[np.float64]
-
-
-def _vector(value: ArrayLike, name: str) -> FloatArray:
-    array = np.asarray(value, dtype=np.float64)
-    if array.ndim != 1:
-        raise ValueError(f"{name} must be one-dimensional, got shape {array.shape}.")
-    if not np.isfinite(array).all():
-        raise ValueError(f"{name} must contain only finite values.")
-    return cast(FloatArray, array.copy())
-
-
-def _matrix(value: ArrayLike, name: str) -> FloatArray:
-    array = np.asarray(value, dtype=np.float64)
-    if array.ndim != 2:
-        raise ValueError(f"{name} must be two-dimensional, got shape {array.shape}.")
-    if not np.isfinite(array).all():
-        raise ValueError(f"{name} must contain only finite values.")
-    return cast(FloatArray, array.copy())
 
 
 def _sum_squares_gram(factor: FloatArray, rhs: FloatArray) -> tuple[FloatArray, float] | None:
@@ -50,16 +34,10 @@ def _sum_squares_gram(factor: FloatArray, rhs: FloatArray) -> tuple[FloatArray, 
     core = factor.T @ factor
     core.flat[:: core.shape[0] + 1] += 1.0
     core = (core + core.T) * 0.5
-    if not np.isfinite(core).all():
-        return None
-    try:
-        cholesky = np.linalg.cholesky(core)
-    except np.linalg.LinAlgError:
-        return None
     eps = np.finfo(np.float64).eps
     budget = np.sqrt(eps)
-    reciprocal_condition, info = dpocon(cholesky, np.linalg.norm(core, 1), uplo="L")
-    if info or not reciprocal_condition > budget:
+    cholesky = conditioned_cholesky(core, budget)
+    if cholesky is None:
         return None
     latent = cho_solve((cholesky, True), factor.T @ rhs, check_finite=False)
     conditional = rhs - factor @ latent
@@ -83,7 +61,7 @@ def _sum_squares_gram(factor: FloatArray, rhs: FloatArray) -> tuple[FloatArray, 
     if not np.isfinite(gram_roundoff_bound) or gram_roundoff_bound > budget:
         return None
     gram = conditional.T @ conditional + latent.T @ latent
-    logdet = float(2.0 * np.log(np.diag(cholesky)).sum())
+    logdet = cholesky_logdet(cholesky)
     if not np.isfinite(gram).all() or not np.isfinite(logdet):
         return None
     return cast(FloatArray, gram), logdet

@@ -241,3 +241,38 @@ def test_basis_source_keyword_conflicts_fail_before_reading_inputs(sources):
         make_basis_functions(site_data={}, flux_data={}, species="ch4", domain="TEST",
                              start_date="2020-01-01", nbasis=2,
                              flux_sources=sources, emissions_name=sources)
+
+
+@pytest.mark.parametrize("fix_outer_regions", [False, True])
+def test_basis_seed_reaches_the_quadtree_search(monkeypatch, fix_outer_regions):
+    """The seed reaches dual annealing whether or not outer regions are fixed."""
+    import openghg_inversions.basis._functions as functions
+
+    sites, sources = _inputs()
+    outer = xr.DataArray([[0, 0, 2, 2], [0, 1, 1, 2], [0, 1, 1, 2], [0, 0, 2, 2]],
+                         dims=("lat", "lon"), coords={"lat": sources["a"].lat, "lon": sources["a"].lon},
+                         name="region", attrs={"inner_region_label": 1})
+    seeds = []
+
+    def record_seed(grid, nbasis, seed=None):
+        seeds.append(seed)
+        return np.ones(grid.shape, dtype=int)
+
+    monkeypatch.setattr(functions, "quadtree_algorithm", record_seed)
+    prepare_basis(
+        site_data=sites, runtime_flux=resolve_runtime_flux(sources, split_by_sectors=True),
+        weighting_flux=sources["b"].flux, domain="TEST", start_date="2020-01-01", nbasis=2,
+        basis_algorithm="quadtree", fix_outer_regions=fix_outer_regions, outer_regions=outer, seed=7,
+    )
+    assert seeds == [7]
+
+
+def test_basis_seed_is_rejected_for_deterministic_algorithms():
+    sites, sources = _inputs()
+    weights = basis_weights_from_data(sites, sources["b"].flux)
+    with pytest.raises(ValueError, match="only to the quadtree"):
+        prepare_basis(
+            site_data=sites, runtime_flux=resolve_runtime_flux(sources, split_by_sectors=True),
+            weighting_flux=sources["b"].flux, domain="TEST", start_date="2020-01-01", nbasis=2,
+            basis_algorithm="weighted", landsea_classes=xr.ones_like(weights, dtype=int), seed=1,
+        )
