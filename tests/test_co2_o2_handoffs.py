@@ -198,6 +198,43 @@ def test_graph_free_replay_retains_roles_labels_and_inference(tmp_path, joint_tr
         )
 
 
+def test_postprocess_protects_the_posterior_it_loaded_after_manifest_replacement(tmp_path, monkeypatch, joint_trace):
+    """A concurrent manifest replacement cannot remove the consumed posterior from write protection."""
+    prep = handoffs.save_preparation(synthetic_inputs(), output_dir=tmp_path / "prepare")
+    sample = handoffs.save_samples(
+        prep, joint_trace, actual_inference={"draws": 4},
+        preparation_generation=handoffs.load_preparation(prep).generation, output_dir=tmp_path / "sample",
+    )
+    posterior = sample.parent / "posterior.nc"
+    original = posterior.read_bytes()
+
+    def replace_manifest(**kwargs):
+        """Redirect the manifest after the original posterior has been loaded."""
+        record = json.loads(sample.read_text())
+        record["posterior"] = "replacement.nc"
+        sample.write_text(json.dumps(record))
+
+    monkeypatch.setattr(handoffs, "calculate_co2_o2_products", replace_manifest)
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+        handoffs.postprocess(sample, output=Co2O2OutputOptions(output_format="basic", save_trace=posterior))
+
+    assert posterior.read_bytes() == original
+
+
+def test_invalid_prior_predictive_request_preserves_readiness_report(tmp_path):
+    """Validate configured units before replacing an existing readiness report."""
+    preparation = handoffs.save_preparation(synthetic_inputs(), output_dir=tmp_path / "prepare")
+    report = tmp_path / "prior-predictive-readiness.json"
+    original = json.dumps({"status": "pass"})
+    report.write_text(original)
+
+    model = {"channels": {"co2": {"units": "ppb"}, "o2": {"units": "ppb"}}}
+    with pytest.raises(ValueError, match="do not match prepared"):
+        handoffs.prior_predictive(preparation, model=model, output_dir=tmp_path)
+
+    assert report.read_text() == original
+
+
 def test_heterogeneous_import_fails_before_checkpoint(tmp_path, no_inference):
     from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
     from test_rhime_co2_o2 import _inputs
@@ -290,3 +327,26 @@ def test_fixed_ou_prior_stage_keeps_joint_prediction_labels(tmp_path):
     prior = load_trace(tmp_path / "prior" / "prior-predictive.nc")
     assert prior.prior_predictive.indexes["observation"].equals(synthetic_inputs().observations.indexes["observation"])
     assert json.loads(prior.attrs["rhime_model_metadata"])["likelihood"] == "joint Gaussian with fixed OU blocks by (species, site)"
+
+
+def test_final_linked_sample_write_rechecks_the_request(tmp_path, monkeypatch):
+    """A request hardlinked to the posterior during linked inference is not overwritten."""
+    source = tmp_path / "linked.nc"
+    synthetic_inputs().save(source)
+    prep = handoffs.prepare(prepared_path=source, output_dir=tmp_path / "prepare")
+    request = tmp_path / "request.json"
+    request.write_text("consumed request")
+    destination = tmp_path / "sample"
+
+    def infer(*args, **kwargs):
+        destination.mkdir()
+        (destination / "posterior.nc").hardlink_to(request)
+        return object()
+
+    monkeypatch.setattr(handoffs, "build_rhime_co2_o2", lambda *a, **kw: object())
+    monkeypatch.setattr(handoffs, "sample_rhime_model", infer)
+    monkeypatch.setattr(handoffs, "annotate_co2_o2_trace", lambda trace, **kw: trace)
+    monkeypatch.setattr(handoffs, "validate_co2_o2_trace", lambda *a, **kw: None)
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+        handoffs.sample(prep, model=MODEL, output_dir=destination, referenced=(request,))
+    assert request.read_text() == "consumed request"

@@ -17,6 +17,7 @@ import xarray as xr
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.boundary import Choice
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
@@ -77,6 +78,7 @@ def _sample_linked_cached(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Choice | None] | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     sigma_target_accept: float | None = None,
@@ -128,6 +130,7 @@ def _sample_linked_cached(
         fixed_site_amplitudes=fixed_site_amplitudes,
         state_activity=state_activity,
         boundary=bound,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
     )
@@ -135,6 +138,8 @@ def _sample_linked_cached(
     metadata.update(likelihood="joint Gaussian with fixed OU blocks by (species, site)")
     if recipe != "co2_o2":
         metadata["recipe"] = recipe
+    if outer_flux is not None:
+        metadata.update(outer_flux.outputs().metadata)
     roles = dict(_CO2_O2_VARIABLE_ROLES)
     roles.update(
         independent_error="error",
@@ -197,6 +202,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Choice | None] | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     sampler: RhimeSampler | Literal["default"] = "default",
@@ -254,6 +260,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             operands. ``None`` disables a channel's boundary; omitted channels
             have no boundary term, with a warning when the preparation has
             their transport.
+        outer_flux: Optional selection of fixed outer states on the shared flux prior.
         offset_prior: Channel-keyed offset priors in concentration units.
             Channels omitted from this mapping have no offset.
         offset_args: Per-channel per_site, offset_freq, and drop_first options
@@ -308,6 +315,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         initial_site_amplitudes=initial_site_amplitudes,
         state_activity=state_activity,
         boundary=boundary,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
         sigma_target_accept=sigma_target_accept,

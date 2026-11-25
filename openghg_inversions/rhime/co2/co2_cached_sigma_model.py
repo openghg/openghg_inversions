@@ -78,6 +78,8 @@ class Co2CachedSigmaModel:
     ``fixed_amplitudes`` is true when ``amplitude`` is registered model data
     rather than a sampled variable; ``initial_cache`` is then the exact state
     quadratic for the whole run and the sampler has no amplitude step.
+    ``boundary_outputs`` and ``outer_flux_outputs`` declare the bound
+    boundary's and outer-flux option's roles, units and metadata.
     """
 
     model: pm.Model
@@ -91,6 +93,7 @@ class Co2CachedSigmaModel:
     initial_values: dict[str, Any]
     boundary_outputs: Outputs | None = None
     fixed_amplitudes: bool = False
+    outer_flux_outputs: Outputs | None = None
 
 
 def _materialize_cached_linear_projection(
@@ -713,7 +716,11 @@ def _build_co2_cached_sigma_model(
             fixed_site_amplitudes=fixed_amplitudes,
             output_dim=output_dim,
         )
-        return replace(cached, boundary_outputs=None if boundary is None else boundary.outputs())
+        return replace(
+            cached,
+            boundary_outputs=None if boundary is None else boundary.outputs(),
+            outer_flux_outputs=None if outer_flux is None else outer_flux.outputs(),
+        )
 
 
 

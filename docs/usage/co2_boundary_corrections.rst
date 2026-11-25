@@ -27,19 +27,31 @@ Choose a boundary
 -----------------
 
 A boundary is one *choice*: the prior specification before binding, holding
-no arrays. Two choices are configured here, both from
+no arrays. Three choices are configured here, all from
 :mod:`openghg_inversions.models.boundary`:
 
 * ``MultiplicativeChoice(prior, activity=None, frequency=None,
   anchor_time=None)`` scales the boundary sensitivity by dimensionless
   states. ``activity`` marks boundary states as active or fixed. It accepts
   absolute ``H_bc`` or centered operands.
-* ``AdditiveChoice(mean_prior, anomaly_scale, frequency=None,
-  anchor_time=None)`` keeps the projected baseline :math:`H_{bc}\mathbf1`
-  fixed and infers a constant correction :math:`\delta` plus weighted
-  region--period anomalies, in concentration units. It replaces the
-  multiplicative scaling prior, has no scaling prior or state activity, and
+* ``AdditiveChoice(mean_prior, anomaly_scale, anomalies="weighted",
+  mean_by_period=False, frequency=None, anchor_time=None)`` keeps the
+  projected baseline :math:`H_{bc}\mathbf1` fixed and infers a constant
+  correction :math:`\delta` plus region--period anomalies, in concentration
+  units. It replaces the multiplicative scaling prior, has no scaling prior or
+  state activity, and requires centered operands. The weighted anomalies
+  described below are the default ``anomalies`` structure.
+* ``AnomalyScalingChoice(mean_prior, scale_sd, reference="stored",
+  mean_by_period=False, frequency=None, anchor_time=None)`` scales the
+  prescribed boundary anomaly about a reference by dimensionless states with
+  standard deviation ``scale_sd``, with the same optional mean shift. It
   requires centered operands.
+
+In configuration, ``type`` selects the choice: ``"multiplicative"`` (the
+default), ``"additive"`` or ``"anomaly_scaling"``. The other anomaly
+structures, reference policies and the optional per-period mean shift are
+described in :ref:`configured boundary structures
+<co2-configured-boundary-structures>`.
 
 ``frequency`` and ``anchor_time`` select the boundary periods with the syntax
 and calendar of ``bc_freq``: ``None`` gives one period over the window,

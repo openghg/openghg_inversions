@@ -16,6 +16,7 @@ from openghg_inversions.array_ops import select_gathered_data_array, to_dense_tr
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.boundary import Bound, Choice, bind_prepared
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
@@ -285,6 +286,7 @@ def build_rhime_co2_o2(
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Choice | None] | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     tau_hours: float | Mapping[str, float] | None = None,
@@ -330,6 +332,7 @@ def build_rhime_co2_o2(
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
         boundary=bound,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
     )
@@ -342,6 +345,8 @@ def build_rhime_co2_o2(
     if bound or offset_prior:
         variable_roles["baseline_concentration"] = "baseline_concentration"
     metadata = {**_co2_o2_metadata(prepared, observations=observations), **boundary_metadata}
+    if outer_flux is not None:
+        metadata.update(outer_flux.outputs().metadata)
     if tau_hours is not None:
         variable_roles.update(
             {
@@ -367,6 +372,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Choice | None] | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     sampler: RhimeSampler | Literal["default"] = "default",
@@ -406,6 +412,8 @@ def run_rhime_co2_o2_from_prepared_inputs(
             centered operands (with any prepared centering weights). ``None``
             disables a channel's boundary; omitted channels have no boundary
             term, with a warning when the preparation has their transport.
+        outer_flux: Optional outer-flux choice for the joint flux state,
+            resolved once on the flux prior and shared by both channels.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
             with the same meanings as the CO2 offset component. Each channel's
@@ -462,6 +470,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
             fixed_site_amplitudes=fixed_site_amplitudes,
             state_activity=state_activity,
             boundary=boundary,
+            outer_flux=outer_flux,
             offset_prior=offset_prior,
             offset_args=offset_args,
             recipe="co2_o2",
@@ -472,6 +481,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
         boundary=boundary,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
         tau_hours=tau_hours,
@@ -543,6 +553,13 @@ def annotate_co2_o2_trace(
     preparation provenance and used priors. Fixed-OU traces additionally retain
     species/site grouping and joint likelihood/predictive scope. The trace is
     updated and returned; no graph is constructed or inference performed.
+
+    Args:
+        trace: Trace with restored coordinates, updated in place.
+        built: Build result whose model produced ``trace``.
+
+    Returns:
+        The annotated ``trace``.
     """
     trace.attrs["rhime_boundary_format_version"] = BOUNDARY_FORMAT_VERSION
     restore_absolute_predictives(trace)
