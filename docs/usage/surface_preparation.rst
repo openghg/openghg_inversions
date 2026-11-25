@@ -213,6 +213,12 @@ Older-inventory relabelling and climatological year reuse are disabled.
 When a boundary period is declared, both acquisition routes include the interval
 governing a mid-period start and preserve its native timestamp.
 
+For legacy footprints that lack height units, surface preparation assumes
+metres when the indexed height levels match a metre-labelled curtain grid
+and the declared vertical-coordinate conventions agree. It warns and stores
+the assumption with the site's boundary provenance. Supply explicit footprint
+height units when the levels differ.
+
 Selected identities are captured at retrieval in owned wrapper metadata while
 borrowing the datasets. Preparation combines those facts with transport metadata
 and serializes provenance once. Combined observation versions remain unknown

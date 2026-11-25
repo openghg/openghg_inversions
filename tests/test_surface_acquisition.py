@@ -672,3 +672,19 @@ def test_single_observation_bin_keeps_chosen_cadence_without_sampling_attr(input
     assert result.sizes["time"] == 1
     assert result.attrs["sampling_period"] == 14400
     np.testing.assert_allclose(result.mf_mod, 1.)
+
+
+def test_centered_surface_boundary_records_assumed_height_units(inputs):
+    """Use the same height convention for centred surface preparation."""
+    obs, footprint, flux = inputs
+    footprint, boundary = boundary_inputs(footprint)
+    boundary = boundary.assign_coords(height=boundary.height.assign_attrs(units="m"))
+
+    with pytest.warns(UserWarning, match="assuming metres"):
+        result = prepare_surface_site(
+            obs, footprint, {"a": flux}, species="co2", transport={"a": "integrated"},
+            boundary_data=boundary,
+            boundary_reference=400.0, boundary_reference_units="ppm", boundary_mass_tolerance=1e-8,
+        )
+
+    assert result.attrs["boundary_footprint_height_units_assumed"] == "m"
