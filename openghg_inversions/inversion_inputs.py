@@ -215,21 +215,24 @@ def make_sigma_freq(
 _NATIVE_GRID_DIMS = frozenset({"lat", "lon", "height"})
 
 
-def _drop_native_grid_variables(dataset: xr.Dataset) -> xr.Dataset:
-    """Return a shallow copy without data variables on the native transport grid.
+def _drop_native_grid_variables(dataset: xr.Dataset, *, keep: str = "") -> xr.Dataset:
+    """Drop native-grid variables except the named response, if requested.
 
     Inversion inputs are observation-aligned. Raw footprints (including ``fp_HiTRes``),
-    ``fp_x_flux`` products, boundary curtains and particle diagnostics have already been
-    reduced to sensitivities by this point and nothing reads them from the inversion inputs.
-    Gathering them kept lazy store reads alive until prepared checkpoints were saved, where
-    they dominated the file size and the save time. Coordinates are kept.
+    boundary curtains and particle diagnostics are already represented by
+    sensitivities. Coherent preparation keeps the native flux response until
+    reduction. The returned shallow copy retains coordinates.
     """
-    names = [name for name, variable in dataset.data_vars.items() if _NATIVE_GRID_DIMS.intersection(variable.dims)]
+    names = [
+        name for name, variable in dataset.data_vars.items()
+        if name != keep and _NATIVE_GRID_DIMS.intersection(variable.dims)
+    ]
     return dataset.drop_vars(names)
 
 
 def _drop_nan_and_compute(
-    ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error")
+    ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error"),
+    *, require_finite: bool = False,
 ) -> xr.Dataset:
     """Materialize related core payloads together, then drop unusable rows.
 
@@ -245,6 +248,7 @@ def _drop_nan_and_compute(
             Missing names are ignored. Present names are also materialized.
             ``H_bc_anomaly`` and ``H_bc_mass`` are included when present.
             Centered inputs remove rows with NaNs or infinities in this subset.
+        require_finite: Remove rows containing infinities as well as NaNs.
 
     Returns:
         A new dataset with core payloads materialized and invalid rows removed,
@@ -284,7 +288,7 @@ def _drop_nan_and_compute(
     if "bc_reference" in ds and not bool(np.isfinite(ds.bc_reference).all()):
         raise ValueError("Centered bc_reference must be finite.")
     # Centered science rows share one finite-value selection at this boundary.
-    if "H_bc_anomaly" in ds:
+    if require_finite or "H_bc_anomaly" in ds:
         valid = xr.ones_like(ds.mf, dtype=bool)
         for name in drop_subset:
             finite = np.isfinite(ds[name])
@@ -367,6 +371,7 @@ def make_inv_inputs(
     fp_data: dict[str, Any],
     sites: list[str] | None = None,
     missing_data_vars: Literal["error", "drop"] = "drop",
+    *, flux_response: Literal["H", "fp_x_flux"] = "H",
 ) -> xr.Dataset:
     """Create backend-neutral observation-aligned inversion inputs.
 
@@ -385,6 +390,9 @@ def make_inv_inputs(
             not present at every site. ``"drop"`` preserves the established
             OpenGHG/legacy behavior; ``"error"`` prevents extension fields
             from being discarded.
+        flux_response: Use projected sensitivity for standard assembly or keep
+            the native response for coherent reduction. Native assembly drops
+            rows with any non-finite value in the selected scientific inputs.
 
     Returns:
         Canonical inversion inputs aligned along ``nmeasure``.
@@ -426,7 +434,7 @@ def make_inv_inputs(
         if any(value.attrs["units"] != reference.attrs["units"] for value in references[1:]):
             raise ValueError("Centered bc_reference units must match across sites.")
         site_data = {site: dataset.drop_vars("bc_reference") for site, dataset in site_data.items()}
-    site_data = {site: _drop_native_grid_variables(dataset) for site, dataset in site_data.items()}
+    site_data = {site: _drop_native_grid_variables(dataset, keep=flux_response) for site, dataset in site_data.items()}
     site_data = _fill_missing_optional_observation_factors(site_data)
     _validate_per_site_dimension_names(site_data, ragged_dim="time")
 
@@ -467,14 +475,14 @@ def make_inv_inputs(
         }
         ds.attrs["surface_preparation_provenance"] = json.dumps(surface_provenance, sort_keys=True)
 
-    # Check that we have variables for a standard RHIME inversion.
+    # Check the response and observation variables that the recipe will use.
     # Note that mf_prior_factor and mf_prior_upper_level_factor are only needed
     # for post-processing (and only if column data is used).
     _check_required_inv_input_vars(
         ds,
         fp_data=fp_data,
         sites=sites,
-        required_vars=("H", "mf", "mf_error", "mf_repeatability", "mf_variability"),
+        required_vars=(flux_response, "mf", "mf_error", "mf_repeatability", "mf_variability"),
     )
 
     if "H_bc" in ds:
@@ -488,4 +496,6 @@ def make_inv_inputs(
             "unexpanded" if reference is not None else "raw-spatial"
         )
 
-    return _drop_nan_and_compute(ds)
+    return _drop_nan_and_compute(
+        ds, (flux_response, "H_bc", "mf", "mf_error"), require_finite=flux_response == "fp_x_flux",
+    )

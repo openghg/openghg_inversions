@@ -743,14 +743,21 @@ companion. ``run_co2`` uses that pair in memory and does not save it; staged
    sigma = 0.5
    correlation_length = 1.5
 
+   [model.boundary]
+   type = "multiplicative"
+
+The multiplicative boundary adds the transported background to the model of
+absolute CO₂ observations.
+
 ``acquisition`` takes the site selectors of
 :class:`~openghg_inversions.inversion_data.SiteOptions` (``time_resolved = true``
 is required when any source uses ``time_resolved`` transport), the flux sources
 with one surface transport mode each, store and dataset selectors (``obs_store``,
 ``footprint_store``, ``flux_store``, ``bc_store``, ``fp_model`` and so on) and,
 with boundaries, the reference and mass tolerance. ``boundary_reference`` is a
-value you choose, such as a typical background. The acquired reference uses
-the observation concentration units (see :doc:`surface_preparation`). These options are checked when the configuration
+value you choose, such as a typical background. ``bc_reference`` stores that
+physical reference converted to the observation concentration units (see
+:doc:`surface_preparation`). These options are checked when the configuration
 is read, before any retrieval. All sources share one dimensionless native
 scaling field; the first source weights basis design.
 
@@ -806,8 +813,8 @@ Python callers can supply in-memory merged data instead of acquiring:
 ``run_co2(config_file=..., merged_data=merged)`` or
 ``handoffs.prepare(**Co2PreparationConfig.from_params(params).preparation_arguments(),
 merged_data=merged, output_dir=...)``. Supplied data must match the requested
-species, domain and window. Linked CO₂/O₂ configurations still import a saved
-artifact.
+species, domain, window and exact set of flux sources. Linked CO₂/O₂
+configurations still import a saved artifact.
 
 .. _co2-scalar-sigma-recipe:
 

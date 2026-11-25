@@ -37,6 +37,9 @@ domain = "EUROPE"
 # [prepared_inputs.native_prior]
 # sigma = 0.5
 # correlation_length = 1.5
+#
+# [model.boundary]
+# type = "multiplicative"
 
 [likelihood]
 kind = "additive_sigma"
@@ -50,8 +53,9 @@ target_accept = 0.95
 random_seed = 12345
 
 # Optional centred additive boundary corrections (observation concentration units).
-# Requires centered operands, and bc_centering_weights when anomaly_scale > 0;
-# replaces BC scaling. A built preparation produces centered operands for this type
+# Requires centered operands and bc_centering_weights when anomaly_scale > 0.
+# Replace the multiplicative boundary table above when using these corrections.
+# A built preparation produces centered operands for this type
 # and reads any weights from prepared_inputs.bc_centering_weights_path. A level-only
 # boundary (anomaly_scale = 0) needs no weights. Python callers preparing from canonical
 # inputs pass bc_centering_weights to prepare_co2_inputs, handoffs.prepare or run_co2.

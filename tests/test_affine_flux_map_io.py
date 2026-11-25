@@ -274,3 +274,21 @@ def test_serialization_prunes_ancillary_attrs_without_mutating_inputs() -> None:
     assert operator.basis_flat.attrs["long_name"] == "Bucket IDs"
     assert artifact.affine_map.flux.attrs["long_name"] == "Signed flux"
     assert tree["flux"].to_dataset()["flux"].attrs == {"units": "kg m-2 s-1"}
+
+
+def test_affine_roundtrip_prunes_unsupported_coordinate_attrs(tmp_path: Path) -> None:
+    artifact = _artifact()
+    value = artifact.affine_map
+    assert isinstance(value.prolongation, BucketBasisOperator)
+    arrays = (value.native_mean, value.flux, value.prolongation.basis_flat)
+    for array in arrays:
+        array.lat.attrs.update(units="degrees_north", notes="inventory provenance text")
+
+    path = tmp_path / "affine.nc"
+    save(artifact, path)
+    restored = load(path).affine_map
+    assert isinstance(restored.prolongation, BucketBasisOperator)
+    for array in (restored.native_mean, restored.flux, restored.prolongation.basis_flat):
+        assert array.lat.attrs == {"units": "degrees_north"}
+    for array in arrays:
+        assert array.lat.attrs["notes"] == "inventory provenance text"

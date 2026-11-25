@@ -35,6 +35,7 @@ from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 from openghg_inversions.models.boundary import Choice, boundary_preparation
+from openghg_inversions.models.boundary.contracts import validate_centering_weight_labels
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
     AGGREGATION_ERROR_SD,
@@ -589,9 +590,9 @@ def prepare_co2_inputs(
 ) -> Co2PreparedInputs:
     """Map one coherent Gaussian reduction into the CO2 replay contract.
 
-    The reduction replaces the canonical sensitivity with its effective
-    operator and supplies the linked retained prior, affine intercept, and
-    unresolved covariance. By default, the LRPD rank comes from the unresolved
+    The reduction supplies the effective sensitivity, retained prior, affine
+    intercept, and unresolved covariance. Its sensitivity replaces any
+    canonical ``H``. By default, the LRPD rank comes from the unresolved
     covariance's spectrum whitened by a reference mismatch covariance (see
     :class:`~openghg_inversions.observation_error.WhitenedRankRule`), keeping
     every mode with whitened eigenvalue above 0.1. The rule needs a
@@ -617,7 +618,8 @@ def prepare_co2_inputs(
 
     Args:
         canonical_inputs: Canonical RHIME observations and metadata whose
-            observation and retained-state labels match ``reduction``.
+            observation and retained-state labels match ``reduction``. State
+            labels come from the basis when no projected ``H`` is supplied.
         reduction: One coherent Gaussian reduction containing all linked
             retained-prior and observation products.
         aggregation_error_rank: Whitened-spectrum rank rule (threshold, KL
@@ -663,19 +665,24 @@ def prepare_co2_inputs(
     """
     canonical = canonical_inputs.validated()
     inputs = canonical.inv_inputs
-    if "H" not in inputs or "mf" not in inputs:
-        raise ValueError("Canonical CO2 inputs require 'H' and 'mf'.")
+    if "mf" not in inputs:
+        raise ValueError("Canonical CO2 inputs require 'mf'.")
     observations = inputs["mf"]
     if observations.dims != ("nmeasure",):
         raise ValueError("Canonical CO2 observations must have dimensions ('nmeasure',).")
     observation_index = _require_axis(observations, "nmeasure", name="Canonical observations")
 
-    canonical_sensitivity = inputs["H"]
-    state_dims = [str(dim) for dim in canonical_sensitivity.dims if dim != "nmeasure"]
-    if canonical_sensitivity.ndim != 2 or len(state_dims) != 1:
-        raise ValueError("Canonical CO2 H must have one observation and one retained-state dimension.")
-    state_dim = state_dims[0]
-    state_index = _require_axis(canonical_sensitivity, state_dim, name="Canonical sensitivity")
+    if "H" in inputs:
+        canonical_sensitivity = inputs["H"]
+        state_dims = [str(dim) for dim in canonical_sensitivity.dims if dim != "nmeasure"]
+        if canonical_sensitivity.ndim != 2 or len(state_dims) != 1:
+            raise ValueError("Canonical CO2 H must have one observation and one retained-state dimension.")
+        state_dim = state_dims[0]
+        state_index = _require_axis(canonical_sensitivity, state_dim, name="Canonical sensitivity")
+    else:
+        operator = canonical.basis_functions.operator
+        state_dim = operator.meta.state_dim
+        state_index = _require_axis(operator.basis_matrix, state_dim, name="Canonical basis")
 
     reduced_mean = reduction.retained_mean
     if reduced_mean.ndim != 1:
@@ -912,9 +919,11 @@ def check_prepared_boundary(
 ) -> None:
     """Reject prepared inputs whose boundary data cannot serve the configured choice.
 
-    Reads only attributes and variable names. A saved preparation can serve
-    several model configurations, so an omitted ``representation`` accepts any
-    representation the choice can bind; an explicit one must match exactly.
+    A saved preparation can serve several model configurations, so an omitted
+    ``representation`` accepts any representation the choice can bind; an
+    explicit one must match exactly. Weighted additive choices also check the
+    stored weight labels against the selected observation calendar without
+    materializing numerical payloads.
 
     Args:
         inputs: Prepared ``inv_inputs``.
@@ -923,7 +932,8 @@ def check_prepared_boundary(
 
     Raises:
         ValueError: If the boundary data are missing, in another representation,
-            or lack the centering weights the choice needs.
+            or lack centering weights that match the choice's curtain and period
+            labels.
     """
     needs = boundary_preparation(boundary, representation)
     if inputs.attrs.get("boundary_representation") == "centered-v1":
@@ -941,8 +951,13 @@ def check_prepared_boundary(
             f"The prepared inputs have {actual} boundary sensitivity, but {required} is required; "
             f"prepare again with boundary_representation={required!r}."
         )
-    if needs.centering_weights and "bc_centering_weights" not in inputs:
-        raise ValueError("The weighted additive boundary requires prepared bc_centering_weights.")
+    if needs.centering_weights and boundary is not None:
+        if "bc_centering_weights" not in inputs:
+            raise ValueError("The weighted additive boundary requires prepared bc_centering_weights.")
+        validate_centering_weight_labels(
+            inputs.bc_centering_weights, inputs.mf, inputs.indexes["bc_region"],
+            frequency=boundary.frequency, anchor_time=boundary.anchor_time,
+        )
 
 
 __all__ = [

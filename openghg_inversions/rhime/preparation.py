@@ -27,7 +27,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import xarray as xr
@@ -207,6 +207,7 @@ def assemble_inputs(
     domain: str,
     start_date: str,
     use_bc: bool = True,
+    flux_response: Literal["H", "fp_x_flux"] = "H",
 ) -> PreparedInputs:
     """Construct and validate durable, backend-neutral RHIME model inputs.
 
@@ -226,6 +227,7 @@ def assemble_inputs(
         domain: Domain label attached to the assembled site data.
         start_date: Requested start date of the preparation interval.
         use_bc: Whether missing boundary-condition inputs should be checked.
+        flux_response: Projected sensitivity or the native response for a coherent reduction.
 
     Returns:
         Validated, backend-neutral inputs with observation-aligned arrays,
@@ -243,6 +245,7 @@ def assemble_inputs(
         inv_inputs = make_inv_inputs(
             fp_data=owned_site_data,
             sites=list(site_options.sites),
+            flux_response=flux_response,
         )
     inv_inputs = scale_satellite_boundary_sensitivity_to_column_signal(
         inv_inputs,
@@ -286,7 +289,7 @@ def assemble_inputs(
 
 def _warn_for_nan_inputs(inv_inputs: xr.Dataset, *, use_bc: bool) -> None:
     """Warn when prepared sensitivity matrices contain NaN values."""
-    if np.isnan(inv_inputs.H.values).any():
+    if "H" in inv_inputs and np.isnan(inv_inputs.H.values).any():
         warnings.warn(
             f"H matrix contains {np.isnan(inv_inputs.H.values).flatten().sum()} NaN values", stacklevel=3
         )

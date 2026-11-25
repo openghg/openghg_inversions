@@ -3,26 +3,25 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import asdict
-from typing import Any, cast
+from dataclasses import asdict, replace
+from typing import Any
 
 import numpy as np
-import pandas as pd
 import xarray as xr
 
 from openghg_inversions.basis import prepare_basis
+from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact
 from openghg_inversions.basis.boundary import BoundaryBasis
 from openghg_inversions.basis.covariance_products import PreserveBucketProlongation
 from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 from openghg_inversions.coherent_reduction import reduce_native_gaussian
-from openghg_inversions.inversion_data import MergedData, PreparedInputs, select_boundary_representation
+from openghg_inversions.inversion_data import MergedData, select_boundary_representation
 from openghg_inversions.inversion_data.observation_errors import prepare_observation_errors
 from openghg_inversions.native_covariance import SeparableExponentialCovariance
 from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.rhime.preparation import (
     assemble_inputs,
-    build_sensitivities,
     filter_observations,
 )
 
@@ -36,6 +35,7 @@ def prepare_co2_from_merged_data(
     *,
     domain: str,
     start_date: str,
+    end_date: str,
     flux_sources: tuple[str, ...],
     use_bc: bool,
     boundary_representation: BoundaryRepresentation,
@@ -59,6 +59,7 @@ def prepare_co2_from_merged_data(
         merged_data: Borrowed observations, transport and native flux.
         domain: Transport domain.
         start_date: Requested window start.
+        end_date: Requested window end.
         flux_sources: Ordered source identities used for preparation.
         use_bc: Whether to construct boundary sensitivities.
         boundary_representation: Ordinary or centered prepared boundary inputs.
@@ -75,7 +76,19 @@ def prepare_co2_from_merged_data(
 
     Returns:
         Prepared CO2 inputs and their unsaved affine companion.
+
+    Raises:
+        ValueError: If acquisition facts or scientific inputs conflict with
+            the request, or no usable observations remain.
     """
+    merged_data.validate_for_preparation(
+        species="co2", domain=domain, start_date=start_date, end_date=end_date, split_by_sectors=False,
+    )
+    if set(merged_data.flux_data) != set(flux_sources):
+        raise ValueError(
+            "Acquired CO2 flux sources must match the configured source set: "
+            f"acquired {sorted(merged_data.flux_data)!r}, configured {sorted(set(flux_sources))!r}."
+        )
     merged_data.validate_scientific_inputs(
         split_by_sectors=False, use_bc=use_bc, flux_sources=flux_sources,
         require_footprints=basis_inputs.get("basis_path") is None and basis_inputs.get("basis_partition") is None,
@@ -94,10 +107,13 @@ def prepare_co2_from_merged_data(
         nbasis=nbasis, fix_outer_regions=fix_outer_regions,
         **basis_inputs,
     )
-    sensitivities = build_sensitivities(
-        filtered, basis_functions, flux_sources=flux_sources, use_bc=use_bc, bc_basis=bc_basis, multisector=False,
-    )
-    if not use_bc:
+    sensitivities = {
+        site: dataset.drop_vars(("mf_mod", "mf_mod_sectoral"), errors="ignore")
+        for site, dataset in filtered.items()
+    }
+    if use_bc:
+        sensitivities = bc_sensitivity(sensitivities, bc_basis=bc_basis)
+    else:
         # Assembly reads the reference and marker as requests for centered sensitivities.
         for site, dataset in sensitivities.items():
             view = dataset.drop_vars("bc_reference", errors="ignore")
@@ -105,10 +121,13 @@ def prepare_co2_from_merged_data(
             sensitivities[site] = view
     canonical = assemble_inputs(
         sensitivities, basis_functions, site_options=site_options,
-        domain=domain, start_date=start_date, use_bc=use_bc,
+        domain=domain, start_date=start_date, use_bc=use_bc, flux_response="fp_x_flux",
     )
+    inputs = canonical.inv_inputs
+    if not inputs.sizes["nmeasure"]:
+        raise ValueError("No usable observations remain for coherent CO2 reduction.")
 
-    native_sensitivity = _native_sensitivity(filtered, canonical)
+    native_sensitivity = inputs.fp_x_flux.rename(nmeasure="observation").assign_attrs(units=inputs.mf.attrs["units"])
     native_mean = xr.DataArray(
         np.full((native_sensitivity.sizes["lat"], native_sensitivity.sizes["lon"]), prior.mean),
         dims=("lat", "lon"), coords={"lat": native_sensitivity.lat, "lon": native_sensitivity.lon},
@@ -125,39 +144,22 @@ def prepare_co2_from_merged_data(
         state_dim=basis_functions.operator.meta.state_dim, native_mean=native_mean,
         native_sensitivity=native_sensitivity, observation_dim="observation",
     )
+    canonical = replace(canonical, inv_inputs=inputs.drop_vars("fp_x_flux"))
     prepared = prepare_co2_inputs(
         canonical, reduction, aggregation_error_rank=aggregation_error_rank,
         bc_centering_weights=bc_centering_weights,
-        provenance={"native_preparation": {
-            "boundary_representation": boundary_representation,
-            "native_prior": asdict(prior),
-            "flux_sources": list(flux_sources),
-            "basis_algorithm": basis_algorithm,
-        }},
+        provenance={
+            "domain": domain, "start_date": start_date, "end_date": end_date,
+            "native_preparation": {
+                "boundary_representation": boundary_representation,
+                "native_prior": asdict(prior),
+                "flux_sources": list(flux_sources),
+                "basis_algorithm": basis_algorithm,
+            },
+        },
     )
     affine = produce_bucket_affine_flux_map(prepared, native_mean, prepared_inputs_id="unsaved")
     return prepared, affine
-
-
-def _native_sensitivity(site_data: dict[str, xr.Dataset], canonical: PreparedInputs) -> xr.DataArray:
-    """Gather each retained row's native ``fp_x_flux`` in canonical observation order.
-
-    Canonical rows are grouped by site in retained-site order, so gathering
-    each site's retained times in turn reproduces the ``nmeasure`` labels.
-    """
-    index = cast(pd.MultiIndex, canonical.inv_inputs.indexes["nmeasure"])
-    sites, times = index.get_level_values("site"), index.get_level_values("time")
-    parts = [
-        site_data[site]["fp_x_flux"].sel(time=times[sites == site]).reset_coords(drop=True)
-        for site in pd.unique(sites)
-    ]
-    gathered = xr.concat(parts, dim="time", join="exact").transpose("time", "lat", "lon")
-    if not pd.MultiIndex.from_arrays([np.repeat(pd.unique(sites), [len(p.time) for p in parts]),
-                                      gathered.indexes["time"]]).equals(index):
-        raise ValueError("Canonical CO2 rows are not grouped by retained site.")
-    return gathered.drop_vars("time").rename(time="observation").assign_coords(
-        xr.Coordinates.from_pandas_multiindex(index, "observation")
-    )
 
 
 __all__ = ["prepare_co2_from_merged_data"]

@@ -199,12 +199,8 @@ def prepare(
             merged_data = MergedData.from_options(
                 species="co2", domain=domain, start_date=start_date, end_date=end_date, **acquisition,
             )
-        else:
-            merged_data.validate_for_preparation(
-                species="co2", domain=domain, start_date=start_date, end_date=end_date, split_by_sectors=False,
-            )
         prepared, affine = prepare_co2_from_merged_data(
-            merged_data, domain=domain, start_date=start_date,
+            merged_data, domain=domain, start_date=start_date, end_date=end_date,
             flux_sources=acquisition["flux_sources"], use_bc=acquisition.get("use_bc", True),
             boundary_representation=representation,
             filters=native.filters, averaging_error=native.averaging_error,

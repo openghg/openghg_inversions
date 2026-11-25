@@ -205,6 +205,27 @@ def test_additive_choice_builds_centered_weighted_preparation(
     xr.testing.assert_allclose(prepared.inv_inputs.bc_centering_weights, weights)
 
 
+def test_prepare_rejects_wrong_centering_weight_period_before_writing(
+    tmp_path: Path, merged: MergedData, partition: Path,
+) -> None:
+    weights = xr.DataArray(
+        np.full((4, 1), 0.25), dims=("bc_curtain", "bc_period"),
+        coords={"bc_curtain": list("nesw"), "bc_period": pd.to_datetime(["2020-01-15"])},
+        attrs={"units": "1"}, name="bc_centering_weights",
+    )
+    path = tmp_path / "weights.nc"
+    weights.to_dataset().to_netcdf(path)
+    config = request(partition, bc_centering_weights_path=str(path))
+    config["model"] = {"boundary": {**ADDITIVE, "frequency": "1D", "anchor_time": "2020-01-16"}}
+    destination = tmp_path / "bad"
+    arguments = Co2PreparationConfig.from_params(config, require_source=True)
+
+    with pytest.raises(ValueError, match="Centering-weight labels do not align"):
+        handoffs.prepare(**arguments.preparation_arguments(), merged_data=merged, output_dir=destination)
+
+    assert not destination.exists()
+
+
 def test_absolute_merged_data_cannot_produce_centered(tmp_path: Path, merged: MergedData, partition: Path) -> None:
     from openghg_inversions.inversion_data import select_boundary_representation
 
@@ -237,6 +258,73 @@ def test_supplied_merged_data_pass_scientific_input_validation(
     unitless = replace(merged, site_data={"TOY": site.assign(mf=site.mf.drop_attrs())})
     with pytest.raises(ValueError, match=r"site_data\['TOY'\]: Validation failed"):
         prepare(tmp_path, request(partition), unitless, "unitless")
+
+
+def test_supplied_source_set_must_match_request(tmp_path: Path, merged: MergedData, partition: Path) -> None:
+    config = request(partition)
+    acquisition = config["prepared_inputs"]["acquisition"]
+    acquisition["flux_sources"] = ["fossil"]
+    acquisition["surface_transport"] = {"fossil": "integrated"}
+    with pytest.raises(ValueError, match="flux sources must match the configured source set"):
+        prepare(tmp_path, config, merged, "extra-source")
+
+
+def test_native_artifact_retains_requested_window(tmp_path: Path, merged: MergedData, partition: Path) -> None:
+    prepared = prepare(tmp_path, request(partition), merged, "native")
+    assert {name: prepared.provenance[name] for name in WINDOW} == WINDOW
+    destination = tmp_path / "relabelled"
+    with pytest.raises(ValueError, match="requested start_date conflicts"):
+        handoffs.prepare(
+            prepared_path=tmp_path / "native" / "prepared-inputs.nc",
+            start_date="2020-02-01", end_date="2020-02-02", domain=WINDOW["domain"], output_dir=destination,
+        )
+    assert not (destination / "prepare-manifest.json").exists()
+
+
+def test_native_response_inherits_observation_units(tmp_path: Path, merged: MergedData, partition: Path) -> None:
+    from dataclasses import replace
+
+    site = merged.site_data["TOY"]
+    unitless = replace(merged, site_data={"TOY": site.assign(fp_x_flux=site.fp_x_flux.drop_attrs())})
+    expected = prepare(tmp_path, request(partition), merged, "explicit-units")
+    actual = prepare(tmp_path, request(partition), unitless, "inherited-units")
+    xr.testing.assert_identical(actual.inv_inputs.H, expected.inv_inputs.H)
+
+
+def test_native_response_is_read_once_and_masked_before_reduction(
+    tmp_path: Path, merged: MergedData, partition: Path,
+) -> None:
+    from dataclasses import replace
+
+    import dask
+    import dask.array as da
+
+    site = merged.site_data["TOY"]
+    response = site.fp_x_flux.copy(deep=True)
+    invalid_time = pd.Timestamp("2020-01-16T09")
+    response.loc[{"time": invalid_time}] = np.nan
+    reads = []
+
+    @dask.delayed
+    def read_response():
+        reads.append(True)
+        return response.to_numpy()
+
+    lazy = response.copy(data=da.from_delayed(read_response(), shape=response.shape, dtype=response.dtype))
+    with_invalid_row = site.assign(
+        fp_x_flux=lazy, mf_mod=lazy.sum(("lat", "lon"), skipna=False),
+    )
+    supplied = replace(merged, site_data={"TOY": with_invalid_row})
+    baseline = replace(merged, site_data={"TOY": site.drop_sel(time=invalid_time)})
+    expected = prepare(tmp_path, request(partition), baseline, "without-invalid-row").inv_inputs
+    with dask.config.set(scheduler="synchronous"):
+        actual = prepare(tmp_path, request(partition), supplied, "mask-invalid-row").inv_inputs
+
+    assert len(reads) == 1
+    assert "mf_mod" not in actual and "mf_mod_sectoral" not in actual
+    assert "mf_mod" in supplied.site_data["TOY"]
+    assert actual.indexes["nmeasure"].equals(expected.indexes["nmeasure"])
+    xr.testing.assert_allclose(actual.aggregation_error_covariance, expected.aggregation_error_covariance)
 
 
 def test_saved_preparations_are_checked_against_the_boundary_choice(
@@ -387,18 +475,25 @@ def test_native_outputs_cannot_overwrite_a_consumed_resource(
 
 @pytest.mark.parametrize("template", ["co2.toml", "co2_fixed_ou.toml"])
 def test_template_build_block_is_a_valid_preparation(template: str) -> None:
+    """Check the native preparation and background model in the template example."""
     import tomllib
 
     from openghg_inversions.rhime.co2 import co2_config_templates
+    from openghg_inversions.rhime.co2.configuration import Co2ModelConfig
 
-    lines = co2_config_templates()[template].read_text().splitlines()
+    source = co2_config_templates()[template].read_text()
+    lines = source.splitlines()
     start = next(i for i, line in enumerate(lines) if line.startswith("# To build a new preparation"))
     block = []
     for line in lines[start + 3:]:
         if not line.startswith("#"):
             break
         block.append(line.removeprefix("#").removeprefix(" "))
-    window = "\n".join(f'{name} = "{value}"' for name, value in WINDOW.items())
-    config = tomllib.loads(f"[prepared_inputs]\n{window}\n" + "\n".join(block))
+    build = tomllib.loads("[prepared_inputs]\n" + "\n".join(block))
+    config = tomllib.loads(source)
+    config["prepared_inputs"].pop("path")
+    config["prepared_inputs"].update(build["prepared_inputs"])
+    config["model"] = build["model"]
     resolved = Co2PreparationConfig.from_params(config, require_source=True)
     assert resolved.native is not None and resolved.boundary_representation == "centered"
+    assert isinstance(Co2ModelConfig.from_params(config).boundary, MultiplicativeChoice)

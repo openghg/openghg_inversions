@@ -37,6 +37,9 @@ domain = "EUROPE"
 # [prepared_inputs.native_prior]
 # sigma = 0.5
 # correlation_length = 1.5
+#
+# [model.boundary]
+# type = "multiplicative"
 
 [likelihood]
 kind = "fixed_ou"

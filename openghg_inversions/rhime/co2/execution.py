@@ -178,12 +178,8 @@ def run_co2(
             merged_data = MergedData.from_options(
                 species="co2", domain=domain, start_date=window_start, end_date=window_end, **acquisition,
             )
-        else:
-            merged_data.validate_for_preparation(
-                species="co2", domain=domain, start_date=window_start, end_date=window_end, split_by_sectors=False,
-            )
         prepared, affine_artifact = prepare_co2_from_merged_data(
-            merged_data, domain=domain, start_date=window_start,
+            merged_data, domain=domain, start_date=window_start, end_date=window_end,
             flux_sources=acquisition["flux_sources"], use_bc=acquisition.get("use_bc", True),
             boundary_representation=boundary.representation,
             filters=native.filters, averaging_error=native.averaging_error,

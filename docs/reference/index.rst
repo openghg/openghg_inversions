@@ -150,6 +150,7 @@ operands and supported model routes.
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
    openghg_inversions.inversion_data.prepare_surface_site
    openghg_inversions.inversion_data.acquire_surface_data
+   openghg_inversions.inversion_data.select_boundary_representation
    openghg_inversions.inversion_data.MergedData.from_options
    openghg_inversions.inversion_data.MergedData.validate_for_preparation
    openghg_inversions.inversion_data.MergedData.with_site_data
