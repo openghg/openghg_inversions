@@ -108,11 +108,10 @@ def test_real_oco2_store_prepares_time_resolved_multisector_columns(
     flux = prepared.basis_functions.flux
 
     assert inputs.sizes["nmeasure"] == 6
-    assert inputs.sizes["H_back"] == 24
     assert inputs.sizes["source"] == 3
     assert inputs.sizes["region"] == 8
     assert tuple(inputs.source.values) == _FLUX_SOURCES
-    assert {"fp", "fp_residual", "fp_time_resolved"}.issubset(inputs)
+    assert {"fp", "fp_residual", "fp_time_resolved"}.isdisjoint(inputs.data_vars)
     assert inputs["H"].dims == ("region", "nmeasure", "source")
     assert np.isfinite(inputs["H"]).all().item()
     for source in _FLUX_SOURCES:
