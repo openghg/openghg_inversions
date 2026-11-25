@@ -529,6 +529,19 @@ states are then made inactive at their prior mean. Every label in
 than its prior mean is rejected. Run metadata records the
 mode and selectors.</p>
 </section>
+<section id="linked-co2-o2">
+<h2>Linked CO2/O2<a class="headerlink" href="#linked-co2-o2" title="Link to this heading">#</a></h2>
+<p>The linked recipes share one flux state and prior between the CO2 and O2
+channels, so each builder resolves the choice once on that shared prior. The
+held states are fixed in the joint state after joint exact-zero pruning, with
+the same meaning as above: zero uncertainty and nothing added to the error
+covariance, in the ordinary and cached linked recipes alike:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2.co2_o2_model</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_co2_o2_model</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">build_co2_o2_model</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">outer_flux</span><span class="o">=</span><span class="n">OuterFluxChoice</span><span class="p">(</span><span class="s2">"fixed"</span><span class="p">,</span> <span class="p">(</span><span class="s2">"outer"</span><span class="p">,)))</span>
+</pre></div>
+</div>
+</section>
 </section>
 
 
@@ -580,6 +593,7 @@ mode and selectors.</p>
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#fixed-mode"><code class="docutils literal notranslate"><span class="pre">"fixed"</span></code> mode</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#building-a-model">Building a model</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#linked-co2-o2">Linked CO2/O2</a></li>
 </ul>
   </nav></div>
 

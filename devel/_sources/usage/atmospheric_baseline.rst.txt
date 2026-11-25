@@ -64,3 +64,18 @@ states are then made inactive at their prior mean. Every label in
 ``state_activity`` policy that explicitly fixes a held state at a value other
 than its prior mean is rejected. Run metadata records the
 mode and selectors.
+
+Linked CO2/O2
+-------------
+
+The linked recipes share one flux state and prior between the CO2 and O2
+channels, so each builder resolves the choice once on that shared prior. The
+held states are fixed in the joint state after joint exact-zero pruning, with
+the same meaning as above: zero uncertainty and nothing added to the error
+covariance, in the ordinary and cached linked recipes alike:
+
+.. code-block:: python
+
+   from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
+
+   model = build_co2_o2_model(..., outer_flux=OuterFluxChoice("fixed", ("outer",)))
