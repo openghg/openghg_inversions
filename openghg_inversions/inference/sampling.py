@@ -8,14 +8,14 @@ from __future__ import annotations
 
 # ruff: noqa: E402
 
-from openghg_inversions._pymc_config import configure_pytensor, jax_x64_requested
+from openghg_inversions._pymc_config import configure_pytensor
 
 configure_pytensor()
 
 import json
 import logging
-from collections.abc import Iterator, Mapping, Sequence
-from contextlib import contextmanager
+import os
+from collections.abc import Mapping, Sequence
 from copy import copy
 from typing import Any, ClassVar, Literal, cast
 
@@ -36,48 +36,45 @@ _JAX_NUTS_SAMPLERS = frozenset({"numpyro", "blackjax"})
 logger = logging.getLogger(__name__)
 
 
-@contextmanager
-def jax_sampling_precision(model: pm.Model, nuts_sampler: str) -> Iterator[dict[str, Any]]:
-    """Let a JAX NUTS backend sample at the model's precision.
+def _jax_sampling_precision(model: pm.Model, nuts_sampler: NutsSampler) -> dict[str, bool | str]:
+    """Check and record process-start precision for a JAX sampler.
 
-    PyTensor's JAX backend fixes ``jax_enable_x64`` from ``floatX`` once, when
-    it is first imported. A float64 graph sampled later (for example under
-    ``pytensor.config.change_flags(floatX="float64")``) would then be truncated
-    to float32 by JAX. This enables x64 before a JAX backend samples a model
-    whose log density is float64, or when ``JAX_ENABLE_X64`` requests it, and
-    logs a warning when the model itself is float32. It never turns x64 off:
-    PyMC returns JAX arrays in the trace, and later operations on float64 JAX
-    arrays would be truncated. Other backends are unaffected.
+    Args:
+        model: Built model whose sampler value variables must retain their dtype.
+        nuts_sampler: Resolved NUTS backend.
 
-    Yields:
-        The recorded precision (``floatX``, ``model_dtype`` and
-        ``jax_enable_x64``), or an empty mapping for non-JAX backends.
+    Returns:
+        PyTensor's floatX and the effective JAX x64 flag, or an empty mapping
+        for a backend that does not use JAX.
+
+    Raises:
+        ValueError: If the current JAX runtime disagrees with PyTensor floatX
+            or cannot represent the model's value variables.
     """
     if nuts_sampler not in _JAX_NUTS_SAMPLERS:
-        yield {}
-        return
+        return {}
+
     import jax
     import pytensor
-    import pytensor.link.jax.dispatch  # noqa: F401  # First import pins JAX precision from floatX.
+    import pytensor.link.jax.dispatch  # noqa: F401  # First import sets JAX precision from floatX.
 
     floatx = str(pytensor.config.floatX)
-    model_dtype = str(model.logp().dtype)
-    if model_dtype == "float64" or jax_x64_requested():
-        jax.config.update("jax_enable_x64", True)
-    if model_dtype != "float64":
-        logger.warning(
-            "%s samples a %s model, so the log density is evaluated in single precision. "
-            "Set PYTENSOR_FLAGS=floatX=float64 (or JAX_ENABLE_X64=1) before starting Python "
-            "for double precision; channels with large values or strongly correlated errors, "
-            "such as per-meg delta(O2/N2) alongside CO2, need it.",
-            nuts_sampler,
-            model_dtype,
+    x64 = bool(jax.config.x64_enabled)
+    if x64 != (floatx == "float64") or (
+        not x64 and any(variable.dtype == "float64" for variable in model.value_vars)
+    ):
+        raise ValueError(
+            "JAX precision does not match PyTensor's floatX or the model's value variables. "
+            "Start a fresh Python process with PYTENSOR_FLAGS=floatX=float32 or floatX=float64 "
+            "before building and sampling the model."
         )
-    yield {
-        "floatX": floatx,
-        "model_dtype": model_dtype,
-        "jax_enable_x64": bool(jax.config.read("jax_enable_x64")),
-    }
+    if not x64 and os.environ.get("JAX_ENABLE_X64", "").lower() in {"y", "yes", "t", "true", "on", "1"}:
+        logger.warning(
+            "PyTensor floatX selects float32 for this JAX sampler. Set "
+            "PYTENSOR_FLAGS=floatX=float64 before starting Python to sample in float64."
+        )
+
+    return {"floatX": floatx, "jax_enable_x64": x64}
 
 
 def describe_recorded_sampler(recorded: object) -> dict[str, int | str]:
@@ -420,7 +417,11 @@ class RhimeSampler:
             ``sampler_convergence_variables``. Assessment is eager; a failed or
             incomplete convergence report does not prevent returning the trace.
             For the ``numpyro`` and ``blackjax`` backends, ``sampler_precision``
-            records the JSON precision used (see :func:`jax_sampling_precision`).
+            records the PyTensor floatX and effective JAX x64 flag as JSON.
+
+        Raises:
+            ValueError: If the sampler or predictive options are invalid, or
+                the JAX runtime is incompatible with the model's precision.
         """
         _validate_idata_options(self.sample_kwargs, label="sample_kwargs")
         sample_kwargs = _copy_sampler_options(self.sample_kwargs or {})
@@ -452,8 +453,10 @@ class RhimeSampler:
             if not isinstance(posterior_seed, int | np.integer):
                 posterior_kwargs["random_seed"] = normalized_seed
 
+        precision = _jax_sampling_precision(model, self.nuts_sampler)
+
         timing_start = timer_start()
-        with model, jax_sampling_precision(model, self.nuts_sampler) as precision:
+        with model:
             raw_trace = cast(
                 xr.DataTree,
                 pm.sample(
