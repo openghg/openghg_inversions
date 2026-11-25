@@ -18,7 +18,9 @@ Prerequisites
   dimensionless ``H_bc_mass`` and scalar ``bc_reference``); see
   :doc:`surface_preparation`.
 * For centered operands, a PyTensor process configured with
-  ``floatX=float64``. Binding checks this once.
+  ``floatX=float64``. Binding checks this once. The
+  :ref:`fixed-OU precision guide <fixed-ou-step-precision>` explains the
+  requirement and how it differs from the state cache dtype.
 * For weighted additive corrections, the complete averaging weights
   ``bc_centering_weights``, stored when the artifact is prepared (see
   :ref:`co2-boundary-weights`).
