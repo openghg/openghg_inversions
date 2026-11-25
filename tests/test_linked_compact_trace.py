@@ -12,7 +12,7 @@ from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.co2.co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
 from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
-from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
+from openghg_inversions.rhime.sampling import RhimeSampler, _sample_linked_rhime_model, sample_rhime_model
 from openghg_inversions.serialization import load_trace, save_trace
 
 from test_co2_o2_additive_boundary import _additive_inputs
@@ -103,11 +103,13 @@ def test_compact_recording_restores_all_deterministics_at_identical_states(
         )
 
     monkeypatch.setattr("openghg_inversions.inference.sampling.pm.sample", sampled)
-    trace = RhimeSampler(
+    sampler = RhimeSampler(
         draws=4, tune=2, chains=1, burn=1,
         sample_kwargs={"idata_kwargs": {"log_likelihood": False}},
         sample_prior_predictive=False, sample_posterior_predictive=False,
-    ).sample(model, defer_deterministics=True)
+    )
+    built = RhimeModelBuildResult(model, OutputContract(variable_roles={"concentration": "y"}))
+    trace = _sample_linked_rhime_model(built, sampler)
     assert recorded["names"]
     np.testing.assert_array_equal(gradient(point), original_gradient)
     expected = restore_inferencedata_coords(reference, get_coord_registry(model)).prior.dataset.isel(draw=slice(1, None))
@@ -182,7 +184,7 @@ def test_compact_sampler_preserves_normalized_likelihood_and_absolute_products(t
         sampler = _sampler_for_cached_graph(
             sampler, cached_model=built, sigma_target_accept=0.8, state_target_accept=0.8,
         )
-    trace = sampler.sample(model, defer_deterministics=True)
+    trace = sampler._sample(model, defer_deterministics=True)
     original_observed = kwargs["observations"] - trace.constant_data.boundary_reference_shift
     xr.testing.assert_allclose(trace.observed_data.y, original_observed)
     reference_built = (build_co2_o2_cached_sigma_model if cached else build_co2_o2_model)(
@@ -346,7 +348,7 @@ def test_compact_sampler_preserves_warmup_and_explicit_likelihood_selection(monk
         draws=2, tune=3, burn=1, chains=1, sample_kwargs=options,
         sample_prior_predictive=False, sample_posterior_predictive=False,
     )
-    trace = sampler.sample(model, defer_deterministics=True)
+    trace = sampler._sample(model, defer_deterministics=True)
     assert len(calls) == (0 if likelihood is False else 1)
     if calls:
         assert calls[0]["var_names"] == (None if likelihood is True else ["y"])
@@ -399,7 +401,7 @@ def test_compact_request_preserves_alternative_recording_options(
         draws=draws, tune=tune, burn=burn, chains=1, nuts_sampler=backend,
         sample_kwargs={"idata_kwargs": idata_options, **sample_options},
         sample_prior_predictive=False, sample_posterior_predictive=False,
-    ).sample(model, defer_deterministics=True)
+    )._sample(model, defer_deterministics=True)
     expected = posterior.isel(draw=slice(burn, None))
     if burn:
         expected = expected.assign_coords(draw=np.arange(expected.sizes["draw"]))
@@ -425,7 +427,7 @@ def test_requested_log_prior_matches_retained_nuts_states(compact):
             "discard_tuned_samples": False,
             "idata_kwargs": {"log_prior": True, "save_warmup": True},
         },
-    ).sample(model, defer_deterministics=compact)
+    )._sample(model, defer_deterministics=compact)
 
     for name in ("posterior", "sample_stats", "log_likelihood", "log_prior", "posterior_predictive"):
         np.testing.assert_array_equal(trace[name].draw, [0, 1])
@@ -530,7 +532,7 @@ def test_burn_preserves_warmup_when_burn_exceeds_tuning(monkeypatch, compact):
     monkeypatch.setattr("openghg_inversions.inference.sampling.pm.sample", sampled)
     trace = RhimeSampler(draws=3, tune=1, burn=2, chains=1, nuts_sampler="pymc",
                          sample_kwargs={"discard_tuned_samples": False, "idata_kwargs": {"log_likelihood": False}},
-                         sample_prior_predictive=False, sample_posterior_predictive=False).sample(
+                         sample_prior_predictive=False, sample_posterior_predictive=False)._sample(
         model, defer_deterministics=compact,
     )
     np.testing.assert_array_equal(trace.posterior.state, [[.6]])
@@ -569,7 +571,7 @@ def test_warmup_likelihood_keeps_its_own_labels_and_length(monkeypatch, compact)
         draws=3, tune=2, burn=2, chains=1,
         sample_kwargs={"idata_kwargs": {"log_likelihood": False}},
         sample_prior_predictive=False, sample_posterior_predictive=False,
-    ).sample(model, defer_deterministics=compact)
+    )._sample(model, defer_deterministics=compact)
     xr.testing.assert_identical(trace.warmup_posterior.state, warmup.state)
     assert trace.warmup_posterior.attrs == warmup.attrs
     xr.testing.assert_identical(trace.warmup_sample_stats.to_dataset(), warmup_stats)
@@ -599,7 +601,7 @@ def test_compact_likelihood_selection_and_unequal_prediction_draws(monkeypatch, 
         draws=3, burn=1, tune=1, chains=1, sample_prior_predictive=5,
         sample_posterior_predictive=["first", "second"],
         sample_kwargs={"random_seed": 83, "idata_kwargs": {"log_likelihood": likelihood}},
-    ).sample(model, defer_deterministics=True)
+    )._sample(model, defer_deterministics=True)
     assert trace.posterior.sizes["draw"] == trace.posterior_predictive.sizes["draw"] == 2
     assert trace.prior.sizes["draw"] == trace.prior_predictive.sizes["draw"] == 5
     np.testing.assert_allclose(trace.posterior.signal, [[0.8, 1.2]])
@@ -621,11 +623,11 @@ def test_compact_request_keeps_explicit_posterior_selection_rejection(monkeypatc
     sampler = RhimeSampler(sample_prior_predictive=False, sample_posterior_predictive=False)
     sampler.sample_kwargs = {"var_names": ["state"]}
     with pytest.raises(ValueError, match="var_names"):
-        sampler.sample(pm.Model(), defer_deterministics=True)
+        sampler._sample(pm.Model(), defer_deterministics=True)
 
 
-@pytest.mark.parametrize("defer", [False, True])
-def test_model_adapter_preserves_the_custom_sampler_call(defer):
+@pytest.mark.parametrize("sample", [sample_rhime_model, _sample_linked_rhime_model])
+def test_model_adapter_preserves_the_custom_sampler_call(sample):
     """An existing sampler override receives its usual arguments."""
     model = pm.Model()
     roles = {"concentration": "y"}
@@ -640,4 +642,18 @@ def test_model_adapter_preserves_the_custom_sampler_call(defer):
             assert model_to_sample is model and variable_roles == roles
             return trace
 
-    assert sample_rhime_model(built, CustomSampler(), defer_deterministics=defer) is trace
+    assert sample(built, CustomSampler()) is trace
+
+
+def test_linked_adapter_preserves_an_instance_sampler_override(monkeypatch):
+    """A caller-provided sample method on the sampler instance owns recording."""
+
+    class CustomSampler(RhimeSampler):
+        """Sampler subclass that supports per-instance methods."""
+
+    built = RhimeModelBuildResult(pm.Model(), OutputContract(variable_roles={"concentration": "y"}))
+    sampler = CustomSampler()
+    trace = xr.DataTree()
+    monkeypatch.setattr(sampler, "sample", lambda model, *, variable_roles: trace)
+
+    assert _sample_linked_rhime_model(built, sampler) is trace

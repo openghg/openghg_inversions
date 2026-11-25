@@ -403,8 +403,7 @@ def test_cached_joint_draws_with_baseline_emit_paris(tmp_path, native_multiindex
     from test_rhime_co2_o2 import _independent_error
     from test_rhime_co2_o2_baselines import _native_multiindex_inputs, _prepared
 
-    def graph_draws(built, sampler, *, defer_deterministics=False):
-        assert defer_deterministics is True
+    def graph_draws(built, sampler):
         # PARIS closure needs draws from the real graph; linked sampler
         # integration is covered in test_co2_o2_fixed_ou.py.
         with built.model:
@@ -412,7 +411,7 @@ def test_cached_joint_draws_with_baseline_emit_paris(tmp_path, native_multiindex
         trace["posterior"] = trace["prior"].to_dataset().isel(draw=slice(0, 3))
         return restore_inferencedata_coords(trace, get_coord_registry(built.model))
 
-    monkeypatch.setattr(co2_o2_cached_sigma_runner, "sample_rhime_model", graph_draws)
+    monkeypatch.setattr(co2_o2_cached_sigma_runner, "_sample_linked_rhime_model", graph_draws)
     monkeypatch.setattr(co2_o2_cached_sigma_runner, "_sampler_for_cached_graph", lambda sampler, **_: sampler)
 
     if native_multiindex:

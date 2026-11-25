@@ -28,7 +28,7 @@ def no_inference(monkeypatch):
     monkeypatch.setattr(handoffs, "sample", forbidden)
     monkeypatch.setattr(handoffs, "prior_predictive", forbidden)
     monkeypatch.setattr(handoffs, "build_rhime_co2_o2", forbidden)
-    monkeypatch.setattr(handoffs, "sample_rhime_model", forbidden)
+    monkeypatch.setattr(handoffs, "_sample_linked_rhime_model", forbidden)
 
 
 def constructed_joint_trace(prepared=None, *, chains: int = 1, draws: int = 4) -> xr.DataTree:
@@ -344,7 +344,7 @@ def test_final_linked_sample_write_rechecks_the_request(tmp_path, monkeypatch):
         return object()
 
     monkeypatch.setattr(handoffs, "build_rhime_co2_o2", lambda *a, **kw: object())
-    monkeypatch.setattr(handoffs, "sample_rhime_model", infer)
+    monkeypatch.setattr(handoffs, "_sample_linked_rhime_model", infer)
     monkeypatch.setattr(handoffs, "annotate_co2_o2_trace", lambda trace, **kw: trace)
     monkeypatch.setattr(handoffs, "validate_co2_o2_trace", lambda *a, **kw: None)
     with pytest.raises(ValueError, match="overlaps an input or output artifact"):

@@ -344,14 +344,13 @@ def test_public_linked_runners_forward_prepared_additive_boundary_options(monkey
         )
         options = {"boundary": _linked_choices(kwargs)}
 
-        def prior_sample(built, sampler, *, defer_deterministics=False):
-            assert defer_deterministics is True
+        def prior_sample(built, sampler):
             with built.model:
                 trace = pm.sample_prior_predictive(draws=2, random_seed=81)
             return restore_inferencedata_coords(trace, get_coord_registry(built.model))
 
         module = co2_o2_cached_sigma_runner if cached else co2_o2_runner
-        monkeypatch.setattr(module, "sample_rhime_model", prior_sample)
+        monkeypatch.setattr(module, "_sample_linked_rhime_model", prior_sample)
         runner = (
             module.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
             if cached
@@ -445,14 +444,13 @@ def test_linked_runners_do_not_compute_passive_additive_arrays(monkeypatch, cach
         )
         options = {"boundary": boundary}
 
-        def prior_sample(built, sampler, *, defer_deterministics=False):
-            assert defer_deterministics is True
+        def prior_sample(built, sampler):
             with built.model:
                 trace = pm.sample_prior_predictive(draws=1, random_seed=83)
             return restore_inferencedata_coords(trace, get_coord_registry(built.model))
 
         module = co2_o2_cached_sigma_runner if cached else co2_o2_runner
-        monkeypatch.setattr(module, "sample_rhime_model", prior_sample)
+        monkeypatch.setattr(module, "_sample_linked_rhime_model", prior_sample)
         if cached:
             monkeypatch.setattr(module, "_sampler_for_cached_graph", lambda sampler, **_: sampler)
             options.update(tau_hours=6.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8})
@@ -574,14 +572,13 @@ def test_public_linked_ou_restores_mixed_centered_boundary_predictions(monkeypat
             site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8},
         )
 
-        def prior_sample(built, sampler, *, defer_deterministics=False):
-            assert defer_deterministics is True
+        def prior_sample(built, sampler):
             with built.model:
                 trace = pm.sample_prior_predictive(draws=3, random_seed=93)
             return restore_inferencedata_coords(trace, get_coord_registry(built.model))
 
         module = co2_o2_cached_sigma_runner if cached else co2_o2_runner
-        monkeypatch.setattr(module, "sample_rhime_model", prior_sample)
+        monkeypatch.setattr(module, "_sample_linked_rhime_model", prior_sample)
         if cached:
             monkeypatch.setattr(module, "_sampler_for_cached_graph", lambda sampler, **_: sampler)
         runner = (

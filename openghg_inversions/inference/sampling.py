@@ -543,7 +543,6 @@ class RhimeSampler:
         model: pm.Model,
         *,
         variable_roles: Mapping[str, str] | None = None,
-        defer_deterministics: bool = False,
     ) -> xr.DataTree:
         """Sample a built RHIME model and append requested predictive groups.
 
@@ -554,14 +553,6 @@ class RhimeSampler:
                 role names. The historical default ``"y"`` resolves to the
                 explicit ``concentration`` role when a custom model has no
                 variable named ``y``.
-            defer_deterministics: For PyMC, record only free random variables
-                during sampling, then evaluate deterministics for the retained
-                posterior and any saved warmup draws. The likelihood still
-                evaluates terms it needs during sampling. The default records
-                deterministics during sampling. Other backends, explicit
-                traces or callbacks, a separate conversion model in
-                ``idata_kwargs``, transformed-variable requests, and empty
-                retained groups also use ordinary recording.
 
         Returns:
             Sampled trace with requested predictive groups, after burn slicing
@@ -578,6 +569,27 @@ class RhimeSampler:
         Raises:
             ValueError: If the sampler or predictive options are invalid, or
                 the JAX runtime is incompatible with the model's precision.
+        """
+        return RhimeSampler._sample(self, model, variable_roles=variable_roles, defer_deterministics=False)
+
+    def _sample(
+        self,
+        model: pm.Model,
+        *,
+        variable_roles: Mapping[str, str] | None = None,
+        defer_deterministics: bool,
+    ) -> xr.DataTree:
+        """Sample with deferred recording when the recipe and backend support it.
+
+        Args:
+            model: Concrete PyMC graph to sample.
+            variable_roles: Semantic names for requested predictions.
+            defer_deterministics: Whether the recipe supports recording free
+                variables first and evaluating deterministics for the retained
+                posterior and saved warmup after sampling.
+
+        Returns:
+            Sampled trace with deterministics and requested predictions.
         """
         _validate_idata_options(self.sample_kwargs, label="sample_kwargs")
         sample_kwargs = _copy_sampler_options(self.sample_kwargs or {})

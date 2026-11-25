@@ -14,7 +14,7 @@ from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
-from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
+from openghg_inversions.rhime.sampling import RhimeSampler, _sample_linked_rhime_model
 
 from .co2_cached_sigma_runner import (
     _sampler_for_cached_graph,
@@ -192,7 +192,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         sigma_target_accept=sigma_target_accept,
         state_target_accept=state_target_accept,
     )
-    trace = sample_rhime_model(built, sampling_sampler, defer_deterministics=True)
+    trace = _sample_linked_rhime_model(built, sampling_sampler)
     trace = annotate_co2_o2_trace(trace, built=built)
     trace.attrs["rhime_recipe"] = "co2_o2_cached_sigma_fixed_ou"
     for group in trace.children.values():

@@ -1447,21 +1447,18 @@ log likelihood per posterior draw and optional correlated joint prior and
 posterior predictive vectors, preserving cross-channel aggregation covariance.
 The joint likelihood must not be treated as pointwise observation densities.
 
-Linked runners using PyMC record the free random variables during sampling.
+Linked runners using PyMC's default trace recorder automatically store
+only the free random variables during sampling.
 The likelihood still evaluates the terms it needs. After PyMC returns, the
 runners compute the joint log likelihood for the retained posterior and
 evaluate deterministics for the retained posterior and any saved warmup draws.
 Observed random variables remain conditioned on their data during evaluation,
 following PyMC's ordinary recording and transform conventions.
-This avoids keeping observation-sized deterministics in both warmup/retained
-backend buffers and the converted posterior. Reconstruction allocates the final
-arrays once and evaluates one state at a time; it preserves all output names,
-precision, coordinates and absolute concentration semantics. The ordinary linked CLI and saved-input
-sampling route use the same storage strategy. Likelihood and deterministic
-reconstruction are logged as separate passes. This opt-in behavior has been
-validated for the linked recipes described here; other RHIME families and
-arbitrary public PyMC models retain their existing defaults. Direct builder users can select
-it with ``sample_rhime_model(built, sampler, defer_deterministics=True)``.
+This keeps observation-sized deterministics out of the sampling buffers.
+The linked Python runners and saved-input CLI sampling phase use the same
+strategy, with the likelihood and reconstruction logged as separate passes.
+Custom samplers, other backends and explicit recording options such as
+callbacks or custom traces use their existing recording paths.
 
 The returned trace contains all requested draws and derived outputs, so its
 storage grows with chains, draws and observations. The model generates prior

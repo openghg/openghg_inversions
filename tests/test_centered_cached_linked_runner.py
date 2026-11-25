@@ -60,15 +60,14 @@ def test_linked_cached_runner_restores_absolute_predictions_and_replay(tmp_path,
     aggregation_covariance = prepared.aggregation_error.covariance.copy(deep=True)
     captured = {}
 
-    def prior_prediction(built, sampler, *, defer_deterministics=False):
-        assert defer_deterministics is True
+    def prior_prediction(built, sampler):
         with built.model:
             trace = pm.sample_prior_predictive(draws=3, random_seed=73)
         trace = restore_inferencedata_coords(trace, get_coord_registry(built.model))
         captured["centered_y"] = trace.prior_predictive.y.copy(deep=True)
         return trace
 
-    monkeypatch.setattr(runner, "sample_rhime_model", prior_prediction)
+    monkeypatch.setattr(runner, "_sample_linked_rhime_model", prior_prediction)
     anchor = "2020-12-31T23:00:00"
     with pytensor.config.change_flags(floatX="float64"):
         trace = runner.run_rhime_co2_o2_cached_sigma_from_prepared_inputs(

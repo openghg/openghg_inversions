@@ -93,11 +93,10 @@ def test_saved_sampling_accepts_concrete_owner_without_reparsing(tmp_path, monke
     monkeypatch.setattr(model_cls, "from_params", forbidden)
     if linked:
         monkeypatch.setattr(module, "build_rhime_co2_o2", lambda **kw: object())
-        def sample(built, sampler, *, defer_deterministics=False):
-            assert defer_deterministics is True
+        def sample(built, sampler):
             assert sampler.nuts_sampler == "numpyro"
             return object()
-        monkeypatch.setattr(module, "sample_rhime_model", sample)
+        monkeypatch.setattr(module, "_sample_linked_rhime_model", sample)
         monkeypatch.setattr(module, "annotate_co2_o2_trace", lambda trace, **kw: trace)
     else:
         def sample(prepared, choices, sampler, **kwargs):

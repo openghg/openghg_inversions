@@ -116,7 +116,7 @@ def test_deferred_evaluation_uses_the_resolved_compiler(monkeypatch, recorded, k
     trace = RhimeSampler(
         draws=3, burn=1, chains=1, sample_kwargs=compile_override,
         sample_prior_predictive=False, sample_posterior_predictive=False,
-    ).sample(model, defer_deterministics=True)
+    )._sample(model, defer_deterministics=True)
 
     for step in ("compute_log_likelihood", "compute_deterministics"):
         (compiler,) = recorded[step]

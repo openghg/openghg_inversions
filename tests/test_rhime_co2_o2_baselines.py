@@ -181,8 +181,7 @@ def test_configuration_and_runner_forward_same_channel_options(monkeypatch):
     configured = {"prepared_inputs": prepared, **setup.bind(prepared)}
     configured["sampler"] = RhimeSampler(draws=2, tune=0, chains=1, burn=0, nuts_sampler="pymc")
 
-    def prior_sample(built, sampler, *, defer_deterministics=False):
-        assert defer_deterministics is True
+    def prior_sample(built, sampler):
         with built.model:
             trace = pm.sample_prior_predictive(
                 draws=2,
@@ -191,7 +190,7 @@ def test_configuration_and_runner_forward_same_channel_options(monkeypatch):
             )
         return restore_inferencedata_coords(trace, get_coord_registry(built.model))
 
-    monkeypatch.setattr(co2_o2_runner, "sample_rhime_model", prior_sample)
+    monkeypatch.setattr(co2_o2_runner, "_sample_linked_rhime_model", prior_sample)
     trace = run_rhime_co2_o2_from_prepared_inputs(**configured)
     roles = json.loads(trace.attrs["rhime_variable_roles"])
     assert roles["co2_boundary_concentration"] == "co2_mu_bc"
