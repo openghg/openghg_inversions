@@ -21,8 +21,8 @@ The model samples a
 moments joined by a Gaussian copula, with a marginal family per state. A whitened
 :math:`z\sim N(0,I)` is correlated as :math:`u=Lz` and each state is
 :math:`x_i=F_i^{-1}(\Phi(u_i))`, where :math:`F_i` has the state's arithmetic
-mean and SD. The latent correlations :math:`LL^T` are chosen pair by pair so
-that the arithmetic covariance is reproduced exactly.
+mean and SD. The latent correlations :math:`LL^T` are chosen pair by pair to
+reproduce the arithmetic covariance.
 
 ``"lognormal"`` is the default. With it on every state the prior is
 :class:`~openghg_inversions.correlated_state.CorrelatedLognormalPrior` and the
