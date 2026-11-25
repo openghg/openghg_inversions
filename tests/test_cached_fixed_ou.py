@@ -9,6 +9,7 @@ routing of configured and prepared-input runs, and validation.
 
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from typing import Any
 
@@ -24,7 +25,7 @@ from scipy.stats import multivariate_normal
 
 from boundary_test_utils import bound_linked_model_arguments
 from examples.co2_o2_handoffs import synthetic_inputs
-from openghg_inversions.correlated_state import CorrelatedPrior
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.inference.cached_sigma import (
     PymcCachedSigmaNutsStep,
     PytensorMarginalQuadraticCache,
@@ -196,26 +197,26 @@ def test_fixed_state_cost_preserves_small_changes_with_a_large_float32_boundary(
     """A 400 ppm absolute boundary must not erase changes in the state density."""
     with pytensor.config.change_flags(floatX="float32"):
         inputs = _boundary_inputs()
-        design = inputs.H_bc / inputs.H_bc.sum("bc_region") * 400.0
+        design = (inputs.H_bc / inputs.H_bc.sum("bc_region") * 400.0).assign_attrs(units="ppm")
         observations = (inputs.mf + 400.0).assign_attrs(units="ppm")
         inputs = inputs.assign(mf=observations)
-        boundary = MultiplicativeChoice({"pdf": "normal", "mu": 1.0, "sigma": 0.1}).bind_absolute(
-            observations, design.assign_attrs(units="ppm"),
-        )
-        cached = _fixed_co2(inputs=inputs, boundary=boundary)
+        prior = {"pdf": "normal", "mu": 1.0, "sigma": 0.1}
+        boundary = MultiplicativeChoice(prior).bind_absolute(observations, design)
+        cached = _fixed_co2(inputs=inputs, bc_prior=prior, boundary_sensitivity=design)
         plain = _plain_co2(inputs, boundary=boundary)
         step = _state_step(cached)
         native = plain.compile_logp()
         start = plain.initial_point()
+        assert [rv.name for rv in cached.states] == list(start)
         nearby = {name: values.copy() for name, values in start.items()}
         nearby["bc"][0] += 1e-5
 
         def cached_cost(point):
             step._logp_dlogp_func.set_extra_values(point)
-            return step._logp_dlogp_func(DictToArrayBijection.map(point))[0]
+            return float(step._logp_dlogp_func(DictToArrayBijection.map(point))[0])
 
         np.testing.assert_allclose(
-            cached_cost(nearby) - cached_cost(start), native(nearby) - native(start), atol=3e-5,
+            cached_cost(nearby) - cached_cost(start), float(native(nearby)) - float(native(start)), atol=3e-5,
         )
 
 
@@ -443,10 +444,15 @@ def _assert_state_only_trace(trace, calls, *, target_accept):
 
 @pytest.mark.usefixtures("double_precision")
 def test_configured_linked_fixed_ou_sample_uses_cached_state_step(tmp_path, captured_steps):
-    manifest = co2_o2_handoffs.save_preparation(synthetic_inputs(), output_dir=tmp_path / "prepare")
+    prepared = synthetic_inputs()
+    prior = prepared.retained_prior
+    mean = prior.mean.assign_coords(basis_group=("state", ["inner", "inner", "inner", "outer", "outer"]))
+    prepared = replace(prepared, retained_prior=CorrelatedLognormalPrior(mean, prior.arithmetic_covariance))
+    manifest = co2_o2_handoffs.save_preparation(prepared, output_dir=tmp_path / "prepare")
     model = {
         "channels": {"co2": {"units": "ppm"}, "o2": {"units": "ppm"}},
         "likelihood": {"kind": "fixed_ou", "tau_hours": 12.0, "fixed_site_amplitudes": 0.3},
+        "outer_flux": {"mode": "fixed", "outer_groups": ["outer"], "fixed_sources": ["ocean"]},
         "sampling": {
             "draws": 4, "tune": 4, "chains": 1, "random_seed": 23,
             "sample_posterior_predictive": ["y", "modelled_concentration"],
@@ -472,6 +478,8 @@ def test_configured_linked_fixed_ou_sample_uses_cached_state_step(tmp_path, capt
     assert json.loads(amplitude.attrs["rhime_scientific_roles"]) == ["fixed_ou_site_amplitude"]
     assert trace.log_likelihood.y.dims == ("chain", "draw")
     assert {"y", "modelled_concentration"} <= set(trace.posterior_predictive)
+    assert json.loads(trace.attrs["rhime_model_metadata"])["outer_flux_mode"] == "fixed"
+    np.testing.assert_array_equal(trace.posterior.flux_scaling.sel(state=["co2-ocean:1", "o2-ocean:1"]), 1.0)
     assert "ou_site_amplitude" in co2_o2_handoffs.load_samples(sample_manifest).idata.constant_data
 
 
