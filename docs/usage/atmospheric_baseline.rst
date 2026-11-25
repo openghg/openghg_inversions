@@ -3,15 +3,17 @@ Outer-region flux states held or marginalised
 
 By default the CO2 recipes sample every retained flux state, including the
 outer-region states, uncentred and beside any boundary correction. The
-outer-flux option selects the outer-region states once on the flux prior and
-holds chosen ones at their prior mean, either dropping their prior
-uncertainty (``"fixed"``) or carrying it as an observation-error term
-(``"marginalise"``). Existing model defaults are unchanged.
+outer-flux option selects outer-region states on the flux prior. The
+``"fixed"`` mode holds them at their prior mean with zero uncertainty.
+The ``"marginalise"`` mode integrates them out of the likelihood and carries
+their uncertainty as an observation-error term.
 
 Outer states are the flux states whose ``basis_group`` coordinate is in
-``outer_groups``. They stay in the ordinary ``flux_scaling`` state, so CO2
-outputs, state activity and the :doc:`retained flux prior <flux_prior>` work
-as they do without the option.
+``outer_groups``. Their entries in ``flux_scaling`` retain the prior mean in
+both modes. With ``"marginalise"``, native and country flux products use
+those prior-mean entries. They omit the marginalised outer uncertainty and,
+for correlated states, the conditional outer adjustment used in the
+concentration model.
 
 ``"fixed"`` mode
 ----------------
@@ -33,9 +35,9 @@ outer flux unsampled fairly.
 ``"marginalise"`` mode
 ----------------------
 
-``"marginalise"`` holds the selected outer states :math:`O` at their prior
-mean :math:`m_O`, so :math:`H_O m_O` joins the fixed part of the forward model,
-and adds their prior covariance as seen by the observations,
+For selected outer states :math:`O` uncorrelated with the other states,
+``"marginalise"`` includes :math:`H_O m_O` in the mean and adds their
+prior covariance as seen by the observations,
 
 .. math::
 
@@ -64,9 +66,8 @@ observations, 18 marginalised outer states), NUTS with ``"marginalise"``
 moved the inner NET_BIOSPHERE and TOTAL posterior means by +90 Tg CO2/yr
 (0.05 posterior SD, about two Monte Carlo standard errors) relative to
 sampling the outer states, and left FF unchanged. Exact solves of the same
-problem with a Gaussian prior agreed to 2e-9 Tg CO2/yr, so the shift is the
-moment approximation. Expect differences of this size, larger when the
-LogNormal prior is wide.
+problem with a Gaussian prior agreed to 2e-9 Tg CO2/yr. This comparison
+quantifies the approximation for that case and prior.
 
 Taking the outer states out of the sampler makes the state smaller, but it
 need not make NUTS faster: the likelihood gains a low-rank term, and in the
@@ -78,9 +79,8 @@ zero uncertainty, with ``fixed_sources=("ocean",)``.
 Correlated outer states
 -----------------------
 
-``"fixed"`` rejects selected outer states with nonzero prior covariance with
-any other state: holding a state at its prior mean while sampling the marginal
-prior of the others is exact only when they are uncorrelated.
+``"fixed"`` requires zero prior covariance between the selected outer states
+and the states outside the selection.
 
 ``"marginalise"`` accepts them. With cross-covariance :math:`\Sigma_{OI}`
 between the selected states and all other states :math:`I`, the outer states
@@ -132,10 +132,10 @@ samples:
    )
 
 :func:`~openghg_inversions.rhime.co2.co2_model.build_co2_model` takes the same
-``outer_flux`` argument. Any boundary, or none, may be used with it. Exact-zero
-columns of :math:`H` are pruned first, as in the ordinary recipe, and the held
-states are then made inactive at their prior mean; in ``"marginalise"`` mode
-their error term is then added to ``aggregation_error``. Every label in
+``outer_flux`` argument. Any boundary, or none, may be used with it. For
+correlated marginalisation the builder adjusts the design before pruning
+exact-zero columns. It then sets the selected states inactive at their prior
+mean and adds any marginalised covariance to ``aggregation_error``. Every label in
 ``outer_groups`` and ``fixed_sources`` must match a state, and a
 ``state_activity`` policy that explicitly fixes a held state at a value other
 than its prior mean is rejected. Run metadata records the
@@ -145,13 +145,15 @@ Linked CO2/O2
 -------------
 
 The linked recipes share one flux state and prior between the CO2 and O2
-channels, so each builder resolves the choice once on that shared prior. The
-held states are fixed in the joint state after joint exact-zero pruning, with
-the same meaning as above: zero uncertainty and nothing added to the error
-covariance, in the ordinary and cached linked recipes alike:
+channels, so each builder resolves the choice once on that shared prior.
+``"fixed"`` sets the selected states to their prior means. ``"marginalise"``
+adds a joint covariance term spanning both channels, including the covariance
+between CO2 and O2 induced by the selected states. Both modes are available
+in the ordinary and cached linked recipes.
 
 .. code-block:: python
 
+   from openghg_inversions.models.outer_flux import OuterFluxChoice
    from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
 
-   model = build_co2_o2_model(..., outer_flux=OuterFluxChoice("fixed", ("outer",)))
+   model = build_co2_o2_model(..., outer_flux=OuterFluxChoice("marginalise", ("outer",)))
