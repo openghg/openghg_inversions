@@ -39,6 +39,7 @@ from .co2_o2_outputs import (
     Co2O2Output, Co2O2OutputOptions, calculate_co2_o2_products, make_co2_o2_output,
     save_co2_o2_products, validate_co2_o2_trace,
 )
+from .co2_o2_cached_sigma_runner import _sample_linked_cached
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .co2_o2_runner import annotate_co2_o2_trace, build_rhime_co2_o2
 from .co2_preparation import requested_co2_facts
@@ -194,7 +195,10 @@ def sample(
     Compatible baseline and fixed mismatch changes reuse preparation; defining
     retained priors, operators and cross-channel covariance remain prepared facts.
     The full prepared-input runner and this route use the same construction,
-    sampling and scientific annotation operations.
+    sampling and scientific annotation operations. Fixed-OU fits use the cached
+    fixed-OU sampler (state quadratic built once, state NUTS only), with the
+    resolved ``target_accept`` (default 0.95) tuning that state step.
+
     ``referenced`` names consumed request files, such as the CLI configuration,
     that this stage's outputs must not overwrite or enclose.
     """
@@ -213,11 +217,17 @@ def sample(
         referenced=(Path(preparation_manifest).resolve(), preparation.payload) + protected,
     )
     model_options = model_config.bind(preparation.prepared)
-    built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
-    trace = _sample_linked_rhime_model(built, active_sampler)
-    trace = annotate_co2_o2_trace(trace, built=built)
+    if model_options.get("tau_hours") is not None:
+        trace, actual = _sample_linked_cached(
+            prepared_inputs=preparation.prepared, sampler=active_sampler, recipe="co2_o2", **model_options,
+        )
+    else:
+        built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
+        trace = _sample_linked_rhime_model(built, active_sampler)
+        trace = annotate_co2_o2_trace(trace, built=built)
+        actual = active_sampler.describe()
     return save_samples(
-        preparation_manifest, trace, actual_inference=active_sampler.describe(),
+        preparation_manifest, trace, actual_inference=actual,
         preparation_generation=preparation.generation, output_dir=output_dir, referenced=protected,
     )
 

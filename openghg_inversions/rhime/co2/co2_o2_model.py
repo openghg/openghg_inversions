@@ -39,7 +39,7 @@ from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.observation_error import AggregationError
 
 from .co2_model import _normalise_offset_args
-from .co2_o2_fixed_ou import linked_fixed_ou_alignment
+from .co2_o2_fixed_ou import linked_fixed_ou_alignment, validate_linked_ou_amplitude_units
 
 
 def _gather_co2_o2_sensitivity(
@@ -364,11 +364,14 @@ def build_co2_o2_model(
             Boundary terms still require identical channel units.
         output_dim: Joint observation dimension used by the likelihood.
         tau_hours: Optional fixed OU timescale in hours, scalar or mapping keyed
-            by ``co2:SITE``/``o2:SITE``. Requires common channel units.
-        fixed_site_amplitudes: Fixed additive OU standard deviations in the
-            common concentration units; scalar or species/site mapping.
+            by ``co2:SITE``/``o2:SITE``.
+        fixed_site_amplitudes: Fixed additive OU standard deviations in each
+            species/site group's channel units; scalar or species/site mapping.
+            With mixed channel units (for example ppm CO2 and per-meg O2) a
+            nonzero value must be a mapping.
         site_amplitude_prior: Prior for inferred species/site OU amplitudes in
             concentration units, mutually exclusive with fixed amplitudes.
+            Requires common channel units.
 
     Returns:
         A registered PyMC model containing the shared state, gathered joint
@@ -495,6 +498,11 @@ def _build_co2_o2_model(
                 observation_error_name="fixed_independent_error_sd",
             )
         else:
+            validate_linked_ou_amplitude_units(
+                observations,
+                fixed_site_amplitudes=fixed_site_amplitudes,
+                site_amplitude_prior=site_amplitude_prior,
+            )
             add_fixed_ou_gaussian_likelihood(
                 observations=likelihood_observations,
                 observation_error=independent_error_sd,
