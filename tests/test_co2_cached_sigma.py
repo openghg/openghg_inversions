@@ -20,7 +20,7 @@ from pymc.initial_point import make_initial_point_fn
 from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
 import xarray as xr
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
@@ -165,7 +165,7 @@ def _build(
     *, state_activity: StateActivity | None = None, inputs: xr.Dataset | None = None, **kwargs: Any
 ) -> Any:
     inputs = _inputs() if inputs is None else inputs
-    prior = CorrelatedLognormalPrior(
+    prior = CorrelatedPrior(
         inputs["alpha_prior_mean"],
         inputs["alpha_prior_covariance"],
         covariance_dim="region_cov",
@@ -405,7 +405,7 @@ def test_lifted_prior_starts_and_caller_transforms_preserve_complete_state_targe
 def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_points() -> None:
     """Cached boundary and offset terms match the dense likelihood and gradients."""
     inputs = _boundary_inputs()
-    prior = CorrelatedLognormalPrior(
+    prior = CorrelatedPrior(
         inputs["alpha_prior_mean"],
         inputs["alpha_prior_covariance"],
         covariance_dim="region_cov",
@@ -607,7 +607,7 @@ def test_cached_offset_modes_match_completed_mean_and_dense_likelihood(
 ) -> None:
     """Each supported offset layout enters the completed cached likelihood once."""
     inputs = _boundary_inputs()
-    prior = CorrelatedLognormalPrior(
+    prior = CorrelatedPrior(
         inputs["alpha_prior_mean"],
         inputs["alpha_prior_covariance"],
         covariance_dim="region_cov",
@@ -675,7 +675,7 @@ def test_cached_all_fixed_flux_uses_other_active_component(
 ) -> None:
     """A boundary or offset can carry the cache when every flux state is fixed."""
     inputs = _boundary_inputs()
-    prior = CorrelatedLognormalPrior(
+    prior = CorrelatedPrior(
         inputs["alpha_prior_mean"],
         inputs["alpha_prior_covariance"],
         covariance_dim="region_cov",
@@ -755,7 +755,7 @@ def test_cached_all_fixed_flux_uses_other_active_component(
 def test_cached_all_fixed_states_infer_amplitudes(centered) -> None:
     """A fixed mean still has an inferred covariance and exact amplitude transition."""
     inputs = _inputs()
-    prior = CorrelatedLognormalPrior(
+    prior = CorrelatedPrior(
         inputs["alpha_prior_mean"],
         inputs["alpha_prior_covariance"],
         covariance_dim="region_cov",
@@ -836,7 +836,7 @@ def test_cached_mapping_validates_dropped_sites(name, invalid):
             inputs["H"],
             **bound_model_arguments(
                 {
-                    "retained_prior": CorrelatedLognormalPrior(
+                    "retained_prior": CorrelatedPrior(
                         inputs["alpha_prior_mean"],
                         inputs["alpha_prior_covariance"],
                         covariance_dim="region_cov",
@@ -866,7 +866,7 @@ def test_cached_state_dimensions_include_boundary_and_offset_coefficients(
 ) -> None:
     """The cached design includes every active boundary and offset coefficient."""
     inputs = _boundary_inputs()
-    prior = CorrelatedLognormalPrior(
+    prior = CorrelatedPrior(
         inputs["alpha_prior_mean"],
         inputs["alpha_prior_covariance"],
         covariance_dim="region_cov",

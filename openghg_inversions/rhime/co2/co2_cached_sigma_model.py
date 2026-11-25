@@ -16,7 +16,7 @@ from pymc.pytensorf import floatX
 from pytensor.graph.traversal import graph_inputs
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.inference.cached_sigma import PytensorMarginalQuadraticCache
 from openghg_inversions.array_ops import to_dense_tree
 from openghg_inversions.models.boundary import Bound
@@ -34,7 +34,7 @@ from openghg_inversions.models.components import (
     apply_linear_sensitivity,
     likelihood_representation,
     warn_constant_offset_confounding,
-    prepare_active_correlated_lognormal_prior,
+    prepare_active_correlated_prior,
 )
 from openghg_inversions.models.coords import add_coords, registered_model
 from openghg_inversions.models.fixed_ou import (
@@ -291,7 +291,7 @@ def _add_cached_likelihood(
 def build_co2_cached_sigma_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -329,8 +329,8 @@ def build_co2_cached_sigma_model(
         flux_sensitivity: Reduced sensitivity with the output dimension and
             one labelled retained-state dimension, in concentration units per
             unit dimensionless flux scaling.
-        retained_prior: Complete labelled arithmetic-moment prior for the
-            positive, dimensionless retained flux-scaling state.
+        retained_prior: Complete labelled arithmetic moments and marginals
+            for the dimensionless retained flux-scaling state.
         fixed_prior_contribution: Fixed coherent-reduction affine contribution
             on the output dimension, in the observations' concentration units.
         observations: Observed CO2 concentrations on the output dimension,
@@ -404,7 +404,7 @@ def build_co2_cached_sigma_model(
 def _build_co2_cached_sigma_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -459,7 +459,7 @@ def _build_co2_cached_sigma_model(
         activity,
         output_dim=output_dim,
     )
-    active_state_prior = prepare_active_correlated_lognormal_prior(
+    active_state_prior = prepare_active_correlated_prior(
         activity,
         retained_prior,
         var_name="flux_scaling",

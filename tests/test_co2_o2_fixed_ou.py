@@ -1,5 +1,6 @@
 """Dense two-tracer oracle and matched linked fixed-OU sampler contracts."""
 
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models.boundary import BoundCenteredSensitivity
 from boundary_test_utils import bound_linked_model_arguments
 
@@ -69,7 +70,7 @@ def _kwargs(prepared, *, interleaved=False, native_multiindex=False):
         co2_sensitivity=prepared.co2_sensitivity,
         o2_sensitivity=prepared.o2_sensitivity,
         aggregation_error=aggregation,
-        retained_prior=prepared.retained_prior,
+        retained_prior=CorrelatedPrior.from_lognormal(prepared.retained_prior),
         independent_error_sd=error,
     )
     if native_multiindex:
