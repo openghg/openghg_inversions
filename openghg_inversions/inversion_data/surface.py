@@ -16,6 +16,7 @@ from typing import Literal, Protocol, cast
 
 from openghg.dataobjects import BoundaryConditionsData, FluxData, FootprintData, ObsData
 
+import numpy as np
 import pandas as pd
 import xarray as xr
 
@@ -365,38 +366,64 @@ def prepare_surface_site(
 
 
 def _default_curtain_height_units(
-    footprint: xr.Dataset, boundary: xr.Dataset
+    footprint: xr.Dataset, boundary: xr.Dataset,
 ) -> tuple[xr.Dataset, str | None]:
-    """Default a unitless footprint ``height`` to metres when the boundary declares a length unit.
+    """Use metres for unitless footprint height on an identical metre curtain grid.
 
-    NAME footprints in the shared stores carry no ``height`` units, while boundary products
-    such as CORSO declare ``m``. OpenGHG's ``baseline_sensitivities`` copies units only from
-    footprint to boundary, so the quantified indexes then conflict. Only coordinate attributes
-    change: the returned dataset is a shallow copy that borrows every payload, and the input is
-    not modified. A footprint that declares units, or a boundary without a convertible length
-    unit, is returned unchanged.
+    This supports legacy stores until footprint standardisation supplies height
+    units. Compare any declared vertical coordinate conventions as well as the
+    indexed levels. The returned dataset borrows the input payloads.
+
+    Args:
+        footprint: Native footprint dataset used for boundary transport.
+        boundary: Boundary concentration curtain dataset.
 
     Returns:
-        The footprint to use and the assumed unit, or ``None`` when nothing was assumed.
+        Footprint to use and the assumed unit, if one was assigned.
+
+    Raises:
+        ValueError: If the metre curtain cannot identify the unitless grid.
     """
     if "height" not in footprint.coords or "height" not in boundary.coords:
         return footprint, None
-    if footprint["height"].attrs.get("units") or not boundary["height"].attrs.get("units"):
+    height = footprint["height"]
+    boundary_height = boundary["height"]
+    if height.attrs.get("units") or not boundary_height.attrs.get("units"):
         return footprint, None
+
     from openghg.util._units import cf_ureg
+    from pint.errors import PintError
 
     try:
-        scale = cf_ureg.Quantity(1, boundary["height"].attrs["units"]).to("m").magnitude
-    except Exception:  # an unconvertible boundary unit is left for OpenGHG to report
+        scale = cf_ureg.Quantity(1, boundary_height.attrs["units"]).to("m").magnitude
+    except (PintError, TypeError, ValueError):
         return footprint, None
     if scale != 1:
         return footprint, None
+
+    footprint_levels = footprint.indexes.get("height")
+    boundary_levels = boundary.indexes.get("height")
+    if (
+        footprint_levels is None
+        or boundary_levels is None
+        or not footprint_levels.equals(boundary_levels)
+        or not np.issubdtype(height.dtype, np.number)
+        or not np.isfinite(height.values).all()
+    ):
+        raise ValueError("Unitless footprint heights must match the metre boundary grid or declare their units.")
+    for name in ("standard_name", "positive"):
+        if (
+            name in height.attrs
+            and name in boundary_height.attrs
+            and height.attrs[name] != boundary_height.attrs[name]
+        ):
+            raise ValueError(f"Footprint and boundary heights declare different {name!r} values.")
+
     warnings.warn(
         "Footprint 'height' has no units; assuming metres to match the boundary curtains.",
         UserWarning, stacklevel=3,
     )
-    height = footprint["height"].copy(deep=False).assign_attrs(units="m")
-    return footprint.assign_coords(height=height), "m"
+    return footprint.assign_coords(height=height.assign_attrs(units="m")), "m"
 
 
 def _surface_site_responses(
@@ -459,12 +486,13 @@ def _surface_site_responses(
     site["mf_mod"] = site.fp_x_flux.sum(["lat", "lon"], skipna=False, keep_attrs=True)
     if boundary_view is not None:
         # Boundary operands use the same retained native releases as source products.
+        boundary_fp, assumed = _default_curtain_height_units(native_site_fp, boundary_view)
+        if assumed is not None:
+            site.attrs["boundary_footprint_height_units_assumed"] = assumed
+
         if boundary_representation == "ordinary":
             from openghg.analyse._modelled_baseline import baseline_sensitivities
 
-            boundary_fp, assumed = _default_curtain_height_units(native_site_fp, boundary_view)
-            if assumed is not None:
-                site.attrs["footprint_height_units_assumed"] = assumed
             absolute_operands = baseline_sensitivities(
                 boundary_view, boundary_fp, species=species, allow_climatology=False
             )
@@ -484,7 +512,7 @@ def _surface_site_responses(
             site.attrs["boundary_provider_policy_revision"] = "957-reference-sensitivities-v1"
             site.attrs["boundary_operator_owner"] = "openghg_inversions"
             operands = _reference_sensitivities(
-                boundary_view, native_site_fp, species=species,
+                boundary_view, boundary_fp, species=species,
                 reference=boundary_reference, reference_units=boundary_reference_units,
                 mass_tolerance=boundary_mass_tolerance,
             )
