@@ -21,6 +21,8 @@ import numpy as np
 import pymc as pm
 import xarray as xr
 from pymc.util import get_random_generator  # type: ignore[import-untyped]
+from pytensor.compile.mode import Mode
+from pytensor.graph.traversal import ancestors
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
@@ -209,6 +211,63 @@ def _reset_retained_draws(trace: xr.DataTree, *, burn: int) -> xr.DataTree:
     return trace
 
 
+def _numpy_callback_compile_kwargs(model: pm.Model) -> dict[str, Any]:
+    """Return compile options for a model whose density calls a NumPy/SciPy Op holding prepared arrays.
+
+    Some likelihood Ops (fixed OU, cached sigma) evaluate prepared NumPy/SciPy
+    targets in ``perform``. PyTensor's default Numba linker has no native
+    implementation for them, so it runs them through an object-mode callback
+    that serializes the Op, including every array it holds, into each compiled
+    function. That costs several times the arrays' memory per compiled
+    function (logp, gradient, log likelihood, predictive draws), copies the
+    payload on each call, and fails outright once the serialized Op exceeds
+    2 GiB. The C/VM linker calls ``perform`` directly.
+
+    Args:
+        model: Model whose joint log density is inspected.
+
+    Returns:
+        ``{"mode": Mode(linker="cvm", optimizer="fast_run")}`` when the log
+        density contains an Op marked ``holds_numpy_target = True``, otherwise
+        an empty dict, which keeps PyTensor's default mode.
+    """
+    logp = getattr(model, "logp", None)
+    if logp is None:
+        return {}
+
+    for variable in ancestors([logp()]):
+        if variable.owner is not None and getattr(variable.owner.op, "holds_numpy_target", False):
+            return {"mode": Mode(linker="cvm", optimizer="fast_run")}
+    return {}
+
+
+def sample_prior_predictive(
+    model: pm.Model,
+    *,
+    draws: int,
+    random_seed: int | np.random.Generator | None = None,
+    compile_kwargs: dict[str, Any] | None = None,
+) -> xr.DataTree:
+    """Draw prior predictions using the model's safe PyTensor linker.
+
+    Args:
+        model: Concrete PyMC model to predict from.
+        draws: Number of prior-predictive draws.
+        random_seed: Seed or generator for the prediction stream.
+        compile_kwargs: Already resolved PyMC compile options, if available.
+            Omit to select options from the model. An empty mapping keeps the
+            PyMC defaults.
+
+    Returns:
+        Prior and prior-predictive draws in PyMC's trace format.
+    """
+    if compile_kwargs is None:
+        compile_kwargs = _numpy_callback_compile_kwargs(model)
+    if compile_kwargs:
+        return pm.sample_prior_predictive(draws, model, random_seed=random_seed, compile_kwargs=compile_kwargs)
+    return pm.sample_prior_predictive(draws, model, random_seed=random_seed)
+
+
 class RhimeSampler:
     """PyMC sampler configuration and execution for RHIME models.
 
@@ -376,6 +435,17 @@ class RhimeSampler:
         sample_kwargs.pop("return_inferencedata", None)
         idata_kwargs = dict(sample_kwargs.pop("idata_kwargs", {}))
         idata_kwargs.setdefault("log_likelihood", True)
+
+        compile_kwargs = _numpy_callback_compile_kwargs(model) if self.nuts_sampler == "pymc" else {}
+        deferred_log_likelihood: Any = False
+        if compile_kwargs:
+            compile_kwargs.update(sample_kwargs.get("compile_kwargs") or {})
+            if sample_kwargs.get("backend") is None:
+                sample_kwargs["compile_kwargs"] = compile_kwargs
+
+            # PyMC's automatic log-likelihood calculation ignores compile options.
+            deferred_log_likelihood = idata_kwargs.pop("log_likelihood")
+
         # Assess the retained samples after burn slicing instead of repeating PyMC's pre-burn checks.
         sample_kwargs.setdefault("compute_convergence_checks", False)
         sample_kwargs.setdefault("progressbar", self.progressbar)
@@ -383,6 +453,7 @@ class RhimeSampler:
         if not isinstance(self.sample_prior_predictive, bool | int | np.integer) or self.sample_prior_predictive < 0:
             raise ValueError("sample_prior_predictive must be a boolean or non-negative integer.")
         posterior_kwargs = self._posterior_predictive_options(model, variable_roles)
+
         # PyMC copies random_seed and spawns one child per chain. Copy here too
         # so spawning prediction streams cannot advance a caller-owned RNG.
         root_rng = get_random_generator(sample_kwargs.get("random_seed"), copy=True)
@@ -415,6 +486,21 @@ class RhimeSampler:
                     **sample_kwargs,
                 ),
             )
+
+        if deferred_log_likelihood:
+            with model:
+                raw_trace = cast(
+                    xr.DataTree,
+                    pm.compute_log_likelihood(
+                        raw_trace,
+                        var_names=None if deferred_log_likelihood is True else list(deferred_log_likelihood),
+                        model=model,
+                        extend_inferencedata=True,
+                        progressbar=False,
+                        compile_kwargs=compile_kwargs,
+                    ),
+                )
+
         log_timing(
             "rhime.sampler.pm_sample",
             timer_seconds(timing_start),
@@ -431,8 +517,11 @@ class RhimeSampler:
         log_timing("rhime.sampler.burn_slicing", timer_seconds(timing_start), burn=self.burn)
 
         trace = self._extend_predictive(
-            trace, model=model, prior_random_seed=prior_rng,
+            trace,
+            model=model,
+            prior_random_seed=prior_rng,
             posterior_predictive_kwargs=posterior_kwargs,
+            compile_kwargs=compile_kwargs,
         )
         for group in trace.children.values():
             if "draw" in group.dims:
@@ -495,6 +584,7 @@ class RhimeSampler:
         model: pm.Model,
         prior_random_seed: np.random.Generator,
         posterior_predictive_kwargs: dict[str, Any],
+        compile_kwargs: dict[str, Any],
     ) -> xr.DataTree:
         """Extend sampled trace with configured predictive groups."""
         if self.sample_prior_predictive:
@@ -504,8 +594,11 @@ class RhimeSampler:
                 else int(self.sample_prior_predictive)
             )
             timing_start = timer_start()
-            with model:
-                trace.update(pm.sample_prior_predictive(prior_draws, model, random_seed=prior_random_seed))
+            trace.update(
+                sample_prior_predictive(
+                    model, draws=prior_draws, random_seed=prior_random_seed, compile_kwargs=compile_kwargs
+                )
+            )
             log_timing(
                 "rhime.sampler.prior_predictive",
                 timer_seconds(timing_start),
@@ -513,6 +606,17 @@ class RhimeSampler:
             )
 
         if self.sample_posterior_predictive:
+            if (
+                "compile_kwargs" not in posterior_predictive_kwargs
+                and posterior_predictive_kwargs.get("backend") is None
+            ):
+                prediction_model = posterior_predictive_kwargs.get("model") or model
+                prediction_options = (
+                    compile_kwargs if prediction_model is model else _numpy_callback_compile_kwargs(prediction_model)
+                )
+                if prediction_options:
+                    posterior_predictive_kwargs["compile_kwargs"] = prediction_options
+
             timing_start = timer_start()
             with model:
                 trace.update(pm.sample_posterior_predictive(trace, **posterior_predictive_kwargs))

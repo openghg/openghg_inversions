@@ -138,6 +138,9 @@ def _evaluate_whitened_fallback(
 class _FixedOuLogpOp(Op):
     """Instance-local PyTensor bridge to one prepared NumPy/SciPy target."""
 
+    # Keep the prepared arrays out of Numba's object-mode callbacks.
+    holds_numpy_target = True
+
     def __init__(self, target: FixedOuLowRank) -> None:
         self.target = target
 

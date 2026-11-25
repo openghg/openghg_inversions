@@ -15,15 +15,15 @@ from typing import Any, cast
 from uuid import uuid4
 
 import numpy as np
-import pymc as pm
 import xarray as xr
 
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine, save as save_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
+from openghg_inversions.inference.sampling import sample_prior_predictive
 from openghg_inversions.inversion_data import PreparedInputs
-from openghg_inversions.observation_error import WhitenedRankRule
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
+from openghg_inversions.observation_error import WhitenedRankRule
 from openghg_inversions.rhime._stage_artifacts import (
     _output_path, check_checkpoint_targets, finish_checkpoint, read_manifest,
     reference, start_checkpoint, write_json,
@@ -357,8 +357,7 @@ def prior_predictive(
     )
     report.unlink(missing_ok=True)
     built, cached = build_co2_inference(preparation.prepared, model_options)
-    with built.model:
-        prior = pm.sample_prior_predictive(draws, random_seed=random_seed)
+    prior = sample_prior_predictive(built.model, draws=draws, random_seed=random_seed)
     registry = get_coord_registry(built.model)
     if registry is not None:
         prior = restore_inferencedata_coords(prior, registry)
