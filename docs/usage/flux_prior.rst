@@ -67,10 +67,10 @@ Latent-correlation repair
 
 Each latent correlation is solved pair by pair, so the whole matrix need not be
 positive definite even when the arithmetic covariance is. This happens with
-wide, strongly correlated priors: for example, the OPE-188 July 2021 retained
-prior with ORCHIDEE GPP/TER means (CV up to 2.3) and Weibull GPP/TER marginals
-has a latent minimum eigenvalue of :math:`-5.3\times10^{-4}`. Such priors fail
-by default. ``latent_correlation_floor`` (a
+some wide, strongly correlated priors. The repository's rounded fixture of
+15 retained GPP/TER states from the OPE-188 July 2021 ORCHIDEE prior has a
+latent minimum eigenvalue of :math:`-6.5\times10^{-5}` with Weibull marginals.
+Such priors fail by default. ``latent_correlation_floor`` (a
 :class:`~openghg_inversions.correlated_state.CorrelatedPrior` argument, or a ``latent_correlation_floor`` attribute on the
 ``prior_marginal`` given to ``prepare_co2_inputs``)
 opts in to repair. Within each independent block, eigenvalues below the floor
@@ -82,9 +82,10 @@ correlation -0.24 have positive-definite arithmetic covariance but a latent
 minimum eigenvalue of about -0.9. The repair would shift the correlations by
 about 0.1, so the prior is refused.
 
-On the ORCHIDEE prior, a floor of ``1e-6`` raises one eigenvalue. It changes
-the latent correlations by at most :math:`3.0\times10^{-4}` and implied
-arithmetic correlations by at most :math:`4.4\times10^{-4}`.
+On the ORCHIDEE fixture, a floor of ``1e-6`` raises one eigenvalue. It changes
+the latent correlations by at most :math:`3.8\times10^{-5}` and implied
+arithmetic correlations by at most :math:`5.6\times10^{-5}`. The fixture is
+in ``tests/data/copula/orchidee_weibull_block.json``.
 
 :attr:`~openghg_inversions.correlated_state.CorrelatedPrior.latent_correlation_repair`
 records the floor, whether it was applied, the minimum eigenvalue before the
