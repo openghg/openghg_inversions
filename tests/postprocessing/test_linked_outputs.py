@@ -84,7 +84,7 @@ def test_role_validation_rejects_reordered_states_and_missing_declared_terms():
     with pytest.raises(ValueError, match="align|index|indexes"):
         validate_co2_o2_trace(bad, prepared)
     del trace["posterior"]["bc"]
-    with pytest.raises(ValueError, match="boundary_concentration.*posterior"):
+    with pytest.raises(ValueError, match="boundary_concentration"):
         validate_co2_o2_trace(trace, prepared)
 
 
@@ -149,7 +149,7 @@ def test_trace_export_cannot_overwrite_referenced_artifact(tmp_path, output_form
             target.hardlink_to(protected)
     output = Co2O2OutputOptions(output_format=output_format, output_path=destination, save_trace=target)
     calculate_co2_o2_products(result=result, output=output)
-    with pytest.raises(ValueError, match="overwrite"):
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         save_co2_o2_products(result, output=output, referenced=(protected,))
     assert protected.read_text() == "saved posterior"
     assert not destination.exists()
@@ -251,6 +251,7 @@ def test_none_suppresses_products_and_writing(tmp_path):
     assert not (tmp_path / "unused").exists()
 
 
+@pytest.mark.fresh_process
 def test_importing_linked_paris_before_public_output_types_succeeds():
     import subprocess
     import sys
@@ -273,7 +274,7 @@ def test_trace_export_protects_reporting_input_paths(tmp_path, resource):
         output_format="paris", output_path=destination, save_trace=protected,
         native_flux_bases={"co2": basis_path}, country_file=country_path,
     )
-    with pytest.raises(ValueError, match="overwrite"):
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         save_co2_o2_products(_result(prepared, trace), output=output)
     assert protected.read_text() == "reporting input"
     assert not destination.exists()

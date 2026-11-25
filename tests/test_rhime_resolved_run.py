@@ -52,7 +52,7 @@ def test_resolved_request_reaches_acquisition_without_resolution(monkeypatch, mu
 
 @pytest.mark.parametrize("multisector_mode", [False, True])
 @pytest.mark.parametrize("overrides", [
-    {"config_file": "missing.ini"}, {"species": "co2"}, {"use_tracer": False}, {"unknown": 1},
+    {"config_file": "missing.ini"}, {"species": "co2"}, {"unknown": 1},
 ])
 def test_resolved_request_rejects_ambiguous_overrides(monkeypatch, multisector_mode, overrides):
     recipe = multisector if multisector_mode else standard
@@ -131,14 +131,28 @@ def test_supplied_data_reaches_filtering_without_acquisition(monkeypatch, multis
         pytest.fail("supplied data must bypass both acquisition factories")
     class ReachedFiltering(Exception):
         pass
+    stages = []
+    def validate(actual, **kwargs):
+        assert actual is supplied
+        assert kwargs == {
+            "split_by_sectors": multisector_mode,
+            "use_bc": config.data.use_bc,
+            "flux_sources": config.data.flux_sources,
+            "require_footprints": True,
+        }
+        stages.append("validate")
     def filter_supplied(site_data, site_options, **kwargs):
+        assert stages == ["validate"]
         assert site_data.keys() == supplied.site_data.keys()
         assert site_options is supplied.site_options
+        stages.append("filter")
         raise ReachedFiltering
     monkeypatch.setattr(MergedData, "from_options", forbidden)
+    monkeypatch.setattr(MergedData, "validate_scientific_inputs", validate)
     monkeypatch.setattr(recipe, "filter_observations", filter_supplied)
     with pytest.raises(ReachedFiltering):
         runner(config=config, merged_data=supplied)
+    assert stages == ["validate", "filter"]
 
 
 @pytest.mark.parametrize("multisector_mode", [False, True])
@@ -180,12 +194,25 @@ def test_acquired_data_binding_preserves_selectors_and_rejects_conflicts(
     }
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_multisector if multisector_mode else recipe.run_standard
+    config = _config(multisector_mode, **config_options)
+    validations = []
     reached = []
 
     class ReachedFiltering(Exception):
         pass
 
+    def validate(actual, **kwargs):
+        assert actual is supplied
+        assert kwargs == {
+            "split_by_sectors": multisector_mode,
+            "use_bc": config.data.use_bc,
+            "flux_sources": config.data.flux_sources,
+            "require_footprints": True,
+        }
+        validations.append(actual)
+
     def filtering(site_data, site_options, **kwargs):
+        assert validations == [supplied]
         reached.append(site_data)
         assert site_options is supplied.site_options
         assert site_options == options
@@ -195,17 +222,18 @@ def test_acquired_data_binding_preserves_selectors_and_rejects_conflicts(
 
     monkeypatch.setattr(recipe, "filter_observations", filtering)
     monkeypatch.setattr(MergedData, "from_options", lambda **kw: pytest.fail("Unexpected acquisition"))
+    monkeypatch.setattr(MergedData, "validate_scientific_inputs", validate)
     calls = []
     with Callback(pretask=lambda *args: calls.append(args)):
         with pytest.raises(ReachedFiltering):
-            runner(config=_config(multisector_mode, **config_options),
-                   merged_data=supplied)
+            runner(config=config, merged_data=supplied)
         for key, value in [("species", "co2"), ("domain", "USA"),
                            ("start_date", "2019-01-02"), ("end_date", "2019-01-31")]:
             with pytest.raises(ValueError, match=key):
                 runner(config=_config(multisector_mode, **{**config_options, key: value}),
                        merged_data=supplied)
     assert len(reached) == 1
+    assert validations == [supplied]
     assert not calls
     assert supplied.acquisition.species == "CH4"
     assert supplied.site_options == options
@@ -219,7 +247,7 @@ def test_removed_cache_options_are_rejected(name, multisector_mode):
 
 
 @pytest.mark.parametrize("overrides", [
-    {"config_file": "missing.ini"}, {"species": "co2"}, {"use_tracer": False}, {"unknown": 1},
+    {"config_file": "missing.ini"}, {"species": "co2"}, {"unknown": 1},
 ])
 def test_nested_resolved_request_rejects_ambiguous_sources_before_parsing(monkeypatch, overrides):
     from openghg_inversions.rhime import nested

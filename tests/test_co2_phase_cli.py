@@ -120,7 +120,7 @@ def test_diagnosis_accepts_one_co2_sample_manifest_without_preparation(tmp_path,
         "state": (("chain", "draw"), np.arange(20.).reshape(2, 10)),
     })}), posterior)
     manifest = tmp_path / "sample-manifest.json"
-    manifest.write_text(json.dumps({"schema": "openghg_inversions.co2.sample", "schema_version": 1,
+    manifest.write_text(json.dumps({"schema": "openghg_inversions.co2.sample", "schema_version": 2,
                                    "producer": "openghg_inversions", "stage": "sample", "posterior": "posterior.nc"}))
     check = _stage_checks.diagnose_rhime_stage(sample_manifest=manifest, output_dir=tmp_path / "diagnose")
     assert check["status"] in {"fail", "unknown", "pass"}

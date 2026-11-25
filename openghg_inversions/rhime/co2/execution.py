@@ -7,10 +7,13 @@ import json
 from pathlib import Path
 from typing import Any
 
+import xarray as xr
+
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import PreparedInputs
+from openghg_inversions.observation_error import WhitenedRankRule
 from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
 
 from .co2_affine_output import _bind_affine_flux_map, prepared_inputs_content_id
@@ -71,7 +74,9 @@ def run_co2(
     output_path: str | Path | None = None, start_date: str | None = None, end_date: str | None = None,
     prepared: Co2PreparedInputs | None = None, canonical_inputs: PreparedInputs | None = None,
     reduction: CoherentGaussianReduction | None = None, affine_artifact: AffineFluxMapArtifact | None = None,
-    aggregation_error_rank: int | None = 512,
+    aggregation_error_rank: int | WhitenedRankRule | None = WhitenedRankRule(),
+    reference_covariance: xr.DataArray | None = None,
+    bc_centering_weights: xr.DataArray | None = None,
 ) -> Co2Output:
     """Prepare or load CO2 inputs, sample and create requested products.
 
@@ -81,6 +86,16 @@ def run_co2(
     inputs and their coherent reduction are prepared together; an existing
     preparation is reused unchanged. Imported runs must supply requested dates
     and domain explicitly or retain them in preparation provenance.
+    ``bc_centering_weights`` is stored with a new centered preparation, as in
+    :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`;
+    weighted additive boundaries require it. ``aggregation_error_rank``
+    applies only when creating a preparation from ``canonical_inputs`` and
+    ``reduction``, with the rank contract of
+    :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`:
+    a :class:`~openghg_inversions.observation_error.WhitenedRankRule` (the
+    default), an integer override, or ``None`` for exact storage. So does
+    ``reference_covariance``, the rank rule's reference, which the rule
+    requires a labelled covariance in the canonical observation order.
 
     Returns:
         Scientific result containing the trace, concentration components and
@@ -107,8 +122,15 @@ def run_co2(
         raise ValueError("Pass prepared or canonical_inputs/reduction, not both.")
     source = preparation.prepared_path
     supplied_prepared = prepared is not None
+    if bc_centering_weights is not None and canonical_inputs is None:
+        raise ValueError("bc_centering_weights apply only to a new preparation from canonical_inputs.")
+    if reference_covariance is not None and canonical_inputs is None:
+        raise ValueError("reference_covariance applies only to a new preparation from canonical_inputs.")
     if canonical_inputs is not None and reduction is not None:
-        prepared = prepare_co2_inputs(canonical_inputs, reduction, aggregation_error_rank=aggregation_error_rank)
+        prepared = prepare_co2_inputs(
+            canonical_inputs, reduction, aggregation_error_rank=aggregation_error_rank,
+            reference_covariance=reference_covariance, bc_centering_weights=bc_centering_weights,
+        )
     elif prepared is None:
         if source is None:
             raise ValueError("Pass prepared inputs or configure prepared_inputs.path.")

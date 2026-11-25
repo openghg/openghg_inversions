@@ -743,12 +743,17 @@ def inner_data_config(
     basis defaults to quadtree, has independent resources and no boundary
     component. Relative resource paths resolve from the current directory.
     An omitted ``inner_nbasis`` still means automatic total-budget allocation
-    when passed to :func:`prepare_nested_rhime_inputs`.
+    when passed to :func:`prepare_nested_rhime_inputs`. The inner basis also
+    inherits ``basis_seed``.
 
     Returns:
         A new configuration without mutating ``outer_data`` or opening files.
         Use :func:`~openghg_inversions.rhime.preparation.resolve_basis_inputs`
         to load its selected resources.
+
+    Raises:
+        ValueError: If ``basis_seed`` is set and the inner basis is generated
+            with an algorithm other than quadtree.
     """
     basis_options = resolve_resource_paths(
         {
@@ -762,13 +767,22 @@ def inner_data_config(
         },
         annotations=get_type_hints(DataConfig), base_dir=Path.cwd(),
     )
+    inner_algorithm = inner_basis_algorithm if inner_basis_algorithm is not None else "quadtree"
+    inner_generated = all(basis_options[name] is None for name in (
+        "basis_path", "basis_partition_path", "basis_partition_paths",
+    ))
+    if outer_data.basis_seed is not None and inner_generated and inner_algorithm != "quadtree":
+        raise ValueError(
+            "`basis_seed` also seeds the inner basis, which must then use the quadtree algorithm; "
+            f"got `inner_basis_algorithm = {inner_algorithm!r}`."
+        )
     return replace(
         outer_data, **basis_options,
         footprint_store=inner_footprint_store or outer_data.footprint_store,
         flux_store=inner_flux_store or outer_data.flux_store,
         flux_domain=inner_flux_domain,
         use_bc=False, bc_input=None, bc_basis_paths=None, fix_basis_outer_regions=False,
-        basis_algorithm=inner_basis_algorithm if inner_basis_algorithm is not None else "quadtree",
+        basis_algorithm=inner_algorithm,
         nbasis=outer_data.nbasis if inner_nbasis is None else inner_nbasis,
     )
 
@@ -780,6 +794,7 @@ def _prepare_one_domain(
     use_bc: bool,
     basis_inputs: Mapping[str, Any],
     bc_basis: BoundaryBasis = nesw_basis, allow_empty_inner_region: bool = False,
+    basis_seed: int | None = None,
 ) -> PreparedInputs:
     """Build one native basis and its labelled sensitivities from resolved choices."""
     runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=False)
@@ -797,7 +812,7 @@ def _prepare_one_domain(
             site_data=merged.site_data, runtime_flux=runtime_flux,
             weighting_flux=merged.flux_data[flux_sources[0]]["flux"],
             domain=domain, start_date=start_date, basis_algorithm=basis_algorithm,
-            nbasis=nbasis, fix_outer_regions=fix_basis_outer_regions,
+            nbasis=nbasis, fix_outer_regions=fix_basis_outer_regions, seed=basis_seed,
             **basis_inputs, allow_empty_inner_region=allow_empty_inner_region,
         )
     site_data = build_sensitivities(
@@ -893,6 +908,8 @@ def prepare_nested_rhime_inputs(
     outer_basis_inputs: Mapping[str, Any], inner_basis_inputs: Mapping[str, Any],
     bc_basis: BoundaryBasis = nesw_basis,
     time_tolerance: str | pd.Timedelta | None = None,
+    filter_options: Mapping[str, Mapping[str, Any]] | None = None,
+    basis_seed: int | None = None,
 ) -> NestedRhimePreparedInputs:
     """Prepare two acquired native grids using explicit scientific choices.
 
@@ -911,12 +928,15 @@ def prepare_nested_rhime_inputs(
         flux_sources: Single source represented on both grids.
         averaging_error: Include variability when deriving observation errors.
         filters: Filters evaluated once on the outer observations.
+        filter_options: Keyword options for named observation filters.
         basis_algorithm: Outer basis-generation algorithm.
         inner_basis_algorithm: Inner basis-generation algorithm.
         nbasis: Outer target, or combined budget when both bases are generated
             and inner_nbasis is omitted.
         inner_nbasis: Independent inner target; omission enables automatic
             allocation when neither grid uses a saved basis.
+        basis_seed: Seed used for each generated quadtree fit, outer and
+            inner; None leaves both random.
         fix_basis_outer_regions: Retain the supplied fixed outer partition.
         use_bc: Include boundary sensitivities from the outer domain only.
         outer_basis_inputs: Selected outer operator or partition and support maps.
@@ -941,7 +961,7 @@ def prepare_nested_rhime_inputs(
     inner_data = _NestedDomainData(inner.site_data, inner.flux_data, inner.site_options)
     outer_data, inner_data = _retain_common_sites(outer_data, inner_data)
     outer_site_data, _ = filter_observations(
-        outer_data.site_data, outer_data.site_options, filters=filters,
+        outer_data.site_data, outer_data.site_options, filters=filters, filter_options=filter_options,
     )
     outer_filtered = outer_data.with_site_data(outer_site_data, context="Observation filtering")
     outer_filtered, inner_data = _retain_common_sites(outer_filtered, inner_data)
@@ -984,12 +1004,13 @@ def prepare_nested_rhime_inputs(
         basis_algorithm=basis_algorithm, nbasis=outer_nbasis,
         fix_basis_outer_regions=fix_basis_outer_regions, use_bc=use_bc,
         basis_inputs=outer_basis_inputs, bc_basis=bc_basis, allow_empty_inner_region=True,
+        basis_seed=basis_seed,
     )
     inner_prepared = _prepare_one_domain(
         inner_filtered, domain=inner_domain, start_date=start_date, flux_sources=flux_sources,
         basis_algorithm=inner_basis_algorithm, nbasis=inner_target,
         fix_basis_outer_regions=False, use_bc=False,
-        basis_inputs=inner_basis_inputs,
+        basis_inputs=inner_basis_inputs, basis_seed=basis_seed,
     )
     prepared = combine_nested_rhime_inputs(
         outer_prepared, inner_prepared, time_tolerance=time_tolerance,
@@ -1403,8 +1424,8 @@ def run_nested(
         prepared = prepare_nested_rhime_inputs(
             outer_merged, inner_merged,
             **outer_data.select(
-                "domain", "start_date", "flux_sources", "averaging_error", "filters",
-                "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc",
+                "domain", "start_date", "flux_sources", "averaging_error", "filters", "filter_options",
+                "basis_algorithm", "nbasis", "basis_seed", "fix_basis_outer_regions", "use_bc",
             ),
             inner_domain=inner_data.domain, inner_basis_algorithm=inner_data.basis_algorithm,
             inner_nbasis=nested_options.get("inner_nbasis"), outer_basis_inputs=outer_basis_inputs,

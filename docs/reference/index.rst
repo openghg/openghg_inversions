@@ -190,6 +190,7 @@ operands and supported model routes.
    openghg_inversions.rhime.co2.co2_o2_handoffs.prior_predictive
    openghg_inversions.rhime.co2.co2_o2_handoffs.postprocess
    openghg_inversions.rhime.co2.prepare_co2_inputs
+   openghg_inversions.models.fixed_ou.fixed_ou_mismatch_covariance
    openghg_inversions.rhime.co2.handoffs.prepare
    openghg_inversions.rhime.co2.handoffs.save_preparation
    openghg_inversions.rhime.co2.handoffs.load_preparation
@@ -267,13 +268,19 @@ mathematical contracts and eager-computation boundaries.
    openghg_inversions.source_covariance.IndependentSourceCovariance
    openghg_inversions.basis.NativeCovarianceProducts
    openghg_inversions.basis.RetainedProjection
+   openghg_inversions.basis.RetainedProjectionStrategy
    openghg_inversions.basis.PreserveBucketProlongation
+   openghg_inversions.basis.SuppliedRestriction
+   openghg_inversions.basis.absolute_weighted_regional_mean_restriction
    openghg_inversions.basis.project_native_covariance
    openghg_inversions.coherent_reduction.CoherentGaussianReduction
    openghg_inversions.coherent_reduction.reduce_native_gaussian
    openghg_inversions.observation_error.AggregationError
    openghg_inversions.observation_error.prepare_low_rank_aggregation_error
    openghg_inversions.observation_error.resolve_aggregation_error
+   openghg_inversions.observation_error.WhitenedRankRule
+   openghg_inversions.observation_error.select_whitened_rank
+   openghg_inversions.observation_error.whitened_eigenvalue_kl
 
 Compose a RHIME model
 ---------------------
@@ -290,13 +297,43 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.PreparedLinearSensitivity
    openghg_inversions.models.prepare_linear_sensitivity
    openghg_inversions.models.CorrelatedLognormalPrior
+   openghg_inversions.models.CorrelatedPrior
    openghg_inversions.models.parse_prior
    openghg_inversions.models.add_model_data
    openghg_inversions.models.add_linear_component
-   openghg_inversions.rhime.co2.centered_boundary.CenteredBoundaryResult
-   openghg_inversions.rhime.co2.centered_boundary.add_centered_boundary
+   openghg_inversions.models.ConcentrationTerm
+   openghg_inversions.models.likelihood_representation
+   openghg_inversions.models.AffineBlock
+   openghg_inversions.models.AffineConcentrationTerm
+   openghg_inversions.models.components.warn_constant_offset_confounding
+   openghg_inversions.models.boundary.MultiplicativeChoice
+   openghg_inversions.models.boundary.MultiplicativeBoundary
+   openghg_inversions.models.boundary.CenteredMultiplicativeBoundary
+   openghg_inversions.models.boundary.AdditiveChoice
+   openghg_inversions.models.boundary.AdditiveBoundary
+   openghg_inversions.models.boundary.AnomalyScalingChoice
+   openghg_inversions.models.boundary.AnomalyScalingBoundary
+   openghg_inversions.models.boundary.RawCenteredSensitivity
+   openghg_inversions.models.boundary.BoundCenteredSensitivity
+   openghg_inversions.models.boundary.BoundAdditiveSensitivity
+   openghg_inversions.models.boundary.validate_centering_weights
+   openghg_inversions.models.boundary.RawCenteredSensitivity.with_centering_weights
+   openghg_inversions.models.boundary.BoundCenteredSensitivity.bind
+   openghg_inversions.models.boundary.BoundCenteredSensitivity.reference_shift
+   openghg_inversions.models.boundary.BoundAdditiveSensitivity.bind_weights
+   openghg_inversions.models.boundary.normalize_centering_weights
+   openghg_inversions.xr_contracts.xr_contract
+   openghg_inversions.models.boundary.Choice
+   openghg_inversions.models.boundary.Bound
+   openghg_inversions.models.boundary.AbsoluteChoice
+   openghg_inversions.models.boundary.bind_prepared
+   openghg_inversions.models.boundary.Outputs
+   openghg_inversions.array_ops.to_dense_tree
+   openghg_inversions.models.outer_flux.OuterFluxChoice
+   openghg_inversions.models.outer_flux.OuterStates
    openghg_inversions.models.add_linked_linear_component
    openghg_inversions.models.add_correlated_lognormal_state
+   openghg_inversions.models.add_correlated_state_with_activity
    openghg_inversions.models.add_offset_component
    openghg_inversions.models.add_sigma_component
    openghg_inversions.models.add_site_sigma_gaussian_likelihood

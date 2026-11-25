@@ -6,6 +6,9 @@ seams for the CO₂-only and linked CO₂/O₂ recipes. Start with the
 :doc:`CO₂ model family <co2_model_family>` support matrix before using these
 interfaces.
 
+The retained flux state is sampled from a correlated prior with a marginal
+family per state; see :doc:`flux_prior`.
+
 .. _co2-only-model:
 
 CO2 coherent-reduction model
@@ -155,10 +158,13 @@ prepared activity policy. Persist traces with
 groups and observation/state MultiIndexes. Product replay uses saved scientific
 meaning without repeating construction or sampling.
 
-Set ``use_bc=True`` to select ``H_bc`` from the prepared artifact and add its
-boundary contribution. ``bc_prior`` overrides the default labelled boundary
-scaling prior, while ``bc_state_activity`` can mark boundary states as active
-or fixed. Supplying ``offset_prior`` adds an offset. By default the offset has
+Pass a boundary choice such as ``boundary=MultiplicativeChoice(prior)`` (from
+:mod:`openghg_inversions.models.boundary`) to add the boundary contribution;
+the runner binds it to the prepared ``H_bc`` or centered operands.
+``[model.boundary]`` without a ``type`` is multiplicative and uses the default
+scaling prior unless one is configured; see
+:ref:`co2-boundary-corrections`.
+Supplying ``offset_prior`` adds an offset. By default the offset has
 one coefficient per site; ``offset_args`` can instead select a global offset
 or site-by-period terms using ``per_site``, ``offset_freq``, and ``drop_first``.
 The model derives period indicators from the observation time coordinate.
@@ -167,6 +173,21 @@ Boundary and offset contributions remain separate from
 likelihood, and sampled outputs.
 The location and scale parameters in ``offset_prior`` use the observations'
 concentration units.
+
+Select a boundary correction
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The CO2 recipes support multiplicative scaling of the boundary sensitivity
+(``MultiplicativeChoice``) and centred additive concentration corrections
+(``AdditiveChoice``): a constant correction to the boundary product over the
+inversion window plus weighted region--period anomalies. Both are selected
+with ``[model.boundary]`` (``[channels.<name>.boundary]`` for linked
+recipes) or passed as ``boundary=`` in Python. Additive corrections require
+native centered operands and, for weighted anomalies, averaging weights stored
+at preparation. See :doc:`co2_boundary_corrections` for the configuration
+task, :doc:`centered_boundary_conditions` for the operators and prior, and
+:doc:`boundary_correction_structures` for the alternative correction
+structures.
 
 Configure prepared-input execution from TOML
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -376,12 +397,26 @@ HalfStudentT, Gamma, Exponential, Uniform with a non-negative lower bound, or
 LogNormal.
 
 Optional model components belong in their own tables. ``[model.boundary]``
-accepts boolean ``enabled`` (default true), ``prior``, ``frequency``, and
-``anchor_time``. A disabled boundary cannot specify a prior or period choices.
+accepts boolean ``enabled`` (default true), ``type``, ``frequency`` and
+``anchor_time``. ``type`` selects the boundary family and each family's own
+options; options of another family are rejected rather than used to infer it:
+
+``"multiplicative"`` (default)
+    Scales absolute or centered boundary sensitivity, with an optional
+    ``prior`` for the scaling states.
+``"additive"``
+    Centred additive corrections, requiring centered preparation, with both
+    ``mean_shift_prior`` and a finite, nonnegative ``anomaly_scale``.
+
+A disabled boundary cannot specify a type, prior, anomaly scale or period
+choices.
 For raw reusable inputs, omitting ``frequency`` selects one period;
 ``"monthly"`` selects calendar months, and a positive fixed duration such as
 ``"2D"`` selects fixed-duration periods. ``anchor_time`` is accepted only with
-a fixed duration, never with monthly or omitted frequency. Linked CO2/O2
+a fixed duration, never with monthly or omitted frequency; without it,
+fixed-duration periods start at the fit's earliest selected observation. (The
+RHIME parameter adapter instead defaults ``bc_freq_anchor`` to the configured
+start date.) Linked CO2/O2
 channels share one frequency and anchor choice. See the
 :ref:`raw versus expanded boundary rules <surface-centered-boundary-contract>`
 for preparation reuse and period overrides.
@@ -429,7 +464,11 @@ uses NumPyro, while configured linked fixed OU defaults to and requires PyMC.
      - Chosen from the likelihood
      - ``"numpyro"`` for fixed error; ``"pymc"`` for OU
      - Configured ``run_co2`` rejects this option. Linked configuration accepts supported
-       backends, with ``"pymc"`` required for ``fixed_ou``.
+       backends, with ``"pymc"`` required for ``fixed_ou``. Set
+       ``PYTENSOR_FLAGS=floatX=float64`` before starting Python to use float64
+       with NumPyro or BlackJAX. PyTensor selects the JAX precision when it
+       first loads the JAX backend. The trace's ``sampler_precision`` records
+       ``floatX`` and the effective JAX x64 flag.
    * - ``progressbar``
      - ``false``
      - ``false``
@@ -503,10 +542,10 @@ CO2 recipe, nested beneath each channel. For example::
 Supply boundary sensitivities to ``prepare_co2_o2_inputs`` as
 ``boundary_sensitivity={"co2": H_bc_co2, "o2": H_bc_o2}``. Each array uses its
 channel's native observation axis followed by one labelled boundary-state
-axis. The runner includes supplied boundaries by default; ``use_bc`` can
-select channels explicitly. Direct calls pass ``bc_prior``,
-``bc_state_activity``, ``offset_prior`` and ``offset_args`` as mappings keyed
-by ``"co2"`` and ``"o2"``. For example,
+axis. The configured runner includes every prepared boundary by default with
+the default scaling prior; ``[channels.<name>.boundary]`` overrides or disables
+a channel. Direct calls pass ``boundary`` (choices), ``offset_prior`` and
+``offset_args`` as mappings keyed by ``"co2"`` and ``"o2"``. For example,
 ``offset_prior={"o2": {"pdf": "normal", "mu": 0.0, "sigma": 1.0}}`` and
 ``offset_args={"o2": {"per_site": False}}`` reproduce the offset above.
 Missing sensitivities, unconsumed options, unknown channels, and mixed units
@@ -596,6 +635,7 @@ Pass ``aggregation_error_rank=None`` to keep the reduction's exact dense
 unresolved covariance::
 
    from openghg_inversions.inversion_data import PreparedInputs
+   from openghg_inversions.models.boundary import MultiplicativeChoice
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
    from openghg_inversions.rhime.co2.co2_runner import (
        annotate_co2_trace, materialize_co2_inputs, build_co2_from_materialized,
@@ -611,18 +651,12 @@ unresolved covariance::
    prepared.save("co2-coherent-dense.zarr")
 
    model = dict(
-       use_bc=True,
-       bc_prior={
-           "pdf": "truncatednormal",
-           "mu": 1.0,
-           "sigma": 0.05,
-           "lower": 0.0,
-       },
        offset_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.1},
        offset_args={"per_site": False},
    )
-   inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **model)
-   built = build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, **model)
+   choice = MultiplicativeChoice({"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.05, "lower": 0.0})
+   inputs, priors, boundary = materialize_co2_inputs(prepared_inputs=prepared, boundary=choice, **model)
+   built = build_co2_from_materialized(inputs, boundary=boundary, prepared_inputs=prepared, priors=priors, **model)
    idata = sample_rhime_model(built, RhimeSampler())
    annotate_co2_trace(idata, built, concentration_units=prepared.inv_inputs["mf"].attrs["units"])
 
@@ -693,8 +727,8 @@ Select the package likelihood through the scientific operations::
            "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75},
        },
    )
-   inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **model)
-   built = build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, **model)
+   inputs, priors, boundary = materialize_co2_inputs(prepared_inputs=prepared, **model)
+   built = build_co2_from_materialized(inputs, boundary=boundary, prepared_inputs=prepared, priors=priors, **model)
    trace = sample_rhime_model(built, RhimeSampler())
    annotate_co2_trace(
        trace, built, concentration_units=prepared.inv_inputs["mf"].attrs["units"],
@@ -1086,20 +1120,32 @@ hours; numeric time coordinates are interpreted directly as hours. If
 including entries for dropped sites.
 
 Boundary and offset selection uses ``[model.boundary]`` and
-``[model.offset]`` as for other CO2 likelihoods. The numerical builder also
-accepts ``use_bc``, ``bc_prior``, ``bc_state_activity``, ``offset_prior`` and
-``offset_args`` for direct scientific composition.
-Its location and scale parameters use the observations' concentration units.
+``[model.offset]`` as for other CO2 likelihoods. In Python, the runner
+:func:`~openghg_inversions.rhime.co2.co2_cached_sigma_runner.build_rhime_co2_cached_sigma`
+accepts a boundary choice as ``boundary``, ``offset_prior`` and the
+``offset_args`` convenience mapping. It binds the choice, materializes it
+with the selected inputs, and constructs the same graph as the numerical
+builder
+:func:`~openghg_inversions.rhime.co2.co2_cached_sigma_model.build_co2_cached_sigma_model`.
+Direct builder callers pass the bound boundary component as ``boundary`` (see
+:ref:`co2-boundary-binding`), ``offset_prior``, and separate ``offset_freq``,
+``offset_drop_first`` and ``offset_per_site`` values; the builder accepts
+neither a choice nor ``offset_args``, and materializes its arguments together.
+The offset prior's location and scale parameters use the observations'
+concentration units.
 These coefficients join the flux coefficients only inside the private cached
 likelihood calculation; their public scientific variables and contributions
 remain separate.
 
-Centered boundary operands are supported with the matched cached sampler for
-CO₂ and linked CO₂/O₂, with PyTensor ``floatX=float64``. The likelihood and
+Centered multiplicative boundary operands are supported by the ordinary
+stock-PyMC fixed-OU likelihood and the matched cached sampler for CO₂ and linked
+CO₂/O₂, with PyTensor ``floatX=float64``. The single-channel runner selects the
+ordinary route with ``likelihood_builder=add_fixed_ou_gaussian_likelihood``. The likelihood and
 amplitude update use directly composed centered means, while public BC states,
 priors and concentration outputs retain their physical meaning. See the
 :ref:`centered boundary contract <surface-centered-boundary-contract>` for
-period alignment, fixed states, restoration and persistence limits.
+period alignment, fixed states, restoration and persistence limits, including the
+supported built-in likelihoods.
 
 :doc:`coherent_reduction` describes the linked retained prior, effective
 operator, affine contribution, and unresolved covariance.
@@ -1112,17 +1158,110 @@ covariance. The cached runner can retain every mode above the scale-relative
 numerical tolerance and carry the remaining marginal variance in the diagonal
 tail. This is exact when every positive mode exceeds that tolerance, but it
 generally produces a full numerical-rank factor and is not the intended
-scaling path. The default retains at most 512 modes; override it when a
-different retained rank is scientifically justified::
+scaling path.
 
+By default the factor width comes from the whitened spectrum. Preparation
+solves :math:`A u_i = \mu_i R_0 u_i`, where :math:`A` is the unresolved
+covariance and :math:`R_0` is a reference mismatch covariance: the reported
+observation error plus a reference amplitude, optionally with within-site OU
+correlation. It counts the whitened eigenvalues :math:`\mu_i` above 0.1 and
+uses that count as the factor width; an optional dropped-mode KL budget can
+only increase it. The whitened modes are not stored: the factor is still the
+leading ordinary eigenmodes of :math:`A`, with the remaining marginal variance
+on the diagonal tail.
+
+The selected rank depends strongly on :math:`R_0`: larger amplitudes whiten
+more of :math:`A` away. The rank criteria live on
+:class:`~openghg_inversions.observation_error.WhitenedRankRule`
+(``aggregation_error_rank``); the reference is a separate
+``reference_covariance`` input, which the rule requires. Choose it for the
+intended likelihood. For example, evaluate the fixed-OU mismatch covariance
+at the run's representative site amplitudes and OU time scales. A site
+mapping must cover every site in the preparation::
+
+   from openghg_inversions.models.fixed_ou import fixed_ou_mismatch_covariance
+   from openghg_inversions.observation_error import WhitenedRankRule
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
 
+   observations = canonical_inputs.inv_inputs
+   reference = fixed_ou_mismatch_covariance(
+       observations["mf"],
+       observations["mf_error"],
+       fixed_site_amplitudes={"BSD": 2.0, "TAC": 2.5},
+       amplitude_units="ppm",
+       tau_hours={"BSD": 24.0, "TAC": 18.0},
+   )
    prepared = prepare_co2_inputs(
        canonical_inputs,
        reduction,
-       aggregation_error_rank=40,
+       aggregation_error_rank=WhitenedRankRule(mu_threshold=0.1),
+       reference_covariance=reference,
    )
    prepared.save("co2-coherent-low-rank.zarr")
+
+Supply ``reference_covariance`` as a labelled observation-by-observation
+covariance, whether evaluated as above or obtained from another mismatch
+model. Its rows and columns must follow the canonical observation order, and its
+units must be a squared mole-fraction unit such as ``(ppb)^2``; it is
+converted to the observation units. An optional ``description`` attribute (a
+JSON object or text) is recorded in provenance.
+Preparation uses it as one dense matrix that must be numerically positive
+definite. At about 5,300 observations this costs a few seconds and about
+230 MB. ``run_co2``
+and the staged ``prepare`` handoff accept the same ``aggregation_error_rank``
+and ``reference_covariance`` when they create a preparation.
+
+Provenance ``aggregation_error_rank_selection`` records the reference's name,
+units, conversion factor and description (for built references, the settings
+as supplied and the amplitudes converted to observation units) together with the
+criteria, the count above the threshold, the chosen rank and the dropped-mode
+KL :math:`\tfrac12\sum_{i>k}[\mu_i - \log(1 + \mu_i)]`. That KL describes
+the whitened truncation at :math:`R_0` without the diagonal tail, not the
+stored representation, which keeps the leading ordinary eigenmodes of
+:math:`A` instead. ``stored_representation_kl`` is the KL of what is stored,
+:math:`\mathrm{KL}(N(0, R_0 + A)\,\|\,N(0, R_0 + F F^\top + \mathrm{diag}(d)))`
+at the same reference; it can be several times the spectral value, most of
+all when :math:`R_0` has little white noise (see below). Computing it costs two more
+dense Cholesky factorizations and a dense solve. If a total cannot be Cholesky
+factorized, the KL is recorded as ``None`` with the reason under
+``stored_representation_kl_unavailable`` and the low-rank approximation is
+kept. Roundoff is a possible cause: LRPD accepts small negative eigenvalues of
+:math:`A` that :math:`R_0` may not cover, and an :math:`R_0` far below the
+scale of :math:`A` can round away when added.
+
+Keep the likelihood's white-noise floor in :math:`R_0`. In the example above
+the white part comes from the reported observation error. If that is near
+zero, an OU reference is weak in high-frequency
+directions: with hourly data and a 5 h time scale, adjacent hours have
+correlation 0.82 and those directions get only about 10% of the site
+variance. The stored diagonal tail spreads discarded variance evenly across
+frequencies, so its error is magnified there, and ``stored_representation_kl``
+can be an order of magnitude larger than the spectral KL. A white floor
+comparable to the OU amplitudes reduces that gap to a few-fold. If the
+likelihood adds a floor that ``mf_error`` does not carry, such as a minimum
+error or a fixed model-error term, include it in the reference. With
+``fixed_ou_mismatch_covariance``, pass as ``observation_error`` the combined
+white standard deviation, for example
+``np.sqrt(mf_error**2 + floor**2).assign_attrs(units=mf_error.units)``
+(arithmetic drops the ``units`` attribute, which the evaluation requires).
+
+The rule is a screening heuristic, not a bound on posterior error: the rank it
+selects depends on the reference covariance and should be checked for the
+intended likelihood.
+
+A large selected rank usually means the basis is too coarse for the data: the
+unresolved covariance :math:`A` is large compared with the noise, typically
+near strong sources or domain borders. Increasing the rank keeps the
+likelihood faithful but raises its cost roughly as :math:`O(n r^2)`; refining
+the basis there reduces :math:`A` itself.
+
+An integer rank is an explicit override for benchmarking. With a
+``reference_covariance``, the spectrum is still computed and recorded, and
+preparation issues a ``UserWarning`` when the integer is below the rule rank.
+Without one, the integer is used as given and no rank selection is
+recorded::
+
+   prepared = prepare_co2_inputs(canonical_inputs, reduction, aggregation_error_rank=1024)
 
 The approximation preserves the dense covariance diagonal up to accepted
 roundoff and diagonal-tail clipping, recorded by
@@ -1252,6 +1391,16 @@ OU groups preserve their original row positions. Different channels at the
 same site have separate amplitudes and no cross-channel OU contribution.
 Both channels must already use the same concentration units. Heterogeneous
 covariance units are not supported by this option.
+
+Numerically centered boundary operands support the ordinary fixed-OU likelihood
+with either multiplicative scales or additive corrections. The linked model may
+combine centered multiplicative CO2 boundaries with centered additive O2
+corrections. Subtracting the same fixed reference contribution :math:`s` from
+the observations and model mean leaves the residual unchanged:
+:math:`y-\mu=(y-s)-(\mu-s)`. The covariance and the multiplicative boundary
+prior are unchanged. Public boundary and total concentration outputs remain
+absolute; trace annotation restores observed and predictive concentrations once.
+This composition is also supported by the cached fixed-OU route.
 
 Tau is fixed in hours. A scalar tau or fixed amplitude applies independently
 to every observed group. Mappings must cover labels such as ``co2:MHD`` and

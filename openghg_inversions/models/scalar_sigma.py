@@ -15,8 +15,6 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from dask import compute as dask_compute
-from dask.array import Array as DaskArray
 import numpy as np
 from numpy.typing import NDArray
 import pandas as pd
@@ -26,7 +24,8 @@ import pytensor.tensor as pt
 from pytensor.tensor.variable import TensorVariable
 import xarray as xr
 
-from openghg_inversions.array_ops import to_dense, validate_covariance_coordinates
+from openghg_inversions._linalg import check_symmetric, roundoff_tolerance
+from openghg_inversions.array_ops import materialize_together, validate_covariance_coordinates
 from openghg_inversions.models.components import add_model_data
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import AggregationError
@@ -39,7 +38,7 @@ SCALAR_SIGMA_MODE_DIM = "scalar_sigma_mode"
 EIGENVECTORS = "eigenvectors"
 EIGENVALUES = "eigenvalues"
 
-ScalarSigmaAggregationMode = Literal["none", "dense", "low_rank", "diagonal"]
+ScalarSigmaAggregationMode = Literal["none", "dense", "low_rank"]
 
 
 def _align_observation_array(
@@ -63,17 +62,6 @@ def _align_observation_array(
     return aligned
 
 
-def _materialize_together(*arrays: xr.DataArray) -> tuple[xr.DataArray, ...]:
-    """Materialize related dense payloads in one shared Dask operation."""
-    dense_arrays = tuple(to_dense(array) for array in arrays)
-    if all(not isinstance(array.data, DaskArray) for array in dense_arrays):
-        return dense_arrays
-    computed = dask_compute(*(array.data for array in dense_arrays))
-    return tuple(
-        array.copy(deep=False, data=data) for array, data in zip(dense_arrays, computed, strict=True)
-    )
-
-
 def _finite_values(name: str, array: xr.DataArray) -> NDArray[np.float64]:
     """Return finite floating-point values from one eager labelled array."""
     try:
@@ -83,15 +71,6 @@ def _finite_values(name: str, array: xr.DataArray) -> NDArray[np.float64]:
     if not np.isfinite(values).all():
         raise ValueError(f"Scalar-sigma input {name!r} must contain only finite values.")
     return values
-
-
-def _scale_relative_tolerance(values: NDArray[np.float64]) -> float:
-    """Return a unit-invariant tolerance relative to the numerical scale."""
-    scale = max(
-        float(np.max(np.abs(values), initial=0.0)),
-        np.finfo(values.dtype).tiny,
-    )
-    return 1.0e-10 * scale
 
 
 def _base_covariance_sha256(covariance: NDArray[np.float64]) -> str:
@@ -193,22 +172,12 @@ def scalar_sigma_base_covariance(
                 f"Scalar-sigma diagonal_residual_variance must be one-dimensional on {output_dim!r}."
             )
         payloads.extend([("low_rank_factor", factor), ("diagonal_residual_variance", diagonal)])
-    elif aggregation_error.mode == "diagonal":
-        if aggregation_error.diagonal_variance is None:
-            raise ValueError("Diagonal aggregation error requires a variance array.")
-        diagonal = _align_observation_array(
-            observations,
-            aggregation_error.diagonal_variance,
-            name="diagonal_variance",
-            output_dim=output_dim,
-        )
-        if diagonal.dims != (output_dim,):
-            raise ValueError(f"Scalar-sigma diagonal_variance must have dims ({output_dim!r},).")
-        payloads.append(("diagonal_variance", diagonal))
     elif aggregation_error.mode != "none":
         raise ValueError(f"Unsupported aggregation-error mode {aggregation_error.mode!r}.")
 
-    materialized = _materialize_together(error, *(array for _, array in payloads))
+    materialized = materialize_together(
+        error, *(array for _, array in payloads), purpose="scalar-sigma observation and aggregation errors"
+    )
     error_values = _finite_values("observation_error", materialized[0])
     if (error_values < 0.0).any():
         raise ValueError("Scalar-sigma observation_error must be non-negative.")
@@ -233,20 +202,8 @@ def scalar_sigma_base_covariance(
             raise ValueError("Scalar-sigma diagonal_residual_variance must be non-negative.")
         covariance_values += factor_values @ factor_values.T
         covariance_values.flat[:: n_observation + 1] += diagonal_values
-    elif aggregation_error.mode == "diagonal":
-        diagonal_values = _finite_values("diagonal_variance", eager_payloads["diagonal_variance"])
-        if (diagonal_values < 0.0).any():
-            raise ValueError("Scalar-sigma diagonal_variance must be non-negative.")
-        covariance_values.flat[:: n_observation + 1] += diagonal_values
 
-    tolerance = _scale_relative_tolerance(covariance_values)
-    if not np.allclose(
-        covariance_values,
-        covariance_values.T,
-        rtol=0.0,
-        atol=tolerance,
-    ):
-        raise ValueError("Scalar-sigma base covariance must be symmetric.")
+    check_symmetric(covariance_values, owner="Scalar-sigma base covariance", rtol=0.0)
     covariance_values = (covariance_values + covariance_values.T) * 0.5
     return cast(NDArray[np.float64], covariance_values)
 
@@ -446,7 +403,7 @@ def prepare_scalar_sigma_eigenbasis(
         output_dim=output_dim,
     )
     eigenvalues, eigenvectors = np.linalg.eigh(covariance)
-    tolerance = _scale_relative_tolerance(eigenvalues)
+    tolerance = roundoff_tolerance(eigenvalues)
     if float(eigenvalues.min(initial=0.0)) < -tolerance:
         raise ValueError("Scalar-sigma base covariance must be positive semidefinite.")
     mode = np.arange(observations.sizes[output_dim])
@@ -606,7 +563,7 @@ def load_scalar_sigma_eigenbasis(
     if len(digest_bytes) != 32 or len(digest) != 64:
         raise ValueError("Scalar-sigma base covariance fingerprint must be SHA-256.")
     aggregation_error_mode = dataset.attrs.get("aggregation_error_mode", "")
-    if aggregation_error_mode not in ("none", "dense", "low_rank", "diagonal"):
+    if aggregation_error_mode not in ("none", "dense", "low_rank"):
         raise ValueError("Scalar-sigma cache requires a concrete aggregation-error mode.")
     eigenbasis = ScalarSigmaEigenbasis(
         eigenvectors=vectors,

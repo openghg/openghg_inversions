@@ -99,7 +99,7 @@ def test_satellite_scenario_forwards_multisector(
             merge_kwargs.update(kwargs)
             return expected
 
-    monkeypatch.setattr("openghg_inversions.inversion_data.scenario.ModelScenario", FakeModelScenario)
+    monkeypatch.setattr("openghg.analyse.ModelScenario", FakeModelScenario)
     times = pd.DatetimeIndex(["2023-01-01"])
     obs_data = SimpleNamespace(data=xr.Dataset(coords={"time": times}))
     footprint_data = SimpleNamespace(data=xr.Dataset({"fp": ("time", [1.0])}, coords={"time": times}))
@@ -127,7 +127,7 @@ def test_scenario_transport_metadata_uses_valid_wrapper_fallback(monkeypatch):
         def footprints_data_merge(self, **kwargs):
             return xr.Dataset()
 
-    monkeypatch.setattr(scenario_module, "ModelScenario", FakeModelScenario)
+    monkeypatch.setattr("openghg.analyse.ModelScenario", FakeModelScenario)
     times = pd.date_range("2020-01-01", periods=2, freq="h")
     obs = _data_object(times)
     fp = _data_object(times)

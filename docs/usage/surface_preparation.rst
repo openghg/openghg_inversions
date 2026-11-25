@@ -186,6 +186,12 @@ Older-inventory relabelling and climatological year reuse are disabled.
 When a boundary period is declared, both acquisition routes include the interval
 governing a mid-period start and preserve its native timestamp.
 
+For legacy footprints that lack height units, surface preparation assumes
+metres when the indexed height levels match a metre-labelled curtain grid
+and the declared vertical-coordinate conventions agree. It warns and stores
+the assumption with the site's boundary provenance. Supply explicit footprint
+height units when the levels differ.
+
 Selected identities are captured at retrieval in owned wrapper metadata while
 borrowing the datasets. Preparation combines those facts with transport metadata
 and serializes provenance once. Combined observation versions remain unknown
@@ -212,6 +218,10 @@ ordinary CO₂ coherent reduction automatically; see :doc:`coherent_reduction` a
 Centered preparation handoff
 ----------------------------
 
+See :doc:`centered_boundary_conditions` for definitions of the anomaly and
+mass operators, their mathematical relation to the absolute boundary response,
+and pseudocode for native curtain products, spatial projection and period masks.
+
 Apply supported observation selection first, then derive missing observation
 errors with ``prepare_observation_errors`` on the retained population. Explicit
 existing errors remain unchanged. Project the native ``bc_anomaly_*`` and
@@ -228,6 +238,7 @@ flux basis for separate fields):
 
    from openghg_inversions.basis._helpers import bc_sensitivity
    from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
+   from openghg_inversions.models.fixed_ou import fixed_ou_mismatch_covariance
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
    from openghg_inversions.rhime.preparation import filter_observations, prepare_observation_errors
 
@@ -241,7 +252,12 @@ flux basis for separate fields):
        basis_functions=chosen_flux_basis, averaging_period="1h",
    )
    # The reduction must describe these same observations, states and sources.
-   prepared = prepare_co2_inputs(canonical, coherent_reduction)
+   # The low-rank rank rule needs a reference mismatch covariance chosen for the run.
+   observations = canonical.inv_inputs
+   reference = fixed_ou_mismatch_covariance(
+       observations["mf"], observations["mf_error"], fixed_site_amplitudes=2.0, amplitude_units="ppm",
+   )
+   prepared = prepare_co2_inputs(canonical, coherent_reduction, reference_covariance=reference)
    prepared.save("centered-co2.nc")
 
 Selection filters preserve aligned operands and scalar references. Preparation
@@ -253,14 +269,16 @@ must be regenerated. See :doc:`prepared_format_support` for the exact map.
 Old rounded ``H_bc`` alone cannot recover accurate centered operands.
 
 Standalone CO₂ and linked CO₂/O₂ prepared inputs support saving and reopening
-both ordinary boundaries and centered operands. Linked centered operands use the
-version-2 dedicated prepared-input schema; ordinary linked inputs retain
-version-1 compatibility. See :doc:`prepared_format_support` for supported formats.
+both ordinary boundaries and centered operands, in the current dedicated
+prepared-input schemas (version 3 for CO₂, version 5 for linked CO₂/O₂). Older
+internal artifacts must be prepared again. See :doc:`prepared_format_support`
+for supported formats.
 
 The additive-Gaussian and cached fixed-OU CO₂ and linked CO₂/O₂ routes bind raw
-operands to BC periods at model construction. Their model-facing runners and
-direct builders accept ``bc_freq`` and ``bc_anchor_time``. Direct builders
-consume raw ``boundary_operands`` (in linked models, a mapping keyed by tracer).
+operands to BC periods at model construction. Their model-facing runners accept
+boundary choices, whose ``frequency`` and ``anchor_time`` set the periods. Direct
+builders take boundaries already bound to the fit's observations (in linked
+models, a mapping keyed by tracer).
 Configured and supported saved routes select the same choices in their
 boundary configuration, for example:
 
@@ -284,13 +302,23 @@ Native observation labels select boundary rows. When observations carry a
 boundary timestamps. Boundary times that also serve as indexed row labels must
 agree with the observation timestamps; conflicting values raise an error.
 
-Centered inference supports the additive-Gaussian recipe and fixed-OU recipes
-with inferred amplitudes using the matched cached sampler. Configure PyTensor
+Centered inference supports the additive-Gaussian recipe, ordinary fixed-OU
+likelihoods with fixed or inferred amplitudes, and inferred-amplitude fixed OU
+using the matched cached sampler. Both multiplicative and additive BC priors
+can use numerical centering; a linked model can retain multiplicative CO2
+boundaries while fitting additive O2 corrections. Configure PyTensor
 ``floatX=float64`` before model construction; these routes reject an explicit
-float32 choice. Fixed-amplitude OU and custom likelihood routes still reject
-centered inputs. Standard and multisector model builders also reject them;
-their preparation operations can still produce the reusable canonical handoff
-shown above.
+float32 choice.
+
+The concrete CO2 builder accepts ``likelihood_builder=None`` for the default
+additive-Gaussian likelihood or the exact
+:func:`~openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood`
+function when a centered ``boundary`` is supplied. Arbitrary callbacks and wrappers
+around the built-in function are rejected before graph construction, matching the
+prepared-input runner's supported centered policy. Custom likelihood callbacks
+remain supported when the boundary is absolute or absent. Standard and multisector model builders still reject centered inputs;
+their preparation operations can produce the reusable canonical handoff shown
+above.
 
 For the original BC coefficients b, the centered likelihood uses
 ``q = c * M @ ones``, ``y_centered = y - q`` and
@@ -302,7 +330,7 @@ annotation restores observed and predictive ``y`` to absolute concentrations
 once, using retained reference shifts; replay does not need to rebuild the model.
 The supported recipe runners perform this annotation automatically. Callers composing
 PyMC operations directly must restore sample coordinates, then call
-:func:`~openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives`
+:func:`~openghg_inversions.postprocessing.boundary_outputs.restore_absolute_predictives`
 before serialization or postprocessing.
 
 The cached sampler preserves the physical BC variables and their priors. Only

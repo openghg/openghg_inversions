@@ -12,11 +12,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import MISSING, dataclass, fields
+from numbers import Integral
 from pathlib import Path
 from typing import Any, get_args, get_type_hints
 
 from openghg_inversions.basis.boundary import BOUNDARY_BASIS_ALGORITHMS, boundary_basis
 from openghg_inversions.rhime._resources import resolve_resource_paths
+from openghg_inversions.filters import validate_filter_options
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
 from openghg_inversions.inversion_inputs import DatetimeLike
@@ -38,6 +40,18 @@ from openghg_inversions.rhime.specs import (
 )
 
 
+def _resolve_basis_seed(seed: Any, basis_algorithm: str | None, *, generated: bool) -> int:
+    """Check a quadtree basis seed against the selected basis source and algorithm."""
+    # SciPy seeds dual_annealing through a legacy RandomState, which takes [0, 2**32).
+    if isinstance(seed, bool) or not isinstance(seed, Integral) or not 0 <= int(seed) < 2**32:
+        raise ValueError(f"`basis_seed` must be an integer in [0, 2**32); got {seed!r}.")
+    if generated and basis_algorithm != "quadtree":
+        raise ValueError(
+            f"`basis_seed` applies only to `basis_algorithm = \"quadtree\"`; got {basis_algorithm!r}."
+        )
+    return int(seed)
+
+
 @dataclass(frozen=True, kw_only=True)
 class DataConfig:
     """Resolved acquisition and preparation choices, independent of inference.
@@ -46,17 +60,25 @@ class DataConfig:
     are owned; numerical payloads remain borrowed. Direct construction expects
     resolved values and does not copy or execute scientific work.
 
-    Boundary-condition basis selection, when ``use_bc`` is true:
-
     Attributes:
-        bc_basis_paths: Exact labelled BC basis files. When set, they take
-            precedence and ``bc_basis_algorithm`` is inactive.
+        bc_basis_paths: Exact labelled BC basis files. When ``use_bc`` is true
+            and these are set, they take precedence and ``bc_basis_algorithm``
+            is inactive.
         bc_basis_algorithm: Built-in basis used without files: ``"NESW"``
             (one region per whole curtain) or ``"twelve-region"`` (two lower
             horizontal halves and one upper region per curtain).
         bc_basis_split_height: Finite twelve-region split in the curtains'
             native height-coordinate units; no unit conversion or vertical
             datum is assumed. Ignored by NESW and by exact files.
+        filters: Filter names, or per-site filter names, applied before
+            observation errors and basis construction.
+        filter_options: Keyword options for named filters, such as
+            ``{"local_influence": {"window_size": 5, "threshold": 0.15}}``.
+            Omitted options keep each filter's defaults.
+        basis_seed: Non-negative integer seed for a generated quadtree basis.
+            Without it, the quadtree search is random and each run fits a
+            different basis. Rejected when another algorithm is generated;
+            inactive when a saved basis or partition is selected.
     """
 
     site_options: SiteOptions
@@ -86,7 +108,9 @@ class DataConfig:
     bc_input: str | None = None
     basis_algorithm: str | None = "weighted"
     nbasis: int = 100
+    basis_seed: int | None = None
     filters: str | list[str | None] | dict[str, str | None | list[str | None]] | None = None
+    filter_options: dict[str, dict[str, Any]] | None = None
     fix_basis_outer_regions: bool = False
     averaging_error: bool = True
     basis_output_path: Path | None = None
@@ -155,6 +179,11 @@ class DataConfig:
         if (remaining.get("basis_path") is None and remaining.get("basis_partition_path") is None
                 and remaining.get("basis_partition_paths") is None and basis_algorithm not in allowed):
             raise ValueError(f"`basis_algorithm` must be one of {allowed!r}; got {basis_algorithm!r}.")
+        if (basis_seed := remaining.get("basis_seed")) is not None:
+            remaining["basis_seed"] = _resolve_basis_seed(basis_seed, basis_algorithm, generated=(
+                remaining.get("basis_path") is None and remaining.get("basis_partition_path") is None
+                and remaining.get("basis_partition_paths") is None
+            ))
         if remaining.get("use_bc", cls.use_bc) and remaining.get("bc_basis_paths") is None:
             bc_algorithm = remaining.get("bc_basis_algorithm", cls.bc_basis_algorithm)
             if bc_algorithm not in BOUNDARY_BASIS_ALGORITHMS:
@@ -172,6 +201,8 @@ class DataConfig:
             f.name: remaining.pop(f.name) for f in fields(SiteOptions) if f.name in remaining
         })
         remaining["filters"] = _copy_option_containers(remaining.get("filters", cls.filters))
+        if remaining.get("filter_options") is not None:
+            remaining["filter_options"] = validate_filter_options(remaining["filter_options"])
         remaining["split_by_sectors"] = multisector
         return cls(site_options=site_options, flux_sources=tuple(flux_sources), **remaining)
 

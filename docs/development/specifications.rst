@@ -114,10 +114,11 @@ remains active with its separate programme acceptance still open.
    * - Explicit labelled-data contracts
      - :download:`Explicit data contracts proposal
        <../../openspec/changes/explicit-data-contracts/specs/explicit-data-contracts/spec.md>`
-     - Proposed named static contracts, identity-preserving validation and
-       trusted producer/consumer handoffs. No runtime contract types are
-       delivered by this proposal. Recommended pattern and pseudocode:
-       :doc:`validation_and_xarray`.
+     - Active proposal with an implemented centered-boundary pilot: named
+       raw/bound Dataset contracts, identity-preserving metadata validation,
+       class-level operations and shared conformance/checker coverage.
+       Covariance remains follow-up application work. Pattern and numerical
+       ownership: :doc:`validation_and_xarray`.
    * - External resources and basis exports
      - :download:`RHIME resource I/O
        <../../openspec/specs/rhime-resource-io/spec.md>`

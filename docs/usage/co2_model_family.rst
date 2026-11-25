@@ -8,7 +8,8 @@ are not alternative species settings for the complete standard runner.
 
 The experimental :doc:`surface preparation pilot <surface_preparation>` adds
 explicit source transport and centered stable-BC operands for additive-Gaussian
-recipes and the matched cached fixed-OU samplers. Centered construction requires
+recipes, ordinary fixed-OU likelihoods, and the matched cached fixed-OU samplers.
+Centered construction requires
 PyTensor ``floatX=float64``. Coherent-reduction construction remains explicit.
 
 Current support
@@ -114,10 +115,15 @@ The CO2-only handoff is intentionally separate from both the generic
 It does not add coherent-reduction or aggregation-error options to the
 standard and multisector runners.
 
+:doc:`co2_models` describes the CO₂ and linked recipes. To select and
+configure multiplicative or additive boundary corrections for them, follow
+:doc:`co2_boundary_corrections`.
+
 .. toctree::
    :maxdepth: 1
 
    co2_models
+   co2_boundary_corrections
 
 Staged CO₂ commands
 -------------------

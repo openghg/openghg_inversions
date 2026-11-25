@@ -2,8 +2,6 @@
 
 from dataclasses import replace
 import json
-import subprocess
-import sys
 
 import dask
 import dask.array as da
@@ -315,7 +313,8 @@ def test_genuine_preparation_incompatibilities_fail_without_inference(tmp_path, 
     assert not (tmp_path / "samples").exists()
 
 
-def test_fresh_process_replay_uses_original_science_and_current_output_without_graph(tmp_path):
+def test_replay_uses_original_science_and_current_output_without_graph(tmp_path, monkeypatch):
+    """Replay reads only saved records; acquisition, construction and inference are forbidden."""
     from tests.test_multisector_handoffs import _trace_and_contract
 
     merged, options, *_ = synthetic_inputs(tmp_path)
@@ -331,37 +330,28 @@ def test_fresh_process_replay_uses_original_science_and_current_output_without_g
     )
     # The retained scientific basis is sufficient; replay needs no original operator file.
     (tmp_path / "operator.nc").unlink()
-    script = '''
-import sys
-from pathlib import Path
-import numpy as np
-from openghg_inversions.rhime import multisector, multisector_stages as stages
-from openghg_inversions.rhime.sampling import RhimeSampler
-from openghg_inversions.rhime.specs import RhimeOutputSpec
-root = Path(sys.argv[1])
-def forbidden(*args, **kwargs):
-    raise AssertionError("replay acquired, materialized, constructed or sampled a model")
-multisector.build_multisector_model = forbidden
-multisector.materialize_multisector_inputs = forbidden
-stages.build_multisector_model = forbidden
-stages.materialize_multisector_inputs = forbidden
-stages.MergedData.from_options = forbidden
-stages.sample_rhime_model = forbidden
-stages.resolve_sampler = forbidden
-RhimeSampler.sample = forbidden
-result = stages.postprocess(root / "samples/sample-manifest.json", output=RhimeOutputSpec(
-    output_format="inv_out", output_name="current-report", output_path=str(root / "current-products")))
-assert not hasattr(result, "model") and not hasattr(result, "sampler")
-assert result.run_metadata["start_date"] == "2019-01-01" and result.run_metadata["end_date"] == "2019-02-01"
-assert result.output_metadata["sampler"] == {"draws": 3, "chains": 2}
-np.testing.assert_array_equal(result.trace["posterior"]["x_biosphere"], np.ones((2, 3, 1)))
-np.testing.assert_array_equal(result.trace["posterior"]["x_fossil"], np.full((2, 3, 1), 1.2))
-assert [sector["name"] for sector in result.model_metadata["sectors"]] == ["biosphere", "fossil"]
-assert [sector["flux_source"] for sector in result.model_metadata["sectors"]] == ["supplemental", "inventory"]
-np.testing.assert_allclose(result.basis_functions.flux.sel(source="inventory"), [[1.,2.],[3.,4.]])
-assert "build_and_sample_seconds" not in result.output_metadata
-'''
-    subprocess.run([sys.executable, "-c", script, str(tmp_path)], check=True, capture_output=True, text=True)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("replay acquired, materialized, constructed or sampled a model")
+
+    for module in (multisector, stages):
+        monkeypatch.setattr(module, "build_multisector_model", forbidden)
+        monkeypatch.setattr(module, "materialize_multisector_inputs", forbidden)
+    monkeypatch.setattr(stages.MergedData, "from_options", forbidden)
+    monkeypatch.setattr(stages, "sample_rhime_model", forbidden)
+    monkeypatch.setattr(stages, "resolve_sampler", forbidden)
+    monkeypatch.setattr(RhimeSampler, "sample", forbidden)
+    result = stages.postprocess(tmp_path / "samples/sample-manifest.json", output=RhimeOutputSpec(
+        output_format="inv_out", output_name="current-report", output_path=str(tmp_path / "current-products")))
+    assert not hasattr(result, "model") and not hasattr(result, "sampler")
+    assert result.run_metadata["start_date"] == "2019-01-01" and result.run_metadata["end_date"] == "2019-02-01"
+    assert result.output_metadata["sampler"] == {"draws": 3, "chains": 2}
+    np.testing.assert_array_equal(result.trace["posterior"]["x_biosphere"], np.ones((2, 3, 1)))
+    np.testing.assert_array_equal(result.trace["posterior"]["x_fossil"], np.full((2, 3, 1), 1.2))
+    assert [sector["name"] for sector in result.model_metadata["sectors"]] == ["biosphere", "fossil"]
+    assert [sector["flux_source"] for sector in result.model_metadata["sectors"]] == ["supplemental", "inventory"]
+    np.testing.assert_allclose(result.basis_functions.flux.sel(source="inventory"), [[1., 2.], [3., 4.]])
+    assert "build_and_sample_seconds" not in result.output_metadata
     files = list((tmp_path / "current-products").glob("*inversion_output.nc"))
     assert len(files) == 1 and files[0].name.startswith("current-report2019-01-01")
     assert sampled.is_file()

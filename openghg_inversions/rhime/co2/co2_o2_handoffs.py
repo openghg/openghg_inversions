@@ -15,12 +15,12 @@ from typing import Any, Literal
 from uuid import uuid4
 
 import numpy as np
-import pymc as pm
 import xarray as xr
 from dask.array import Array as DaskArray
 
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.inference.sampling import RhimeSampler, describe_recorded_sampler, resolve_sampler
+from openghg_inversions.inference.sampling import sample_prior_predictive
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime._stage_artifacts import (
     _output_path, check_checkpoint_targets, finish_checkpoint, read_manifest,
@@ -64,7 +64,7 @@ class Co2O2Preparation:
 def _preparation_record(manifest: str | Path) -> tuple[Path, dict[str, Any]]:
     path, record = read_manifest(manifest, "openghg_inversions.co2_o2.prepare", (
         "prepared_inputs", "generation", "start_date", "end_date", "domain",
-    ))
+    ), schema_version=2)
     if not isinstance(record["generation"], str) or not record["generation"]:
         raise ValueError(f"Linked preparation {path} requires a nonempty generation.")
     return path, record
@@ -72,7 +72,7 @@ def _preparation_record(manifest: str | Path) -> tuple[Path, dict[str, Any]]:
 
 def _finish_preparation(destination: Path, *, payload: Path, facts: Mapping[str, str]) -> Path:
     return finish_checkpoint(destination, "prepare", {
-        "schema": "openghg_inversions.co2_o2.prepare", "schema_version": 1,
+        "schema": "openghg_inversions.co2_o2.prepare", "schema_version": 2,
         "producer": "openghg_inversions", "stage": "prepare", "generation": uuid4().hex,
         "prepared_inputs": os.path.relpath(payload, destination), **facts,
         "provenance": installed_ogi_provenance(),
@@ -162,7 +162,7 @@ def save_samples(
     )
     save_trace(trace, destination / "posterior.nc")
     return finish_checkpoint(destination, "sample", {
-        "schema": "openghg_inversions.co2_o2.sample", "schema_version": 1,
+        "schema": "openghg_inversions.co2_o2.sample", "schema_version": 2,
         "producer": "openghg_inversions", "stage": "sample", "inference_kind": "mcmc",
         "preparation": os.path.relpath(preparation_path, destination),
         "preparation_generation": preparation_generation, "posterior": "posterior.nc",
@@ -213,7 +213,7 @@ def load_samples(sample_manifest: str | Path) -> Co2O2Output:
     """
     path, record = read_manifest(sample_manifest, "openghg_inversions.co2_o2.sample", (
         "preparation", "preparation_generation", "posterior", "inference_kind",
-    ))
+    ), schema_version=2)
     if record["inference_kind"] != "mcmc":
         raise ValueError(f"Linked samples {path} require inference_kind='mcmc'.")
     generation = record["preparation_generation"]
@@ -240,7 +240,7 @@ def postprocess(sample_manifest: str | Path, *, output: Co2O2OutputOptions) -> C
     """
     result = load_samples(sample_manifest)
     calculate_co2_o2_products(result=result, output=output)
-    path, record = read_manifest(sample_manifest, "openghg_inversions.co2_o2.sample")
+    path, record = read_manifest(sample_manifest, "openghg_inversions.co2_o2.sample", schema_version=2)
     preparation_path = reference(path, record["preparation"])
     _, preparation = _preparation_record(preparation_path)
     save_co2_o2_products(result, output=output, referenced=(
@@ -275,8 +275,7 @@ def prior_predictive(
     )
     report.unlink(missing_ok=True)
     built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
-    with built.model:
-        prior = pm.sample_prior_predictive(draws, random_seed=random_seed)
+    prior = sample_prior_predictive(built.model, draws=draws, random_seed=random_seed)
     registry = get_coord_registry(built.model)
     if registry is not None:
         prior = restore_inferencedata_coords(prior, registry)

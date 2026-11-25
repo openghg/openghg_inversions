@@ -33,8 +33,10 @@ assumptions:
 * check results from dynamic extensions, such as custom strategies, where
   they re-enter package code;
 * let the operation that needs an invariant enforce it: check a positive
-  batch size before batching, and let a required Cholesky factorization report
-  a matrix which cannot be used as positive definite; and
+  batch size before batching, and let a required Cholesky factorization,
+  together with a condition estimate from its factor, report a matrix which
+  cannot be used as positive definite (see `Singular and nearly singular
+  matrices`_); and
 * validate serialized or cached artifacts in their loader against a published
   schema, rather than repeating those checks in every downstream kernel.
 
@@ -51,6 +53,31 @@ the calculation's meaning, or gives a materially clearer failure before
 expensive or irreversible work. Otherwise, an equation-level test is often
 the clearer home for the invariant.
 
+Singular and nearly singular matrices
+-------------------------------------
+
+Do not infer rank from whether a Cholesky factorization fails. Whether an
+exactly singular matrix passes depends on the LAPACK build and on the values:
+Apple Accelerate, which macOS NumPy wheels use, often factors one with a tiny
+positive last pivot, where OpenBLAS usually fails. A wrong answer computed
+from that factor need not look wrong later. For a redundant bucket basis, the
+noisy inverse of the Gram matrix gave a restriction whose retained covariance
+was well conditioned, so downstream checks accepted an invalid result in about
+a third of trials.
+
+When rank matters, factorize once and check the reciprocal condition estimate
+that LAPACK ``dpocon`` computes from the factor, as
+``openghg_inversions.basis.covariance_products`` does for both the bucket
+Gram matrix and :math:`C_\alpha`. This needs no eigendecomposition. Choose
+the threshold for the calculation that consumes the matrix, and test the
+singular case with a factorization that accepts it, so the test does not pass
+only because the local LAPACK happens to reject it. The investigation, with
+the history and trial counts, is recorded on `pull request 1055
+<https://github.com/openghg/openghg_inversions/pull/1055#issuecomment-6817880924>`_.
+Use an eigendecomposition when the eigenvalues are themselves needed, for
+example to check positive semidefiniteness of a matrix that may legitimately
+be singular.
+
 Make established contracts visible in types
 -------------------------------------------
 
@@ -66,12 +93,13 @@ the producer, as described below.
 
 The :download:`explicit data contracts proposal
 <../../openspec/changes/explicit-data-contracts/specs/explicit-data-contracts/spec.md>`
-captures this pattern; it does not indicate that contract types have already
-been implemented. The following pseudocode illustrates the recommended static
-marker for a structural contract. ``xr_contract`` denotes the proposed
-declaration decorator; ``check_bound_layout`` and
-``select_and_expand_transport`` stand for domain-specific validation and
-preparation. These are not existing package functions.
+captures this pattern. :func:`openghg_inversions.xr_contracts.xr_contract` is
+the declaration decorator, and
+``openghg_inversions.models.boundary.contracts`` holds the centered boundary
+transport contracts, the first application. The following pseudocode
+illustrates the recommended static marker for a structural contract;
+``check_bound_layout`` and ``select_and_expand_transport`` stand for
+domain-specific validation and preparation.
 
 .. code-block:: python
 
@@ -121,7 +149,7 @@ type-check but fail at runtime. Use class-level helpers for additional behavior,
 and do not use ``isinstance`` to decide whether the contract holds. An ordinary
 record may hold contracted fields without repeating their validation.
 
-Declare contracts through the proposed package decorator in ``contracts.py``
+Declare contracts through the package decorator in ``contracts.py``
 modules within their owning packages. Shared tests discover those files and
 import their modules without a hand-maintained import list. Each contract's
 tests supply valid examples, including lazy ones, and required validator
@@ -176,6 +204,21 @@ a check requires reliable failure behavior for the stated policy; Cholesky
 success alone does not establish symmetry or a specified rank tolerance.
 Compatibility with a particular model's observation labels belongs to the
 composition boundary combining them.
+
+Centered-boundary application
+-----------------------------
+
+The first application is
+:class:`~openghg_inversions.models.boundary.RawCenteredSensitivity`,
+:class:`~openghg_inversions.models.boundary.BoundCenteredSensitivity` and its
+:class:`~openghg_inversions.models.boundary.BoundAdditiveSensitivity` extension.
+Their schemas use ``xarray_validate`` for declarative variables, dtypes,
+dimensions and attributes, with callbacks for unit and index relationships;
+the library choice belongs to this application, not to every contract. The
+contracts are structural: each centered family's ``add`` performs the one
+numerical check of the jointly materialized values. The class docstrings list
+the guarantees and operations; see :doc:`/usage/centered_boundary_conditions`
+for the scientific model.
 
 Transpose, align, compute
 -------------------------

@@ -13,6 +13,8 @@ from openghg_inversions._pymc_config import configure_pytensor
 configure_pytensor()
 
 import json
+import logging
+import os
 from collections.abc import Mapping, Sequence
 from copy import copy
 from typing import Any, ClassVar, Literal, cast
@@ -21,6 +23,8 @@ import numpy as np
 import pymc as pm
 import xarray as xr
 from pymc.util import get_random_generator  # type: ignore[import-untyped]
+from pytensor.compile.mode import Mode
+from pytensor.graph.traversal import ancestors
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
@@ -29,6 +33,50 @@ from openghg_inversions.postprocessing.contracts import resolve_predictive_names
 from .convergence import posterior_convergence_check
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
+_JAX_NUTS_SAMPLERS = frozenset({"numpyro", "blackjax"})
+
+logger = logging.getLogger(__name__)
+
+
+def _jax_sampling_precision(model: pm.Model, nuts_sampler: NutsSampler) -> dict[str, bool | str]:
+    """Check and record process-start precision for a JAX sampler.
+
+    Args:
+        model: Built model whose sampler value variables must retain their dtype.
+        nuts_sampler: Resolved NUTS backend.
+
+    Returns:
+        PyTensor's floatX and the effective JAX x64 flag, or an empty mapping
+        for a backend that does not use JAX.
+
+    Raises:
+        ValueError: If the current JAX runtime disagrees with PyTensor floatX
+            or cannot represent the model's value variables.
+    """
+    if nuts_sampler not in _JAX_NUTS_SAMPLERS:
+        return {}
+
+    import jax
+    import pytensor
+    import pytensor.link.jax.dispatch  # noqa: F401  # First import sets JAX precision from floatX.
+
+    floatx = str(pytensor.config.floatX)
+    x64 = bool(jax.config.x64_enabled)
+    if x64 != (floatx == "float64") or (
+        not x64 and any(variable.dtype == "float64" for variable in model.value_vars)
+    ):
+        raise ValueError(
+            "JAX precision does not match PyTensor's floatX or the model's value variables. "
+            "Start a fresh Python process with PYTENSOR_FLAGS=floatX=float32 or floatX=float64 "
+            "before building and sampling the model."
+        )
+    if not x64 and os.environ.get("JAX_ENABLE_X64", "").lower() in {"y", "yes", "t", "true", "on", "1"}:
+        logger.warning(
+            "PyTensor floatX selects float32 for this JAX sampler. Set "
+            "PYTENSOR_FLAGS=floatX=float64 before starting Python to sample in float64."
+        )
+
+    return {"floatX": floatx, "jax_enable_x64": x64}
 
 
 def describe_recorded_sampler(recorded: object) -> dict[str, int | str]:
@@ -209,6 +257,63 @@ def _reset_retained_draws(trace: xr.DataTree, *, burn: int) -> xr.DataTree:
     return trace
 
 
+def _numpy_callback_compile_kwargs(model: pm.Model) -> dict[str, Any]:
+    """Return compile options for a model whose density calls a NumPy/SciPy Op holding prepared arrays.
+
+    Some likelihood Ops (fixed OU, cached sigma) evaluate prepared NumPy/SciPy
+    targets in ``perform``. PyTensor's default Numba linker has no native
+    implementation for them, so it runs them through an object-mode callback
+    that serializes the Op, including every array it holds, into each compiled
+    function. That costs several times the arrays' memory per compiled
+    function (logp, gradient, log likelihood, predictive draws), copies the
+    payload on each call, and fails outright once the serialized Op exceeds
+    2 GiB. The C/VM linker calls ``perform`` directly.
+
+    Args:
+        model: Model whose joint log density is inspected.
+
+    Returns:
+        ``{"mode": Mode(linker="cvm", optimizer="fast_run")}`` when the log
+        density contains an Op marked ``holds_numpy_target = True``, otherwise
+        an empty dict, which keeps PyTensor's default mode.
+    """
+    logp = getattr(model, "logp", None)
+    if logp is None:
+        return {}
+
+    for variable in ancestors([logp()]):
+        if variable.owner is not None and getattr(variable.owner.op, "holds_numpy_target", False):
+            return {"mode": Mode(linker="cvm", optimizer="fast_run")}
+    return {}
+
+
+def sample_prior_predictive(
+    model: pm.Model,
+    *,
+    draws: int,
+    random_seed: int | np.random.Generator | None = None,
+    compile_kwargs: dict[str, Any] | None = None,
+) -> xr.DataTree:
+    """Draw prior predictions using the model's safe PyTensor linker.
+
+    Args:
+        model: Concrete PyMC model to predict from.
+        draws: Number of prior-predictive draws.
+        random_seed: Seed or generator for the prediction stream.
+        compile_kwargs: Already resolved PyMC compile options, if available.
+            Omit to select options from the model. An empty mapping keeps the
+            PyMC defaults.
+
+    Returns:
+        Prior and prior-predictive draws in PyMC's trace format.
+    """
+    if compile_kwargs is None:
+        compile_kwargs = _numpy_callback_compile_kwargs(model)
+    if compile_kwargs:
+        return pm.sample_prior_predictive(draws, model, random_seed=random_seed, compile_kwargs=compile_kwargs)
+    return pm.sample_prior_predictive(draws, model, random_seed=random_seed)
+
+
 class RhimeSampler:
     """PyMC sampler configuration and execution for RHIME models.
 
@@ -370,12 +475,29 @@ class RhimeSampler:
             random variables, whose names are saved as JSON in
             ``sampler_convergence_variables``. Assessment is eager; a failed or
             incomplete convergence report does not prevent returning the trace.
+            For the ``numpyro`` and ``blackjax`` backends, ``sampler_precision``
+            records the PyTensor floatX and effective JAX x64 flag as JSON.
+
+        Raises:
+            ValueError: If the sampler or predictive options are invalid, or
+                the JAX runtime is incompatible with the model's precision.
         """
         _validate_idata_options(self.sample_kwargs, label="sample_kwargs")
         sample_kwargs = _copy_sampler_options(self.sample_kwargs or {})
         sample_kwargs.pop("return_inferencedata", None)
         idata_kwargs = dict(sample_kwargs.pop("idata_kwargs", {}))
         idata_kwargs.setdefault("log_likelihood", True)
+
+        compile_kwargs = _numpy_callback_compile_kwargs(model) if self.nuts_sampler == "pymc" else {}
+        deferred_log_likelihood: Any = False
+        if compile_kwargs:
+            compile_kwargs.update(sample_kwargs.get("compile_kwargs") or {})
+            if sample_kwargs.get("backend") is None:
+                sample_kwargs["compile_kwargs"] = compile_kwargs
+
+            # PyMC's automatic log-likelihood calculation ignores compile options.
+            deferred_log_likelihood = idata_kwargs.pop("log_likelihood")
+
         # Assess the retained samples after burn slicing instead of repeating PyMC's pre-burn checks.
         sample_kwargs.setdefault("compute_convergence_checks", False)
         sample_kwargs.setdefault("progressbar", self.progressbar)
@@ -383,6 +505,7 @@ class RhimeSampler:
         if not isinstance(self.sample_prior_predictive, bool | int | np.integer) or self.sample_prior_predictive < 0:
             raise ValueError("sample_prior_predictive must be a boolean or non-negative integer.")
         posterior_kwargs = self._posterior_predictive_options(model, variable_roles)
+
         # PyMC copies random_seed and spawns one child per chain. Copy here too
         # so spawning prediction streams cannot advance a caller-owned RNG.
         root_rng = get_random_generator(sample_kwargs.get("random_seed"), copy=True)
@@ -401,6 +524,8 @@ class RhimeSampler:
             if not isinstance(posterior_seed, int | np.integer):
                 posterior_kwargs["random_seed"] = normalized_seed
 
+        precision = _jax_sampling_precision(model, self.nuts_sampler)
+
         timing_start = timer_start()
         with model:
             raw_trace = cast(
@@ -415,6 +540,21 @@ class RhimeSampler:
                     **sample_kwargs,
                 ),
             )
+
+        if deferred_log_likelihood:
+            with model:
+                raw_trace = cast(
+                    xr.DataTree,
+                    pm.compute_log_likelihood(
+                        raw_trace,
+                        var_names=None if deferred_log_likelihood is True else list(deferred_log_likelihood),
+                        model=model,
+                        extend_inferencedata=True,
+                        progressbar=False,
+                        compile_kwargs=compile_kwargs,
+                    ),
+                )
+
         log_timing(
             "rhime.sampler.pm_sample",
             timer_seconds(timing_start),
@@ -431,8 +571,11 @@ class RhimeSampler:
         log_timing("rhime.sampler.burn_slicing", timer_seconds(timing_start), burn=self.burn)
 
         trace = self._extend_predictive(
-            trace, model=model, prior_random_seed=prior_rng,
+            trace,
+            model=model,
+            prior_random_seed=prior_rng,
             posterior_predictive_kwargs=posterior_kwargs,
+            compile_kwargs=compile_kwargs,
         )
         for group in trace.children.values():
             if "draw" in group.dims:
@@ -447,6 +590,8 @@ class RhimeSampler:
             restored=registry is not None,
         )
 
+        if precision:
+            trace.attrs["sampler_precision"] = json.dumps(precision, sort_keys=True)
         variable_names = [variable.name for variable in model.free_RVs]
         trace.attrs["sampler_convergence_variables"] = json.dumps(variable_names)
         timing_start = timer_start()
@@ -495,6 +640,7 @@ class RhimeSampler:
         model: pm.Model,
         prior_random_seed: np.random.Generator,
         posterior_predictive_kwargs: dict[str, Any],
+        compile_kwargs: dict[str, Any],
     ) -> xr.DataTree:
         """Extend sampled trace with configured predictive groups."""
         if self.sample_prior_predictive:
@@ -504,8 +650,11 @@ class RhimeSampler:
                 else int(self.sample_prior_predictive)
             )
             timing_start = timer_start()
-            with model:
-                trace.update(pm.sample_prior_predictive(prior_draws, model, random_seed=prior_random_seed))
+            trace.update(
+                sample_prior_predictive(
+                    model, draws=prior_draws, random_seed=prior_random_seed, compile_kwargs=compile_kwargs
+                )
+            )
             log_timing(
                 "rhime.sampler.prior_predictive",
                 timer_seconds(timing_start),
@@ -513,6 +662,17 @@ class RhimeSampler:
             )
 
         if self.sample_posterior_predictive:
+            if (
+                "compile_kwargs" not in posterior_predictive_kwargs
+                and posterior_predictive_kwargs.get("backend") is None
+            ):
+                prediction_model = posterior_predictive_kwargs.get("model") or model
+                prediction_options = (
+                    compile_kwargs if prediction_model is model else _numpy_callback_compile_kwargs(prediction_model)
+                )
+                if prediction_options:
+                    posterior_predictive_kwargs["compile_kwargs"] = prediction_options
+
             timing_start = timer_start()
             with model:
                 trace.update(pm.sample_posterior_predictive(trace, **posterior_predictive_kwargs))

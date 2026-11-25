@@ -28,6 +28,38 @@ target. These are site-wide presentation choices controlled by
 ``add_module_names`` in ``docs/conf.py``. Change those settings only when the
 whole API reference should adopt a different style.
 
+Generate schema references
+---------------------------
+
+Use ``schema-reference`` to document a live ``xarray-validate`` schema factory:
+
+.. code-block:: rst
+
+   .. schema-reference:: openghg_inversions.inversion_data._merged_schema:merged_site_schema
+      :kwargs: {"split_by_sectors": false, "require_footprints": false, "use_bc": false}
+
+The import path uses ``module:factory`` syntax. Class-owned factories use
+``module:Contract.schema`` with the same JSON keyword options. This directive
+requires a Dataset or DataArray schema, not a particular contract class or
+registry. It imports trusted repository code during the build but never calls
+validators or reads scientific data. Imports and factories must themselves be
+free of numerical execution. Sphinx tracks the factory module as a dependency
+for incremental rebuilds.
+
+``scripts/schema_docs.py`` reuses the library's serialization and supplements
+dtype families and alternatives, Python attribute type names and callback
+docstrings. ``describe_schema`` returns a JSON-compatible documentation view;
+``render_schema`` turns that view into tables. Keep callback descriptions beside
+their validation logic. An undocumented callback is listed with an explicit
+missing-description notice rather than silently omitted. Keep dynamic selections
+in the directive's keyword options and scientific workflow explanations in the
+surrounding page. Changing schemas regenerates the tables during the build;
+there is no generated reference file to maintain or commit.
+
+This view does not reconstruct executable checks. Numerical requirements owned
+by later materialization or graph operations must be explained separately from
+structural guarantees. YAML or JSON dumps of the view have the same scope.
+
 Regenerate module pages
 -----------------------
 

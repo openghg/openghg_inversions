@@ -30,6 +30,9 @@ from openghg_inversions.inversion_data._site_options import (
     is_column_observation, is_column_platform, is_satellite_platform, is_surface_platform,
 )
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
+from openghg_inversions.inversion_data._merged_schema import (
+    merged_site_schema, merged_flux_schema, validate_merged_dataset,
+)
 from openghg_inversions.inversion_data.getters import get_flux_data, get_footprint_data, get_obs_data
 from openghg_inversions.inversion_data.scenario import merged_scenario_data
 from openghg_inversions.inversion_data.surface import (
@@ -142,6 +145,76 @@ class MergedData:
         """Retained observation platforms aligned to sites."""
         return self.site_options.platform
 
+    site_schema = staticmethod(merged_site_schema)
+
+    def validate_scientific_inputs(
+        self, *, split_by_sectors: bool, require_footprints: bool,
+        use_bc: bool, flux_sources: Sequence[str], grid_dims: tuple[str, str] = ("lat", "lon"),
+    ) -> None:
+        """Validate acquired arrays for selected preparation without execution.
+
+        Unlike acquisition-fact compatibility, this checks the per-site schema,
+        conditional responses/BCs/footprints and native inventory flux. Centered
+        boundaries retain anomaly/mass/reference operands; their units and
+        scientific invariants remain with boundary projection. Errors
+        identify ``site_data[site]`` or ``flux_data[source]`` and the offending
+        variable. Dimension permutations, independent site time axes, empty
+        sites, missing observations and arbitrary extension fields are allowed.
+
+        ``mf`` needs explicit concentration units, shared in numerical scale
+        across sites. Absent error/response/ordinary-BC units inherit that convention;
+        explicit units must match its scale. Native flux requires units with
+        the scale of ``mol m-2 s-1``; the explicit surface route also accepts
+        compatible scaled units for conversion by native flux resolution.
+        No values or metadata are converted or
+        changed. Numerical missing-value policy remains with later owners.
+
+        Call this once when entering preparation, after external customization
+        and before error derivation/filtering. Locally constructed subsequent
+        stages trust that boundary. ``boundary_data`` is retrieval provenance;
+        directional site contributions are the consumed BC input.
+
+        Args:
+            split_by_sectors: Select the standard or source-resolved response.
+            require_footprints: Require raw footprints when fitting basis weights.
+            use_bc: Require acquired directional boundary contributions.
+            flux_sources: Selected source identities, including the first source
+                used for basis-design weights. All retained inventories are checked.
+            grid_dims: Native spatial axis names, latitude then longitude.
+
+        Raises:
+            ValueError: If the requested layout or a site's/source's scientific
+                metadata violates its contract. Dataset failures include the
+                site/source path and variable or coordinate location.
+        """
+        if type(self.split_by_sectors) is not bool or type(split_by_sectors) is not bool:
+            raise ValueError("split_by_sectors must be a Python bool.")
+        if self.split_by_sectors != split_by_sectors:
+            raise ValueError("Merged data has an incompatible split_by_sectors layout.")
+        if not flux_sources or not self.flux_data:
+            raise ValueError("flux_data requires native flux and a selected weighting source.")
+        if any(source not in self.flux_data for source in flux_sources):
+            raise ValueError(f"flux_data is missing requested source(s) from {tuple(flux_sources)!r}.")
+        reference_units = None
+        for site in self.sites:
+            dataset = self.site_data[site]
+            schema = self.site_schema(
+                split_by_sectors=split_by_sectors, require_footprints=require_footprints,
+                use_bc=use_bc, grid_dims=grid_dims,
+                concentration_units=reference_units, flux_sources=flux_sources,
+                boundary_representation=dataset.attrs.get("boundary_representation"),
+            )
+            validate_merged_dataset(schema, dataset, path=f"site_data[{site!r}]")
+            if reference_units is None:
+                reference_units = dataset.mf.attrs["units"]
+        explicit_surface = any("surface_transport" in data.attrs for data in self.site_data.values())
+        for source, dataset in self.flux_data.items():
+            timed = "flux" in dataset and "time" in dataset.flux.dims
+            validate_merged_dataset(
+                merged_flux_schema(timed=timed, grid_dims=grid_dims, allow_scaled_units=explicit_surface), dataset,
+                path=f"flux_data[{source!r}]",
+            )
+
     def validate_for_preparation(
         self,
         *,
@@ -195,6 +268,8 @@ class MergedData:
                     f"Merged data has incompatible {name}: acquired {recorded!r}, requested {value!r}. "
                     "Acquire data for the requested species, domain and window."
                 )
+        if type(self.split_by_sectors) is not bool or type(split_by_sectors) is not bool:
+            raise ValueError("split_by_sectors must be a Python bool.")
         if self.split_by_sectors != split_by_sectors:
             raise ValueError("Merged data has an incompatible split_by_sectors layout.")
 
@@ -302,6 +377,9 @@ class MergedData:
             acquisition=acquired.acquisition,
         )
 
+
+# Total seconds OpenGHG removes from a retrieval end_date before its inclusive time slice.
+_OPENGHG_END_DATE_PAD = pd.Timedelta(seconds=2)
 
 def _acquire_scenario_data(
     *, species: str, site_options: _site_options.SiteOptions, domain: str,
@@ -686,8 +764,12 @@ def acquire_surface_data(
     ]
     flux_first = min(first for first, _ in support)
     flux_last = max(last for _, last in support)
-    # OpenGHG subtracts one second and then slices inclusively at the end.
-    query_end = flux_last + pd.Timedelta(seconds=1) - pd.Timedelta("1ns")
+    # OpenGHG 0.17 subtracts one second from end_date twice, once when searching the metastore
+    # (retrieve/_search.py) and again when slicing the retrieved data (dataobjects/_basedata.py,
+    # see its TODO; reported as https://github.com/openghg/openghg/issues/1817), then slices
+    # inclusively. A one-second pad dropped the final integrated release.
+    # Pad by two seconds so the inclusive slice ends at the last instant before ``flux_last``.
+    query_end = flux_last - pd.Timedelta("1ns") + _OPENGHG_END_DATE_PAD
     retrieved_flux = get_flux_data(
         sources=list(flux_sources), species=species, domain=domain,
         start_date=str(flux_first), end_date=str(query_end), store=flux_store,

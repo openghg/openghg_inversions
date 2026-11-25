@@ -16,7 +16,6 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 import xarray as xr
-from openghg.analyse import combine_datasets as openghg_combine_datasets
 
 from openghg_inversions.array_ops import to_dense
 from openghg_inversions._country_file import load_country_dataset
@@ -49,6 +48,9 @@ def combine_datasets(
     Returns:
         xarray.Dataset: Combined dataset indexed to dataset_a
     """
+    # openghg.analyse eagerly imports plotting and calibration-scale stacks.
+    from openghg.analyse import combine_datasets as openghg_combine_datasets
+
     return openghg_combine_datasets(dataset_a, dataset_b.load(), method=method, tolerance=tolerance)
 
 

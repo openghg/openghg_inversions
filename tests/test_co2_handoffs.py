@@ -209,7 +209,7 @@ def test_graph_free_replay_keeps_recorded_sampler_and_provenance(tmp_path, monke
 
     monkeypatch.setattr(RhimeSampler, "__init__", forbidden)
     monkeypatch.setattr(handoffs, "prepare_co2_inputs", forbidden)
-    monkeypatch.setattr(handoffs.pm, "sample_prior_predictive", forbidden)
+    monkeypatch.setattr(handoffs, "sample_prior_predictive", forbidden)
     monkeypatch.setattr(co2_inference, "sample_rhime_model", forbidden)
     monkeypatch.setattr(co2_inference, "build_co2_from_materialized", forbidden)
     monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
@@ -229,7 +229,7 @@ def test_sample_checkpoint_cannot_overwrite_its_preparation(tmp_path):
     generation = handoffs.load_preparation(prep).generation
     # Sample payload redirects onto the numerical preparation.
     (prep.parent / "posterior.nc").symlink_to(prep.parent / "prepared-inputs.nc")
-    with pytest.raises(ValueError, match="overwrite"):
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         handoffs.save_samples(prep, trace, actual_inference=RhimeSampler(draws=4, chains=1).describe(), preparation_generation=generation, output_dir=prep.parent)
 
 
@@ -346,7 +346,7 @@ def test_inference_loads_decoded_model_without_reading_unused_affine(tmp_path, m
                          "likelihood": {"kind": "additive_sigma", "no_model_error": True}},
             output_dir=tmp_path / "inference",
         )
-    assert captured[0]["use_bc"] is False
+    assert captured[0]["boundary"] is None
     assert captured[0]["no_model_error"] is True
     assert not (tmp_path / "inference").exists()
 

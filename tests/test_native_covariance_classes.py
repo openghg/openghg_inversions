@@ -105,6 +105,45 @@ def test_class_blocked_apply_and_solve_match_dense_oracle(
     xr.testing.assert_allclose(covariance.apply(solved), rhs, rtol=1e-10, atol=1e-11)
 
 
+def test_class_blocks_on_partial_bounding_boxes_match_dense_oracle() -> None:
+    """Classes confined to sub-boxes, scattered classes and islands match the dense oracle."""
+    latitude = xr.DataArray(
+        np.linspace(40.0, 46.0, 7),
+        dims="lat",
+        coords={"lat": np.linspace(40.0, 46.0, 7)},
+        attrs={"units": "degrees_north"},
+    )
+    longitude = xr.DataArray(
+        np.linspace(-3.0, 4.5, 6),
+        dims="lon",
+        coords={"lon": np.linspace(-3.0, 4.5, 6)},
+        attrs={"units": "degrees_east"},
+    )
+    values = np.full((7, 6), 1)
+    values[4:, :3] = 2  # compact corner block
+    values[1, 4] = 3  # one-cell island
+    values[5, 5] = 3  # disconnected cell of the same class, far away
+    values[0, 0] = 4  # single-cell class at the grid edge
+    labels = xr.DataArray(values, dims=("lat", "lon"), coords={"lat": latitude, "lon": longitude})
+    covariance = SeparableExponentialCovariance(
+        latitude, longitude, sigma=0.8, correlation_length=2.5, class_labels=labels
+    )
+    rng = np.random.default_rng(1065)
+    rhs = xr.DataArray(
+        rng.normal(size=(7, 6, 5)),
+        dims=("lat", "lon", "rhs"),
+        coords={"lat": latitude, "lon": longitude, "rhs": np.arange(5)},
+    )
+
+    dense = _dense_blocked_covariance(latitude, longitude, labels, 0.8, 2.5)
+    expected = (dense @ rhs.values.reshape(42, 5)).reshape(7, 6, 5)
+
+    np.testing.assert_allclose(covariance.apply(rhs).values, expected, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(
+        covariance.apply(covariance.solve(rhs)).values, rhs.values, rtol=1e-9, atol=1e-10
+    )
+
+
 def test_class_blocked_solve_supports_legacy_cg_tolerance_keyword(
     coordinates: tuple[xr.DataArray, xr.DataArray],
     monkeypatch: pytest.MonkeyPatch,

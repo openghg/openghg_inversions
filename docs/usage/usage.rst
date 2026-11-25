@@ -12,7 +12,11 @@ Using OpenGHG Inversions
    standard_model_family
    nested_domain_model_family
    co2_model_family
+   flux_prior
    surface_preparation
+   centered_boundary_conditions
+   boundary_correction_structures
+   atmospheric_baseline
    prepared_format_support
    running_and_validating
    shared_scientific_concepts

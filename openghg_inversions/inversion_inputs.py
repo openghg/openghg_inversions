@@ -115,23 +115,84 @@ def normalise_frequency(value: str | None) -> Literal["monthly"] | pd.Timedelta 
         raise ValueError(f"Invalid frequency {value!r}; expected 'monthly' or a positive fixed duration.") from exc
 
 
+def make_period_calendar(
+    time: xr.DataArray,
+    freq: str | None,
+    *,
+    anchor_time: DatetimeLike | None = None,
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """Return ordinal membership and interval starts from one eager time calendar.
+
+    Time metadata must be materialized by the caller's binding boundary. Gaps
+    retain their calendar spacing; the earliest occupied interval has ordinal
+    zero, while start labels retain the actual fixed-duration anchor.
+
+    Args:
+        time: Eager datetime values, one per observation. The result keeps its
+            dimensions and coordinates.
+        freq: ``None`` for a single period starting at the earliest time,
+            ``"monthly"`` for calendar months, or a positive fixed duration
+            accepted by :func:`normalise_frequency`.
+        anchor_time: Optional start of the fixed-duration grid. By default the
+            grid starts at the earliest time. Ignored for ``None`` and
+            ``"monthly"``.
+
+    Returns:
+        ``(ordinal, starts)``, both shaped like ``time``. ``ordinal`` holds
+        integer period indices with the earliest occupied period at zero.
+        ``starts`` holds each row's period start as ``datetime64[ns]``: the
+        earliest time for ``None``, the first of the month for ``"monthly"``,
+        and the anchored interval start for fixed durations.
+
+    Raises:
+        ValueError: If ``freq`` is invalid or ``anchor_time`` is ``NaT``.
+    """
+    frequency = normalise_frequency(freq)
+    resolved_anchor = pd.Timestamp(anchor_time) if anchor_time is not None else None
+    if resolved_anchor is not None and pd.isna(resolved_anchor):
+        raise ValueError("Period anchor_time must be a valid datetime, not NaT.")
+    values = time.values.astype("datetime64[ns]")
+    first = values.min()
+    if frequency is None:
+        idx = np.zeros(values.shape, dtype=int)
+        starts = np.full(values.shape, first, dtype="datetime64[ns]")
+    elif frequency == "monthly":
+        months = values.astype("datetime64[M]")
+        idx = (months - months.min()).astype(int)
+        starts = months.astype("datetime64[ns]")
+    else:
+        anchor = resolved_anchor.to_datetime64().astype("datetime64[ns]") if resolved_anchor is not None else first
+        duration = np.timedelta64(frequency.value, "ns")
+        intervals = ((values - anchor) // duration).astype(int)
+        starts = anchor + intervals * duration
+        idx = intervals - intervals.min()
+    return (
+        xr.DataArray(idx, coords=time.coords, dims=time.dims),
+        xr.DataArray(starts, coords=time.coords, dims=time.dims),
+    )
+
+
 def make_freq_indicator(
     time: xr.DataArray,
     freq: Literal["monthly"] | str,
     *,
     anchor_time: DatetimeLike | None = None,
 ) -> xr.DataArray:
-    frequency = normalise_frequency(freq)
-    if frequency is None:
-        return xr.zeros_like(time, dtype=int)
-    if frequency == "monthly":
-        return time.dt.month - time.min().dt.month + 12 * (time.dt.year - time.min().dt.year)
+    """Return ordinal period indices for each time (see :func:`make_period_calendar`).
 
-    anchor = np.datetime64(anchor_time) if anchor_time is not None else time.min().values
-    dt = np.timedelta64(frequency.value, "ns")  # robust to xarray dtype
-    idx = ((time.values.astype("datetime64[ns]") - anchor) // dt).astype(int)
-    idx = idx - idx.min()
-    return xr.DataArray(idx, coords=time.coords, dims=time.dims)
+    Args:
+        time: Eager datetime values, one per observation.
+        freq: ``"monthly"`` or a positive fixed duration.
+        anchor_time: Optional start of the fixed-duration grid.
+
+    Returns:
+        Integer period indices shaped like ``time``, with the earliest occupied
+        period at zero.
+
+    Raises:
+        ValueError: If ``freq`` or ``anchor_time`` is invalid.
+    """
+    return make_period_calendar(time, freq, anchor_time=anchor_time)[0]
 
 
 def make_sigma_freq(
@@ -149,6 +210,24 @@ def make_sigma_freq(
 
 
 # INVERSION INPUTS PIPELINE
+# Dimensions of the native transport grid. Footprints, flux products, boundary curtains and
+# particle diagnostics on these dimensions are reduced to ``H`` and ``H_bc`` before assembly.
+_NATIVE_GRID_DIMS = frozenset({"lat", "lon", "height"})
+
+
+def _drop_native_grid_variables(dataset: xr.Dataset) -> xr.Dataset:
+    """Return a shallow copy without data variables on the native transport grid.
+
+    Inversion inputs are observation-aligned. Raw footprints (including ``fp_HiTRes``),
+    ``fp_x_flux`` products, boundary curtains and particle diagnostics have already been
+    reduced to sensitivities by this point and nothing reads them from the inversion inputs.
+    Gathering them kept lazy store reads alive until prepared checkpoints were saved, where
+    they dominated the file size and the save time. Coordinates are kept.
+    """
+    names = [name for name, variable in dataset.data_vars.items() if _NATIVE_GRID_DIMS.intersection(variable.dims)]
+    return dataset.drop_vars(names)
+
+
 def _drop_nan_and_compute(
     ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error")
 ) -> xr.Dataset:
@@ -329,6 +408,11 @@ def make_inv_inputs(
     if missing_sites:
         raise ValueError(f"`fp_data` is missing requested site(s): {missing_sites!r}.")
 
+    if any("bc_centering_weights" in fp_data[site] for site in sites):
+        raise ValueError(
+            "Supply bc_centering_weights on resolved boundary states in prepare_co2_inputs, "
+            "after gathering and period expansion."
+        )
     site_data = {site: fp_data[site] for site in sites}
     from openghg_inversions.boundary_sensitivity import validate_boundary_operands
 
@@ -342,6 +426,7 @@ def make_inv_inputs(
         if any(value.attrs["units"] != reference.attrs["units"] for value in references[1:]):
             raise ValueError("Centered bc_reference units must match across sites.")
         site_data = {site: dataset.drop_vars("bc_reference") for site, dataset in site_data.items()}
+    site_data = {site: _drop_native_grid_variables(dataset) for site, dataset in site_data.items()}
     site_data = _fill_missing_optional_observation_factors(site_data)
     _validate_per_site_dimension_names(site_data, ragged_dim="time")
 

@@ -21,7 +21,9 @@ as LogNormal and the unresolved contribution as Gaussian is a moment-matched
 closure, not exact marginalization of a LogNormal state. Fixing a state at a
 known value is instead handled by ``models.StateActivity``.
 
-The main entry point is ``CorrelatedLognormalPrior``. Its constructor eagerly
+Model builders take a ``CorrelatedPrior``: arithmetic moments with a marginal
+family per state, joined by a Gaussian copula. Its only marginal is lognormal,
+built by ``CorrelatedLognormalPrior``. That class's constructor eagerly
 computes xarray inputs and owns independent copies; ``to_dataset`` and
 ``from_dataset`` provide persistence boundaries. Construction warns before
 dense covariance materialization when the reduced state exceeds 1,000
@@ -631,3 +633,114 @@ class CorrelatedLognormalPrior:
             ):
                 raise ValueError(f"Stored {name!r} is inconsistent with the declared arithmetic moments.")
         return prior
+
+
+STATE_MARGINALS = ("lognormal",)
+"""Marginal families a :class:`CorrelatedPrior` state may use."""
+
+
+class CorrelatedPrior:
+    """Correlated state prior given by arithmetic moments and per-state marginals.
+
+    The prior is a Gaussian copula. One correlated latent normal vector is
+    mapped through each state's marginal, with the latent correlations chosen
+    so that the arithmetic mean and covariance are matched exactly. Changing a
+    marginal changes only the shape of that state's distribution.
+
+    Only the ``"lognormal"`` marginal is available. With it on every state, the
+    copula is the :class:`CorrelatedLognormalPrior` construction, available as
+    ``lognormal``.
+
+    Attributes:
+        lognormal: Validated lognormal copula for these arithmetic moments.
+        marginal: Marginal family name on the state dimension, in mean-label
+            order. Treat it as read-only.
+    """
+
+    lognormal: CorrelatedLognormalPrior
+    marginal: xr.DataArray
+
+    def __init__(
+        self,
+        mean: xr.DataArray,
+        arithmetic_covariance: xr.DataArray | np.ndarray,
+        *,
+        marginal: str | xr.DataArray = "lognormal",
+        covariance_dim: str | None = None,
+    ) -> None:
+        """Validate the arithmetic moments and marginal families.
+
+        Args:
+            mean: Positive one-dimensional arithmetic mean with a unique
+                labelled state coordinate.
+            arithmetic_covariance: Dense arithmetic covariance, as accepted by
+                :class:`CorrelatedLognormalPrior`.
+            marginal: One family name for every state, or names on the state
+                dimension with the mean's labels.
+            covariance_dim: Optional name for the covariance column dimension.
+
+        Raises:
+            TypeError: If ``mean`` is not an xarray ``DataArray``.
+            ValueError: If a marginal is not in :data:`STATE_MARGINALS`, its
+                labels differ from the mean's, or the moments are invalid for
+                the lognormal copula.
+        """
+        self._set(CorrelatedLognormalPrior(mean, arithmetic_covariance, covariance_dim=covariance_dim), marginal)
+
+    @classmethod
+    def from_lognormal(cls, prior: CorrelatedLognormalPrior) -> CorrelatedPrior:
+        """Use an already validated lognormal prior on every state.
+
+        Args:
+            prior: Correlated lognormal moments, reused without recomputation.
+
+        Returns:
+            The same moments with the lognormal marginal on every state.
+        """
+        result = cls.__new__(cls)
+        result._set(prior, "lognormal")
+        return result
+
+    def _set(self, lognormal: CorrelatedLognormalPrior, marginal: str | xr.DataArray) -> None:
+        """Store the copula and the marginal names after checking them."""
+        mean = lognormal._mean
+        if isinstance(marginal, str):
+            marginal = mean.copy(data=np.full(mean.size, marginal, dtype=object))
+        elif marginal.dims != (lognormal.state_dim,) or not marginal.indexes[lognormal.state_dim].equals(
+            mean.indexes[lognormal.state_dim]
+        ):
+            raise ValueError("Marginal families must use the prior mean's state labels in the same order.")
+        unsupported = sorted(set(map(str, marginal.values)) - set(STATE_MARGINALS))
+        if unsupported:
+            raise ValueError(f"Unsupported state marginal(s) {unsupported!r}; available: {STATE_MARGINALS!r}.")
+        self.lognormal = lognormal
+        self.marginal = marginal.copy(deep=True).rename("marginal")
+        self.marginal.attrs = {}
+
+    @property
+    def mean(self) -> xr.DataArray:
+        """Return the arithmetic mean.
+
+        Returns:
+            An independent deep copy of the labelled arithmetic mean.
+        """
+        return self.lognormal.mean
+
+    @property
+    def arithmetic_covariance(self) -> xr.DataArray:
+        """Return the arithmetic covariance.
+
+        Returns:
+            An independent deep copy of the dense labelled covariance.
+        """
+        return self.lognormal.arithmetic_covariance
+
+    @property
+    def state_dim(self) -> str:
+        """Return the name of the state dimension."""
+        return self.lognormal.state_dim
+
+    @property
+    def covariance_dim(self) -> str:
+        """Return the name of the same-order covariance column dimension."""
+        return self.lognormal.covariance_dim

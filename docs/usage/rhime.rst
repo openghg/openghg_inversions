@@ -596,6 +596,22 @@ exposed through RHIME config remain ``"quadtree"`` and ``"weighted"``. See
 :doc:`rhime_configuration` for support maps and migration from historical
 case/directory options.
 
+The quadtree algorithm searches for its region layout with simulated
+annealing, so by default each run fits a different basis from the same inputs.
+Set ``basis_seed`` to a non-negative integer to fit the same basis every time,
+for example in a test case or when comparing runs:
+
+.. code-block:: ini
+
+   basis_algorithm = "quadtree"
+   nbasis = 250
+   basis_seed = 42
+
+The seed also applies to the inner fit when ``fix_basis_outer_regions`` is
+set. The weighted algorithm is deterministic, so ``basis_seed`` is rejected
+with it. A saved basis (``basis_path`` or a partition) involves no fitting,
+and any ``basis_seed`` is then unused.
+
 The lower-level Python basis API also supports ``"region_constrained"`` when a
 caller supplies an already loaded ``region_classes`` ``DataArray``. That path
 keeps generated labels from crossing land/sea, country, inner/outer, or other

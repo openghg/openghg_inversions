@@ -4,6 +4,9 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
 from pathlib import Path as _Path
+import sys as _sys
+
+_sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "scripts"))
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
@@ -16,6 +19,7 @@ author = 'Eric Saboya and Brendan Murphy'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
+    "schema_docs",
     "sphinx.ext.napoleon",
     "sphinx.ext.autodoc",
     "sphinx.ext.intersphinx",
