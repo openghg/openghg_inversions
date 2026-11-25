@@ -61,7 +61,7 @@ def add_additive_sigma_likelihood(
     The inferred absolute mismatch scale is observation-aligned through
     ``additive_sigma_alignment`` and enters as a separate variance term. When
     no alignment is supplied, no inferred scale is constructed. Fixed
-    diagonal, dense, or low-rank aggregation error is included only when
+    dense or low-rank aggregation error is included only when
     explicitly selected. If supplied, ``minimum_error_floor`` floors the total
     marginal standard deviation.
 

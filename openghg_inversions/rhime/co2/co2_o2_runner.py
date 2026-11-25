@@ -407,8 +407,10 @@ def run_rhime_co2_o2_from_prepared_inputs(
             term, with a warning when the preparation has their transport.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
-            with the same meanings as the CO2 offset component. Baseline terms
-            require identical channel units and are zero on the other channel.
+            with the same meanings as the CO2 offset component. Each channel's
+            offset is in that channel's units and is zero on the other channel,
+            so offsets allow mixed units (for example ppm CO2 and per-meg O2).
+            Boundary terms still require identical channel units.
         tau_hours: Optional fixed OU timescale, scalar or mapping keyed by
             ``co2:SITE``/``o2:SITE``, in hours. Requires the same channel units.
         fixed_site_amplitudes: Fixed additive species/site standard deviations

@@ -190,6 +190,7 @@ operands and supported model routes.
    openghg_inversions.rhime.co2.co2_o2_handoffs.prior_predictive
    openghg_inversions.rhime.co2.co2_o2_handoffs.postprocess
    openghg_inversions.rhime.co2.prepare_co2_inputs
+   openghg_inversions.models.fixed_ou.fixed_ou_mismatch_covariance
    openghg_inversions.rhime.co2.handoffs.prepare
    openghg_inversions.rhime.co2.handoffs.save_preparation
    openghg_inversions.rhime.co2.handoffs.load_preparation
@@ -277,6 +278,9 @@ mathematical contracts and eager-computation boundaries.
    openghg_inversions.observation_error.AggregationError
    openghg_inversions.observation_error.prepare_low_rank_aggregation_error
    openghg_inversions.observation_error.resolve_aggregation_error
+   openghg_inversions.observation_error.WhitenedRankRule
+   openghg_inversions.observation_error.select_whitened_rank
+   openghg_inversions.observation_error.whitened_eigenvalue_kl
 
 Compose a RHIME model
 ---------------------
@@ -293,6 +297,7 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.PreparedLinearSensitivity
    openghg_inversions.models.prepare_linear_sensitivity
    openghg_inversions.models.CorrelatedLognormalPrior
+   openghg_inversions.models.CorrelatedPrior
    openghg_inversions.models.parse_prior
    openghg_inversions.models.add_model_data
    openghg_inversions.models.add_linear_component
@@ -326,6 +331,7 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.array_ops.to_dense_tree
    openghg_inversions.models.add_linked_linear_component
    openghg_inversions.models.add_correlated_lognormal_state
+   openghg_inversions.models.add_correlated_state_with_activity
    openghg_inversions.models.add_offset_component
    openghg_inversions.models.add_sigma_component
    openghg_inversions.models.add_site_sigma_gaussian_likelihood
