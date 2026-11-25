@@ -7,11 +7,11 @@ This first experiment checks the process-wide float64 requirement for
 centered boundaries. The first measurements simulated the proposed cache
 precision. The results below were rerun on PR #1124 at `e2eca88b`, which
 stores and evaluates the state quadratic in float64. The precision
-prototypes run in the probe process.
+prototypes ran in separate PyTensor processes.
 
 ## Where precision changes
 
-| Boundary | Current operation |
+| Boundary | Operation at `e2eca88b` |
 | --- | --- |
 | Prepared centered operands | Binding requires process-wide float64. The three operands are the anomaly sensitivity, mass sensitivity and reference concentration. |
 | Registration | `add_model_data` passes arrays through `pm.Data`, which converts floating inputs to `floatX`. The reference shift used on output also passes through this boundary. |
@@ -26,13 +26,12 @@ and [state step construction](https://github.com/openghg/openghg_inversions/blob
 
 ## First experiment
 
-The [probe](issue_1130_centered_precision_probe.py) uses the four-observation
-centered-boundary test fixture with an active flux state, fixed OU amplitudes
-and additive or multiplicative boundary corrections. It evaluates the
-initial state and a nearby transformed state, draws two prior predictions
-and restores the absolute observations. It uses a CO₂-scale reference
-of 400 ppm and a separate 209,300 per-meg stress case in the same
-single-channel graph. The stress case is an arithmetic check at that scale.
+The experiment used the four-observation centered-boundary test fixture
+with an active flux state, fixed OU amplitudes and additive or multiplicative
+boundary corrections. It evaluated the initial state and a nearby transformed
+state, drew two prior predictions and restored the absolute observations. It
+used a reference of 400 ppm and a separate 209,300 per-meg stress case in
+the same single-channel graph.
 
 At the perturbed multiplicative state in the per-meg case:
 
@@ -98,24 +97,15 @@ likelihoods and restored posterior predictions. The integration test also
 checks nearby-state log-density differences and gradients with a fixed
 boundary state.
 
-## Reproduce and extend
+## Production regression
 
-Run from the repository root with a fresh process for every mode. The modes
-are `ordinary` for float64, `guard-only` for a bypassed guard, `local` for
-the data-only prototype, `local-prior` for data plus prior precision and
-`local-expm1` for local data precision with the stable deviation. Use
-`production` to exercise the default multiplicative prior in float32
-with normal model data registration.
-Add `--sample` to construct the cached NUTS step and run a six-draw smoke
-check on the per-meg multiplicative case. With `local-prior` this exposes
-the mixed-dtype construction error above.
+The [centered-boundary test](../../tests/test_co2_centered_boundary.py)
+compares the production float32 and float64 graphs at an O₂-sized reference
+with one fixed boundary state. It checks nearby-state log-density changes,
+gradients and the physical boundary scales.
 
 ```bash
-export PYTHONPATH=".:tests${PYTHONPATH:+:$PYTHONPATH}"
-PYTENSOR_FLAGS=floatX=float64,linker=py,cxx= \
-  uv run python docs/plans/issue_1130_centered_precision_probe.py ordinary
-PYTENSOR_FLAGS=floatX=float32,linker=py,cxx= \
-  uv run python docs/plans/issue_1130_centered_precision_probe.py production --sample
+uv run pytest tests/test_co2_centered_boundary.py::test_float32_default_multiplicative_boundary_preserves_nearby_fixed_ou_cost
 ```
 
 Measured with Python 3.12.11, PyMC 6.3.2, PyTensor 3.3.8, NumPy 2.2.6,
