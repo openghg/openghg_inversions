@@ -34,6 +34,7 @@ from openghg_inversions.models.components import (
     warn_constant_offset_confounding,
 )
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.observation_error import AggregationError
 
@@ -288,6 +289,7 @@ def build_co2_o2_model(
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -349,6 +351,11 @@ def build_co2_o2_model(
         state_activity: Optional labelled policy fixing or activating retained
             states.
         boundary: Resolved boundary component, keyed by channel.
+        outer_flux: Optional outer-flux choice, resolved here once on the
+            shared ``retained_prior`` for both channels. Its fixed outer states
+            are held at their prior mean with zero uncertainty after joint
+            exact-zero pruning. See
+            :doc:`/usage/atmospheric_baseline`.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
             with the same meanings as the CO2 offset component. Each channel's
@@ -374,7 +381,8 @@ def build_co2_o2_model(
     (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd), boundary, priors = (
         dask_compute(*to_dense_tree((
             (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd),
-            dict(boundary or {}), {"amplitude": site_amplitude_prior, "offset": offset_prior},
+            dict(boundary or {}),
+            {"amplitude": site_amplitude_prior, "offset": offset_prior},
         )))
     )
     site_amplitude_prior, offset_prior = priors["amplitude"], priors["offset"]
@@ -388,6 +396,7 @@ def build_co2_o2_model(
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
         boundary=boundary,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
         output_dim=output_dim,
@@ -408,6 +417,7 @@ def _build_co2_o2_model(
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -433,6 +443,9 @@ def _build_co2_o2_model(
         output_dim=output_dim,
     )
     activity = resolve_state_activity(prepared_sensitivity.removed, state_activity)
+    if outer_flux is not None:
+        # Resolve the choice once on the shared prior the model samples.
+        activity = outer_flux.resolve_states(retained_prior).fix_states(activity)
 
     with registered_model() as model:
         state = add_correlated_state_with_activity(
