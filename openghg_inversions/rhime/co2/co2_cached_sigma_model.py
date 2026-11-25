@@ -16,7 +16,7 @@ from pymc.pytensorf import floatX
 from pytensor.graph.traversal import graph_inputs
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.correlated_state import CorrelatedPrior
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.inference.cached_sigma import PytensorMarginalQuadraticCache
 from openghg_inversions.array_ops import to_dense_tree
 from openghg_inversions.models.boundary import Bound, Outputs
@@ -295,7 +295,7 @@ def _add_cached_likelihood(
 def build_co2_cached_sigma_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedPrior,
+    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -414,7 +414,7 @@ def build_co2_cached_sigma_model(
 def _build_co2_cached_sigma_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedPrior,
+    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,

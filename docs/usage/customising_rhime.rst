@@ -444,7 +444,14 @@ requires every generalized base-plus-OU mode variance to be strictly positive.
 An exact zero mode is rejected before applying the low-rank factor, even when
 that factor would make a materialized dense covariance positive definite; a
 positive OU amplitude can lift a zero base mode. The component currently
-requires PyMC's native No-U-Turn Sampler (NUTS) backend. Sampled tau is a
+requires PyMC's native No-U-Turn Sampler (NUTS) backend. Its likelihood runs
+prepared NumPy/SciPy arrays in a Python Op, so
+:class:`~openghg_inversions.inference.sampling.RhimeSampler` compiles such
+models (sampling, log likelihood and predictive draws) with PyTensor's C/VM
+linker rather than the default Numba linker, whose object-mode callback would
+copy the prepared arrays into every compiled function. The staged
+prior-predictive checks use the same inference policy.
+Explicit ``sample_kwargs["compile_kwargs"]`` still take precedence. Sampled tau is a
 separate extension; the package-supported cached sampler is the matched recipe
 described in :ref:`co2-cached-sigma-recipe`.
 

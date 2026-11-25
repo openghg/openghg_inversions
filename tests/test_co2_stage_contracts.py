@@ -48,7 +48,7 @@ def test_invalid_inferred_ou_site_mapping_has_no_sample_destination(tmp_path):
     prep = handoffs.prepare(prepared_path=source, output_dir=tmp_path / "prepare", **FACTS)
     model = {"likelihood": {"kind": "fixed_ou", "tau_hours": {"wrong": 24.0},
                             "site_amplitude_prior": {"pdf": "gamma", "alpha": 2.0, "beta": 3.0}}}
-    with pytest.raises(ValueError, match="every coordinate label"):
+    with pytest.raises(ValueError, match=r"tau_hours site mapping is missing observed site\(s\)"):
         handoffs.sample(prep, model=model, output_dir=tmp_path / "unopened")
     assert not (tmp_path / "unopened").exists()
 
@@ -132,7 +132,7 @@ def test_co2_preparation_allows_unknown_revision(tmp_path, monkeypatch):
         lambda name: SimpleNamespace(version="0.7.3", read_text=lambda name: None))
     canonical = _canonical_inputs()
     manifest = handoffs.prepare(canonical_inputs=canonical, reduction=_reduction(canonical),
-        output_dir=tmp_path / "prepare", **FACTS)
+        aggregation_error_rank=None, output_dir=tmp_path / "prepare", **FACTS)
     record = json.loads(manifest.read_text())
     assert record["provenance"] == {"version": "0.7.3", "revision": None, "dirty": None}
 

@@ -186,6 +186,12 @@ Older-inventory relabelling and climatological year reuse are disabled.
 When a boundary period is declared, both acquisition routes include the interval
 governing a mid-period start and preserve its native timestamp.
 
+For legacy footprints that lack height units, surface preparation assumes
+metres when the indexed height levels match a metre-labelled curtain grid
+and the declared vertical-coordinate conventions agree. It warns and stores
+the assumption with the site's boundary provenance. Supply explicit footprint
+height units when the levels differ.
+
 Selected identities are captured at retrieval in owned wrapper metadata while
 borrowing the datasets. Preparation combines those facts with transport metadata
 and serializes provenance once. Combined observation versions remain unknown
@@ -232,6 +238,7 @@ flux basis for separate fields):
 
    from openghg_inversions.basis._helpers import bc_sensitivity
    from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
+   from openghg_inversions.models.fixed_ou import fixed_ou_mismatch_covariance
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
    from openghg_inversions.rhime.preparation import filter_observations, prepare_observation_errors
 
@@ -245,7 +252,12 @@ flux basis for separate fields):
        basis_functions=chosen_flux_basis, averaging_period="1h",
    )
    # The reduction must describe these same observations, states and sources.
-   prepared = prepare_co2_inputs(canonical, coherent_reduction)
+   # The low-rank rank rule needs a reference mismatch covariance chosen for the run.
+   observations = canonical.inv_inputs
+   reference = fixed_ou_mismatch_covariance(
+       observations["mf"], observations["mf_error"], fixed_site_amplitudes=2.0, amplitude_units="ppm",
+   )
+   prepared = prepare_co2_inputs(canonical, coherent_reduction, reference_covariance=reference)
    prepared.save("centered-co2.nc")
 
 Selection filters preserve aligned operands and scalar references. Preparation
