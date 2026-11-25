@@ -464,7 +464,11 @@ uses NumPyro, while configured linked fixed OU defaults to and requires PyMC.
      - Chosen from the likelihood
      - ``"numpyro"`` for fixed error; ``"pymc"`` for OU
      - Configured ``run_co2`` rejects this option. Linked configuration accepts supported
-       backends, with ``"pymc"`` required for ``fixed_ou``.
+       backends, with ``"pymc"`` required for ``fixed_ou``. Set
+       ``PYTENSOR_FLAGS=floatX=float64`` before starting Python to use float64
+       with NumPyro or BlackJAX. PyTensor selects the JAX precision when it
+       first loads the JAX backend. The trace's ``sampler_precision`` records
+       ``floatX`` and the effective JAX x64 flag.
    * - ``progressbar``
      - ``false``
      - ``false``
