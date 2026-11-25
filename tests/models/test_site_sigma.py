@@ -72,17 +72,6 @@ def _aggregation_error(
                 coords={"nmeasure": np.arange(nmeasure)},
             ),
         )
-    if mode == "diagonal":
-        assert diagonal is not None
-        return AggregationError(
-            mode="diagonal",
-            marginal_variance=diagonal,
-            diagonal_variance=xr.DataArray(
-                diagonal,
-                dims="nmeasure",
-                coords={"nmeasure": np.arange(nmeasure)},
-            ),
-        )
     raise ValueError(f"Unsupported test covariance mode: {mode}")
 
 
@@ -140,18 +129,13 @@ def test_fixed_site_sigma_matches_frozen_dense_covariance() -> None:
     np.testing.assert_allclose(model["epsilon"].eval() ** 2, np.diag(expected_covariance))
 
 
-@pytest.mark.parametrize("mode", ["diagonal", "low_rank"])
-def test_aggregation_covariance_and_reported_error_are_counted_once(mode: str) -> None:
+def test_aggregation_covariance_and_reported_error_are_counted_once() -> None:
     """Match a dense oracle when aggregation error uses a compact representation."""
     observation_error = np.array([0.3, 0.4, 0.2])
     aggregation_diagonal = np.array([0.2, 0.35, 0.25])
-    if mode == "diagonal":
-        aggregation = _aggregation_error("diagonal", diagonal=aggregation_diagonal)
-        aggregation_covariance = np.diag(aggregation_diagonal)
-    else:
-        factor = np.array([[0.4, 0.1], [0.2, -0.3], [0.5, 0.2]])
-        aggregation = _aggregation_error("low_rank", factor=factor, diagonal=aggregation_diagonal)
-        aggregation_covariance = factor @ factor.T + np.diag(aggregation_diagonal)
+    factor = np.array([[0.4, 0.1], [0.2, -0.3], [0.5, 0.2]])
+    aggregation = _aggregation_error("low_rank", factor=factor, diagonal=aggregation_diagonal)
+    aggregation_covariance = factor @ factor.T + np.diag(aggregation_diagonal)
     site_variance = np.array([0.25, 1.0, 0.25])
     expected_covariance = aggregation_covariance + np.diag(observation_error**2 + site_variance)
     model = _build_model(

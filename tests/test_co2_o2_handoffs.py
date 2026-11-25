@@ -4,6 +4,7 @@ from dataclasses import replace
 import json
 
 import numpy as np
+import pymc as pm
 import pytest
 import xarray as xr
 
@@ -22,7 +23,7 @@ def no_inference(monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("Linked persistence must not construct a model or sampler")
 
-    monkeypatch.setattr(handoffs.pm.Model, "__init__", forbidden)
+    monkeypatch.setattr(pm.Model, "__init__", forbidden)
     monkeypatch.setattr(RhimeSampler, "__init__", forbidden)
     monkeypatch.setattr(handoffs, "sample", forbidden)
     monkeypatch.setattr(handoffs, "prior_predictive", forbidden)
