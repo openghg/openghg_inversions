@@ -220,8 +220,8 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     no amplitude step: the state quadratic is built once, never refreshed,
     and the CompoundStep holds only the state NUTS step.
 
-    Selected centered boundary operands currently require PyTensor
-    ``floatX=float64``. This is a restriction of the current implementation.
+    Centered boundary precision requirements depend on the selected boundary
+    choices and priors. Binding checks them once.
     Observations, predictions, and boundary contributions are restored to
     absolute concentrations; see the
     :ref:`centered boundary contract <surface-centered-boundary-contract>`.
@@ -294,8 +294,8 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         ValueError: If independent errors are missing, invalid, mislabelled,
             or conflict with saved errors; channel units or grouping
             coordinates are invalid; selected boundary/offset settings are
-            inconsistent; selected centered boundaries use a floatX other
-            than float64; not exactly one amplitude option is given; OU scales
+            inconsistent; process precision is incompatible with a centered
+            boundary choice; not exactly one amplitude option is given; OU scales
             or amplitudes are invalid; fixed amplitudes leave no active state;
             or the sampler requests an unsupported backend, step, tuning
             control, or predictive keyword. Label, prior, covariance, and
