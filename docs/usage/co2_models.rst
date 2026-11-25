@@ -280,15 +280,20 @@ automatic policy:
      - PyMC NUTS
      - Conservative default; this likelihood does not inherently require PyMC.
    * - ``fixed_ou`` with fixed amplitudes
-     - PyMC NUTS
-     - The custom likelihood operation has no JAX implementation.
+     - PyMC cached state NUTS (state quadratic built once)
+     - Fixed amplitudes make the covariance factorization constant, so the
+       matched cached sampler computes it once instead of on every gradient.
    * - ``fixed_ou`` with inferred amplitudes
      - PyMC cached amplitude update, then state NUTS when states exist
      - Requires the matched cache and ordered amplitude/state update.
 
-The inferred-amplitude OU path needs its custom cached amplitude update, and
-an ordered compound step when states exist. These require PyMC; NumPyro cannot
-execute the matched custom step.
+Both fixed-OU choices use the matched cached sampler. The inferred-amplitude
+path needs its custom cached amplitude update, and an ordered compound step when
+states exist. Fixed amplitudes are its specialisation: there is no amplitude
+step, the state-likelihood quadratic is built once for the fixed values and
+never refreshed, and the compound step holds only the state NUTS step. A
+fixed-amplitude model needs at least one active flux, boundary or offset state.
+These require PyMC; NumPyro cannot execute the matched custom step.
 Timing evidence does not cover PyMC's Numba mode or nutpie and does not establish
 NumPyro as the fastest backend. Site/scalar choices remain conservative policy
 choices. Configured execution exposes no backend selector.
@@ -299,7 +304,11 @@ PyMC. Configured CO₂ now rejects ``sampling.nuts_sampler``; remove that option
 when migrating. ``draws``, ``tune``, ``chains`` and ``random_seed`` remain
 configurable. Inferred OU uses ``sampling.sigma_target_accept`` (default 0.8)
 and ``sampling.state_target_accept`` (default 0.9), each strictly between zero
-and one. These tuning controls are not likelihood options.
+and one. Fixed-amplitude OU has only the state step: it rejects
+``sampling.sigma_target_accept`` and takes either
+``sampling.state_target_accept`` or, as before the cached route, the generic
+``sampling.target_accept`` (not both), defaulting to PyMC's 0.8. These tuning
+controls are not likelihood options.
 For example, replace the likelihood section with:
 
 .. code-block:: toml
@@ -435,8 +444,10 @@ false). A global offset (``per_site = false``) cannot set a frequency or use
 CO2 fixed OU with inferred amplitudes also accepts positive
 ``initial_site_amplitudes`` in ``[likelihood]``. The zero-to-one controls
 ``sigma_target_accept`` and ``state_target_accept`` belong in ``[sampling]``.
-Posterior-predictive name lists may contain only ``y`` or ``concentration``.
-The implementation selects the matched cached sampler automatically.
+With fixed amplitudes only ``state_target_accept`` (or ``target_accept``)
+applies. Posterior-predictive name lists may contain only ``y`` or
+``concentration``. The implementation selects the matched cached sampler
+automatically for both amplitude choices.
 
 The optional ``[sampling]`` table is shared by the supported setups.
 Defaults below apply when an option is omitted; linked fixed-error sampling
@@ -492,15 +503,17 @@ uses NumPyro, while configured linked fixed OU defaults to and requires PyMC.
      - ``0.8`` for ordinary NUTS
      - ``0.95``
      - Number strictly between zero and one. Inferred fixed-OU amplitudes use
-       the separate controls below instead.
+       the separate controls below instead. With fixed OU amplitudes it tunes
+       the cached state step (linked default 0.95).
    * - ``sigma_target_accept``
      - ``0.8``
      - Not available
      - CO2 inferred fixed-OU only; number strictly between zero and one.
    * - ``state_target_accept``
-     - ``0.9``
+     - ``0.9`` (inferred); ``target_accept`` or ``0.8`` (fixed)
      - Not available
-     - CO2 inferred fixed-OU only; used when flux, boundary or offset states exist.
+     - CO2 fixed-OU only; used when flux, boundary or offset states exist.
+       Fixed amplitudes accept this or ``target_accept``, not both.
    * - ``random_seed``
      - Not set
      - Not set
@@ -1426,6 +1439,24 @@ and ``state_target_accept`` belong in ``[sampling]``; a generic
 quadratic cache and fixed-OU generalized eigenbasis are runtime numerical state
 derived from materialized prepared inputs, not external cache artifacts.
 
+Fixed site amplitudes
+^^^^^^^^^^^^^^^^^^^^^
+
+``fixed_site_amplitudes`` selects the same graph and sampler with known
+amplitudes. They are stored as ``ou_site_amplitude`` model data, so traces
+carry them in ``constant_data`` rather than ``posterior``. The exact
+state-likelihood quadratic is built once, for those values, before sampling;
+there is no amplitude step and no refresh, and stock state NUTS samples
+``model.logp(free_RVs) + cached quadratic``. Previously this choice used plain
+PyMC NUTS, which rebuilt the whitened low-rank factor and the Woodbury Cholesky
+factor on every density and gradient evaluation even though they cannot change.
+``sampling.sigma_target_accept`` is rejected; ``sampling.state_target_accept``
+or ``sampling.target_accept`` (not both) tunes the state step, defaulting to
+0.8. At least one flux, boundary or offset state must be active. Fixed
+amplitudes must be finite and non-negative and must give a positive-definite
+covariance. The recorded inference algorithm is
+``cached_fixed_ou_state_nuts``.
+
 The graph exposes one exact observed ``y`` distribution. Native
 ``pm.sample_prior_predictive``, ``pm.sample_posterior_predictive`` and
 ``pm.compute_log_likelihood`` therefore use each draw's complete mean and
@@ -1508,8 +1539,8 @@ cross-channel blocks. ``D_obs`` is the squared reported independent error.
 Each term enters exactly once. Rows may be irregular and interleaved; the
 OU groups preserve their original row positions. Different channels at the
 same site have separate amplitudes and no cross-channel OU contribution.
-Both channels must already use the same concentration units. Heterogeneous
-covariance units are not supported by this option.
+Inferred amplitudes require the same concentration units in both channels;
+fixed amplitudes may use mixed channel units as described below.
 
 Numerically centered boundary operands support the ordinary fixed-OU likelihood
 with either multiplicative scales or additive corrections. The linked model may
@@ -1523,8 +1554,14 @@ This composition is also supported by the cached fixed-OU route.
 
 Tau is fixed in hours. A scalar tau or fixed amplitude applies independently
 to every observed group. Mappings must cover labels such as ``co2:MHD`` and
-``o2:MHD``. Amplitudes and their prior scales use the common concentration unit.
-For example, the ordinary linked configuration can include:
+``o2:MHD``. Each amplitude is in its own channel's units. When the channels
+share a unit, amplitudes and their prior scales use that unit. With mixed units,
+such as CO2 in ppm and per-meg delta(O2/N2) O2, a nonzero fixed amplitude must be
+a ``co2:SITE``/``o2:SITE`` mapping, and inferred amplitudes (one prior for every
+group) are rejected. For mixed units, call the prepared-input Python runner
+:func:`~openghg_inversions.rhime.co2.co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs`.
+Trace amplitudes then carry an ``ou_units`` coordinate. For channels using the
+same concentration unit, the linked TOML configuration can include:
 
 .. code-block:: toml
 
@@ -1534,6 +1571,15 @@ For example, the ordinary linked configuration can include:
    tau_hours = { "co2:MHD" = 6.0, "o2:MHD" = 8.0 }
    fixed_site_amplitudes = { "co2:MHD" = 0.4, "o2:MHD" = 0.7 }
 
+Fixed linked amplitudes are sampled by the cached fixed-OU sampler, whether
+they come from this configuration, the saved ``sample`` phase or the direct
+prepared-input runner: the joint state quadratic is built once and only the
+state NUTS step runs, tuned by ``target_accept`` (default 0.95). The trace
+keeps the ``co2_o2`` recipe annotations, with ``ou_site_amplitude`` (and its
+``ou_units``) in ``constant_data``, and records the algorithm
+``cached_fixed_ou_state_nuts``. :func:`~openghg_inversions.rhime.co2.co2_o2_runner.build_rhime_co2_o2`
+still builds the plain graph for prior prediction.
+
 In direct Python calls to the linked prepared-input runner, replace the
 ``fixed_site_amplitudes`` argument with ``site_amplitude_prior`` to infer
 amplitudes with stock PyMC. The optimized runner
@@ -1541,7 +1587,9 @@ amplitudes with stock PyMC. The optimized runner
 uses independent positive amplitude priors and the existing CO2
 sigma-then-state ``CompoundStep``. It refreshes the exact state quadratic only
 when returned amplitude values change, then updates all active flux, boundary,
-and offset coefficients against that cache. Its builder is
+and offset coefficients against that cache. It also accepts
+``fixed_site_amplitudes`` (then without the amplitude step and without
+``sigma_target_accept``). Its builder is
 :func:`openghg_inversions.rhime.co2.build_co2_o2_cached_sigma_model`.
 
 For inferred linked amplitudes, use the direct Python scientific APIs with
@@ -1560,3 +1608,28 @@ interface as the CO2 runner described above. It supplies one normalized joint
 log likelihood per posterior draw and optional correlated joint prior and
 posterior predictive vectors, preserving cross-channel aggregation covariance.
 The joint likelihood must not be treated as pointwise observation densities.
+
+Linked runners using PyMC's default trace recorder automatically store
+only the free random variables during sampling.
+The likelihood still evaluates the terms it needs. After PyMC returns, the
+runners compute the joint log likelihood for the retained posterior and
+evaluate deterministics for the retained posterior and any saved warmup draws.
+Observed random variables remain conditioned on their data during evaluation,
+following PyMC's ordinary recording and transform conventions.
+This keeps observation-sized deterministics out of the sampling buffers.
+The linked Python runners and saved-input CLI sampling phase use the same
+strategy, with the likelihood and reconstruction logged as separate passes.
+Custom samplers, other backends and explicit recording options such as
+callbacks or custom traces use their existing recording paths.
+
+The returned trace contains all requested draws and derived outputs, so its
+storage grows with chains, draws and observations. The model generates prior
+draws and prior predictions together in a separate forward pass. Prediction,
+serialization and diagnostics have their own memory costs. Other
+sampling backends, explicit trace backends or sampling callbacks, requests to
+include transformed variables and empty retained groups use the ordinary
+recording path.
+
+Burn discards only post-tuning retained draws, including the corresponding
+sample statistics and log likelihood. Saved ``warmup_*`` groups retain their
+complete tuning support, even when burn exceeds the number of tuning draws.

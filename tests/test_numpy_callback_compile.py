@@ -56,8 +56,8 @@ def _is_numba(compile_kwargs) -> bool:
 @pytest.fixture
 def recorded(monkeypatch):
     """Record the compile options PyMC receives at each step, then run it."""
-    calls: dict[str, list] = {step: [] for step in STEPS}
-    for step in STEPS:
+    calls: dict[str, list] = {step: [] for step in (*STEPS, "compute_deterministics")}
+    for step in calls:
         original = getattr(pm, step)
 
         def wrapper(*args, _original=original, _step=step, **kwargs):
@@ -91,6 +91,41 @@ def test_fixed_ou_sampling_never_uses_the_numba_callback(recorded):
     # The log likelihood is still saved, now computed with the same compile options.
     assert "y" in trace["log_likelihood"]
     assert trace["log_likelihood"]["y"].sizes["draw"] == 20
+
+
+@pytest.mark.parametrize(
+    "kind,mode",
+    [("fixed_ou", None), ("fixed_ou", "FAST_COMPILE"), ("normal", "FAST_COMPILE")],
+)
+def test_deferred_evaluation_uses_the_resolved_compiler(monkeypatch, recorded, kind, mode):
+    """Use the same selected compiler for likelihoods and deferred deterministics."""
+    if kind == "fixed_ou":
+        model = _model(kind)
+    else:
+        with pm.Model() as model:
+            level = pm.Normal("level")
+            pm.Normal("y", level, observed=1.0)
+    with model:
+        pm.Deterministic("signal", 2 * model["level"])
+    posterior = xr.Dataset(
+        {"level": (("chain", "draw"), np.array([[1.0, 1.5, 2.0]], dtype=model["level"].dtype))},
+        coords={"chain": [0], "draw": [0, 1, 2]},
+    )
+    monkeypatch.setattr(pm, "sample", lambda **kwargs: xr.DataTree.from_dict({"posterior": posterior}))
+    compile_override = {"compile_kwargs": {"mode": mode}} if mode is not None else {}
+    trace = RhimeSampler(
+        draws=3, burn=1, chains=1, sample_kwargs=compile_override,
+        sample_prior_predictive=False, sample_posterior_predictive=False,
+    )._sample(model, defer_deterministics=True)
+
+    for step in ("compute_log_likelihood", "compute_deterministics"):
+        (compiler,) = recorded[step]
+        if mode is None:
+            assert get_mode(compiler["mode"]).linker.use_cloop
+        else:
+            assert compiler["mode"] == mode
+    assert trace.log_likelihood.y.sizes["draw"] == 2
+    np.testing.assert_allclose(trace.posterior.signal, [[3.0, 4.0]])
 
 
 def test_ordinary_models_keep_the_default_compile_mode(recorded):
