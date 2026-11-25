@@ -21,7 +21,13 @@ import numpy as np
 from scipy.linalg import cho_factor, cho_solve, solve_triangular
 import xarray as xr
 
-from openghg_inversions._linalg import cholesky_with_condition
+from openghg_inversions._linalg import (
+    ROUNDOFF_RELATIVE_TOLERANCE,
+    check_symmetric,
+    cholesky_logdet,
+    cholesky_with_condition,
+    roundoff_tolerance,
+)
 from openghg_inversions.array_ops import materialize_together, validate_covariance_coordinates
 
 #: ``"auto"`` selects the supplied dense or low-rank covariance, or ``"none"``
@@ -162,7 +168,7 @@ def prepare_low_rank_aggregation_error(
         _numeric_finite("covariance", covariance, owner="Low-rank approximation input"),
         dtype=float,
     )
-    roundoff_tolerance = _validate_dense_covariance_symmetry(
+    roundoff_tolerance = check_symmetric(
         values,
         owner="Low-rank approximation input covariance",
     )
@@ -240,7 +246,7 @@ def _factorize_aggregation_error(
             ),
             "diagonal_preservation_error": float(np.max(np.abs(np.diag(values) - marginal_variance))),
             "roundoff_tolerance": roundoff_tolerance,
-            "symmetry_relative_tolerance": 1e-10,
+            "symmetry_relative_tolerance": ROUNDOFF_RELATIVE_TOLERANCE,
             "psd_absolute_tolerance": roundoff_tolerance,
             "diagonal_tail_clipped_count": approximation.diagonal_tail_clipped_count,
             "diagonal_tail_max_clipped_magnitude": approximation.diagonal_tail_max_clipped_magnitude,
@@ -273,7 +279,7 @@ def aggregation_error_as_low_rank(
         approximation = _diagonal_preserving_spectral_lrpd(
             covariance,
             rank=None,
-            roundoff_tolerance=_covariance_roundoff_tolerance(covariance),
+            roundoff_tolerance=roundoff_tolerance(covariance),
             owner="Dense aggregation-error covariance",
         )
         return approximation.factor, approximation.diagonal
@@ -516,7 +522,7 @@ def _prepare_whitened_low_rank_aggregation_error(
     values = np.asarray(
         _numeric_finite("covariance", covariance, owner="Low-rank approximation input"), dtype=float
     )
-    tolerance = _validate_dense_covariance_symmetry(values, owner="Low-rank approximation input covariance")
+    tolerance = check_symmetric(values, owner="Low-rank approximation input covariance")
     cholesky = _reference_cholesky(reference_covariance, values.shape[0])
     eigenvalues = _whitened_spectrum(values, cholesky)
     del cholesky
@@ -585,10 +591,10 @@ def _stored_representation_kl(
     stored += reference_covariance
     exact = stored + difference
     exact_factor = cho_factor(exact, lower=True, overwrite_a=True, check_finite=False)
-    logdet_exact = 2.0 * float(np.log(np.diag(exact_factor[0])).sum())
+    logdet_exact = cholesky_logdet(exact_factor[0])
     del exact, exact_factor
     stored_factor = cho_factor(stored, lower=True, overwrite_a=True, check_finite=False)
-    logdet_stored = 2.0 * float(np.log(np.diag(stored_factor[0])).sum())
+    logdet_stored = cholesky_logdet(stored_factor[0])
     trace = float(np.trace(cho_solve(stored_factor, difference, overwrite_b=True, check_finite=False)))
     return max(0.5 * (trace + logdet_stored - logdet_exact), 0.0)
 
@@ -614,7 +620,7 @@ def _reference_cholesky(reference_covariance: np.ndarray, n_observation: int) ->
         )
     if not np.isfinite(values).all():
         raise ValueError("The reference covariance must be finite.")
-    _validate_dense_covariance_symmetry(values, owner="The reference covariance")
+    check_symmetric(values, owner="The reference covariance")
     try:
         (factor, _), reciprocal_condition = cholesky_with_condition(0.5 * (values + values.T))
     except np.linalg.LinAlgError as exc:
@@ -719,44 +725,6 @@ def _diagonal_preserving_spectral_lrpd(
     )
 
 
-def _covariance_roundoff_tolerance(values: np.ndarray) -> float:
-    """Return the covariance-scale absolute numerical tolerance."""
-    scale = float(np.max(np.abs(values)))
-    return 1e-10 * scale if scale else 0.0
-
-
-def _validate_dense_covariance_symmetry(
-    values: np.ndarray,
-    *,
-    owner: str,
-) -> float:
-    """Require a materialized dense covariance to be symmetric.
-
-    Args:
-        values: Materialized square covariance values.
-        owner: Scientific owner named in validation errors.
-
-    Returns:
-        Scale-relative absolute roundoff tolerance.
-
-    Raises:
-        ValueError: If ``values`` is not symmetric within the scale-based
-            numerical tolerance.
-    """
-    tolerance = _covariance_roundoff_tolerance(values)
-    block_rows = 256
-    for start in range(0, values.shape[0], block_rows):
-        stop = min(start + block_rows, values.shape[0])
-        if not np.allclose(
-            values[start:stop],
-            values[:, start:stop].T,
-            rtol=1e-10,
-            atol=tolerance,
-        ):
-            raise ValueError(f"{owner} must be symmetric.")
-    return tolerance
-
-
 def _validate_dense_covariance_values(
     values: np.ndarray,
     *,
@@ -775,7 +743,7 @@ def _validate_dense_covariance_values(
         ValueError: If ``values`` is not symmetric or positive semidefinite
             within the scale-based numerical tolerance.
     """
-    tolerance = _validate_dense_covariance_symmetry(values, owner=owner)
+    tolerance = check_symmetric(values, owner=owner)
     eigenvalues = np.linalg.eigvalsh(values, UPLO="L")
     if float(eigenvalues.min()) < -tolerance:
         raise ValueError(f"{owner} must be positive semidefinite.")
