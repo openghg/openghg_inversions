@@ -29,7 +29,7 @@ from openghg_inversions.rhime._stage_artifacts import (
 from openghg_inversions.rhime._stage_checks import (
     PREPARATION_CHECK_NAME, _check_draws, _check_result, _check_stage,
 )
-from openghg_inversions.rhime.sampling import sample_rhime_model
+from openghg_inversions.rhime.sampling import _sample_linked_rhime_model
 from openghg_inversions.serialization import load_trace, save_trace
 
 from .co2_o2_configuration import (
@@ -223,7 +223,7 @@ def sample(
         )
     else:
         built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
-        trace = sample_rhime_model(built, active_sampler)
+        trace = _sample_linked_rhime_model(built, active_sampler)
         trace = annotate_co2_o2_trace(trace, built=built)
         actual = active_sampler.describe()
     return save_samples(

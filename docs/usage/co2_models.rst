@@ -1494,3 +1494,28 @@ interface as the CO2 runner described above. It supplies one normalized joint
 log likelihood per posterior draw and optional correlated joint prior and
 posterior predictive vectors, preserving cross-channel aggregation covariance.
 The joint likelihood must not be treated as pointwise observation densities.
+
+Linked runners using PyMC's default trace recorder automatically store
+only the free random variables during sampling.
+The likelihood still evaluates the terms it needs. After PyMC returns, the
+runners compute the joint log likelihood for the retained posterior and
+evaluate deterministics for the retained posterior and any saved warmup draws.
+Observed random variables remain conditioned on their data during evaluation,
+following PyMC's ordinary recording and transform conventions.
+This keeps observation-sized deterministics out of the sampling buffers.
+The linked Python runners and saved-input CLI sampling phase use the same
+strategy, with the likelihood and reconstruction logged as separate passes.
+Custom samplers, other backends and explicit recording options such as
+callbacks or custom traces use their existing recording paths.
+
+The returned trace contains all requested draws and derived outputs, so its
+storage grows with chains, draws and observations. The model generates prior
+draws and prior predictions together in a separate forward pass. Prediction,
+serialization and diagnostics have their own memory costs. Other
+sampling backends, explicit trace backends or sampling callbacks, requests to
+include transformed variables and empty retained groups use the ordinary
+recording path.
+
+Burn discards only post-tuning retained draws, including the corresponding
+sample statistics and log likelihood. Saved ``warmup_*`` groups retain their
+complete tuning support, even when burn exceeds the number of tuning draws.
