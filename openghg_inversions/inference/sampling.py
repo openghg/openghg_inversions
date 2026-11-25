@@ -543,7 +543,7 @@ class RhimeSampler:
         model: pm.Model,
         *,
         variable_roles: Mapping[str, str] | None = None,
-        recompute_deterministics: bool = False,
+        defer_deterministics: bool = False,
     ) -> xr.DataTree:
         """Sample a built RHIME model and append requested predictive groups.
 
@@ -554,13 +554,14 @@ class RhimeSampler:
                 role names. The historical default ``"y"`` resolves to the
                 explicit ``concentration`` role when a custom model has no
                 variable named ``y``.
-            recompute_deterministics: For the PyMC backend, record free random
-                variables and restore every deterministic from the unchanged
-                graph after sampling returns. Evaluation retains final output
-                arrays plus one state's intermediate values. Other backends,
-                explicit traces or callbacks, a separate ``idata_kwargs`` conversion
-                model, transformed-variable requests
-                and empty retained groups use the ordinary recording path.
+            defer_deterministics: For PyMC, record only free random variables
+                during sampling, then evaluate deterministics for the retained
+                posterior and any saved warmup draws. The likelihood still
+                evaluates terms it needs during sampling. The default records
+                deterministics during sampling. Other backends, explicit
+                traces or callbacks, a separate conversion model in
+                ``idata_kwargs``, transformed-variable requests, and empty
+                retained groups also use ordinary recording.
 
         Returns:
             Sampled trace with requested predictive groups, after burn slicing
@@ -591,7 +592,7 @@ class RhimeSampler:
                 sample_kwargs["compile_kwargs"] = compile_kwargs
 
         compact = (
-            recompute_deterministics
+            defer_deterministics
             and self.nuts_sampler == "pymc"
             and not idata_kwargs.get("include_transformed", False)
             and sample_kwargs.get("trace") is None

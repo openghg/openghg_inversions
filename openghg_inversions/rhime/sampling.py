@@ -20,17 +20,18 @@ def sample_rhime_model(
     model_build_result: RhimeModelBuildResult,
     sampler: RhimeSampler,
     *,
-    recompute_deterministics: bool = False,
+    defer_deterministics: bool = False,
 ) -> xr.DataTree:
     """Sample a built RHIME graph at the named sampler boundary.
 
     Args:
         model_build_result: Concrete graph and semantic variable roles.
         sampler: Configured sampler used for posterior and predictive draws.
-        recompute_deterministics: Record compact PyMC states and evaluate all
-            deterministic outputs after pm.sample returns.
-            Other backends, explicit traces or callbacks, transformed-variable
-            requests and empty retained groups use the ordinary recording path.
+        defer_deterministics: Evaluate deterministics for the retained
+            posterior and any saved warmup draws after PyMC returns. The default
+            records them during sampling. See
+            :meth:`~openghg_inversions.inference.sampling.RhimeSampler.sample`
+            for recording options that use the ordinary path.
 
     Returns:
         Sampled posterior and predictive groups.
@@ -39,7 +40,7 @@ def sample_rhime_model(
     idata = sampler.sample(
         model_build_result.model,
         variable_roles=model_build_result.output_contract.variable_roles,
-        recompute_deterministics=recompute_deterministics,
+        defer_deterministics=defer_deterministics,
     )
     log_timing(
         "rhime.sampler_total",

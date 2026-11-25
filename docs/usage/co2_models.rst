@@ -1448,8 +1448,9 @@ posterior predictive vectors, preserving cross-channel aggregation covariance.
 The joint likelihood must not be treated as pointwise observation densities.
 
 Linked runners using PyMC record the free random variables during sampling.
-After PyMC returns, they compute the joint log likelihood and evaluate every
-deterministic from the unchanged model graph.
+The likelihood still evaluates the terms it needs. After PyMC returns, the
+runners compute the joint log likelihood for the retained posterior and
+evaluate deterministics for the retained posterior and any saved warmup draws.
 Observed random variables remain conditioned on their data during evaluation,
 following PyMC's ordinary recording and transform conventions.
 This avoids keeping observation-sized deterministics in both warmup/retained
@@ -1460,11 +1461,12 @@ sampling route use the same storage strategy. Likelihood and deterministic
 reconstruction are logged as separate passes. This opt-in behavior has been
 validated for the linked recipes described here; other RHIME families and
 arbitrary public PyMC models retain their existing defaults. Direct builder users can select
-it with ``sample_rhime_model(built, sampler, recompute_deterministics=True)``.
+it with ``sample_rhime_model(built, sampler, defer_deterministics=True)``.
 
-The returned trace still contains all requested draws and derived outputs, so
-its storage grows with chains, draws and observations. Prior and posterior
-prediction, serialization and diagnostics have their own memory costs. Other
+The returned trace contains all requested draws and derived outputs, so its
+storage grows with chains, draws and observations. The model generates prior
+draws and prior predictions together in a separate forward pass. Prediction,
+serialization and diagnostics have their own memory costs. Other
 sampling backends, explicit trace backends or sampling callbacks, requests to
 include transformed variables and empty retained groups use the ordinary
 recording path.
