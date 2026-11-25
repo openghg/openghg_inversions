@@ -241,7 +241,7 @@ def test_full_run_guards_only_consumed_files_and_written_targets(full_run_files,
         kwargs["prepared"] = prepared
     elif route == "canonical":
         canonical = _canonical_inputs()
-        kwargs.update(canonical_inputs=canonical, reduction=_reduction(canonical))
+        kwargs.update(canonical_inputs=canonical, reduction=_reduction(canonical), aggregation_error_rank=None)
     before = source.read_bytes()
     def reached(*args, **kwargs):
         raise RuntimeError("sampling reached with valid unused path")
