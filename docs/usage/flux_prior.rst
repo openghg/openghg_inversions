@@ -46,26 +46,34 @@ The other marginals have the same mean and SD with less right skew:
   only in a sum of states (net flux) is not pulled towards small gross terms,
   but scalings can be negative (about 6% probability at CV 0.63). Mainly a
   test and comparison family.
-- ``"weibull"`` and ``"gamma"``: positive and defined for any CV. A mean-one
+- ``"weibull"`` and ``"gamma"``: positive with nonzero prior variance. The
+  Weibull moment solver accepts shape parameters from 0.02 to 1000, so
+  a coefficient of variation below about 0.00128 is too small. A mean-one
   lognormal at CV 0.63 has median 0.85; the Weibull 0.89 and gamma 0.87. In
   OPE-188 July 2021 fits, Weibull GPP/TER marginals removed about two thirds
   of the lognormal's gross shrinkage relative to a Gaussian in CO2-only fits
   and about half in linked fits; gamma removed a fifth to a quarter. Gamma
-  states are held at their quantile for latent :math:`u=8` above it
-  (probability 6e-16), because the JAX inverse incomplete gamma overflows
-  near :math:`u=10`; both samplers use the same map.
+  states use the quantile at latent :math:`u=8` for larger values
+  (standard-normal probability about :math:`6\times 10^{-16}`). The cap
+  applies in NumPy, PyMC and NumPyro. Very small probabilities in the lower
+  tail can underflow at the sampler's working precision.
 
 A pair with a normal state, or two lognormal states, has a closed-form latent
-correlation. Weibull and gamma pairs solve a 60-term Hermite series for it.
+correlation. For the remaining Weibull and gamma pairs, the solver matches the
+covariance using a 60-term Hermite approximation. It checks that the series
+reproduces each affected marginal variance to within :math:`10^{-6}` relative.
 A pair covariance no latent correlation can reach (for example strong negative
 correlation between very skewed states), or a latent correlation that is not
 positive definite, fails clearly without repair.
 
-A CO₂ preparation stores a marginal per retained state as
-``alpha_prior_marginal`` when ``prepare_co2_inputs`` is given
-``prior_marginal``; the ordinary and cached CO₂ runners pass it to the prior.
-Preparations without it are unchanged. Every marginal works with both PyMC's
-sampler and numpyro; under numpyro, gamma uses TensorFlow Probability.
+Pass ``prior_marginal`` to the Python function
+:func:`~openghg_inversions.rhime.co2.prepare_co2_inputs` as a labelled array
+of family names on the retained state axis. The preparation saves it as
+``alpha_prior_marginal``. Ordinary and cached CO₂ runners use it and record
+the prior and family counts in the output metadata. Preparations without
+it use the lognormal prior. Gamma uses TensorFlow Probability for the
+central quantile in NumPyro and a survival-probability solve in the upper
+tail.
 
 Activity
 --------

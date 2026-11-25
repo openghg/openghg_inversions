@@ -418,7 +418,7 @@ def co2_cached_sigma_build_result(
     metadata = {
         "recipe": "co2",
         "kind": "builtin",
-        "prior": "correlated arithmetic-moment lognormal",
+        **(cached_model.prior_metadata or {"prior": "correlated arithmetic-moment lognormal"}),
         "mismatch_component": "fixed_within_site_ou",
         "basis_artifact_source": getattr(
             prepared_inputs,

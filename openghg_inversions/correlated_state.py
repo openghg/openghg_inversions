@@ -22,8 +22,8 @@ closure, not exact marginalization of a LogNormal state. Fixing a state at a
 known value is instead handled by ``models.StateActivity``.
 
 Model builders take a ``CorrelatedPrior``: arithmetic moments with a marginal
-family per state, joined by a Gaussian copula. Its only marginal is lognormal,
-built by ``CorrelatedLognormalPrior``. That class's constructor eagerly
+family per state, joined by a Gaussian copula. All-lognormal priors use
+``CorrelatedLognormalPrior``. That class's constructor eagerly
 computes xarray inputs and owns independent copies; ``to_dataset`` and
 ``from_dataset`` provide persistence boundaries. Construction warns before
 dense covariance materialization when the reduced state exceeds 1,000
@@ -886,9 +886,9 @@ class CorrelatedPrior:
     The prior is a Gaussian copula. A whitened standard-normal vector ``z`` is
     correlated as ``u = L z`` and each state is ``x_i = F_i^-1(Phi(u_i))``,
     where ``F_i`` is the state's marginal with its arithmetic mean and SD. The
-    latent correlations ``L L^T`` are chosen pair by pair so that the
-    arithmetic covariance is matched exactly (the NORTA construction).
-    Changing a marginal changes only the shape of that state's distribution.
+    latent correlations ``L L^T`` are chosen pair by pair to reproduce the
+    arithmetic covariance (the NORTA construction). Changing a marginal
+    preserves its declared arithmetic mean and variance.
 
     Marginals (:data:`STATE_MARGINALS`):
 
@@ -901,9 +901,10 @@ class CorrelatedPrior:
       a sum of states is pulled less towards small values.
 
     Pairs with a normal state, and lognormal pairs, have closed-form latent
-    correlations. Weibull and gamma pairs solve a Hermite series. A pair whose
-    covariance no latent correlation can reach, or a latent correlation that
-    is not positive definite, is rejected without repair.
+    correlations. Remaining pairs involving Weibull or Gamma use a truncated
+    Hermite series for covariance matching. A pair whose covariance no latent
+    correlation can reach, or a latent correlation that is not positive
+    definite, is rejected.
 
     Attributes:
         lognormal: Validated lognormal copula when every marginal is
@@ -1062,6 +1063,21 @@ class CorrelatedPrior:
     def is_lognormal(self) -> bool:
         """Whether every state has the lognormal marginal."""
         return self.lognormal is not None
+
+    def metadata(self) -> dict[str, Any]:
+        """Describe this prior for saved model outputs.
+
+        Returns:
+            JSON-safe prior description and state counts per marginal family.
+        """
+        families, counts = np.unique(self.marginal.values, return_counts=True)
+        return {
+            "prior": (
+                "correlated arithmetic-moment lognormal" if self.is_lognormal
+                else "correlated arithmetic-moment Gaussian copula"
+            ),
+            "prior_marginals": {str(family): int(count) for family, count in zip(families, counts, strict=True)},
+        }
 
     def _state_matrix(self, values: np.ndarray, name: str) -> xr.DataArray:
         coords = {key: coord for key, coord in self._mean.coords.items()}
