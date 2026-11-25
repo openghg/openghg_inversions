@@ -219,7 +219,8 @@ def test_one_state_has_only_mean_even_with_positive_scale(double_precision, scal
         result = bound.add()
         assert len(result.blocks) == len(result.sampled_rvs) == 1
         assert "bc_anomaly_latent" not in model.named_vars
-        np.testing.assert_allclose(model["bc_centering_weights"].eval(), [1.])
+        # Weights only shape sampled anomalies, so none are recorded here.
+        assert "bc_centering_weights" not in model.named_vars
         np.testing.assert_allclose((result.likelihood_contribution - _affine_expression(result)).eval(), 0., atol=1e-12)
 
 
@@ -232,9 +233,19 @@ def test_additive_choice_rejects_invalid_anomaly_scale(scale):
 def test_weighted_additive_binding_requires_centering_weights(double_precision):
     data, observations = _native_boundary()
     with pytest.raises(ValueError, match="require bc_centering_weights"):
-        AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.).bind(
+        AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.5).bind(
             observations, raw_transport(data),
         )
+
+
+def test_level_only_additive_binding_needs_no_centering_weights(double_precision):
+    data, observations = _native_boundary()
+    bound = AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.).bind(observations, raw_transport(data))
+    with registered_model() as model:
+        result = bound.add()
+    assert "bc_mean_shift" in model.named_vars
+    assert "bc_centering_weights" not in model.named_vars
+    assert len(result.blocks) == 1
 
 
 @pytest.mark.parametrize(

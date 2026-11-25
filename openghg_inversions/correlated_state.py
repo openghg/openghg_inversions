@@ -22,8 +22,8 @@ closure, not exact marginalization of a LogNormal state. Fixing a state at a
 known value is instead handled by ``models.StateActivity``.
 
 Model builders take a ``CorrelatedPrior``: arithmetic moments with a marginal
-family per state, joined by a Gaussian copula. Its only marginal is lognormal,
-built by ``CorrelatedLognormalPrior``. That class's constructor eagerly
+family per state, joined by a Gaussian copula. All-lognormal priors use
+``CorrelatedLognormalPrior``. That class's constructor eagerly
 computes xarray inputs and owns independent copies; ``to_dataset`` and
 ``from_dataset`` provide persistence boundaries. Construction warns before
 dense covariance materialization when the reduced state exceeds 1,000
@@ -967,9 +967,9 @@ class CorrelatedPrior:
     The prior is a Gaussian copula. A whitened standard-normal vector ``z`` is
     correlated as ``u = L z`` and each state is ``x_i = F_i^-1(Phi(u_i))``,
     where ``F_i`` is the state's marginal with its arithmetic mean and SD. The
-    latent correlations ``L L^T`` are chosen pair by pair so that the
-    arithmetic covariance is matched exactly (the NORTA construction).
-    Changing a marginal changes only the shape of that state's distribution.
+    latent correlations ``L L^T`` are chosen pair by pair to reproduce the
+    arithmetic covariance (the NORTA construction). Changing a marginal
+    preserves its declared arithmetic mean and variance.
 
     Marginals (:data:`STATE_MARGINALS`):
 
@@ -982,13 +982,12 @@ class CorrelatedPrior:
       a sum of states is pulled less towards small values.
 
     Pairs with a normal state, and lognormal pairs, have closed-form latent
-    correlations. Weibull and gamma pairs solve a Hermite series. A pair whose
-    covariance no latent correlation can reach is rejected. A latent
-    correlation that is not positive definite is rejected too, unless
-    ``latent_correlation_floor`` is given: then its eigenvalues are raised to
-    the floor and its unit diagonal restored, which moves the implied
-    arithmetic covariance slightly off the target. The size of that change is
-    recorded in :attr:`latent_correlation_repair`.
+    correlations. Remaining pairs involving Weibull or Gamma use a truncated
+    Hermite series for covariance matching. A pair whose covariance no latent
+    correlation can reach is rejected. A latent correlation that is not
+    positive definite is rejected by default. An explicit
+    ``latent_correlation_floor`` permits repair subject to the 0.01 bound on
+    arithmetic correlation changes. See :attr:`latent_correlation_repair`.
 
     Attributes:
         lognormal: Validated lognormal copula when every marginal is
@@ -1106,7 +1105,17 @@ class CorrelatedPrior:
         covariance_dim: str | None,
         marginal: str | xr.DataArray,
     ) -> tuple[np.ndarray, xr.DataArray]:
-        """Validate and store a copula prior's moments and marginal names; return the mean values and covariance."""
+        """Validate and store the copula's labelled moments and marginal names.
+
+        Args:
+            mean: Arithmetic means indexed by state.
+            arithmetic_covariance: State covariance aligned with the mean.
+            covariance_dim: Optional covariance column dimension.
+            marginal: Family shared by the states or labels for each state.
+
+        Returns:
+            Numerical means in state order and their labelled covariance.
+        """
         state_dim, covariance_dim, mean_values, covariance = _validate_arithmetic_moments(
             mean, arithmetic_covariance, covariance_dim=covariance_dim, stacklevel=6
         )
@@ -1132,9 +1141,19 @@ class CorrelatedPrior:
     def _restrict(self, mean: xr.DataArray, marginal: xr.DataArray, indices: np.ndarray) -> CorrelatedPrior:
         """Return the prior of the states at ``indices``, relabelled by ``mean`` and ``marginal``.
 
-        The latent correlation is the block of this prior's, repaired or not,
-        so the result is this prior's marginal on those states. Its repair
-        record is this prior's.
+        The subset keeps the parent's latent correlation block and repair
+        provenance.
+
+        Args:
+            mean: Arithmetic means relabelled for the selected states.
+            marginal: Marginal families with the same new labels.
+            indices: Positions of these states in the parent prior.
+
+        Returns:
+            Marginal prior on the selected states.
+
+        Raises:
+            ValueError: If the prior uses the all-lognormal construction.
         """
         if self.lognormal is not None:
             raise ValueError("Restrict an all-lognormal prior through its CorrelatedLognormalPrior.")
@@ -1226,6 +1245,21 @@ class CorrelatedPrior:
     def is_lognormal(self) -> bool:
         """Whether every state has the lognormal marginal."""
         return self.lognormal is not None
+
+    def metadata(self) -> dict[str, Any]:
+        """Describe this prior for saved model outputs.
+
+        Returns:
+            JSON-safe prior description and state counts per marginal family.
+        """
+        families, counts = np.unique(self.marginal.values, return_counts=True)
+        return {
+            "prior": (
+                "correlated arithmetic-moment lognormal" if self.is_lognormal
+                else "correlated arithmetic-moment Gaussian copula"
+            ),
+            "prior_marginals": {str(family): int(count) for family, count in zip(families, counts, strict=True)},
+        }
 
     def _state_matrix(self, values: np.ndarray, name: str) -> xr.DataArray:
         coords = {key: coord for key, coord in self._mean.coords.items()}

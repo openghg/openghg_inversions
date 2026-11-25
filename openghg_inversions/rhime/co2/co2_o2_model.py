@@ -34,11 +34,12 @@ from openghg_inversions.models.components import (
     warn_constant_offset_confounding,
 )
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.observation_error import AggregationError
 
 from .co2_model import _normalise_offset_args
-from .co2_o2_fixed_ou import linked_fixed_ou_alignment
+from .co2_o2_fixed_ou import linked_fixed_ou_alignment, validate_linked_ou_amplitude_units
 
 
 def _gather_co2_o2_sensitivity(
@@ -217,8 +218,14 @@ def _add_co2_o2_baseline_components(
     _validate_channel_offset_options(offset_prior, offset_args)
     if not boundary and not offset_prior:
         return []
-    if len(np.unique(observations["observation_units"].values)) != 1:
-        raise ValueError("Linked boundary and offset components currently require identical channel units.")
+    # Offsets are channel-native: each prior is in its channel's units and the
+    # padded design is zero on the other channel, so mixed units are well defined.
+    # Linked boundaries keep the identical-unit contract until their per-channel
+    # scaling is defined.
+    if any(bound is not None for bound in (boundary or {}).values()) and (
+        len(np.unique(observations["observation_units"].values)) != 1
+    ):
+        raise ValueError("Linked boundary components currently require identical channel units.")
     output_dim = str(observations.dims[0])
     components = []
     boundaries = []
@@ -282,6 +289,7 @@ def build_co2_o2_model(
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -343,17 +351,27 @@ def build_co2_o2_model(
         state_activity: Optional labelled policy fixing or activating retained
             states.
         boundary: Resolved boundary component, keyed by channel.
+        outer_flux: Optional outer-flux choice, resolved here once on the
+            shared ``retained_prior`` for both channels. Its fixed outer states
+            are held at their prior mean with zero uncertainty after joint
+            exact-zero pruning. See
+            :doc:`/usage/atmospheric_baseline`.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
-            with the same meanings as the CO2 offset component. Baseline terms
-            require identical channel units and are zero on the other channel.
+            with the same meanings as the CO2 offset component. Each channel's
+            offset is in that channel's units and is zero on the other channel,
+            so offsets allow mixed units (for example ppm CO2 and per-meg O2).
+            Boundary terms still require identical channel units.
         output_dim: Joint observation dimension used by the likelihood.
         tau_hours: Optional fixed OU timescale in hours, scalar or mapping keyed
-            by ``co2:SITE``/``o2:SITE``. Requires common channel units.
-        fixed_site_amplitudes: Fixed additive OU standard deviations in the
-            common concentration units; scalar or species/site mapping.
+            by ``co2:SITE``/``o2:SITE``.
+        fixed_site_amplitudes: Fixed additive OU standard deviations in each
+            species/site group's channel units; scalar or species/site mapping.
+            With mixed channel units (for example ppm CO2 and per-meg O2) a
+            nonzero value must be a mapping.
         site_amplitude_prior: Prior for inferred species/site OU amplitudes in
             concentration units, mutually exclusive with fixed amplitudes.
+            Requires common channel units.
 
     Returns:
         A registered PyMC model containing the shared state, gathered joint
@@ -366,7 +384,8 @@ def build_co2_o2_model(
     (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd), boundary, priors = (
         dask_compute(*to_dense_tree((
             (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd),
-            dict(boundary or {}), {"amplitude": site_amplitude_prior, "offset": offset_prior},
+            dict(boundary or {}),
+            {"amplitude": site_amplitude_prior, "offset": offset_prior},
         )))
     )
     site_amplitude_prior, offset_prior = priors["amplitude"], priors["offset"]
@@ -380,6 +399,7 @@ def build_co2_o2_model(
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
         boundary=boundary,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
         output_dim=output_dim,
@@ -400,6 +420,7 @@ def _build_co2_o2_model(
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -425,6 +446,9 @@ def _build_co2_o2_model(
         output_dim=output_dim,
     )
     activity = resolve_state_activity(prepared_sensitivity.removed, state_activity)
+    if outer_flux is not None:
+        # Resolve the choice once on the shared prior the model samples.
+        activity = outer_flux.resolve_states(retained_prior).fix_states(activity)
 
     with registered_model() as model:
         state = add_correlated_state_with_activity(
@@ -474,6 +498,11 @@ def _build_co2_o2_model(
                 observation_error_name="fixed_independent_error_sd",
             )
         else:
+            validate_linked_ou_amplitude_units(
+                observations,
+                fixed_site_amplitudes=fixed_site_amplitudes,
+                site_amplitude_prior=site_amplitude_prior,
+            )
             add_fixed_ou_gaussian_likelihood(
                 observations=likelihood_observations,
                 observation_error=independent_error_sd,

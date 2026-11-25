@@ -35,6 +35,7 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import (
     StateActivity,
@@ -146,6 +147,7 @@ def build_co2_model(
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> pm.Model:
@@ -216,6 +218,10 @@ def build_co2_model(
         state_activity: Optional labelled activity policy for retained flux
             states.
         boundary: Resolved boundary component bound to this fit.
+        outer_flux: Optional outer-flux choice, resolved here on
+            ``retained_prior``. Its fixed outer states are held at their prior
+            mean with zero uncertainty after exact-zero pruning. See
+            :mod:`openghg_inversions.models.outer_flux`.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added. Site codes are derived from the ``site`` coordinate
             on ``observations``.
@@ -265,6 +271,7 @@ def build_co2_model(
         fixed_model_mismatch=fixed_model_mismatch,
         state_activity=state_activity,
         boundary=boundary,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
     )
@@ -285,6 +292,7 @@ def _build_co2_model(
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     boundary: Bound | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> pm.Model:
@@ -311,6 +319,10 @@ def _build_co2_model(
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
+    if outer_flux is not None:
+        # Resolve the choice on the prior this model samples, so the held
+        # states and the covariance check always refer to it.
+        activity = outer_flux.resolve_states(retained_prior).fix_states(activity)
 
     with registered_model() as model:
         flux_scaling = add_correlated_state_with_activity(

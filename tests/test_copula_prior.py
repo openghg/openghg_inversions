@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import pytensor
+from scipy import stats
 import xarray as xr
 
 from openghg_inversions.correlated_state import STATE_MARGINALS, CorrelatedPrior
@@ -27,12 +28,27 @@ from test_co2_o2_fixed_ou import _kwargs, _prepared
 
 SHAPED = ("normal", "weibull", "gamma")
 LABELS = ["g-a", "t-a", "g-b", "fossil", "outer"]
+_STARTUP_FLOATX = pytensor.config.floatX
 
 
 @pytest.fixture(autouse=True)
 def precision():
     with pytensor.config.change_flags(floatX="float64", cast_policy="numpy+floatX"):
         yield
+
+
+@pytest.fixture
+def jax_backend():
+    """Preserve the session's JAX precision across the copula checks."""
+    jax = pytest.importorskip("jax")
+    # A first import sets the JAX process default from PyTensor floatX.
+    with pytensor.config.change_flags(floatX=_STARTUP_FLOATX):
+        pytest.importorskip("pytensor.link.jax.dispatch")
+    x64 = jax.config.x64_enabled
+    try:
+        yield jax
+    finally:
+        jax.config.update("jax_enable_x64", x64)
 
 
 def biosphere_marginal(prior, family):
@@ -173,36 +189,9 @@ def test_backend_map_is_finite_with_finite_gradient_in_the_tails(family):
         assert np.isfinite(gradient).all()
 
 
-@pytest.mark.parametrize("float_x", ["float64", "float32"])
-@pytest.mark.parametrize("mode", [None, "JAX"], ids=["default", "jax"])
-def test_gamma_map_gradient_is_the_exact_derivative_at_narrow_and_wide_cvs(float_x, mode):
-    # PyTensor's own inverse-incomplete-gamma gradient overflows with Gamma(k): k > 35 (CV < 0.17) in float32.
-    if mode == "JAX":
-        pytest.importorskip("tensorflow_probability")
-    from scipy import stats
-
-    prior = wide_prior(["gamma"] * 5, cv=(0.05, 0.1, 0.14, 0.3, 2.0), correlation=np.eye(5))
-    shape, scale = prior.marginal_shape.to_numpy(), prior.marginal_scale.to_numpy()
-    activity = resolve_state_activity(xr.zeros_like(prior.mean, dtype=bool), StateActivity(active=True))
-    with pytensor.config.change_flags(floatX=float_x):
-        with registered_model() as model:
-            add_correlated_state_with_activity(activity, prior, var_name="flux_scaling")
-        state = model.replace_rvs_by_values([model["flux_scaling"]])[0]
-        jacobian = model.compile_fn(
-            pytensor.gradient.jacobian(state, model.value_vars[0]), inputs=model.value_vars, mode=mode
-        )
-        for value in (-30.0, -6.0, -1.0, 0.0, 2.0, 6.0, 7.9):
-            latent = np.full(5, value)
-            x = prior.transform_latent(latent)
-            expected = np.exp(stats.norm.logpdf(latent) - stats.gamma.logpdf(x, shape, scale=scale))
-            actual = np.diag(jacobian({"flux_scaling_latent": latent.astype(float_x)}))
-            assert np.isfinite(actual).all()
-            np.testing.assert_allclose(actual, expected, rtol=1e-8 if float_x == "float64" else 1e-3, atol=1e-30)
-
-
 @pytest.mark.parametrize("family", STATE_MARGINALS)
-def test_copula_map_compiles_for_jax_samplers(family):
-    pytest.importorskip("jax")
+def test_copula_map_compiles_for_jax_samplers(family, jax_backend):
+    jax_backend.config.update("jax_enable_x64", True)
     prior = wide_prior([family, "weibull", "normal", "lognormal", family], correlation=np.eye(5))
     activity = resolve_state_activity(xr.zeros_like(prior.mean, dtype=bool), StateActivity(active=True))
     with registered_model() as model:
@@ -216,6 +205,42 @@ def test_copula_map_compiles_for_jax_samplers(family):
     jax_gradient = model.compile_dlogp(jacobian=False, mode="JAX")(point) if hasattr(model, "compile_dlogp") else None
     c_gradient = model.compile_dlogp(jacobian=False)(point)
     np.testing.assert_allclose(jax_gradient, c_gradient, rtol=1e-8, atol=1e-10)
+
+
+@pytest.mark.parametrize("family", ["gamma", "weibull"])
+@pytest.mark.parametrize("float_x", ["float32", "float64"])
+def test_positive_marginals_preserve_values_and_gradients_in_jax(family, float_x, jax_backend):
+    """Check the sampler's native JAX gradient and PyTensor's own gradient."""
+    from pymc.sampling.jax import get_jaxified_graph
+
+    jax_backend.config.update("jax_enable_x64", float_x == "float64")
+    cv = (0.05, 0.1, 0.14, 0.3, 2.0) if family == "gamma" else (0.0013, 0.05, 0.14, 0.3, 2.0)
+    prior = wide_prior([family] * 5, cv=cv, correlation=np.eye(5))
+    activity = resolve_state_activity(xr.zeros_like(prior.mean, dtype=bool), StateActivity(active=True))
+    distribution = stats.gamma if family == "gamma" else stats.weibull_min
+    shape, scale = prior.marginal_shape.to_numpy(), prior.marginal_scale.to_numpy()
+    with pytensor.config.change_flags(floatX=float_x):
+        with registered_model() as model:
+            add_correlated_state_with_activity(activity, prior, var_name="flux_scaling")
+        state = model.replace_rvs_by_values([model["flux_scaling"]])[0]
+        assert state.dtype == float_x
+        symbolic_grad = model.compile_fn(
+            pytensor.grad(state.sum(), model.value_vars[0]), inputs=model.value_vars,
+        )
+        jax_state = get_jaxified_graph(inputs=model.value_vars, outputs=[state])
+        jax_grad = jax_backend.jit(jax_backend.grad(lambda latent: jax_state(latent)[0].sum()))
+        tail = (5.5, 7.9) if family == "gamma" else (-30.0, 13.4, 20.0)
+        for value in (-12.0, -6.0, -1.0, 0.0, 2.0, *tail):
+            latent = np.full(5, value, dtype=float_x)
+            expected = prior.transform_latent(latent.astype(np.float64))
+            slope = np.exp(stats.norm.logpdf(float(value)) - distribution.logpdf(expected, shape, scale=scale))
+            actual_state = jax_state(latent)[0]
+            actual_gradient = jax_grad(latent)
+            assert actual_state.dtype == actual_gradient.dtype == np.dtype(float_x)
+            tolerance = 1e-3 if float_x == "float32" else 3e-8
+            np.testing.assert_allclose(actual_state, expected, rtol=tolerance, atol=1e-35)
+            np.testing.assert_allclose(actual_gradient, slope, rtol=tolerance, atol=1e-35)
+            np.testing.assert_allclose(symbolic_grad({"flux_scaling_latent": latent}), slope, rtol=tolerance, atol=1e-35)
 
 
 def single_species_kwargs(prior):
@@ -368,12 +393,17 @@ def test_recorded_covariance_change_is_the_repaired_prior_moment_error():
 
 def test_latent_floor_preserves_independent_interleaved_states():
     """An independent held block keeps exactly zero covariance after repair."""
+    from openghg_inversions.models.outer_flux import OuterFluxChoice
+
     means, target = orchidee_weibull_moments()
     held = np.zeros(means.size + 2, dtype=bool)
     held[[1, 7]] = True
     values = np.ones(held.size)
     values[~held] = means.values
-    mean = xr.DataArray(values, dims="state", coords={"state": np.arange(held.size)})
+    mean = xr.DataArray(values, dims="state", coords={
+        "state": np.arange(held.size),
+        "basis_group": ("state", np.where(held, "outer", "inner")),
+    })
     covariance = np.zeros((held.size, held.size))
     covariance[np.ix_(~held, ~held)] = target
     covariance[np.ix_(held, held)] = [[1.0, 0.4], [0.4, 1.0]]
@@ -382,6 +412,7 @@ def test_latent_floor_preserves_independent_interleaved_states():
     assert prior.latent_correlation_repair["applied"]
     np.testing.assert_array_equal(prior.latent_correlation.values[np.ix_(held, ~held)], 0.0)
     np.testing.assert_array_equal(prior.arithmetic_covariance.values[np.ix_(held, ~held)], 0.0)
+    np.testing.assert_array_equal(OuterFluxChoice("fixed", ("outer",)).resolve_states(prior).fixed, held)
 
 
 def test_latent_floor_leaves_a_positive_definite_copula_unchanged():

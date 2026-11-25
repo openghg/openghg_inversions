@@ -133,9 +133,9 @@ class Anomalies:
             data: Materialized bound sensitivity.
 
         Returns:
-            Normalized weights for the ``"weighted"`` structure, else ``None``.
+            Normalized weights for sampled ``"weighted"`` anomalies, else ``None``.
         """
-        if self.structure != "weighted":
+        if self.structure != "weighted" or not self.sampled:
             return None
         return normalize_centering_weights(data.bc_centering_weights)
 
