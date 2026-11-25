@@ -352,10 +352,10 @@ def build_co2_o2_model(
             states.
         boundary: Resolved boundary component, keyed by channel.
         outer_flux: Optional outer-flux choice, resolved here once on the
-            shared ``retained_prior`` for both channels. Its selected outer
-            states are held at their prior mean after joint exact-zero pruning;
-            in ``"marginalise"`` mode their prior covariance, through the joint
-            sensitivity, is added to ``aggregation_error``. See
+            shared ``retained_prior`` for both channels. The ``"fixed"`` mode
+            uses the selected states' prior means with zero uncertainty. The
+            ``"marginalise"`` mode integrates them into the joint observation
+            mean and covariance. See
             :doc:`/usage/atmospheric_baseline`.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,

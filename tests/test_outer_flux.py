@@ -300,7 +300,7 @@ def test_direct_co2_builder_rejects_marginalised_outer_flux_with_a_scalar_sigma_
 
 
 def aggregation_forms(obs):
-    """The same 4x4 aggregation covariance as none, diagonal, low-rank and dense inputs."""
+    """Fixtures for dense, low-rank, zero-rank low-rank and absent covariance."""
     rows = obs.nmeasure
     factor = np.array([[0.2], [0.1], [-0.1], [0.3]])
     diagonal = np.array([0.01, 0.02, 0.01, 0.03])
@@ -311,9 +311,12 @@ def aggregation_forms(obs):
         diagonal_residual_variance=("nmeasure", diagonal),
         aggregation_error_covariance=(("nmeasure", "nmeasure_cov"), dense),
     ).assign_coords(nmeasure_cov=rows.values)
+    diagonal_only = data.isel(agg_rank=slice(0, 0)).assign(
+        diagonal_residual_variance=("nmeasure", np.diag(dense)),
+    )
     return {
         "none": (resolve_aggregation_error(obs.to_dataset(name="mf"), "none"), np.zeros((4, 4))),
-        "diagonal": (resolve_aggregation_error(data, "diagonal"), np.diag(np.diag(dense))),
+        "diagonal_only": (resolve_aggregation_error(diagonal_only, "low_rank"), np.diag(np.diag(dense))),
         "low_rank": (resolve_aggregation_error(data, "low_rank"), dense),
         "dense": (resolve_aggregation_error(data, "dense"), dense),
     }
@@ -324,8 +327,6 @@ def covariance_of(error: AggregationError) -> np.ndarray:
         return error.covariance.values
     if error.mode == "low_rank":
         return error.factor.values @ error.factor.values.T + np.diag(error.diagonal_variance.values)
-    if error.mode == "diagonal":
-        return np.diag(error.diagonal_variance.values)
     return np.zeros((error.marginal_variance.size,) * 2)
 
 

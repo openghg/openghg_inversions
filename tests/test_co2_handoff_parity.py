@@ -87,8 +87,10 @@ def test_ordinary_output_options_normalize_only_their_paths(tmp_path, monkeypatc
     assert options.output_name == "rhime"
 
 
-@pytest.mark.parametrize("likelihood_kind", ["additive_sigma", "fixed_ou"])
-def test_saved_marginalised_outer_flux_reports_only_verified_inner_totals(tmp_path, likelihood_kind):
+@pytest.mark.parametrize(
+    "likelihood_kind,backend", [("additive_sigma", "numpyro"), ("fixed_ou", "pymc")],
+)
+def test_saved_marginalised_outer_flux_reports_only_verified_inner_totals(tmp_path, likelihood_kind, backend):
     """Replay accepts a country functional with zero loading on the fitted outer state."""
     from openghg.util import molar_mass
 
@@ -111,6 +113,7 @@ def test_saved_marginalised_outer_flux_reports_only_verified_inner_totals(tmp_pa
     )
     params = configuration(tmp_path / "reports", country_path)
     params["model"]["outer_flux"] = {"mode": "marginalise", "outer_groups": ["outer"]}
+    params["sampling"]["nuts_sampler"] = backend
     if likelihood_kind == "fixed_ou":
         params["likelihood"] = {
             "kind": "fixed_ou", "tau_hours": 24.0,
@@ -126,6 +129,7 @@ def test_saved_marginalised_outer_flux_reports_only_verified_inner_totals(tmp_pa
         paris_postprocessing_kwargs={"country_selections": ["FRANCE"]},
     )
     result = handoffs.postprocess(samples, output=output)
+    assert json.loads(result.idata.attrs["rhime_actual_inference"])["nuts_sampler"] == backend
     assert set(result.outputs) == {"basic", "country_flux", "concentration_components"}
     components = result.outputs["concentration_components"]
     shift = inputs.H.isel(region=1, drop=True) * (.03 / .2) * 1.1

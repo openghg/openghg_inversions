@@ -236,10 +236,10 @@ def build_co2_model(
             states.
         boundary: Resolved boundary component bound to this fit.
         outer_flux: Optional outer-flux choice, resolved here on
-            ``retained_prior``. Its selected outer states are held at their
-            prior mean after exact-zero pruning: with zero uncertainty in
-            ``"fixed"`` mode, or with their prior covariance added to
-            ``aggregation_error`` in ``"marginalise"`` mode. See
+            ``retained_prior``. The ``"fixed"`` mode uses the selected states'
+            prior means with zero uncertainty. The ``"marginalise"`` mode
+            integrates the selected states into the observation mean and
+            covariance. See
             :mod:`openghg_inversions.models.outer_flux`.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added. Site codes are derived from the ``site`` coordinate

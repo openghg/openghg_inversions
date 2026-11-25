@@ -44,8 +44,9 @@ prior covariance as seen by the observations,
 to the likelihood. The new term has rank at most the number of selected
 states. It is stored as a factor :math:`H_O L_O` with
 :math:`L_O L_O^T = \Sigma_{OO}`, appended to the low-rank aggregation-error
-factor of :math:`A`; a dense :math:`A` gets the full term added, and a diagonal
-or absent :math:`A` becomes low-rank. All CO2 recipes that take ``outer_flux``
+factor of :math:`A`. For dense :math:`A`, the full term is added. Without
+aggregation error, the new factor supplies the entire term. All CO2 recipes
+that take ``outer_flux``
 (ordinary, cached fixed-OU and linked CO2/O2) use it. In linked recipes one
 term spans both channels, so it also carries the CO2/O2 covariance the shared
 outer states induce.
@@ -59,7 +60,7 @@ Under the default LogNormal-copula flux prior it is an approximation, not a
 pure reparameterisation of sampling the outer states:
 :math:`\Sigma_{OO}` is the prior's arithmetic covariance, so the outer
 contribution is replaced by the Gaussian with the same mean and covariance,
-and the posterior changes slightly. In a WUR BASE July 2021 test (5314
+and the posterior can differ. In one WUR BASE July 2021 test (5314
 observations, 18 marginalised outer states), NUTS with ``"marginalise"``
 moved the inner NET_BIOSPHERE and TOTAL posterior means by +90 Tg CO2/yr
 (0.05 posterior SD, about two Monte Carlo standard errors) relative to
@@ -103,8 +104,12 @@ moment-level approximation of the same kind as the coherent reduction. States
 that state activity or exact-zero pruning hold fixed enter at their fixed
 values. A state with no direct response but correlated with the outer states
 gains a column through :math:`H_O B`, so it is sampled rather than pruned.
-The held outer states still report their prior mean in ``flux_scaling``; their
-conditional mean is :math:`m_O + B(x_I - m_I)`.
+The selected outer entries in ``flux_scaling`` are prior-mean placeholders.
+Given the other states, :math:`m_O + B(x_I - m_I)` is the conditional prior
+mean in the Gaussian model and the linear predictor in the LogNormal
+approximation. Conditioning on the observations also updates the outer
+residual. Posterior reconstruction is tracked in
+`#1129 <https://github.com/openghg/openghg_inversions/issues/1129>`_.
 
 Building a model
 ----------------

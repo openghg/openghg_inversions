@@ -3,16 +3,15 @@ r"""Select outer-region flux states and hold or marginalise them.
 Outer-region flux states are the retained flux states whose ``basis_group``
 label is in a chosen set. By default the CO2 recipes sample them with the
 inner states, uncentred, beside any boundary correction. This option selects
-them once on the flux prior's state axis and holds the selected states ``O``
-at their prior mean ``m_O`` through state activity, so ``H_O m_O`` joins the
-fixed part of the forward model. The two modes differ in what happens to the
-prior uncertainty ``Sigma_OO`` of the held states:
+outer states ``O`` on the flux prior's state axis and excludes them from sampling.
+Both modes record ``m_O`` in the selected entries of the state vector. The
+forward model includes their prior-mean contribution ``H_O m_O``:
 
-- ``"fixed"`` drops it. The held states have zero uncertainty and nothing is
-  added to the observation error. It is a what-if for a known outer prior,
-  not a stand-in for leaving the outer flux unsampled.
-- ``"marginalise"`` keeps it as an error term. The low-rank covariance
-  :math:`H_O \Sigma_{OO} H_O^T` (rank at most the number of held states) is
+- ``"fixed"`` treats the selected states as known. They have zero uncertainty and nothing is
+  added to the observation error. Use it to represent a known outer flux.
+- ``"marginalise"`` integrates the uncertainty into the observation model.
+  The saved prior-mean entries are placeholders for these integrated states.
+  Their low-rank covariance :math:`H_O \Sigma_{OO} H_O^T` (rank at most the number of held states) is
   added to the fixed aggregation-error covariance, beside its own low-rank
   factor, by :meth:`OuterStates.add_marginal_error`. For a linear Gaussian
   model with ``O`` uncorrelated with the other states, the posterior of the
@@ -78,9 +77,9 @@ class OuterFluxChoice:
 
     Attributes:
         mode: ``"fixed"`` holds the selected outer states at their prior mean
-            with zero uncertainty. ``"marginalise"`` also holds them at their
-            prior mean and adds :math:`H_O \\Sigma_{OO} H_O^T` to the error
-            covariance, keeping their prior uncertainty without sampling them.
+            with zero uncertainty. ``"marginalise"`` integrates the selected
+            states into the fitted mean and covariance. The prior-mean entries
+            for integrated states are placeholders in saved draws.
         outer_groups: ``basis_group`` labels of the outer states.
         fixed_sources: ``source`` labels of the outer states to hold (or
             marginalise), for example ``("ocean",)``. Empty selects every
@@ -390,11 +389,11 @@ class OuterStates:
         """Add the marginalised outer covariance to a fixed aggregation error.
 
         In ``"fixed"`` mode the aggregation error is returned unchanged. In
-        ``"marginalise"`` mode ``H_F L_F`` is appended to the low-rank factor
-        (a ``"none"`` or ``"diagonal"`` error becomes low-rank with that
-        factor) or, for a dense error, ``H_F Sigma_F|I H_F^T`` is added to the
-        dense covariance. The marginal variance grows by the row sums of
-        squares of ``H_F L_F``.
+        ``"marginalise"`` mode ``H_F L_F`` is appended to the low-rank
+        factor. Without aggregation error it supplies the entire factor, with
+        zero diagonal residual. For dense error, ``H_F Sigma_F|I H_F^T`` is
+        added to the dense covariance. The marginal variance grows by the row
+        sums of squares of ``H_F L_F``.
 
         Args:
             flux_sensitivity: Flux sensitivity on ``(output_dim, state_dim)``,
@@ -428,18 +427,15 @@ class OuterStates:
                 name=existing.name,
             )
             return replace(aggregation_error, factor=factor, marginal_variance=marginal_variance)
-        if aggregation_error.mode == "diagonal":
-            assert aggregation_error.diagonal_variance is not None
-            diagonal = aggregation_error.diagonal_variance
-        else:
-            diagonal = xr.DataArray(
-                np.zeros(values.shape[0]), dims=output_dim, coords={output_dim: factor.coords[output_dim]},
-            )
+        diagonal = xr.DataArray(
+            np.zeros(values.shape[0]), dims=output_dim,
+            coords={output_dim: factor.coords[output_dim]}, name=DIAGONAL_RESIDUAL_VARIANCE,
+        )
         return AggregationError(
             mode="low_rank",
             marginal_variance=marginal_variance,
             factor=factor,
-            diagonal_variance=diagonal.rename(DIAGONAL_RESIDUAL_VARIANCE),
+            diagonal_variance=diagonal,
         )
 
 
