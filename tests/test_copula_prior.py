@@ -422,6 +422,7 @@ def test_latent_floor_leaves_a_positive_definite_copula_unchanged():
         plain.mean, plain.arithmetic_covariance.to_numpy(), marginal=plain.marginal, latent_correlation_floor=1e-8
     )
     np.testing.assert_array_equal(floored.latent_correlation.to_numpy(), plain.latent_correlation.to_numpy())
+    xr.testing.assert_identical(floored.arithmetic_covariance, plain.arithmetic_covariance)
     assert floored.latent_correlation_repair["applied"] is False
     assert plain.latent_correlation_repair is None
 

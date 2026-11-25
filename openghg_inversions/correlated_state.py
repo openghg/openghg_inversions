@@ -1250,7 +1250,9 @@ class CorrelatedPrior:
         """Describe this prior for saved model outputs.
 
         Returns:
-            JSON-safe prior description and state counts per marginal family.
+            JSON-safe prior description, state counts per marginal family
+            and the repair diagnostics. The repair field is ``None`` when no
+            repair was requested.
         """
         families, counts = np.unique(self.marginal.values, return_counts=True)
         return {
@@ -1259,6 +1261,7 @@ class CorrelatedPrior:
                 else "correlated arithmetic-moment Gaussian copula"
             ),
             "prior_marginals": {str(family): int(count) for family, count in zip(families, counts, strict=True)},
+            "prior_latent_correlation_repair": self.latent_correlation_repair,
         }
 
     def _state_matrix(self, values: np.ndarray, name: str) -> xr.DataArray:
@@ -1296,24 +1299,6 @@ class CorrelatedPrior:
         squared mean units) and ``max_abs_state_correlation_change``.
         """
         return None if self._latent_repair is None else dict(self._latent_repair)
-
-    def metadata(self) -> dict[str, Any]:
-        """Describe the prior for model and trace metadata.
-
-        Returns:
-            JSON-safe ``prior`` description, state counts per marginal family
-            (``prior_marginals``) and the latent-correlation repair record
-            (``prior_latent_correlation_repair``, ``None`` without one).
-        """
-        families, counts = np.unique(np.asarray(self.marginal.values).astype(str), return_counts=True)
-        return {
-            "prior": (
-                "correlated arithmetic-moment lognormal" if self.is_lognormal
-                else "correlated arithmetic-moment Gaussian copula"
-            ),
-            "prior_marginals": {str(name): int(count) for name, count in zip(families, counts, strict=True)},
-            "prior_latent_correlation_repair": self.latent_correlation_repair,
-        }
 
     @property
     def marginal_shape(self) -> xr.DataArray:
