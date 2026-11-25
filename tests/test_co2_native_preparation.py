@@ -152,6 +152,10 @@ def test_native_prepare_rejects_a_supplied_affine_artifact(tmp_path: Path, parti
 def test_prepare_checks_a_native_build_before_saving(tmp_path: Path, merged: MergedData, partition: Path) -> None:
     config = request(partition)
     config["prepared_inputs"]["acquisition"]["use_bc"] = False
+    prepared = prepare(tmp_path, config, merged, "no-boundary")
+    assert not {"H_bc", "H_bc_anomaly", "H_bc_mass", "bc_reference"} & prepared.inv_inputs.variables.keys()
+    assert merged.site_data["TOY"].attrs["boundary_representation"] == "centered-v1"
+
     arguments = Co2PreparationConfig.from_params(config).preparation_arguments()
     boundary = Co2PreparationConfig.from_params(
         {**request(partition), "model": {"boundary": {"prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}}}},

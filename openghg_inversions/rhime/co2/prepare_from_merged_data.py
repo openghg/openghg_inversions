@@ -97,6 +97,12 @@ def prepare_co2_from_merged_data(
     sensitivities = build_sensitivities(
         filtered, basis_functions, flux_sources=flux_sources, use_bc=use_bc, bc_basis=bc_basis, multisector=False,
     )
+    if not use_bc:
+        # Assembly reads the reference and marker as requests for centered sensitivities.
+        for site, dataset in sensitivities.items():
+            view = dataset.drop_vars("bc_reference", errors="ignore")
+            view.attrs = {key: value for key, value in dataset.attrs.items() if key != "boundary_representation"}
+            sensitivities[site] = view
     canonical = assemble_inputs(
         sensitivities, basis_functions, site_options=site_options,
         domain=domain, start_date=start_date, use_bc=use_bc,

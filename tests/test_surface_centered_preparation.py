@@ -37,7 +37,7 @@ def test_centered_acquisition_can_supply_ordinary_boundaries(acquire_monthly_bou
     with Callback(pretask=lambda *args: pytest.fail("boundary selection computed borrowed payload")):
         ordinary = select_boundary_representation({"MHD": site}, "ordinary")["MHD"]
     np.testing.assert_allclose(ordinary.bc_n, 401. / 4)
-    assert ordinary.bc_n.attrs["units"] == "ppm"
+    assert ordinary.bc_n.attrs["units"] == site.mf.attrs["units"]
     assert "bc_reference" not in ordinary
     assert "bc_reference" in site
 
