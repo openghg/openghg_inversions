@@ -305,7 +305,20 @@ class Co2BasisSelection:
 
     @classmethod
     def from_params(cls, value: object, *, domain: str, use_bc: bool) -> Co2BasisSelection:
-        """Parse ``[prepared_inputs.basis]`` for the acquired domain."""
+        """Parse the configured flux and boundary basis choices.
+
+        Args:
+            value: Contents of the basis table.
+            domain: Requested transport domain.
+            use_bc: Whether preparation uses boundary sensitivities.
+
+        Returns:
+            Validated basis choices with resolved resource paths.
+
+        Raises:
+            ValueError: If the request has unknown or incompatible choices.
+            TypeError: If an option has an invalid type.
+        """
         options = _table(value, "prepared_inputs.basis")
         result: dict[str, Any] = {"domain": domain, "use_bc": use_bc}
         for name, field in (("algorithm", "basis_algorithm"), ("bc_algorithm", "bc_basis_algorithm")):
@@ -363,7 +376,19 @@ class Co2NativePrior:
 
     @classmethod
     def from_params(cls, value: object) -> Co2NativePrior:
-        """Parse ``[prepared_inputs.native_prior]``."""
+        """Parse the native Gaussian prior specification.
+
+        Args:
+            value: Table with the prior standard deviation and optional mean
+                and correlation lengths in degrees.
+
+        Returns:
+            The constant mean and separable covariance choices.
+
+        Raises:
+            ValueError: If required values are absent or choices are invalid.
+            TypeError: If a supplied value has an invalid type.
+        """
         options = _table(value, "prepared_inputs.native_prior")
         path = "prepared_inputs.native_prior"
         result: dict[str, Any] = {"sigma": _number(_take(options, "sigma", path), f"{path}.sigma", positive=True)}
@@ -408,7 +433,19 @@ class Co2NativePreparationConfig:
 
     @classmethod
     def from_params(cls, prepared: dict[str, object], *, domain: str) -> Co2NativePreparationConfig:
-        """Pop and parse the build-route tables of ``[prepared_inputs]``."""
+        """Consume the build-route options of the prepared inputs table.
+
+        Args:
+            prepared: Mutable table whose build options are removed during parsing.
+            domain: Requested transport domain, used to resolve the basis choices.
+
+        Returns:
+            Validated options for acquiring and preparing native inputs.
+
+        Raises:
+            ValueError: If required options are absent or choices are invalid.
+            TypeError: If a supplied option has an invalid type.
+        """
         acquisition = _acquisition(_take(prepared, "acquisition", "prepared_inputs"))
         result: dict[str, Any] = {
             "acquisition": _frozen(acquisition),
@@ -484,13 +521,22 @@ def _acquisition(value: object) -> dict[str, Any]:
             options.pop("boundary_mass_tolerance"), f"{path}.boundary_mass_tolerance",
         )
     _reject_unknown(options, path)
+    result["boundary_representation"] = "centered" if result.get("use_bc", True) else "ordinary"
     check_surface_request(
         species="co2", site_options=result["site_options"], flux_sources=result["flux_sources"],
         transport=result["surface_transport"], use_bc=result.get("use_bc", True),
+        boundary_representation=result["boundary_representation"],
         boundary_reference=result.get("boundary_reference"),
         boundary_reference_units=result.get("boundary_reference_units"),
         boundary_mass_tolerance=result.get("boundary_mass_tolerance"),
     )
+    for configured, producer in (
+        ("boundary_reference", "reference"),
+        ("boundary_reference_units", "reference_units"),
+        ("boundary_mass_tolerance", "mass_tolerance"),
+    ):
+        if configured in result:
+            result[producer] = result.pop(configured)
     return result
 
 

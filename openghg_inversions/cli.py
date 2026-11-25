@@ -214,7 +214,9 @@ def _prior_predictive_command(args: argparse.Namespace) -> None:
 
         params = _co2_params(args)
         result = prior_co2(args.preparation_manifest, model=Co2ModelConfig.from_params(params),
-                           random_seed=resolve_co2_prior_seed(params), referenced=_request_files(args), **common)
+                           random_seed=resolve_co2_prior_seed(params),
+                           boundary_representation=params.get("prepared_inputs", {}).get("boundary_representation"),
+                           referenced=_request_files(args), **common)
     elif args.model in {"standard", "multisector"}:
         if args.model == "multisector":
             from openghg_inversions.rhime.multisector_stages import prior_predictive
@@ -251,6 +253,7 @@ def _sample_command(args: argparse.Namespace) -> None:
         params = _co2_params(args)
         result = sample_co2(args.preparation_manifest, model=Co2ModelConfig.from_params(params),
                             sampling=params.get("sampling", {}), output_dir=_stage_output_dir(args),
+                            boundary_representation=params.get("prepared_inputs", {}).get("boundary_representation"),
                             referenced=_request_files(args))
         print(result)
     elif args.model in {"standard", "multisector"}:

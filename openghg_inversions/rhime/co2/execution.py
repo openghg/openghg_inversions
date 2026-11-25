@@ -14,17 +14,19 @@ from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, l
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import MergedData, PreparedInputs
 from openghg_inversions.models.boundary import boundary_preparation
+from openghg_inversions.models.boundary.contracts import validate_centering_weights
 from openghg_inversions.observation_error import WhitenedRankRule
 from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
+from openghg_inversions.rhime.preparation import resolve_basis_inputs, resolve_bc_basis
 
 from .co2_affine_output import _bind_affine_flux_map, prepared_inputs_content_id
 from .co2_outputs import (
     Co2Output, Co2OutputOptions, calculate_co2_products, save_co2_products, make_co2_output,
     validate_co2_product_request, _co2_product_names, _checked_co2_output_paths,
 )
-from .co2_native_preparation import prepare_native_co2
 from .co2_preparation import Co2PreparedInputs, check_prepared_boundary, prepare_co2_inputs, requested_co2_facts
 from .inference import sample_co2_inference
+from .prepare_from_merged_data import prepare_co2_from_merged_data
 from .configuration import (
     load_co2_family_config, validate_co2_config, _validate_co2_option_names, Co2PreparationConfig,
     Co2ModelConfig, _resolve_co2_sampling,
@@ -73,6 +75,18 @@ def resolve_co2_output(params: Mapping[str, Any]) -> dict[str, Any]:
     choices = dict(params.get("outputs", {}))
     source_to_sector = choices.pop("source_to_sector", None)
     return {"output": Co2OutputOptions.from_params(choices), "source_to_sector": source_to_sector}
+
+
+def _load_centering_weights(path: Path | None) -> xr.DataArray | None:
+    """Load and check the one ``bc_centering_weights`` array before acquisition starts."""
+    if path is None:
+        return None
+    with xr.open_dataset(path) as dataset:
+        if "bc_centering_weights" not in dataset:
+            raise ValueError(f"{path} must contain a bc_centering_weights variable.")
+        weights = dataset["bc_centering_weights"].load()
+    validate_centering_weights(weights.transpose("bc_curtain", "bc_period"))
+    return weights
 
 
 def run_co2(
@@ -151,13 +165,34 @@ def run_co2(
     if preparation.native is not None:
         if prepared is not None or canonical_inputs is not None or affine_artifact is not None:
             raise ValueError("Configured acquisition builds its own preparation; do not pass prepared inputs.")
-        prepared, affine_artifact = prepare_native_co2(
-            preparation.native, domain=cast(str, preparation.domain),
-            start_date=cast(str, preparation.start_date), end_date=cast(str, preparation.end_date),
-            boundary=boundary_preparation(preparation.boundary, preparation.boundary_representation),
-            merged_data=merged_data,
+        native = preparation.native
+        domain = cast(str, preparation.domain)
+        window_start = cast(str, preparation.start_date)
+        window_end = cast(str, preparation.end_date)
+        boundary = boundary_preparation(preparation.boundary, preparation.boundary_representation)
+        basis_inputs = resolve_basis_inputs(native.basis)
+        bc_basis = resolve_bc_basis(native.basis)
+        weights = _load_centering_weights(native.bc_centering_weights_path)
+        acquisition = native.acquisition
+        if merged_data is None:
+            merged_data = MergedData.from_options(
+                species="co2", domain=domain, start_date=window_start, end_date=window_end, **acquisition,
+            )
+        else:
+            merged_data.validate_for_preparation(
+                species="co2", domain=domain, start_date=window_start, end_date=window_end, split_by_sectors=False,
+            )
+        prepared, affine_artifact = prepare_co2_from_merged_data(
+            merged_data, domain=domain, start_date=window_start,
+            flux_sources=acquisition["flux_sources"], use_bc=acquisition.get("use_bc", True),
+            boundary_representation=boundary.representation,
+            filters=native.filters, averaging_error=native.averaging_error,
+            basis_algorithm=native.basis.basis_algorithm, nbasis=native.basis.nbasis,
+            fix_outer_regions=native.basis.fix_basis_outer_regions, basis_inputs=basis_inputs, bc_basis=bc_basis,
+            prior=native.native_prior, aggregation_error_rank=native.aggregation_error_rank,
+            bc_centering_weights=weights,
         )
-        consumed_paths += preparation.native.resource_paths()
+        consumed_paths += native.resource_paths()
     elif canonical_inputs is not None and reduction is not None:
         prepared = prepare_co2_inputs(
             canonical_inputs, reduction, aggregation_error_rank=aggregation_error_rank,

@@ -11,9 +11,11 @@ import pytest
 import xarray as xr
 
 from examples.surface_centered_pilot import acquire_supplied, surface_inputs
+from openghg_inversions.cli import main
 from openghg_inversions.inversion_data import MergedData, SiteOptions
 from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeChoice, boundary_preparation
 from openghg_inversions.rhime.co2 import Co2PreparedInputs, handoffs
+from openghg_inversions.rhime.co2.co2_affine_output import load_and_bind_affine_flux_map
 from openghg_inversions.rhime.co2.co2_o2_configuration import Co2O2PreparationConfig
 from openghg_inversions.rhime.co2.co2_preparation import check_prepared_boundary
 from openghg_inversions.rhime.co2.configuration import Co2PreparationConfig
@@ -274,21 +276,94 @@ def test_staged_import_and_sampling_reject_an_inconsistent_preparation(
         handoffs.sample(manifest, model=model, output_dir=tmp_path / "s")
 
 
-@pytest.mark.usefixtures("double_precision")
-def test_full_runner_builds_from_configuration(tmp_path: Path, merged: MergedData, partition: Path) -> None:
+def test_staged_cli_checks_explicit_saved_boundary_representation(
+    tmp_path: Path, merged: MergedData, partition: Path,
+) -> None:
+    """Multiplicative BC supports both forms, so only the explicit request rejects the checkpoint."""
     config = request(partition, boundary_representation="centered")
+    config["model"] = {"boundary": {"prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.01}}}
+    prepare(tmp_path, config, merged, "centered")
+    manifest = tmp_path / "centered" / "prepare-manifest.json"
+    config["prepared_inputs"] = {"boundary_representation": "ordinary", "path": 42}
+    for command in ("sample", "prior-predictive"):
+        destination = tmp_path / command
+        with pytest.raises(ValueError, match="have centered boundary sensitivity, but ordinary is required"):
+            main([
+                command, "--model", "co2", "--preparation-manifest", str(manifest),
+                "--output-dir", str(destination), "--kwargs", json.dumps(config),
+            ])
+        assert not destination.exists()
+
+
+@pytest.mark.usefixtures("double_precision")
+def test_full_runner_builds_from_configuration(
+    tmp_path: Path, merged: MergedData, partition: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Compare configured acquisition with staged supplied data and a two-cell Gaussian oracle."""
+    acquisition_calls = []
+
+    def acquire(**kwargs):
+        """Record the configured options without contacting an OpenGHG store."""
+        acquisition_calls.append(kwargs)
+        return merged
+
+    monkeypatch.setattr(MergedData, "from_options", staticmethod(acquire))
+    config = request(partition)
     config["model"] = {"boundary": {"prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.01}}}
     config["sampling"] = {"draws": 20, "tune": 20, "chains": 1, "progressbar": False, "random_seed": 3}
     config["outputs"] = {"output_format": "none"}
-    result = run_co2(params=config, merged_data=merged)
+
+    result = run_co2(params=config)
     assert result.idata["posterior"].sizes["draw"] == 20
-    assert result.prepared.inv_inputs.attrs["boundary_representation"] == "centered-v1"
+    assert "H_bc" in result.prepared.inv_inputs
+    (call,) = acquisition_calls
+    assert call["boundary_representation"] == "centered"
+    assert call["reference"] == 400.0
+    assert call["reference_units"] == "ppm"
+    assert call["mass_tolerance"] == 1e-6
+
+    staged = prepare(tmp_path, config, merged, "staged")
+    xr.testing.assert_allclose(result.prepared.inv_inputs, staged.inv_inputs)
+    assert len(acquisition_calls) == 1
+    checkpoint = handoffs.load_preparation(tmp_path / "staged" / "prepare-manifest.json")
+    assert checkpoint.affine_payload is not None
+    assert (checkpoint.start_date, checkpoint.end_date, checkpoint.domain) == (
+        WINDOW["start_date"], WINDOW["end_date"], WINDOW["domain"],
+    )
+    saved_affine = load_and_bind_affine_flux_map(checkpoint.affine_payload, checkpoint.payload)
+    assert result.bound is not None
+
+    # The toy grid has two cells one degree apart and one retained bucket.
+    # Its retained scaling is the cell mean and the orthogonal residual is their contrast.
+    inputs = staged.inv_inputs
+    expected_times = pd.date_range("2020-01-16T09", periods=3, freq="3h")
+    np.testing.assert_array_equal(inputs.time, expected_times)
+    flux_response = merged.site_data["TOY"].fp_x_flux.sel(time=expected_times).transpose("time", "lat", "lon")
+    h = flux_response.to_numpy().reshape(-1, 2)
+    rho = np.exp(-1.0)
+    np.testing.assert_allclose(inputs.H, h.sum(axis=1, keepdims=True), rtol=1e-12)
+    np.testing.assert_allclose(inputs.alpha_prior_covariance, [[0.2**2 * (1 + rho) / 2]], rtol=1e-12)
+    contrast = h[:, 0] - h[:, 1]
+    expected_unresolved = (0.2**2 * (1 - rho) / 2) * np.outer(contrast, contrast)
+    np.testing.assert_allclose(inputs.aggregation_error_covariance, expected_unresolved, rtol=1e-12, atol=1e-15)
+
+    state = xr.full_like(inputs.alpha_prior_mean, 1.25)
+    expected_flux = 1.25 * (merged.flux_data["biosphere"].flux + merged.flux_data["fossil"].flux)
+    xr.testing.assert_allclose(saved_affine.state_to_flux(state), expected_flux)
+    xr.testing.assert_allclose(result.bound.state_to_flux(state), expected_flux)
     with pytest.raises(ValueError, match="merged_data requires prepared_inputs.acquisition"):
         run_co2(params={**config, "prepared_inputs": {"path": "prepared.nc", **WINDOW}}, merged_data=merged)
 
 
-def test_native_outputs_cannot_overwrite_a_consumed_resource(tmp_path: Path, merged: MergedData) -> None:
-    """Native preparation reads its resources before writing, so targets must not alias them."""
+def test_native_outputs_cannot_overwrite_a_consumed_resource(
+    tmp_path: Path, merged: MergedData, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Supplied native data bypass retrieval and resource reads do not permit output aliases."""
+    def reject_acquisition(**kwargs):
+        """Fail if a supplied-data route accesses the store."""
+        pytest.fail("Supplied MergedData should skip acquisition")
+
+    monkeypatch.setattr(MergedData, "from_options", staticmethod(reject_acquisition))
     output_dir = tmp_path / "prepared"
     output_dir.mkdir()
     resource = output_dir / "prepared-inputs.nc"

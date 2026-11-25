@@ -33,9 +33,8 @@ from openghg_inversions.rhime._stage_artifacts import (
 from openghg_inversions.rhime._stage_checks import (
     PREPARATION_CHECK_NAME, _check_draws, _check_stage, _check_result,
 )
+from openghg_inversions.rhime.preparation import resolve_basis_inputs, resolve_bc_basis
 from openghg_inversions.serialization import load_trace, save_trace
-
-from .execution import load_co2_params
 
 from .co2_affine_output import (
     _bind_affine_flux_map, load_and_bind_affine_flux_map, prepared_inputs_content_id,
@@ -47,9 +46,11 @@ from .co2_outputs import (
 from .co2_preparation import (
     Co2PreparedInputs, check_prepared_boundary, prepare_co2_inputs, requested_co2_facts,
 )
+from .execution import _load_centering_weights, load_co2_params
 from .inference import (
     annotate_co2_inference, build_co2_inference, sample_co2_inference, describe_co2_inference,
 )
+from .prepare_from_merged_data import prepare_co2_from_merged_data
 from .configuration import Co2ModelConfig, Co2NativePreparationConfig, _resolve_co2_sampling
 
 
@@ -189,11 +190,28 @@ def prepare(
             )
         if start_date is None or end_date is None or domain is None:
             raise ValueError("Native preparation requires start_date, end_date and domain.")
-        from .co2_native_preparation import prepare_native_co2
-
-        prepared, affine = prepare_native_co2(
-            native, domain=domain, start_date=start_date, end_date=end_date,
-            boundary=boundary_preparation(boundary, boundary_representation), merged_data=merged_data,
+        representation = boundary_preparation(boundary, boundary_representation).representation
+        basis_inputs = resolve_basis_inputs(native.basis)
+        bc_basis = resolve_bc_basis(native.basis)
+        weights = _load_centering_weights(native.bc_centering_weights_path)
+        acquisition = native.acquisition
+        if merged_data is None:
+            merged_data = MergedData.from_options(
+                species="co2", domain=domain, start_date=start_date, end_date=end_date, **acquisition,
+            )
+        else:
+            merged_data.validate_for_preparation(
+                species="co2", domain=domain, start_date=start_date, end_date=end_date, split_by_sectors=False,
+            )
+        prepared, affine = prepare_co2_from_merged_data(
+            merged_data, domain=domain, start_date=start_date,
+            flux_sources=acquisition["flux_sources"], use_bc=acquisition.get("use_bc", True),
+            boundary_representation=representation,
+            filters=native.filters, averaging_error=native.averaging_error,
+            basis_algorithm=native.basis.basis_algorithm, nbasis=native.basis.nbasis,
+            fix_outer_regions=native.basis.fix_basis_outer_regions, basis_inputs=basis_inputs, bc_basis=bc_basis,
+            prior=native.native_prior, aggregation_error_rank=native.aggregation_error_rank,
+            bc_centering_weights=weights,
         )
         check_prepared_boundary(prepared.inv_inputs, boundary, boundary_representation)
         return save_preparation(
@@ -296,7 +314,8 @@ def save_samples(
 
 def sample(
     preparation_manifest: str | Path, *, model: Co2ModelConfig | Mapping[str, Any], output_dir: str | Path,
-    sampling: Mapping[str, Any] | None = None, referenced: tuple[str | Path, ...] = (),
+    sampling: Mapping[str, Any] | None = None,
+    boundary_representation: BoundaryRepresentation | None = None, referenced: tuple[str | Path, ...] = (),
 ) -> Path:
     """Build and sample CO2 using current science and its resolved sampler.
 
@@ -304,6 +323,7 @@ def sample(
     reuse preparation; the defining coherent native reduction stays unchanged.
     Full execution and saved sampling share the explicit build and sample owners.
     Current sampling choices select fresh model-matched defaults and tuning.
+    An explicit ``boundary_representation`` must match the saved inputs.
     ``referenced`` names consumed request files, such as the CLI configuration,
     that this stage's outputs must not overwrite or enclose.
     """
@@ -318,7 +338,7 @@ def sample(
         referenced=(Path(preparation_manifest).resolve(), preparation.payload)
         + ((preparation.affine_payload,) if preparation.affine_payload else ()) + protected,
     )
-    check_prepared_boundary(preparation.prepared.inv_inputs, model_config.boundary)
+    check_prepared_boundary(preparation.prepared.inv_inputs, model_config.boundary, boundary_representation)
     model_options = model_config.model_arguments()
     trace, actual = sample_co2_inference(
         preparation.prepared, model_options, choices.sampler,
@@ -408,13 +428,15 @@ def postprocess(
 def prior_predictive(
     preparation_manifest: str | Path, *, model: Co2ModelConfig | Mapping[str, Any], output_dir: str | Path,
     draws: int = 100, check_output: str | Path | None = None, stage: str = "prior-predictive",
-    random_seed: int | None = None, referenced: tuple[str | Path, ...] = (),
+    random_seed: int | None = None, boundary_representation: BoundaryRepresentation | None = None,
+    referenced: tuple[str | Path, ...] = (),
 ) -> dict[str, Any]:
     """Check exact graph prior predictions without posterior inference.
 
     Construction/inference errors propagate before creating a destination. Only
     evaluated missing, empty or non-finite predictive evidence becomes a failed
     report. The check never repairs absent posterior/replay evidence.
+    An explicit ``boundary_representation`` must match the saved inputs.
     ``referenced`` names consumed request files, such as the CLI configuration,
     that this stage's outputs must not overwrite or enclose.
     """
@@ -430,7 +452,7 @@ def prior_predictive(
         + ((preparation.affine_payload,) if preparation.affine_payload else ()) + model_config.artifact_paths()
         + tuple(Path(path).resolve() for path in referenced),
     )
-    check_prepared_boundary(preparation.prepared.inv_inputs, model_config.boundary)
+    check_prepared_boundary(preparation.prepared.inv_inputs, model_config.boundary, boundary_representation)
     model_options = model_config.model_arguments()
     report.unlink(missing_ok=True)
     built, cached = build_co2_inference(preparation.prepared, model_options)

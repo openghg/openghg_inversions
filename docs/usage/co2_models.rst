@@ -736,8 +736,8 @@ is required when any source uses ``time_resolved`` transport), the flux sources
 with one surface transport mode each, store and dataset selectors (``obs_store``,
 ``footprint_store``, ``flux_store``, ``bc_store``, ``fp_model`` and so on) and,
 with boundaries, the reference and mass tolerance. ``boundary_reference`` is a
-value you choose, such as a typical background; it is stored unchanged (see
-:doc:`surface_preparation`). These options are checked when the configuration
+value you choose, such as a typical background. The acquired reference uses
+the observation concentration units (see :doc:`surface_preparation`). These options are checked when the configuration
 is read, before any retrieval. All sources share one dimensionless native
 scaling field; the first source weights basis design.
 
@@ -754,8 +754,9 @@ domain are required.
 Boundary representation
 """""""""""""""""""""""
 
-Acquisition keeps centered boundary operands, so one merged dataset can feed
-either prepared representation. The configured ``[model.boundary]`` choice
+Configured CO₂ acquisition requests centered boundary operands when
+boundaries are enabled. One merged dataset can then feed either prepared
+representation. The configured ``[model.boundary]`` choice
 decides which one preparation produces: each choice class states which
 representations it can bind and which extra inputs it needs
 (:func:`~openghg_inversions.models.boundary.boundary_preparation`).

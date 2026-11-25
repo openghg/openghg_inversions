@@ -9,6 +9,7 @@ import xarray as xr
 from openghg_inversions.array_ops import to_dense
 from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 
+from ._merged_schema import _check_unit_scale
 from ._units import mole_fraction_unit_scale
 
 
@@ -188,8 +189,8 @@ def select_boundary_representation(
 ) -> dict[str, xr.Dataset]:
     """Give every site dataset the requested boundary representation.
 
-    Surface acquisition keeps centered operands, so one merged dataset can feed
-    either preparation. Ordinary preparation collapses them exactly to
+    An explicit centered acquisition can feed either preparation. Ordinary
+    preparation collapses the centered operands to
     ``bc_<d> = bc_anomaly_<d> + bc_reference * bc_mass_<d>`` in float64,
     in the anomaly units; the reference cancels. Centered preparation keeps
     them unchanged. Input datasets are borrowed and never modified. Sites
@@ -208,7 +209,8 @@ def select_boundary_representation(
 
     Raises:
         ValueError: If the representation is unknown, or centered operands are
-            requested from a site that has only absolute boundary sensitivities.
+            requested from a site that has only absolute boundary sensitivities,
+            or if recombination operands have incompatible units.
     """
     if representation not in get_args(BoundaryRepresentation):
         raise ValueError(f"boundary_representation must be one of {get_args(BoundaryRepresentation)!r}.")
@@ -224,12 +226,23 @@ def select_boundary_representation(
             result[site] = dataset
             continue
         reference = dataset["bc_reference"]
-        absolute = {
-            f"bc_{d}": (dataset[f"bc_anomaly_{d}"] + reference * dataset[f"bc_mass_{d}"]).assign_attrs(
-                units=dataset[f"bc_anomaly_{d}"].attrs["units"]
-            )
-            for d in "nesw"
-        }
+        reference_name = f"site_data[{site!r}].bc_reference"
+        reference_units = reference.attrs.get("units")
+        _check_unit_scale(reference_units, "mol/mol", name=reference_name, allow_scaled_units=True)
+        if "mf" in dataset:
+            _check_unit_scale(reference_units, dataset.mf.attrs.get("units"), name=reference_name)
+        reference = reference.astype("float64", copy=False)
+        absolute = {}
+        for direction in "nesw":
+            anomaly = dataset[f"bc_anomaly_{direction}"]
+            mass = dataset[f"bc_mass_{direction}"]
+            units = anomaly.attrs.get("units")
+            _check_unit_scale(units, reference_units, name=f"site_data[{site!r}].{anomaly.name}")
+            _check_unit_scale(mass.attrs.get("units"), "1", name=f"site_data[{site!r}].{mass.name}")
+            absolute[f"bc_{direction}"] = (
+                anomaly.astype("float64", copy=False)
+                + reference * mass.astype("float64", copy=False)
+            ).assign_attrs(units=units)
         operands = [f"{prefix}_{d}" for prefix in ("bc_anomaly", "bc_mass") for d in "nesw"]
         collapsed = dataset.drop_vars([*operands, "bc_reference"]).assign(absolute)
         collapsed.attrs = {key: value for key, value in dataset.attrs.items() if key != "boundary_representation"}

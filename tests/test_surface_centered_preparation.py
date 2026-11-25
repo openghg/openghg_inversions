@@ -10,9 +10,7 @@ import pytest
 import sparse
 import xarray as xr
 
-from openghg_inversions.inversion_data import (
-    MergedData, SiteOptions, prepare_surface_site, select_boundary_representation,
-)
+from openghg_inversions.inversion_data import MergedData, SiteOptions, prepare_surface_site, select_boundary_representation
 from openghg_inversions.inversion_data import acquisition, surface
 from tests.test_surface_acquisition import boundary_inputs, inputs as inputs, resolved_inputs
 from tests.test_boundary_getter_policy import boundary_provider as boundary_provider, acquire_monthly_boundary as acquire_monthly_boundary
@@ -24,7 +22,7 @@ from tests.test_boundary_getter_policy import boundary_provider as boundary_prov
     ("2020-01-31", "2020-02-02", [401., 402.]),
 ])
 def test_fresh_centered_acquisition_retains_monthly_boundary(acquire_monthly_boundary, start, end, expected):
-    result = acquire_monthly_boundary(start, end)
+    result = acquire_monthly_boundary(start, end, centered=True)
     site = result.site_data["MHD"]
     np.testing.assert_allclose(site.bc_mod.squeeze(), np.repeat(expected, 2))
     np.testing.assert_allclose(site.bc_reference, 400.)
@@ -32,6 +30,30 @@ def test_fresh_centered_acquisition_retains_monthly_boundary(acquire_monthly_bou
         np.testing.assert_allclose(site[f"bc_mass_{direction}"], .25)
     assert result.provenance.boundary.uuid == "boundary-id"
     assert result.provenance.boundary.dataversion == "v3"
+
+def test_centered_acquisition_can_supply_ordinary_boundaries(acquire_monthly_boundary):
+    acquired = acquire_monthly_boundary("2020-01-16", "2020-01-17", centered=True)
+    site = acquired.site_data["MHD"].chunk({"time": 1})
+    with Callback(pretask=lambda *args: pytest.fail("boundary selection computed borrowed payload")):
+        ordinary = select_boundary_representation({"MHD": site}, "ordinary")["MHD"]
+    np.testing.assert_allclose(ordinary.bc_n, 401. / 4)
+    assert ordinary.bc_n.attrs["units"] == "ppm"
+    assert "bc_reference" not in ordinary
+    assert "bc_reference" in site
+
+
+@pytest.mark.parametrize("variable,units", [
+    ("bc_reference", "ppb"), ("bc_anomaly_n", "ppb"), ("bc_mass_n", "percent"),
+])
+def test_ordinary_boundary_selection_rejects_incompatible_operand_units(
+    acquire_monthly_boundary, variable, units,
+):
+    acquired = acquire_monthly_boundary("2020-01-16", "2020-01-17", centered=True)
+    site = acquired.site_data["MHD"]
+    site = site.assign({variable: site[variable].assign_attrs(units=units)})
+    with pytest.raises(ValueError, match=rf"{variable}.*same numeric scale"):
+        select_boundary_representation({"MHD": site}, "ordinary")
+
 
 def test_native_boundaries_forwarded_and_reconstructed_before_rounding(inputs, monkeypatch):
     obs, fp, flux = inputs
@@ -63,7 +85,7 @@ def test_native_boundaries_forwarded_and_reconstructed_before_rounding(inputs, m
         {"a": flux},
         species="co2",
         transport={"a": "integrated"},
-        boundary_data=bc,
+        boundary_representation="centered", boundary_data=bc,
         boundary_reference=400.0,
         boundary_reference_units="ppm",
         boundary_mass_tolerance=0.01,
@@ -115,7 +137,7 @@ def test_local_boundary_operands_without_upstream_kernel(
         {"a": flux},
         species=species,
         transport={"a": "integrated"},
-        boundary_data=bc,
+        boundary_representation="centered", boundary_data=bc,
         boundary_reference=400.0,
         boundary_reference_units=reference_units,
         boundary_mass_tolerance=0.001,
@@ -164,15 +186,14 @@ def test_sparse_boundary_weights_through_surface_preparation(inputs, lazy, repre
     with Callback(pretask=lambda *args: pytest.fail("preparation computed borrowed payload")):
         result = prepare_surface_site(
             obs, fp, {"a": flux}, species="co2", transport={"a": "integrated"},
-            boundary_data=bc,
+            boundary_representation=representation, boundary_data=bc,
             boundary_reference=400., boundary_reference_units="ppm", boundary_mass_tolerance=0.001,
         )
-        result = select_boundary_representation({"S": result}, representation)["S"]
     if lazy:
         assert isinstance(result.bc_mod.data, da.Array)
         result = result.compute(scheduler="synchronous")
     np.testing.assert_allclose(result.bc_mod.data.todense(), 400.05, rtol=0,
-                               atol=1e-12)
+                               atol=1e-12 if representation == "centered" else 2e-5)
     for name, value in fp.data_vars.items():
         assert value.data is borrowed[name]
 
@@ -190,7 +211,7 @@ def test_surface_rejects_invalid_boundary_units(inputs, target, bad_units):
     with pytest.raises(ValueError, match="Invalid boundary units"):
         prepare_surface_site(
             obs, fp, {"a": flux}, species="co2", transport={"a": "integrated"},
-            boundary_data=bc, boundary_reference=400, boundary_reference_units=reference_units,
+            boundary_representation="centered", boundary_data=bc, boundary_reference=400, boundary_reference_units=reference_units,
             boundary_mass_tolerance=0.001,
         )
 
@@ -214,7 +235,7 @@ def test_mapped_boundaries_use_explicit_site_transport(inputs, monkeypatch):
             species="co2",
             transport={"a": "integrated"},
             site_footprint_data=site_fp,
-            boundary_data=bc,
+            boundary_representation="centered", boundary_data=bc,
             boundary_reference=400.0,
             boundary_reference_units="ppm",
             boundary_mass_tolerance=0.001,
@@ -234,7 +255,7 @@ def test_mapped_boundaries_use_explicit_site_transport(inputs, monkeypatch):
     assert provenance["sources"]["a"]["mode"] == "integrated"
 
 
-def test_one_acquisition_serves_both_representations(inputs):
+def test_boundary_representation_is_explicit_and_ordinary_needs_no_reference(inputs):
     from openghg_inversions.basis._helpers import bc_sensitivity
 
     obs, fp, flux = inputs
@@ -252,50 +273,30 @@ def test_one_acquisition_serves_both_representations(inputs):
         )
     options = dict(species="co2", transport={source: "integrated" for source in fluxes},
                    boundary_data=bc, boundary_mass_tolerance=1e-6)
-    with pytest.raises(ValueError, match="require boundary_reference"):
-        prepare_surface_site(obs, fp, fluxes, **options)
-    merged = prepare_surface_site(obs, fp, fluxes, **options,
-                                  boundary_reference=400., boundary_reference_units="ppm")
-    other_reference = prepare_surface_site(obs, fp, fluxes, **options,
-                                           boundary_reference=390., boundary_reference_units="ppm")
-    centered = select_boundary_representation({"TOY": merged}, "centered")["TOY"]
-    assert centered is merged
-    ordinary = select_boundary_representation({"TOY": merged}, "ordinary")["TOY"]
-    shifted = select_boundary_representation({"TOY": other_reference}, "ordinary")["TOY"]
-    assert "bc_reference" not in ordinary and "bc_anomaly_n" not in ordinary
-    assert "boundary_representation" not in ordinary.attrs
-    assert merged.attrs["boundary_representation"] == "centered-v1"
-    np.testing.assert_allclose(ordinary.bc_mod, 400.05, atol=1e-12, rtol=0)
-    for direction in "nesw":
-        np.testing.assert_allclose(ordinary[f"bc_{direction}"], 400.05 / 4, atol=1e-12, rtol=0)
-        assert ordinary[f"bc_{direction}"].attrs["units"] == merged.mf.attrs["units"]
-        np.testing.assert_allclose(ordinary[f"bc_{direction}"], shifted[f"bc_{direction}"], atol=1e-12, rtol=0)
+    ordinary = prepare_surface_site(obs, fp, fluxes, **options)
+    referenced = prepare_surface_site(obs, fp, fluxes, **options,
+                                      boundary_reference=400., boundary_reference_units="ppm")
+    centered = prepare_surface_site(obs, fp, fluxes, **options, boundary_representation="centered",
+                                    boundary_reference=400., boundary_reference_units="ppm")
+    for result in (ordinary, referenced):
+        assert "bc_reference" not in result and "bc_anomaly_n" not in result
+        assert "boundary_representation" not in result.attrs
+        np.testing.assert_allclose(result.bc_mod, 400.05, atol=2e-5, rtol=0)
     raw = bc_sensitivity({"TOY": ordinary})["TOY"].H_bc
     centered_raw = bc_sensitivity({"TOY": centered})["TOY"]
     xr.testing.assert_allclose(raw, centered_raw.H_bc_anomaly + centered_raw.bc_reference * centered_raw.H_bc_mass)
+    with pytest.raises(ValueError, match="require reference"):
+        prepare_surface_site(obs, fp, fluxes, **options, boundary_representation="centered")
 
 
-def test_absolute_merged_data_cannot_become_centered():
-    site = xr.Dataset({f"bc_{d}": ("time", [1.0], {"units": "ppm"}) for d in "nesw"})
-    assert select_boundary_representation({"S": site}, "ordinary")["S"] is site
-    with pytest.raises(ValueError, match="only absolute boundary sensitivities"):
-        select_boundary_representation({"S": site}, "centered")
-    with pytest.raises(ValueError, match="must be one of"):
-        select_boundary_representation({"S": site}, "absolute")
-
-
-@pytest.mark.parametrize("transport,use_bc,options,message", [
-    (None, True, {"boundary_reference": 400.}, "apply only with surface_transport"),
-    ({"a": "integrated"}, True, {}, "require boundary_mass_tolerance"),
-])
-def test_acquisition_checks_boundary_options_before_retrieval(monkeypatch, transport, use_bc, options, message):
-    monkeypatch.setattr(acquisition, "get_flux_data", lambda **kw: pytest.fail("retrieved with invalid options"))
-    monkeypatch.setattr(acquisition, "get_obs_data", lambda **kw: pytest.fail("retrieved with invalid options"))
-    with pytest.raises(ValueError, match=message):
+@pytest.mark.parametrize("transport,use_bc", [(None, True), ({"a": "integrated"}, False)])
+def test_centered_acquisition_rejects_ignored_choice(monkeypatch, transport, use_bc):
+    monkeypatch.setattr(acquisition, "get_flux_data", lambda **kw: pytest.fail("retrieved ignored centering choice"))
+    with pytest.raises(ValueError, match="requires surface_transport and use_bc"):
         MergedData.from_options(
             species="co2", site_options=SiteOptions.from_inputs(sites=["MHD"], averaging_period="1h"),
             domain="EUROPE", start_date="2020-01-01", end_date="2020-02-01", flux_sources=["a"],
-            surface_transport=transport, use_bc=use_bc, **options,
+            surface_transport=transport, use_bc=use_bc, boundary_representation="centered",
         )
 
 
@@ -343,9 +344,9 @@ def test_native_products_precede_observation_averaging(inputs, mode, lazy, repre
     before = [value.copy(deep=True) for value in (obs, fp, flux, bc)]
     result = prepare_surface_site(
         obs, fp, {"a": flux}, species="co2", transport={"a": mode}, boundary_data=bc,
-        boundary_reference=400., boundary_reference_units="ppm", boundary_mass_tolerance=1e-6,
+        boundary_representation=representation, boundary_reference=400.,
+        boundary_reference_units="ppm", boundary_mass_tolerance=1e-6,
     )
-    result = select_boundary_representation({"S": result}, representation)["S"]
     # Integrated native products: mean(1*1, 3*3)=5; resolved uses the two-hour history mean=2.
     np.testing.assert_allclose(result.mf_mod, 5. if mode == "integrated" else 4.)
     np.testing.assert_allclose(result.bc_mod, 402.)
