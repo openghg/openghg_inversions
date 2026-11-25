@@ -18,9 +18,11 @@ Prerequisites
   dimensionless ``H_bc_mass`` and scalar ``bc_reference``); see
   :doc:`surface_preparation`.
 * For centered operands, a PyTensor process configured with
-  ``floatX=float64``. Binding checks this once. The
-  :ref:`fixed-OU precision guide <fixed-ou-step-precision>` explains the
-  requirement and how it differs from the state cache dtype.
+  ``floatX=float64`` for additive corrections, anomaly scaling and custom
+  multiplicative priors. The default multiplicative prior supports
+  ``floatX=float32`` as well. Binding checks the selected prior and precision.
+  The :ref:`precision guide <fixed-ou-step-precision>` explains the dtype
+  choices and the rounding of absolute concentrations in float32.
 * For weighted additive corrections, the complete averaging weights
   ``bc_centering_weights``, stored when the artifact is prepared (see
   :ref:`co2-boundary-weights`).

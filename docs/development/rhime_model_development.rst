@@ -256,8 +256,8 @@ Updating these saved scalars does not update the distributions' widths.
 
 Validation is not repeated along this path. Preparation and artifact loading
 own units, labels and layout; ``bind`` owns calendar and row alignment and the
-single float64 check for centered sensitivity; ``add`` checks only values that
-become available once lazy payloads are materialized.
+precision check for the chosen centered formulation. ``add`` checks values
+that become available when lazy payloads are materialized.
 
 A new supported boundary prior reaches these owners:
 

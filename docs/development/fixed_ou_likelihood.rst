@@ -136,11 +136,16 @@ before that evaluation.
 For a centered boundary, the model subtracts the fixed reference shift from
 the observations and computes the centered likelihood mean directly. In the
 multiplicative case the correction uses the deviation :math:`b-1`, where
-:math:`b` is the physical boundary scale. Centered operands currently require
-process-wide ``floatX=float64`` because model data registration follows that
-setting. The state quadratic's float64 storage cannot recover precision lost
-when registering operands, evaluating a transform, or forming the residual.
-See :doc:`../usage/co2_boundary_corrections` for configuration.
+:math:`b` is the physical boundary scale. With the default multiplicative
+prior in a float32 process, the model computes this deviation directly
+as ``expm1(eta)`` in the log-scale coordinate :math:`\eta`. The shifted
+prior and its Jacobian describe the same prior on the physical scale.
+This avoids rounding a scale near one before subtracting one. Model data
+still follows the process dtype, so restored absolute concentrations
+can round at the absolute concentration scale. The state quadratic's
+float64 storage cannot recover rounding from model data registration or
+the forward mean. Other centered choices and priors use float64. See
+:doc:`../usage/co2_boundary_corrections` for configuration.
 
 When evaluating a precision change, compare nearby-state log-density
 differences and gradients through the compiled graph, and check that the

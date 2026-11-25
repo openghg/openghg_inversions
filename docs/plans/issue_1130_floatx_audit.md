@@ -86,16 +86,26 @@ A six-draw NUTS smoke check produced finite native log likelihoods and
 restored posterior predictions.
 
 The prototype covers the default prior with all boundary states active in a
-single-channel fixture. The package continues to require float64 for
-centered operands. The [maintained precision explanation](../development/fixed_ou_likelihood.rst)
+single-channel fixture. The [maintained precision explanation](../development/fixed_ou_likelihood.rst)
 records the roles of the cache, amplitude trajectory and model data.
+
+The production follow-up uses this deviation for the default multiplicative
+prior in float32, with regular float32 model data. At the perturbed per-meg
+state, native and cached log likelihoods were −14.05418615 and −14.05418505,
+respectively. Restored observations differed by up to 0.00918 per meg. The
+production path completed a six-draw cached NUTS run and returned finite
+likelihoods and restored posterior predictions. The integration test also
+checks nearby-state log-density differences and gradients with a fixed
+boundary state.
 
 ## Reproduce and extend
 
 Run from the repository root with a fresh process for every mode. The modes
 are `ordinary` for float64, `guard-only` for a bypassed guard, `local` for
 the data-only prototype, `local-prior` for data plus prior precision and
-`local-expm1` for local data precision with the stable deviation.
+`local-expm1` for local data precision with the stable deviation. Use
+`production` to exercise the default multiplicative prior in float32
+with normal model data registration.
 Add `--sample` to construct the cached NUTS step and run a six-draw smoke
 check on the per-meg multiplicative case. With `local-prior` this exposes
 the mixed-dtype construction error above.
@@ -105,7 +115,7 @@ export PYTHONPATH=".:tests${PYTHONPATH:+:$PYTHONPATH}"
 PYTENSOR_FLAGS=floatX=float64,linker=py,cxx= \
   uv run python docs/plans/issue_1130_centered_precision_probe.py ordinary
 PYTENSOR_FLAGS=floatX=float32,linker=py,cxx= \
-  uv run python docs/plans/issue_1130_centered_precision_probe.py local-expm1 --sample
+  uv run python docs/plans/issue_1130_centered_precision_probe.py production --sample
 ```
 
 Measured with Python 3.12.11, PyMC 6.3.2, PyTensor 3.3.8, NumPy 2.2.6,

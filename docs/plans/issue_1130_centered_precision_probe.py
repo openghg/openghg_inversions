@@ -5,7 +5,6 @@ import json
 from contextlib import ExitStack
 from unittest.mock import patch
 
-from pymc.logprob.transforms import Transform
 
 import numpy as np
 import pymc as pm
@@ -16,13 +15,10 @@ from boundary_test_utils import bound_model_arguments
 from test_co2_centered_boundary import _inputs, _kwargs
 from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
 from openghg_inversions.models import components, coords
-from openghg_inversions.models.boundary import contracts
-from openghg_inversions.models.boundary.centered import Correction
-from openghg_inversions.models.boundary.multiplicative import CenteredMultiplicativeBoundary
+from openghg_inversions.models.boundary import contracts, multiplicative
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.postprocessing.boundary_outputs import restore_absolute_predictives
 from openghg_inversions.rhime.co2 import build_co2_cached_sigma_model, build_co2_model
-from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 
 
 CENTERED_DATA = {
@@ -49,60 +45,6 @@ def local_bc_prior(name, prior_params, **kwargs):
     if name == "bc":
         kwargs["dtype"] = "float64"
     return ordinary_prior(name, prior_params, **kwargs)
-
-
-class _CenteredLog(Transform):
-    """Map a scale deviation on (-1, infinity) to the original log-scale coordinate."""
-
-    name = "log1p"
-
-    def forward(self, value, *inputs):
-        """Map the physical deviation to the log scale."""
-        return pt.log1p(value)
-
-    def backward(self, value, *inputs):
-        """Compute the physical deviation directly in the sampled dtype."""
-        return pt.expm1(value)
-
-    def log_jac_det(self, value, *inputs):
-        """Return log(exp(value)) for the elementwise inverse transform."""
-        return value
-
-
-def _add_expm1_boundary(boundary, *, output_dim="nmeasure", prefix="", owner="bc"):
-    """Prototype the default scale prior on deviations for the all-active fixture.
-
-    Args:
-        boundary: Bound centered multiplicative boundary with the default prior.
-        output_dim: Model observation dimension.
-        prefix: Prefix for registered boundary quantities.
-        owner: Namespace for component-owned coordinates.
-
-    Returns:
-        The centered affine term with the original support, prior and log-scale
-        coordinates. The physical scale is exposed as a deterministic.
-
-    Raises:
-        AssertionError: If the fixture uses a different prior or activity policy.
-    """
-    assert boundary.choice.prior == DEFAULT_BC_PRIOR and boundary.choice.activity is None
-    registered = boundary._register_sensitivity(output_dim=output_dim, prefix=prefix, owner=owner)
-    data = boundary.data
-    sensitivity = data.H_bc_anomaly + data.bc_reference * data.H_bc_mass
-    assert (sensitivity != 0).any(output_dim).all()
-    deviation = pm.TruncatedNormal(
-        f"{prefix}bc_deviation",
-        mu=0.0,
-        sigma=DEFAULT_BC_PRIOR["sigma"],
-        lower=-1.0,
-        dims=registered.state_dim,
-        default_transform=None,
-        transform=_CenteredLog(),
-    )
-    pm.Deterministic(f"{prefix}bc", deviation + 1.0, dims=registered.state_dim)
-    signal = pt.dot(registered.anomaly, deviation) + registered.reference * pt.dot(registered.mass, deviation)
-    block = components.AffineBlock(sensitivity, deviation)
-    return boundary._term(registered, [Correction(deviation, signal, block, deviation)], signal)
 
 
 def run_case(*, reference, kind, mode, sample):
@@ -181,8 +123,8 @@ def run_case(*, reference, kind, mode, sample):
             rtol=0,
         )
     isolated_native_logp = [float(cached_likelihood(item)) for item in points]
-    if mode == "local-expm1" and kind == "multiplicative":
-        np.testing.assert_allclose(isolated_native_logp, [entry[0] for entry in evaluated], atol=1e-7, rtol=0)
+    if mode in ("local-expm1", "production") and kind == "multiplicative":
+        np.testing.assert_allclose(isolated_native_logp, [entry[0] for entry in evaluated], atol=2e-5, rtol=0)
     sampling = {}
     if sample:
         step = make_cached_sigma_compound_step(
@@ -255,20 +197,23 @@ ordinary_prior = components.parse_prior
 def main():
     """Run the chosen precision experiment in a fresh PyTensor process."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=("ordinary", "guard-only", "local", "local-prior", "local-expm1"))
+    parser.add_argument(
+        "mode", choices=("ordinary", "guard-only", "local", "local-prior", "local-expm1", "production")
+    )
     parser.add_argument("--sample", action="store_true", help="Sample the larger multiplicative case.")
     args = parser.parse_args()
     with ExitStack() as stack:
-        if args.mode != "ordinary":
+        if args.mode not in ("ordinary", "production"):
             stack.enter_context(patch.object(contracts, "require_centered_precision", lambda: None))
         if args.mode in ("local", "local-prior", "local-expm1"):
             stack.enter_context(patch.object(coords.pm, "Data", local_double_data))
         if args.mode == "local-prior":
             stack.enter_context(patch.object(components, "parse_prior", local_bc_prior))
-        if args.mode == "local-expm1":
-            stack.enter_context(patch.object(CenteredMultiplicativeBoundary, "add", _add_expm1_boundary))
+        if args.mode in ("guard-only", "local", "local-prior"):
+            stack.enter_context(patch.object(multiplicative, "_uses_stable_deviation", lambda prior: False))
+        kinds = ("multiplicative",) if args.mode == "production" else ("additive", "multiplicative")
         for reference in (400.000027, 209300.0021):
-            for kind in ("additive", "multiplicative"):
+            for kind in kinds:
                 result = run_case(
                     reference=reference,
                     kind=kind,
