@@ -1021,7 +1021,7 @@ def test_co2_ou_requires_retained_site_mapping_coverage(option: str) -> None:
         "tau_hours": {"TAC": 7.0, "MHD": 5.0, "dropped": 3.0},
     }
     del options[option]["TAC"]
-    with pytest.raises(ValueError, match="every coordinate label"):
+    with pytest.raises(ValueError, match=rf"{option} site mapping is missing observed site\(s\): \[.TAC.\]"):
         _build_model(
             _production_boundary_inputs(),
             likelihood_builder=add_fixed_ou_gaussian_likelihood,

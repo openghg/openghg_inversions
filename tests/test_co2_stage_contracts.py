@@ -48,7 +48,7 @@ def test_invalid_inferred_ou_site_mapping_has_no_sample_destination(tmp_path):
     prep = handoffs.prepare(prepared_path=source, output_dir=tmp_path / "prepare", **FACTS)
     model = {"likelihood": {"kind": "fixed_ou", "tau_hours": {"wrong": 24.0},
                             "site_amplitude_prior": {"pdf": "gamma", "alpha": 2.0, "beta": 3.0}}}
-    with pytest.raises(ValueError, match="every coordinate label"):
+    with pytest.raises(ValueError, match=r"tau_hours site mapping is missing observed site\(s\)"):
         handoffs.sample(prep, model=model, output_dir=tmp_path / "unopened")
     assert not (tmp_path / "unopened").exists()
 
@@ -132,7 +132,7 @@ def test_co2_preparation_allows_unknown_revision(tmp_path, monkeypatch):
         lambda name: SimpleNamespace(version="0.7.3", read_text=lambda name: None))
     canonical = _canonical_inputs()
     manifest = handoffs.prepare(canonical_inputs=canonical, reduction=_reduction(canonical),
-        output_dir=tmp_path / "prepare", **FACTS)
+        aggregation_error_rank=None, output_dir=tmp_path / "prepare", **FACTS)
     record = json.loads(manifest.read_text())
     assert record["provenance"] == {"version": "0.7.3", "revision": None, "dirty": None}
 
@@ -241,7 +241,7 @@ def test_full_run_guards_only_consumed_files_and_written_targets(full_run_files,
         kwargs["prepared"] = prepared
     elif route == "canonical":
         canonical = _canonical_inputs()
-        kwargs.update(canonical_inputs=canonical, reduction=_reduction(canonical))
+        kwargs.update(canonical_inputs=canonical, reduction=_reduction(canonical), aggregation_error_rank=None)
     before = source.read_bytes()
     def reached(*args, **kwargs):
         raise RuntimeError("sampling reached with valid unused path")
@@ -286,6 +286,34 @@ def test_staged_product_writer_preserves_consumed_inputs(tmp_path, kind, output_
     else:
         assert list(alias.parent.iterdir()) == [alias]
         assert alias.read_bytes() == before[paths[kind]]
+
+
+def test_staged_replay_protects_posterior_after_alias_changes(tmp_path, monkeypatch):
+    """Protect the resolved input even if its manifest alias changes after the read."""
+    prepared, trace = _components_fixture()
+    prep = handoffs.save_preparation(prepared, output_dir=tmp_path / "prepare", **FACTS)
+    samples = handoffs.save_samples(prep, trace, actual_inference={},
+        preparation_generation=handoffs.load_preparation(prep).generation, output_dir=tmp_path / "sample")
+    posterior = samples.parent / "posterior.nc"
+    original = posterior.read_bytes()
+    alias = samples.parent / "trace-alias.nc"
+    alias.symlink_to(posterior)
+    record = json.loads(samples.read_text())
+    record["posterior"] = alias.name
+    samples.write_text(json.dumps(record))
+    load_trace = handoffs.load_trace
+
+    def retarget_alias(path):
+        """Change the alias once the original trace has been loaded."""
+        loaded = load_trace(path)
+        alias.unlink()
+        alias.symlink_to(samples.parent / "replacement.nc")
+        return loaded
+
+    monkeypatch.setattr(handoffs, "load_trace", retarget_alias)
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+        handoffs.postprocess(samples, output=Co2OutputOptions(output_format="basic", save_trace=posterior))
+    assert posterior.read_bytes() == original
 
 
 @pytest.mark.parametrize("stage", ["full", "sample", "prior"])

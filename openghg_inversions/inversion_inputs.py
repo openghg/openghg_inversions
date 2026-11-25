@@ -210,6 +210,24 @@ def make_sigma_freq(
 
 
 # INVERSION INPUTS PIPELINE
+# Dimensions of the native transport grid. Footprints, flux products, boundary curtains and
+# particle diagnostics on these dimensions are reduced to ``H`` and ``H_bc`` before assembly.
+_NATIVE_GRID_DIMS = frozenset({"lat", "lon", "height"})
+
+
+def _drop_native_grid_variables(dataset: xr.Dataset) -> xr.Dataset:
+    """Return a shallow copy without data variables on the native transport grid.
+
+    Inversion inputs are observation-aligned. Raw footprints (including ``fp_HiTRes``),
+    ``fp_x_flux`` products, boundary curtains and particle diagnostics have already been
+    reduced to sensitivities by this point and nothing reads them from the inversion inputs.
+    Gathering them kept lazy store reads alive until prepared checkpoints were saved, where
+    they dominated the file size and the save time. Coordinates are kept.
+    """
+    names = [name for name, variable in dataset.data_vars.items() if _NATIVE_GRID_DIMS.intersection(variable.dims)]
+    return dataset.drop_vars(names)
+
+
 def _drop_nan_and_compute(
     ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error")
 ) -> xr.Dataset:
@@ -408,6 +426,7 @@ def make_inv_inputs(
         if any(value.attrs["units"] != reference.attrs["units"] for value in references[1:]):
             raise ValueError("Centered bc_reference units must match across sites.")
         site_data = {site: dataset.drop_vars("bc_reference") for site, dataset in site_data.items()}
+    site_data = {site: _drop_native_grid_variables(dataset) for site, dataset in site_data.items()}
     site_data = _fill_missing_optional_observation_factors(site_data)
     _validate_per_site_dimension_names(site_data, ragged_dim="time")
 

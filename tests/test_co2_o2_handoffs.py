@@ -4,6 +4,7 @@ from dataclasses import replace
 import json
 
 import numpy as np
+import pymc as pm
 import pytest
 import xarray as xr
 
@@ -22,7 +23,7 @@ def no_inference(monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("Linked persistence must not construct a model or sampler")
 
-    monkeypatch.setattr(handoffs.pm.Model, "__init__", forbidden)
+    monkeypatch.setattr(pm.Model, "__init__", forbidden)
     monkeypatch.setattr(RhimeSampler, "__init__", forbidden)
     monkeypatch.setattr(handoffs, "sample", forbidden)
     monkeypatch.setattr(handoffs, "prior_predictive", forbidden)
@@ -195,6 +196,43 @@ def test_graph_free_replay_retains_roles_labels_and_inference(tmp_path, joint_tr
             (components.pollution_posterior + components.boundary_posterior + components.offset_posterior)
             .transpose(*components.modelled_posterior.dims),
         )
+
+
+def test_postprocess_protects_the_posterior_it_loaded_after_manifest_replacement(tmp_path, monkeypatch, joint_trace):
+    """A concurrent manifest replacement cannot remove the consumed posterior from write protection."""
+    prep = handoffs.save_preparation(synthetic_inputs(), output_dir=tmp_path / "prepare")
+    sample = handoffs.save_samples(
+        prep, joint_trace, actual_inference={"draws": 4},
+        preparation_generation=handoffs.load_preparation(prep).generation, output_dir=tmp_path / "sample",
+    )
+    posterior = sample.parent / "posterior.nc"
+    original = posterior.read_bytes()
+
+    def replace_manifest(**kwargs):
+        """Redirect the manifest after the original posterior has been loaded."""
+        record = json.loads(sample.read_text())
+        record["posterior"] = "replacement.nc"
+        sample.write_text(json.dumps(record))
+
+    monkeypatch.setattr(handoffs, "calculate_co2_o2_products", replace_manifest)
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+        handoffs.postprocess(sample, output=Co2O2OutputOptions(output_format="basic", save_trace=posterior))
+
+    assert posterior.read_bytes() == original
+
+
+def test_invalid_prior_predictive_request_preserves_readiness_report(tmp_path):
+    """Validate configured units before replacing an existing readiness report."""
+    preparation = handoffs.save_preparation(synthetic_inputs(), output_dir=tmp_path / "prepare")
+    report = tmp_path / "prior-predictive-readiness.json"
+    original = json.dumps({"status": "pass"})
+    report.write_text(original)
+
+    model = {"channels": {"co2": {"units": "ppb"}, "o2": {"units": "ppb"}}}
+    with pytest.raises(ValueError, match="do not match prepared"):
+        handoffs.prior_predictive(preparation, model=model, output_dir=tmp_path)
+
+    assert report.read_text() == original
 
 
 def test_heterogeneous_import_fails_before_checkpoint(tmp_path, no_inference):

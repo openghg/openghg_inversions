@@ -1,0 +1,1 @@
+Inversion inputs no longer carry raw footprints, `fp_HiTRes`, `fp_x_flux` products, boundary curtains or particle diagnostics. These native-grid variables are reduced to `H` and `H_bc` before assembly; carrying them made prepared checkpoints very large and slow to save, because lazy store reads were only materialized at save time.

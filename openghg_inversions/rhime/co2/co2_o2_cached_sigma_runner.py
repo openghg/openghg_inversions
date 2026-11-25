@@ -7,7 +7,6 @@ from typing import Any, Literal
 
 import xarray as xr
 
-from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.boundary import Choice
@@ -140,14 +139,13 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     offset_prior = eager_priors["offset"]
     site_amplitude_prior = eager_priors["amplitude"]
     observations, fixed, co2, o2, error = materialized
-    flux_prior = CorrelatedPrior.from_lognormal(prepared.retained_prior)
     cached = _build_co2_o2_cached_sigma_model(
         observations=observations,
         fixed_prior_contribution=fixed,
         co2_sensitivity=co2,
         o2_sensitivity=o2,
         aggregation_error=prepared.aggregation_error,
-        retained_prior=flux_prior,
+        retained_prior=prepared.retained_prior,
         independent_error_sd=error,
         tau_hours=tau_hours,
         site_amplitude_prior=site_amplitude_prior,

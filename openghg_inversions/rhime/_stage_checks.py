@@ -84,14 +84,12 @@ def prior_predictive_check(
         OSError: If writing the evidence or report fails.
     """
     report.unlink(missing_ok=True)
-    import pymc as pm
-
+    from openghg_inversions.inference.sampling import sample_prior_predictive
     from openghg_inversions.serialization import save_trace
 
     try:
         built = build()
-        with built.model:
-            prior = pm.sample_prior_predictive(draws, built.model)
+        prior = sample_prior_predictive(built.model, draws=draws)
     except (KeyError, ValueError) as exc:
         non_finite, status, artifacts = None, "fail", []
         message = f"Prior-predictive readiness failed: {type(exc).__name__}: {exc}"
