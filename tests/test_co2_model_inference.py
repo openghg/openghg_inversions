@@ -177,14 +177,15 @@ def test_prior_resolution_still_validates_scientific_choices(likelihood, error, 
         Co2ModelConfig.from_params({"likelihood": likelihood}).model_arguments()
 
 
-def test_all_fixed_ou_empty_state_graph_uses_float32():
+def test_empty_cached_ou_state_graph_keeps_float32_amplitudes():
+    """The float64 state quadratic does not set the amplitude coordinate dtype."""
     prepared, _ = _prepared()
     inputs = prepared.inv_inputs.assign(state_is_active=xr.zeros_like(prepared.inv_inputs.alpha_prior_mean, dtype=bool))
     prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
     with pytensor.config.change_flags(floatX="float32"):
         built, cached = inference.build_co2_inference(prepared, Co2ModelConfig.from_params(_request()).model_arguments())
     assert cached is not None and not cached.states
-    assert cached.cached_state_logp.dtype == "float32"
+    assert cached.cached_state_logp.dtype == "float64"
     assert built.model["ou_site_amplitude"].dtype == "float32"
 
 
