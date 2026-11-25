@@ -192,6 +192,7 @@ def prepare(
             "filter_options",
             "basis_algorithm",
             "nbasis",
+            "basis_seed",
             "fix_basis_outer_regions",
             "use_bc",
         ),

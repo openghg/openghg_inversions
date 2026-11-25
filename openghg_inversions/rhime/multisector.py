@@ -400,6 +400,7 @@ def prepare_multisector(
     basis_inputs: Mapping[str, Any],
     bc_basis: BoundaryBasis = nesw_basis,
     filter_options: Mapping[str, Mapping[str, Any]] | None = None,
+    basis_seed: int | None = None,
 ) -> PreparedInputs:
     """Prepare observations and sensitivities from supplied scientific resources.
 
@@ -412,6 +413,7 @@ def prepare_multisector(
         filter_options: Keyword options for named observation filters.
         basis_algorithm: Selected basis-generation algorithm.
         nbasis: Requested generated basis size.
+        basis_seed: Seed for a generated quadtree basis; None leaves it random.
         fix_basis_outer_regions: Keep the supplied outer partition fixed.
         use_bc: Construct boundary-condition sensitivities.
         merged_data: Borrowed acquired observations, transport and current flux.
@@ -451,6 +453,7 @@ def prepare_multisector(
             basis_algorithm=basis_algorithm,
             nbasis=nbasis,
             fix_outer_regions=fix_basis_outer_regions,
+            seed=basis_seed,
             **basis_inputs,
         )
 
@@ -601,6 +604,7 @@ def run_multisector(
                 "filter_options",
                 "basis_algorithm",
                 "nbasis",
+                "basis_seed",
                 "fix_basis_outer_regions",
                 "use_bc",
             ),

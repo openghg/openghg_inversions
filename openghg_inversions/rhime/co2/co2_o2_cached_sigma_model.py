@@ -11,7 +11,7 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions.array_ops import to_dense_tree
-from openghg_inversions.correlated_state import CorrelatedPrior
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.models import (
     StateActivity,
     add_coherent_affine_component,
@@ -29,6 +29,7 @@ from openghg_inversions.models.components import (
     prepare_active_correlated_prior,
 )
 from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.observation_error import (
     AggregationError,
@@ -40,10 +41,9 @@ from .co2_cached_sigma_model import (
     Co2CachedSigmaModel,
     _add_cached_likelihood,
     _materialize_cached_linear_projection,
-    _site_values,
+    _resolve_amplitude_options,
 )
-from .co2_o2_fixed_ou import linked_fixed_ou_alignment
-from openghg_inversions.models.outer_flux import OuterFluxChoice
+from .co2_o2_fixed_ou import linked_fixed_ou_alignment, validate_linked_ou_amplitude_units
 from .co2_o2_model import (
     _add_co2_o2_baseline_components,
     _gather_co2_o2_sensitivity,
@@ -57,11 +57,12 @@ def build_co2_o2_cached_sigma_model(
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
     aggregation_error: AggregationError,
-    retained_prior: CorrelatedPrior,
+    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
     independent_error_sd: xr.DataArray,
     tau_hours: float | Mapping[str, float],
-    site_amplitude_prior: PriorArgs,
+    site_amplitude_prior: PriorArgs | None = None,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
+    fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
     outer_flux: OuterFluxChoice | None = None,
@@ -74,14 +75,20 @@ def build_co2_o2_cached_sigma_model(
     Inputs have the same coherent-reduction, optional channel-baseline, and
     embedded O2-ratio contract as
     :func:`~openghg_inversions.rhime.co2.co2_o2_model.build_co2_o2_model`.
-    Both channels must use the same concentration unit. OU blocks are independent by
-    ``(species, site)`` while the prepared aggregation covariance retains all
-    cross-channel entries. ``tau_hours`` is fixed, in hours; mappings use
-    ``co2:SITE``/``o2:SITE`` keys. Amplitudes have independent positive priors
-    specified by ``site_amplitude_prior`` in concentration units. Optional positive
-    initial amplitudes use the same scalar or species/site mapping convention.
-    The returned graph must be sampled with the CO2 sigma-then-state
-    CompoundStep and its explicit cached state function. The observed joint
+    OU blocks are
+    independent by ``(species, site)`` while the prepared aggregation
+    covariance retains all cross-channel entries. ``tau_hours`` is fixed, in
+    hours; mappings use ``co2:SITE``/``o2:SITE`` keys. Exactly one amplitude
+    option is required. Inferred amplitudes have independent positive priors
+    specified by ``site_amplitude_prior`` in concentration units and need
+    identical channel units; optional positive initial amplitudes use the same
+    scalar or species/site mapping convention. Fixed amplitudes
+    (``fixed_site_amplitudes``) are in each group's channel units; with mixed
+    channel units (for example ppm CO2 and per-meg O2) a nonzero value must be
+    a ``co2:SITE``/``o2:SITE`` mapping.
+    The returned graph must be sampled with the CO2 cached CompoundStep
+    (sigma-then-state, or state only for fixed amplitudes) and its explicit
+    cached state function. The observed joint
     Gaussian remains exact independently of that cache. Scientific initial
     values are returned separately for sampling; observations, designs,
     activity masks, and covariance stay fixed after construction.
@@ -114,25 +121,32 @@ def build_co2_o2_cached_sigma_model(
             :func:`~openghg_inversions.rhime.co2.co2_o2_model.build_co2_o2_model`.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
-            with the same meanings as the CO2 offset component. Baseline terms
-            require identical channel units and are zero on the other channel.
+            with the same meanings as the CO2 offset component. Each channel's
+            offset is in that channel's units and is zero on the other channel,
+            so offsets allow mixed units (for example ppm CO2 and per-meg O2).
+            Boundary terms still require identical channel units.
         output_dim: Joint observation dimension used by the likelihood.
         tau_hours: Fixed OU timescale in hours, scalar or mapping keyed
-            by ``co2:SITE``/``o2:SITE``. Requires common channel units.
+            by ``co2:SITE``/``o2:SITE``.
         site_amplitude_prior: Prior for inferred species/site OU amplitudes in
-            concentration units.
-
+            concentration units. Requires common channel units.
         initial_site_amplitudes: Positive initial amplitudes, as a scalar or
-            species/site mapping, returned separately for sampling.
+            species/site mapping, returned separately for sampling. Only
+            valid with ``site_amplitude_prior``.
+        fixed_site_amplitudes: Fixed non-negative species/site amplitudes in
+            each group's channel units, as a scalar or species/site mapping,
+            registered as ``ou_site_amplitude`` model data.
 
     Returns:
         A registered joint PyMC model, fixed-OU target, matched cache, affine
         coefficient variables and sampling initial values. Use the paired
-        sigma-then-state CompoundStep to keep the state cache current.
+        CompoundStep to keep the state cache current.
 
     Raises:
         ValueError: If channel options, labels, units, activity, covariance,
-            positive amplitudes or explicit double precision are invalid.
+            amplitude options or explicit double precision are invalid, or if
+            channel units differ and amplitudes are inferred or a nonzero
+            scalar.
     """
     (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd), boundary, priors = (
         dask_compute(*to_dense_tree((
@@ -153,6 +167,7 @@ def build_co2_o2_cached_sigma_model(
         tau_hours=tau_hours,
         site_amplitude_prior=site_amplitude_prior,
         initial_site_amplitudes=initial_site_amplitudes,
+        fixed_site_amplitudes=fixed_site_amplitudes,
         state_activity=state_activity,
         boundary=boundary,
         outer_flux=outer_flux,
@@ -169,11 +184,12 @@ def _build_co2_o2_cached_sigma_model(
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
     aggregation_error: AggregationError,
-    retained_prior: CorrelatedPrior,
+    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
     independent_error_sd: xr.DataArray,
     tau_hours: float | Mapping[str, float],
-    site_amplitude_prior: PriorArgs,
+    site_amplitude_prior: PriorArgs | None = None,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
+    fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
     outer_flux: OuterFluxChoice | None = None,
@@ -196,10 +212,17 @@ def _build_co2_o2_cached_sigma_model(
         output_dim=output_dim,
     )
     alignment = linked_fixed_ou_alignment(observations)
+    validate_linked_ou_amplitude_units(
+        observations,
+        fixed_site_amplitudes=fixed_site_amplitudes,
+        site_amplitude_prior=site_amplitude_prior,
+    )
     site_coord = xr.DataArray(alignment.site_labels).rename({"nsigma_site": "ou_site"}).rename("ou_site")
     site_index = alignment.site_index.rename("ou_site_index")
-    initial_amplitudes = _site_values(
-        initial_site_amplitudes,
+    initial_amplitudes, fixed_amplitudes = _resolve_amplitude_options(
+        site_amplitude_prior=site_amplitude_prior,
+        fixed_site_amplitudes=fixed_site_amplitudes,
+        initial_site_amplitudes=initial_site_amplitudes,
         site_coord=site_coord,
     )
     joint = _gather_co2_o2_sensitivity(co2_sensitivity, o2_sensitivity, output_dim=output_dim)
@@ -288,6 +311,7 @@ def _build_co2_o2_cached_sigma_model(
             site_index=site_index,
             initial_amplitudes=initial_amplitudes,
             site_amplitude_prior=site_amplitude_prior,
+            fixed_site_amplitudes=fixed_amplitudes,
             output_dim=output_dim,
         )
         return cached

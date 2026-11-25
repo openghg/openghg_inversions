@@ -67,7 +67,7 @@ def test_linked_cached_runner_restores_absolute_predictions_and_replay(tmp_path,
         captured["centered_y"] = trace.prior_predictive.y.copy(deep=True)
         return trace
 
-    monkeypatch.setattr(runner, "sample_rhime_model", prior_prediction)
+    monkeypatch.setattr(runner, "_sample_linked_rhime_model", prior_prediction)
     anchor = "2020-12-31T23:00:00"
     with pytensor.config.change_flags(floatX="float64"):
         trace = runner.run_rhime_co2_o2_cached_sigma_from_prepared_inputs(

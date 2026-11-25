@@ -15,6 +15,37 @@ This page is for users with fixedbasis-style Python calls, INI files, batch
 scripts, or HBMCMC outputs. For a new inversion, start with the
 :doc:`model recipe chooser <model_recipes>` and :doc:`RHIME guide <rhime>`.
 
+.. _migrate-diagonal-aggregation-error:
+
+Migrating diagonal aggregation error
+------------------------------------
+
+``aggregation_error_sd`` is a marginal diagnostic alongside a dense or
+low-rank-plus-diagonal covariance. If it is the only aggregation-error
+payload, automatic resolution raises an error. Explicit ``"diagonal"`` mode
+has also been removed.
+
+Prefer regenerating the dense covariance from coherent reduction and applying
+LRPD where needed. To reproduce an old independent approximation exactly at
+the lower-level likelihood interface, promote the squared standard deviations
+to an explicit dense covariance::
+
+   import numpy as np
+   from openghg_inversions.observation_error import resolve_aggregation_error
+
+   sd = inputs["aggregation_error_sd"].transpose("nmeasure")
+   migrated = inputs.assign(
+       aggregation_error_covariance=(
+           ("nmeasure", "nmeasure_cov"),
+           np.diag(sd.to_numpy() ** 2),
+       ),
+   )
+   aggregation_error = resolve_aggregation_error(migrated, "dense")
+
+This reproduction uses dense storage. Rebuild scalar-sigma eigenbasis caches
+from the migrated inputs. To omit aggregation error deliberately, select
+``"none"`` at the lower-level interface.
+
 Observation selection and uncertainty
 -------------------------------------
 

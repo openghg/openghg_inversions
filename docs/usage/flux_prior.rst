@@ -6,10 +6,10 @@ The CO₂ and linked CO₂/O₂ recipes sample one retained flux-scaling state
 :class:`~openghg_inversions.correlated_state.CorrelatedPrior`: the retained
 arithmetic mean :math:`m` and covariance :math:`B` from preparation, with a
 marginal family per state. The ordinary and cached CO₂ builders and the linked
-CO₂/O₂ builders take this one ``retained_prior`` value. The runners build it
-from the prepared mean and covariance; the linked runners convert the prepared
-:class:`~openghg_inversions.correlated_state.CorrelatedLognormalPrior` with
-:meth:`~openghg_inversions.correlated_state.CorrelatedPrior.from_lognormal`.
+CO₂/O₂ builders take one ``retained_prior`` value. They also accept a validated
+:class:`~openghg_inversions.correlated_state.CorrelatedLognormalPrior` directly.
+The CO₂ runners build the prior from the prepared mean and covariance. The
+linked runners use the lognormal prior from their prepared inputs.
 
 .. _sampled-marginals:
 

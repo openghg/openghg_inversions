@@ -6,6 +6,10 @@ conditional likelihood. If that transition changes the amplitudes, the
 sampler rebuilds the state-likelihood quadratic for the returned values. The
 following stock state NUTS step holds that quadratic fixed, so its leapfrog
 evaluations do not refactor the observation covariance.
+
+Fixed site amplitudes are the special case without an amplitude step: the
+quadratic is built once, for the fixed values, and the sweep is the stock
+state NUTS step alone.
 """
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ from openghg_inversions._pymc_config import configure_pytensor
 
 configure_pytensor()
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar, Literal, cast
 
 import numpy as np
@@ -49,10 +53,11 @@ FloatArray = NDArray[np.float64]
 
 
 class PytensorMarginalQuadraticCache:
-    """Mutable coefficients read by the state-only PyTensor graph."""
+    """Float64 quadratic coefficients read by the state-only PyTensor graph."""
 
     def __init__(self, initial: MarginalQuadraticCache) -> None:
-        dtype = pytensor.config.floatX
+        # Large absolute concentrations can make the quadratic terms cancel.
+        dtype = np.float64
         self.constant = pytensor.shared(
             np.asarray(initial.constant, dtype=dtype),
             name="cached_marginal_constant",
@@ -73,6 +78,7 @@ class PytensorMarginalQuadraticCache:
 
     def log_likelihood(self, coefficients: TensorVariable) -> TensorVariable:
         """Return the normalized cached quadratic as a PyTensor scalar."""
+        coefficients = coefficients.astype(self.linear.dtype)
         return cast(
             TensorVariable,
             self.constant
@@ -90,6 +96,9 @@ class PytensorMarginalQuadraticCache:
 
 class _PytensorSigmaLikelihoodOp(Op):
     """Exact sigma conditional with a chain-local residual in prepared mode coordinates."""
+
+    # Keep the prepared arrays out of Numba's object-mode callbacks.
+    holds_numpy_target = True
 
     def __init__(self, target: FixedOuCachedSigmaTarget) -> None:
         self.target = target
@@ -437,53 +446,17 @@ class PymcCachedSigmaNutsStep(BlockedStep):
         return Competence.INCOMPATIBLE
 
 
-def make_cached_sigma_compound_step(  # noqa: PLR0913
+def _make_cached_state_step(  # noqa: PLR0913
     *,
     model: pm.Model,
-    sigma: TensorVariable,
     states: Sequence[TensorVariable],
-    modelled_mean: TensorVariable,
-    target: FixedOuCachedSigmaTarget,
-    shared_cache: PytensorMarginalQuadraticCache,
-    initial_cache: MarginalQuadraticCache,
-    cached_state_logp: TensorVariable | None = None,
-    initial_point: PointType | None = None,
-    sigma_target_accept: float = 0.8,
-    state_target_accept: float = 0.9,
-    rng: RandomGenerator = None,
-) -> CompoundStep:
-    """Construct the required sigma-then-state stock PyMC compound sweep.
-
-    At the start of each sweep, the sigma step evaluates ``modelled_mean`` at
-    the current state point. It then updates sigma and refreshes the quadratic
-    for the value returned by that transition before the following stock NUTS
-    step jointly updates ``states``. With no active states, the sweep contains
-    only the amplitude step.
-
-    Observed models require an explicit ``cached_state_logp`` expression. The
-    state function combines this quadratic with the model's free-variable
-    priors and transform Jacobians, excluding the observed likelihood. Legacy
-    Potential-only callers may omit the expression. Prepared inputs must stay
-    fixed after construction.
-    """
-    if cached_state_logp is None and model.observed_RVs:
-        raise ValueError("Observed models require an explicit cached_state_logp for state NUTS.")
-    point = model.initial_point() if initial_point is None else initial_point
-    root_rng = get_random_generator(rng)
-    sigma_rng, state_rng = root_rng.spawn(2)
-    sigma_step = PymcCachedSigmaNutsStep(
-        sigma,
-        target=target,
-        shared_cache=shared_cache,
-        initial_cache=initial_cache,
-        modelled_mean=modelled_mean,
-        target_accept=sigma_target_accept,
-        initial_point=point,
-        model=model,
-        rng=sigma_rng,
-    )
-    if not states:
-        return CompoundStep([sigma_step])
+    cached_state_logp: TensorVariable | None,
+    point: PointType,
+    state_target_accept: float,
+    rng: RandomGenerator,
+    nuts_kwargs: Mapping[str, Any] | None = None,
+) -> pm.NUTS:
+    """Return stock state NUTS on the model priors plus the installed cached quadratic."""
     state_function = None
     if cached_state_logp is not None:
         state_values = get_value_vars_from_user_vars(list(states), model)
@@ -503,14 +476,111 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
         )
         state_function.set_extra_values(point)
     with model:
-        state_step = pm.NUTS(
+        return pm.NUTS(
             vars=list(states),
             target_accept=state_target_accept,
             initial_point=point,
             model=model,
-            rng=state_rng,
+            rng=rng,
             logp_dlogp_func=state_function,
+            **(nuts_kwargs or {}),
         )
+
+
+def make_cached_sigma_compound_step(  # noqa: PLR0913
+    *,
+    model: pm.Model,
+    sigma: TensorVariable | None,
+    states: Sequence[TensorVariable],
+    modelled_mean: TensorVariable,
+    target: FixedOuCachedSigmaTarget,
+    shared_cache: PytensorMarginalQuadraticCache,
+    initial_cache: MarginalQuadraticCache,
+    cached_state_logp: TensorVariable | None = None,
+    initial_point: PointType | None = None,
+    sigma_target_accept: float = 0.8,
+    state_target_accept: float = 0.9,
+    state_nuts_kwargs: Mapping[str, Any] | None = None,
+    rng: RandomGenerator = None,
+) -> CompoundStep:
+    """Construct the required sigma-then-state stock PyMC compound sweep.
+
+    At the start of each sweep, the sigma step evaluates ``modelled_mean`` at
+    the current state point. It then updates sigma and refreshes the quadratic
+    for the value returned by that transition before the following stock NUTS
+    step jointly updates ``states``. With no active states, the sweep contains
+    only the amplitude step.
+
+    ``sigma=None`` declares fixed site amplitudes: ``initial_cache`` is then
+    the exact state quadratic for the whole run. It is installed once, there
+    is no amplitude step and no refresh, and the sweep contains only the state
+    NUTS step (``sigma_target_accept`` is unused). Fixed amplitudes with no
+    active states leave nothing to sample and are rejected.
+    ``state_nuts_kwargs`` passes additional PyMC NUTS options, such as
+    ``max_treedepth``, to the state step. Use ``state_target_accept`` for its
+    target acceptance rate.
+
+    Observed models require an explicit ``cached_state_logp`` expression. The
+    state function combines this quadratic with the model's free-variable
+    priors and transform Jacobians, excluding the observed likelihood. Legacy
+    Potential-only callers may omit the expression. Prepared inputs must stay
+    fixed after construction.
+
+    Raises:
+        ValueError: If an observed model lacks ``cached_state_logp``, if fixed
+            amplitudes have no active states, or if the fixed cache does not
+            match the target dimensions.
+    """
+    if cached_state_logp is None and model.observed_RVs:
+        raise ValueError("Observed models require an explicit cached_state_logp for state NUTS.")
+    if sigma is None:
+        if not states:
+            raise ValueError(
+                "Fixed site amplitudes leave no active states to sample; the cached fixed-OU "
+                "sampler needs at least one active state."
+            )
+        if shared_cache.n_state != target.n_state or initial_cache.n_state != target.n_state:
+            raise ValueError("Shared cache and marginalized target dimensions differ.")
+    point = model.initial_point() if initial_point is None else initial_point
+    root_rng = get_random_generator(rng)
+    sigma_rng, state_rng = root_rng.spawn(2)
+    if sigma is None:
+        # Fixed amplitudes: the quadratic is exact for every state, so it is
+        # installed once and never refreshed.
+        shared_cache.update(initial_cache)
+        return CompoundStep([
+            _make_cached_state_step(
+                model=model,
+                states=states,
+                cached_state_logp=cached_state_logp,
+                point=point,
+                state_target_accept=state_target_accept,
+                rng=state_rng,
+                nuts_kwargs=state_nuts_kwargs,
+            )
+        ])
+    sigma_step = PymcCachedSigmaNutsStep(
+        sigma,
+        target=target,
+        shared_cache=shared_cache,
+        initial_cache=initial_cache,
+        modelled_mean=modelled_mean,
+        target_accept=sigma_target_accept,
+        initial_point=point,
+        model=model,
+        rng=sigma_rng,
+    )
+    if not states:
+        return CompoundStep([sigma_step])
+    state_step = _make_cached_state_step(
+        model=model,
+        states=states,
+        cached_state_logp=cached_state_logp,
+        point=point,
+        state_target_accept=state_target_accept,
+        rng=state_rng,
+        nuts_kwargs=state_nuts_kwargs,
+    )
     return CompoundStep([sigma_step, state_step])
 
 

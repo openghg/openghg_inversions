@@ -299,7 +299,7 @@ def test_outer_flux_selectors_survive_co2_preparation_and_saving(tmp_path, label
         reduction = replace(reduction, retained_mean=mean.assign_coords(
             basis_group=(state, groups), source=(state, sources),
         ))
-    prepare_co2_inputs(canonical, reduction).save(tmp_path / "prepared.nc")
+    prepare_co2_inputs(canonical, reduction, aggregation_error_rank=None).save(tmp_path / "prepared.nc")
     inv = Co2PreparedInputs.load(tmp_path / "prepared.nc").inv_inputs
     prior = CorrelatedPrior(inv.alpha_prior_mean, inv.alpha_prior_covariance, covariance_dim="region_cov")
     # The fixture's states are all correlated, so only the selector labels are checked here.

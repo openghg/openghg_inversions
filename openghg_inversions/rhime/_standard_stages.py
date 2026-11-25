@@ -147,7 +147,7 @@ def prepare(
         merged_data, basis_inputs=basis_inputs, bc_basis=bc_basis,
         **data_config.select(
             "domain", "start_date", "flux_sources", "averaging_error", "filters", "filter_options",
-            "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc",
+            "basis_algorithm", "nbasis", "basis_seed", "fix_basis_outer_regions", "use_bc",
         ),
     )
 

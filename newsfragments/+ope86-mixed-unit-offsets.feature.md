@@ -1,0 +1,1 @@
+Allow linked CO2/O2 channel offsets when the channels use different units, for example ppm CO2 and per-meg O2. Each offset prior is in its own channel's units and the offset is zero on the other channel. Linked boundary terms still require identical units.

@@ -17,7 +17,7 @@ import xarray as xr
 from dask import compute as dask_compute
 
 from openghg_inversions.array_ops import to_dense_tree
-from openghg_inversions.correlated_state import CorrelatedPrior
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.models.additive_sigma import (
     DEFAULT_ADDITIVE_SIGMA_PRIOR,
     add_additive_sigma_likelihood,
@@ -152,7 +152,7 @@ def _check_outer_flux_likelihood(
 def build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedPrior,
+    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -300,7 +300,7 @@ def build_co2_model(
 def _build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedPrior,
+    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,

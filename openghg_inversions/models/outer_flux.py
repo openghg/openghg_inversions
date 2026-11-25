@@ -57,7 +57,7 @@ import numpy as np
 import xarray as xr
 
 from openghg_inversions.array_ops import to_dense
-from openghg_inversions.correlated_state import CorrelatedPrior
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.models.boundary import Outputs
 from openghg_inversions.models.state_activity import ResolvedStateActivity
 from openghg_inversions.observation_error import (
@@ -119,7 +119,7 @@ class OuterFluxChoice:
         }
         return Outputs({}, {}, metadata).prefixed(prefix)
 
-    def resolve_states(self, flux_prior: CorrelatedPrior) -> OuterStates:
+    def resolve_states(self, flux_prior: CorrelatedLognormalPrior | CorrelatedPrior) -> OuterStates:
         """Select the held outer states on the flux prior's state axis.
 
         This is the state-axis work, done once per prior even for linked
