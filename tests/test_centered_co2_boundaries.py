@@ -512,7 +512,7 @@ def test_related_centered_arrays_materialize_one_shared_graph():
     assert isinstance(prepared.inv_inputs.H_bc_mass.data, da.Array)
 
 
-def test_centered_cached_rejects_float32_before_materialization(monkeypatch):
+def test_nondefault_centered_prior_rejects_float32_before_materialization(monkeypatch):
     import dask.array as da
     from dask import delayed
     from openghg_inversions.rhime.co2 import co2_cached_sigma_runner
@@ -539,7 +539,7 @@ def test_centered_cached_rejects_float32_before_materialization(monkeypatch):
                 prepared_inputs=prepared,
                 tau_hours=2.0,
                 site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.1},
-                boundary=MultiplicativeChoice(dict(DEFAULT_BC_PRIOR)),
+                boundary=MultiplicativeChoice({**DEFAULT_BC_PRIOR, "sigma": 0.1}),
             )
         assert pytensor.config.floatX == "float32"
     assert executions == []

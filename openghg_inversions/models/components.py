@@ -493,6 +493,8 @@ def add_state_vector(
     prior_args: dict[str, Any],
     var_name: str,
     coordinate_owner: str | None = None,
+    *,
+    transform: pm.distributions.transforms.Transform | None = None,
 ) -> StateVectorResult:
     """Construct an active/fixed state graph from a resolved activity contract.
 
@@ -509,6 +511,7 @@ def add_state_vector(
             full-state arrays, or labelled state ``DataArray`` objects.
         var_name: Name of the full user-facing state vector.
         coordinate_owner: Optional namespace for registered state coordinates.
+        transform: Optional replacement for the prior's default PyMC transform.
 
     Returns:
         The effective latent, full state vector, and supplied activity.
@@ -535,8 +538,9 @@ def add_state_vector(
         for name, value in active_prior_args(prior_args, activity, select_active=False).items()
     }
 
+    transform_options = {} if transform is None else {"transform": transform, "default_transform": None}
     if activity.n_active == activity.n_state:
-        state = parse_prior(var_name, parameters, dims=state_dim)
+        state = parse_prior(var_name, parameters, dims=state_dim, **transform_options)
         return StateVectorResult(
             latent=get_model_latent(state, var_name),
             state=state,
@@ -563,6 +567,7 @@ def add_state_vector(
             dims=active_dim,
             active_indices=active_indices,
             record_name=var_name,
+            **transform_options,
         )
         latent = get_model_latent(active_state, f"{var_name}_active")
 
