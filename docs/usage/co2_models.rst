@@ -1271,7 +1271,8 @@ remain separate.
 
 Centered multiplicative boundary operands are supported by the ordinary
 stock-PyMC fixed-OU likelihood and the matched cached sampler for CO₂ and linked
-CO₂/O₂, with PyTensor ``floatX=float64``. The single-channel runner selects the
+CO₂/O₂. See :doc:`co2_boundary_corrections` for the precision requirements.
+The single-channel runner selects the
 ordinary route with ``likelihood_builder=add_fixed_ou_gaussian_likelihood``. The likelihood and
 amplitude update use directly composed centered means, while public BC states,
 priors and concentration outputs retain their physical meaning. See the

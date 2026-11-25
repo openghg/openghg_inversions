@@ -18,12 +18,18 @@ between them with :func:`~openghg_inversions.models.boundary.bind_prepared`):
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from numbers import Real
 from typing import Any, ClassVar
 
+import pymc as pm
+import pytensor
 import pytensor.tensor as pt
 import xarray as xr
 from dask import is_dask_collection
+from pymc.distributions.transforms import Transform
+from pytensor.graph.basic import Variable
+from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity, validate_centered_boundary_periods
 from openghg_inversions.inversion_inputs import DatetimeLike
@@ -35,6 +41,7 @@ from openghg_inversions.models.components import (
     add_state_vector,
 )
 from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity, resolve_state_activity
+from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 
 from .centered import CenteredBoundary, Correction, MeanShift
 from .contracts import BoundCenteredSensitivity, RawCenteredSensitivity
@@ -56,6 +63,31 @@ def centered_boundary_expression(anomaly: Any, mass: Any, reference: Any, state:
         the caller. Alignment and materialization belong to the caller.
     """
     return anomaly @ state + reference * (mass @ (state - 1.0))
+
+
+class _LogBoundaryDeviation(Transform):
+    """Use the original log-scale coordinate for a boundary deviation above −1."""
+
+    name = "log1p"
+
+    def forward(self, value: TensorVariable, *inputs: Variable) -> TensorVariable:
+        """Map the deviation to the logarithm of the corresponding scale."""
+        return pt.log1p(value)
+
+    def backward(self, value: TensorVariable, *inputs: Variable) -> TensorVariable:
+        """Recover the deviation without rounding a scale near one first."""
+        return pt.expm1(value)
+
+    def log_jac_det(self, value: TensorVariable, *inputs: Variable) -> TensorVariable:
+        """Return the log Jacobian of the inverse transform."""
+        return value
+
+
+def _uses_stable_deviation(prior: Mapping[str, Any]) -> bool:
+    """Identify the default scalar scaling prior in a float32 process."""
+    return pytensor.config.floatX == "float32" and prior.keys() == DEFAULT_BC_PRIOR.keys() and all(
+        isinstance(prior[key], (Real, str)) and prior[key] == value for key, value in DEFAULT_BC_PRIOR.items()
+    )
 
 
 @dataclass(frozen=True)
@@ -133,11 +165,14 @@ class MultiplicativeChoice:
             ``bc_reference``. Numerical payloads stay borrowed and lazy.
 
         Raises:
-            ValueError: If PyTensor is not configured for float64, or periods or
-                indexed timestamps conflict with the observations.
+            ValueError: If the process precision is incompatible with the
+                scaling prior, or periods or indexed timestamps conflict
+                with the observations. The default scaling prior supports
+                float32 and float64. Other priors require float64.
         """
         return CenteredMultiplicativeBoundary(self, BoundCenteredSensitivity.bind(
             sensitivity, observations, frequency=self.frequency, anchor_time=self.anchor_time,
+            require_float64=not _uses_stable_deviation(self.prior),
         ))
 
     def bind_absolute(self, observations: xr.DataArray, sensitivity: xr.DataArray) -> MultiplicativeBoundary:
@@ -347,12 +382,28 @@ class CenteredMultiplicativeBoundary(CenteredBoundary):
         registered = self._register_sensitivity(output_dim=output_dim, prefix=prefix, owner=owner)
         data = self.data
         sensitivity = (data.H_bc_anomaly + data.bc_reference * data.H_bc_mass).assign_attrs(data.H_bc_anomaly.attrs)
-        vector = _add_scaling(self.choice, sensitivity, output_dim=output_dim, prefix=prefix, owner=owner)
-        activity = vector.activity
+        if _uses_stable_deviation(self.choice.prior):
+            activity = resolve_state_activity(
+                prepare_linear_sensitivity(sensitivity, output_dim=output_dim).removed, self.choice.activity
+            )
+            # Translating the default prior by one preserves the physical scale prior.
+            prior = {**self.choice.prior, "mu": 0.0, "lower": -1.0}
+            vector = add_state_vector(
+                replace(activity, fixed_value=activity.fixed_value - 1.0),
+                prior_args=prior,
+                var_name=f"{prefix}bc_deviation",
+                coordinate_owner=owner,
+                transform=_LogBoundaryDeviation(),
+            )
+            deviation = vector.state
+            pm.Deterministic(f"{prefix}bc", deviation + 1.0, dims=registered.state_dim)
+        else:
+            vector = _add_scaling(self.choice, sensitivity, output_dim=output_dim, prefix=prefix, owner=owner)
+            activity = vector.activity
+            deviation = vector.state - 1.0
         active, inactive = activity.active_indices, activity.fixed_indices
 
-        # Response (A + c M)(b - 1) of the scaling, evaluated without forming A + c M.
-        deviation = vector.state - 1.0
+        # Response (A + c M)(b - 1), evaluated without forming A + c M.
         signal = pt.dot(registered.anomaly, deviation) + registered.reference * pt.dot(registered.mass, deviation)
         inactive_values = activity.fixed_value.isel(bc_region=inactive) - 1
         fixed = registered.fixed + xr.dot(sensitivity.isel(bc_region=inactive), inactive_values, dim="bc_region")
@@ -377,6 +428,8 @@ class CenteredMultiplicativeBoundary(CenteredBoundary):
             applied to both role keys and graph names; metadata is unprefixed.
         """
         roles, units = _multiplicative_roles()
+        if _uses_stable_deviation(self.choice.prior):
+            units.update(bc_deviation="1", bc_deviation_active="1", bc_deviation_fixed_value="1")
         return self._outputs(prefix, roles=roles, units=units, metadata={})
 
 
