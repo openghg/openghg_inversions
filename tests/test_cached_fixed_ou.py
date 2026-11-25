@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 import pymc as pm
+import pytensor
 import pytensor.tensor as pt
 import pytest
 import xarray as xr
@@ -30,6 +31,7 @@ from openghg_inversions.inference.cached_sigma import (
     make_cached_sigma_compound_step,
 )
 from openghg_inversions.inference.sampling import RhimeSampler
+from openghg_inversions.models.boundary import MultiplicativeChoice
 from openghg_inversions.models.cached_sigma import FixedOuCachedSigmaTarget
 from openghg_inversions.models.fixed_ou import (
     FixedOuLowRank,
@@ -51,7 +53,7 @@ from openghg_inversions.rhime.co2.co2_o2_runner import run_rhime_co2_o2_from_pre
 from openghg_inversions.rhime.co2.configuration import Co2ModelConfig, _resolve_co2_sampling
 from openghg_inversions.serialization import load_trace
 
-from test_co2_cached_sigma import _build, _dense_fixed_ou_covariance, _inputs
+from test_co2_cached_sigma import _boundary_inputs, _build, _dense_fixed_ou_covariance, _inputs
 from test_co2_o2_fixed_ou import _dense, _kwargs, _per_meg_prepared, _prepared
 from test_rhime_co2_o2 import _independent_error
 
@@ -73,8 +75,9 @@ def _fixed_co2(**kwargs: Any):
     return _build(**{**options, **kwargs})
 
 
-def _plain_co2():
-    inputs = _inputs()
+def _plain_co2(inputs=None, *, boundary=None):
+    """Build the native fixed-OU graph with the same data and boundary."""
+    inputs = _inputs() if inputs is None else inputs
     return build_co2_model(
         inputs["H"],
         retained_prior=CorrelatedPrior(
@@ -88,6 +91,7 @@ def _plain_co2():
         aggregation_error=resolve_aggregation_error(inputs, "dense"),
         likelihood_builder=add_fixed_ou_gaussian_likelihood,
         likelihood_kwargs={"tau_hours": TAU, "fixed_site_amplitudes": AMPLITUDES},
+        boundary=boundary,
     )
 
 
@@ -186,6 +190,33 @@ def test_linked_mixed_unit_fixed_state_cost_matches_plain_model_and_dense_oracle
     ]
     assert all(list(point) == names for point in points)
     _assert_state_cost_matches(cached, plain, dense_logp, points)
+
+
+def test_fixed_state_cost_preserves_small_changes_with_a_large_float32_boundary():
+    """A 400 ppm absolute boundary must not erase changes in the state density."""
+    with pytensor.config.change_flags(floatX="float32"):
+        inputs = _boundary_inputs()
+        design = inputs.H_bc / inputs.H_bc.sum("bc_region") * 400.0
+        observations = (inputs.mf + 400.0).assign_attrs(units="ppm")
+        inputs = inputs.assign(mf=observations)
+        boundary = MultiplicativeChoice({"pdf": "normal", "mu": 1.0, "sigma": 0.1}).bind_absolute(
+            observations, design.assign_attrs(units="ppm"),
+        )
+        cached = _fixed_co2(inputs=inputs, boundary=boundary)
+        plain = _plain_co2(inputs, boundary=boundary)
+        step = _state_step(cached)
+        native = plain.compile_logp()
+        start = plain.initial_point()
+        nearby = {name: values.copy() for name, values in start.items()}
+        nearby["bc"][0] += 1e-5
+
+        def cached_cost(point):
+            step._logp_dlogp_func.set_extra_values(point)
+            return step._logp_dlogp_func(DictToArrayBijection.map(point))[0]
+
+        np.testing.assert_allclose(
+            cached_cost(nearby) - cached_cost(start), native(nearby) - native(start), atol=3e-5,
+        )
 
 
 @pytest.mark.parametrize("full_width", [False, True])
@@ -410,17 +441,21 @@ def _assert_state_only_trace(trace, calls, *, target_accept):
     assert "sigma_target_accept" not in actual
 
 
+@pytest.mark.usefixtures("double_precision")
 def test_configured_linked_fixed_ou_sample_uses_cached_state_step(tmp_path, captured_steps):
     manifest = co2_o2_handoffs.save_preparation(synthetic_inputs(), output_dir=tmp_path / "prepare")
     model = {
         "channels": {"co2": {"units": "ppm"}, "o2": {"units": "ppm"}},
         "likelihood": {"kind": "fixed_ou", "tau_hours": 12.0, "fixed_site_amplitudes": 0.3},
+        "sampling": {
+            "draws": 4, "tune": 4, "chains": 1, "random_seed": 23,
+            "sample_posterior_predictive": ["y", "modelled_concentration"],
+        },
     }
     sample_manifest = co2_o2_handoffs.sample(
         manifest,
         model=model,
         output_dir=tmp_path / "sample",
-        sampler=_short_sampler(target_accept=0.95),
     )
     record = json.loads(sample_manifest.read_text())
     assert record["actual_inference"]["algorithm"] == "cached_fixed_ou_state_nuts"
@@ -436,6 +471,7 @@ def test_configured_linked_fixed_ou_sample_uses_cached_state_step(tmp_path, capt
     assert roles["fixed_ou_site_amplitude"] == "ou_site_amplitude"
     assert json.loads(amplitude.attrs["rhime_scientific_roles"]) == ["fixed_ou_site_amplitude"]
     assert trace.log_likelihood.y.dims == ("chain", "draw")
+    assert {"y", "modelled_concentration"} <= set(trace.posterior_predictive)
     assert "ou_site_amplitude" in co2_o2_handoffs.load_samples(sample_manifest).idata.constant_data
 
 
@@ -447,9 +483,10 @@ def test_prepared_input_linked_runner_samples_mixed_unit_fixed_ou_with_cached_st
         independent_error_sd=_independent_error(prepared),
         tau_hours=LINKED_TAU,
         fixed_site_amplitudes=LINKED_AMPLITUDES,
-        sampler=_short_sampler(target_accept=0.95),
+        sampler=_short_sampler(nuts={"target_accept": 0.95, "max_treedepth": 4}),
     )
     _assert_state_only_trace(trace, captured_steps, target_accept=0.95)
+    assert captured_steps[0]["step"].methods[0].max_treedepth == 4
     assert trace.attrs["rhime_recipe"] == "co2_o2"
     amplitude = trace.constant_data.ou_site_amplitude
     assert amplitude.ou_site.values.tolist() == ["co2:A", "o2:A", "o2:B"]
@@ -590,11 +627,15 @@ def test_sigma_target_accept_is_rejected_with_fixed_amplitudes(monkeypatch):
             cached_model=cached,
             sigma_target_accept=0.8,
         )
-    with pytest.raises(ValueError, match="not both"):
+    with pytest.raises(ValueError, match="only one target"):
         co2_cached_sigma_runner._sampler_for_cached_graph(
             RhimeSampler(nuts_sampler="pymc", sample_kwargs={"target_accept": 0.9}),
             cached_model=cached,
             state_target_accept=0.9,
+        )
+    with pytest.raises(ValueError, match="only one target"):
+        co2_cached_sigma_runner.resolve_cached_target_accept(
+            _short_sampler(target_accept=0.9, nuts={"target_accept": 0.8}), fixed_amplitudes=True,
         )
     prepared = _prepared()
     from openghg_inversions.rhime.co2 import co2_o2_cached_sigma_runner

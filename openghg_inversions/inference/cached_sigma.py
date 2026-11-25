@@ -20,7 +20,7 @@ from openghg_inversions._pymc_config import configure_pytensor
 
 configure_pytensor()
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar, Literal, cast
 
 import numpy as np
@@ -53,10 +53,11 @@ FloatArray = NDArray[np.float64]
 
 
 class PytensorMarginalQuadraticCache:
-    """Mutable coefficients read by the state-only PyTensor graph."""
+    """Float64 quadratic coefficients read by the state-only PyTensor graph."""
 
     def __init__(self, initial: MarginalQuadraticCache) -> None:
-        dtype = pytensor.config.floatX
+        # Large absolute concentrations can make the quadratic terms cancel.
+        dtype = np.float64
         self.constant = pytensor.shared(
             np.asarray(initial.constant, dtype=dtype),
             name="cached_marginal_constant",
@@ -77,6 +78,7 @@ class PytensorMarginalQuadraticCache:
 
     def log_likelihood(self, coefficients: TensorVariable) -> TensorVariable:
         """Return the normalized cached quadratic as a PyTensor scalar."""
+        coefficients = coefficients.astype(self.linear.dtype)
         return cast(
             TensorVariable,
             self.constant
@@ -452,6 +454,7 @@ def _make_cached_state_step(  # noqa: PLR0913
     point: PointType,
     state_target_accept: float,
     rng: RandomGenerator,
+    nuts_kwargs: Mapping[str, Any] | None = None,
 ) -> pm.NUTS:
     """Return stock state NUTS on the model priors plus the installed cached quadratic."""
     state_function = None
@@ -480,6 +483,7 @@ def _make_cached_state_step(  # noqa: PLR0913
             model=model,
             rng=rng,
             logp_dlogp_func=state_function,
+            **(nuts_kwargs or {}),
         )
 
 
@@ -496,6 +500,7 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
     initial_point: PointType | None = None,
     sigma_target_accept: float = 0.8,
     state_target_accept: float = 0.9,
+    state_nuts_kwargs: Mapping[str, Any] | None = None,
     rng: RandomGenerator = None,
 ) -> CompoundStep:
     """Construct the required sigma-then-state stock PyMC compound sweep.
@@ -511,6 +516,9 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
     is no amplitude step and no refresh, and the sweep contains only the state
     NUTS step (``sigma_target_accept`` is unused). Fixed amplitudes with no
     active states leave nothing to sample and are rejected.
+    ``state_nuts_kwargs`` passes additional PyMC NUTS options, such as
+    ``max_treedepth``, to the state step. Use ``state_target_accept`` for its
+    target acceptance rate.
 
     Observed models require an explicit ``cached_state_logp`` expression. The
     state function combines this quadratic with the model's free-variable
@@ -548,6 +556,7 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
                 point=point,
                 state_target_accept=state_target_accept,
                 rng=state_rng,
+                nuts_kwargs=state_nuts_kwargs,
             )
         ])
     sigma_step = PymcCachedSigmaNutsStep(
@@ -570,6 +579,7 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
         point=point,
         state_target_accept=state_target_accept,
         rng=state_rng,
+        nuts_kwargs=state_nuts_kwargs,
     )
     return CompoundStep([sigma_step, state_step])
 

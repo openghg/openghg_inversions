@@ -1439,8 +1439,10 @@ to every observed group. Mappings must cover labels such as ``co2:MHD`` and
 share a unit, amplitudes and their prior scales use that unit. With mixed units,
 such as CO2 in ppm and per-meg delta(O2/N2) O2, a nonzero fixed amplitude must be
 a ``co2:SITE``/``o2:SITE`` mapping, and inferred amplitudes (one prior for every
-group) are rejected. Trace amplitudes then carry an ``ou_units`` coordinate.
-For example, the ordinary linked configuration can include:
+group) are rejected. For mixed units, call the prepared-input Python runner
+:func:`~openghg_inversions.rhime.co2.co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs`.
+Trace amplitudes then carry an ``ou_units`` coordinate. For channels using the
+same concentration unit, the linked TOML configuration can include:
 
 .. code-block:: toml
 

@@ -263,14 +263,16 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             PyMC backend is supported. Caller-supplied steps are rejected
             because the runner owns the NUTS steps. With inferred amplitudes
             ``sample_kwargs['target_accept']`` is rejected; with fixed
-            amplitudes it sets the state step's target. Joint predictive
-            output supports only random_seed in predictive keyword arguments
-            and uses the exact observed PyMC distribution.
+            amplitudes it sets the state step's target. Fixed amplitudes also
+            accept the usual nested ``sample_kwargs['nuts']`` options and PyMC
+            prediction choices. With inferred amplitudes, predictive keyword
+            arguments are limited to random_seed.
         sigma_target_accept: Target acceptance probability for the amplitude
             NUTS step, defaulting to 0.8. Rejected with fixed amplitudes.
         state_target_accept: Target acceptance probability for the affine-state
             NUTS step. Defaults to 0.9 with inferred amplitudes; with fixed
-            amplitudes, to ``sample_kwargs['target_accept']`` or else 0.8.
+            amplitudes, to the top-level or nested NUTS ``target_accept``
+            option if supplied, or else 0.8.
 
     Returns:
         Restored DataTree with posterior samples, labelled observed data and

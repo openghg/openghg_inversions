@@ -121,6 +121,8 @@ def validate_cached_co2_sampler(sampler: RhimeSampler, *, fixed_amplitudes: bool
             "The fixed-OU amplitude sampler constructs its required sigma-then-state "
             "CompoundStep; do not pass sample_kwargs['step']."
         )
+    if fixed_amplitudes:
+        return
     requested = sampler.sample_posterior_predictive
     if not isinstance(requested, bool):
         unsupported_names = set(requested) - {"y", "concentration"}
@@ -149,16 +151,18 @@ def resolve_cached_target_accept(
     Inferred amplitudes default to 0.8 (amplitude step) and 0.9 (state step).
     Fixed amplitudes have no amplitude step, so ``sigma_target_accept`` is
     rejected; the state step uses ``state_target_accept``, else the sampler's
-    ``sample_kwargs['target_accept']`` (the control of the previous plain NUTS
-    route), else :data:`FIXED_AMPLITUDE_STATE_TARGET_ACCEPT`.
+    ``sample_kwargs['target_accept']`` or ``sample_kwargs['nuts']['target_accept']``
+    (the controls of the previous plain NUTS route), else
+    :data:`FIXED_AMPLITUDE_STATE_TARGET_ACCEPT`.
 
     Returns:
         The amplitude-step target (``None`` for fixed amplitudes) and the
         state-step target.
 
     Raises:
-        ValueError: If fixed amplitudes receive ``sigma_target_accept`` or
-            both ``state_target_accept`` and ``sample_kwargs['target_accept']``.
+        ValueError: If fixed amplitudes receive ``sigma_target_accept`` or more
+            than one state-step target.
+        TypeError: If fixed amplitudes receive a non-mapping NUTS option.
     """
     if not fixed_amplitudes:
         return (
@@ -171,14 +175,18 @@ def resolve_cached_target_accept(
             "fixed amplitudes have no amplitude step."
         )
     sample_kwargs = sampler.sample_kwargs or {}
-    if "target_accept" in sample_kwargs:
-        if state_target_accept is not None:
-            raise ValueError(
-                "Pass either state_target_accept or sample_kwargs['target_accept'] for fixed "
-                "OU amplitudes, not both; both tune the only (state) NUTS step."
-            )
-        return None, float(sample_kwargs["target_accept"])
-    return None, FIXED_AMPLITUDE_STATE_TARGET_ACCEPT if state_target_accept is None else state_target_accept
+    nuts_kwargs = sample_kwargs.get("nuts", {})
+    if not isinstance(nuts_kwargs, Mapping):
+        raise TypeError("Fixed-OU sample_kwargs['nuts'] must be a mapping.")
+    targets = [section["target_accept"] for section in (sample_kwargs, nuts_kwargs) if "target_accept" in section]
+    if state_target_accept is not None:
+        targets.append(state_target_accept)
+    if len(targets) > 1:
+        raise ValueError(
+            "Pass only one target for the fixed-OU state step: state_target_accept, "
+            "sample_kwargs['target_accept'], or sample_kwargs['nuts']['target_accept']."
+        )
+    return None, float(targets[0]) if targets else FIXED_AMPLITUDE_STATE_TARGET_ACCEPT
 
 
 def _sampler_for_cached_graph(
@@ -192,8 +200,8 @@ def _sampler_for_cached_graph(
 
     Inferred amplitudes get the sigma-then-state sweep. Fixed amplitudes get
     the state step alone, with targets resolved by
-    :func:`resolve_cached_target_accept`; a ``sample_kwargs['target_accept']``
-    is moved onto that step.
+    :func:`resolve_cached_target_accept`. Fixed amplitudes forward the
+    caller's nested ``sample_kwargs['nuts']`` options onto that step.
     """
     fixed = bool(getattr(cached_model, "fixed_amplitudes", False))
     validate_cached_co2_sampler(sampler, fixed_amplitudes=fixed)
@@ -205,6 +213,8 @@ def _sampler_for_cached_graph(
     )
     sample_kwargs = dict(sampler.sample_kwargs or {})
     sample_kwargs.pop("target_accept", None)
+    nuts_kwargs = dict(sample_kwargs.pop("nuts", {})) if fixed else {}
+    nuts_kwargs.pop("target_accept", None)
     model = cached_model.model
     defaults = convert_str_to_rv_dict(model, cached_model.initial_values)
 
@@ -234,6 +244,7 @@ def _sampler_for_cached_graph(
             initial_point=baseline,
             sigma_target_accept=0.8 if sigma_target_accept is None else sigma_target_accept,
             state_target_accept=state_target_accept,
+            state_nuts_kwargs=nuts_kwargs,
         )
     sample_kwargs.setdefault("mp_ctx", "spawn")
     configured = copy.copy(sampler)
