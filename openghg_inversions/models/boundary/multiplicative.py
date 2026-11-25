@@ -28,6 +28,8 @@ import pytensor.tensor as pt
 import xarray as xr
 from dask import is_dask_collection
 from pymc.distributions.transforms import Transform
+from pytensor.graph.basic import Variable
+from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity, validate_centered_boundary_periods
 from openghg_inversions.inversion_inputs import DatetimeLike
@@ -66,15 +68,15 @@ class _LogBoundaryDeviation(Transform):
 
     name = "log1p"
 
-    def forward(self, value, *inputs):
+    def forward(self, value: TensorVariable, *inputs: Variable) -> TensorVariable:
         """Map the deviation to the logarithm of the corresponding scale."""
         return pt.log1p(value)
 
-    def backward(self, value, *inputs):
+    def backward(self, value: TensorVariable, *inputs: Variable) -> TensorVariable:
         """Recover the deviation without rounding a scale near one first."""
         return pt.expm1(value)
 
-    def log_jac_det(self, value, *inputs):
+    def log_jac_det(self, value: TensorVariable, *inputs: Variable) -> TensorVariable:
         """Return the log Jacobian of the inverse transform."""
         return value
 
