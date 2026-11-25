@@ -684,7 +684,9 @@ uses xarray’s default engine so callers that already loaded NetCDF inputs
 do not switch HDF5 bindings at the serialization boundary. Zarr artifacts
 use format 2 with either Zarr 2 or Zarr 3 packages. Zarr writes
 lazily rechunk arrays to their encoded storage chunks, or regular chunks
-sized to the largest existing chunk on each axis. Inputs are not mutated.</p>
+sized to the largest existing chunk on each axis. NetCDF writes cast NumPy
+<code class="docutils literal notranslate"><span class="pre">StringDType</span></code> variables, as a Zarr reload can produce, to object strings.
+Inputs are not mutated.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
