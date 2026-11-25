@@ -46,13 +46,13 @@ def test_file_mapping_overrides_reach_same_owners(tmp_path, linked):
 def test_construction_owns_containers_and_borrows_opaque_numerics():
     lazy = xr.Dataset({"x": ("i", da.ones(4, chunks=2))})
     prior = {"pdf": "normal", "metadata": {"labels": ["a"], "numeric": lazy}}
-    ordinary = Co2ModelConfig(bc_prior=prior)
-    linked = Co2O2ModelConfig("ppm", "ppm", {}, bc_prior={"co2": prior})
+    ordinary = Co2ModelConfig(offset_prior=prior)
+    linked = Co2O2ModelConfig("ppm", "ppm", {}, offset_prior={"co2": prior})
     prior["metadata"]["labels"].append("b")
-    assert ordinary.bc_prior["metadata"]["labels"] == ["a"]
-    assert linked.bc_prior["co2"]["metadata"]["labels"] == ["a"]
-    assert ordinary.bc_prior["metadata"]["numeric"] is lazy
-    assert linked.bc_prior["co2"]["metadata"]["numeric"] is lazy
+    assert ordinary.offset_prior["metadata"]["labels"] == ["a"]
+    assert linked.offset_prior["co2"]["metadata"]["labels"] == ["a"]
+    assert ordinary.offset_prior["metadata"]["numeric"] is lazy
+    assert linked.offset_prior["co2"]["metadata"]["numeric"] is lazy
 
 
 def test_active_science_parse_never_constructs_sampler_or_computes(monkeypatch):

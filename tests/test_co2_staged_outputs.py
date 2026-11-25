@@ -27,8 +27,20 @@ from openghg_inversions.serialization import restore_serialisation_multiindexes
 from test_co2_affine_output import _prepared
 
 
-def _components_fixture():
-    prepared, _ = _prepared()
+def components_trace(
+    prepared, *, chains: int = 1, prior_draws: int = 4, posterior_draws: int = 3,
+) -> xr.DataTree:
+    """Construct labelled, nonconstant CO2 draws for one prepared input without sampling.
+
+    Args:
+        prepared: CO2 prepared inputs whose state and observation labels the draws use.
+        chains: Number of chains in each sampled group.
+        prior_draws: Draws per chain in the prior groups.
+        posterior_draws: Draws per chain in the posterior groups.
+
+    Returns:
+        Trace with custom role names, prior/posterior latent and predictive groups.
+    """
     roles = {
         "model_mean": "mean_custom",
         "pollution_concentration": "emission_custom",
@@ -38,12 +50,14 @@ def _components_fixture():
         "model_error": "sd_custom",
         "concentration": "predictive_custom",
     }
+    nstate = prepared.inv_inputs.sizes["region"]
+    units = prepared.inv_inputs.mf.attrs["units"]
     datasets = {}
-    for group, draws in (("prior", 4), ("posterior", 3)):
+    for group, draws in (("prior", prior_draws), ("posterior", posterior_draws)):
         scale = xr.DataArray(
-            np.arange(draws * 2).reshape(1, draws, 2) / 10 + 1,
+            np.arange(chains * draws * nstate).reshape(chains, draws, nstate) / 10 + 1,
             dims=("chain", "draw", "region"),
-            coords={"chain": [0], "draw": np.arange(draws), "region": prepared.inv_inputs.region},
+            coords={"chain": np.arange(chains), "draw": np.arange(draws), "region": prepared.inv_inputs.region},
             attrs={"units": "1"},
         )
         flux = (
@@ -65,16 +79,26 @@ def _components_fixture():
         datasets[f"{group}_predictive"] = xr.Dataset(
             {
                 "predictive_custom": mean
-                + xr.DataArray(np.arange(draws).reshape(1, draws, 1), dims=("chain", "draw", "nmeasure"))
+                + xr.DataArray(np.arange(draws), dims="draw")
             }
         )
+        for dataset in (datasets[group], datasets[f"{group}_predictive"]):
+            for name in set(dataset.data_vars) - {"state_custom"}:
+                dataset[name].attrs["units"] = units
     datasets["/"] = xr.Dataset(
         attrs={
             "rhime_variable_roles": json.dumps(roles),
+            "rhime_boundary_format_version": 2,
             "rhime_model_metadata": json.dumps({"recipe": "co2"}),
         }
     )
-    return prepared, xr.DataTree.from_dict(datasets)
+    return xr.DataTree.from_dict(datasets)
+
+
+def _components_fixture():
+    """Return the small prepared case with one chain of constructed draws."""
+    prepared, _ = _prepared()
+    return prepared, components_trace(prepared)
 
 
 def test_role_selected_components_close_and_preserve_independent_predictive_draws():
@@ -209,12 +233,23 @@ def test_absent_baseline_is_zero_and_basic_reduces_it_without_sample_axes():
     np.testing.assert_array_equal(basic.boundary_posterior_mean, [0])
 
 
-def test_conditional_paris_uses_affine_draw_statistics_and_template_units():
+@pytest.mark.parametrize("additive_diagnostics", [False, True])
+def test_conditional_paris_uses_affine_draw_statistics_and_template_units(additive_diagnostics):
     from postprocessing.test_co2_flux_outputs import _fixture
     from openghg_inversions.rhime.co2.co2_outputs import _paris_products
 
     prepared, concentration_trace = _components_fixture()
     components = reconstruct_co2_concentrations(concentration_trace, prepared)
+    if additive_diagnostics:
+        for when in ("prior", "posterior"):
+            boundary = components[f"boundary_{when}"]
+            components[f"boundary_mean_shift_{when}"] = boundary.mean("nmeasure") * .1
+            components[f"boundary_mean_contribution_{when}"] = boundary * .1
+            components[f"boundary_anomaly_contribution_{when}"] = boundary * .2
+            components[f"boundary_reference_{when}"] = boundary * .7
+            components[f"boundary_correction_{when}"] = (
+                boundary.mean("nmeasure") * xr.DataArray([.1, -.1], dims="bc_region")
+            )
     bound, flux_trace, countries = _fixture()
     native, country = _affine_products(flux_trace, bound, countries, None)
     result = make_co2_output(
@@ -224,6 +259,8 @@ def test_conditional_paris_uses_affine_draw_statistics_and_template_units():
     output = Co2OutputOptions(output_format="paris", paris_postprocessing_kwargs={"flux_frequency": "monthly"})
     concentration, flux = _paris_products(components, native, country, countries, result, None, output=output)
     assert flux.attrs["uncertainty_scope"] == "retained_state_conditional"
+    np.testing.assert_array_equal(concentration.sector, ["emissions"])
+    assert "mf_boundary_mean_contribution_posterior" not in concentration
     np.testing.assert_allclose(
         flux.flux_total_posterior.isel(time=0), native.flux_total_posterior_mean, rtol=1e-6
     )
@@ -323,3 +360,25 @@ def test_reporting_country_selection_accepts_iterables_and_preserves_none(
         SimpleNamespace(affine_map=SimpleNamespace(flux=xr.DataArray(1.0))),
     )
     assert list(countries.matrix.country.values) == (names[:2] if select_countries else names)
+
+
+def test_centered_anomaly_transport_role_is_not_a_sampled_correction():
+    prepared, trace = _components_fixture()
+    roles = json.loads(trace.attrs["rhime_variable_roles"])
+    roles["boundary_anomaly"] = "H_bc_anomaly"
+    trace.attrs["rhime_variable_roles"] = json.dumps(roles)
+    trace["constant_data"] = xr.Dataset({"H_bc_anomaly": prepared.inv_inputs.H})
+    components = reconstruct_co2_concentrations(trace, prepared)
+    assert "boundary_anomaly_posterior" not in components
+    np.testing.assert_allclose(components.boundary_posterior, trace.posterior.bc_custom)
+
+
+@pytest.mark.parametrize("version", [None, 1, 3, True])
+def test_boundary_reconstruction_rejects_old_saved_format_with_repreparation_message(version):
+    prepared, trace = _components_fixture()
+    if version is None:
+        del trace.attrs["rhime_boundary_format_version"]
+    else:
+        trace.attrs["rhime_boundary_format_version"] = version
+    with pytest.raises(ValueError, match="prepare again"):
+        reconstruct_co2_concentrations(trace, prepared)

@@ -1,15 +1,15 @@
 """Concrete CO2 construction and inference selected by the scientific likelihood."""
 
+import json
 from collections.abc import Mapping
 from typing import Any
-import json
 
 import xarray as xr
 
+from openghg_inversions.inference.sampling import describe_recorded_sampler
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
-from openghg_inversions.inference.sampling import describe_recorded_sampler
 
 from .co2_cached_sigma_model import Co2CachedSigmaModel
 from .co2_cached_sigma_runner import (
@@ -46,10 +46,8 @@ def build_co2_inference(
         options.pop("likelihood_builder")
         likelihood = dict(options.pop("likelihood_kwargs"))
         cached = build_rhime_co2_cached_sigma(prepared_inputs=prepared, **options, **likelihood)
-        return co2_cached_sigma_build_result(
-            cached, prepared, bc_freq=options.get("bc_freq"), bc_anchor_time=options.get("bc_anchor_time"),
-        ), cached
-    inputs, priors = materialize_co2_inputs(
+        return co2_cached_sigma_build_result(cached, prepared), cached
+    inputs, priors, boundary = materialize_co2_inputs(
         prepared_inputs=prepared,
         sigma_alignment=model.get("sigma_alignment"),
         sigma_prior=model.get("sigma_prior"),
@@ -57,26 +55,20 @@ def build_co2_inference(
         likelihood_builder=model.get("likelihood_builder"),
         likelihood_kwargs=model.get("likelihood_kwargs"),
         no_model_error=model.get("no_model_error", False),
-        use_bc=model.get("use_bc", False),
-        bc_prior=model.get("bc_prior"),
-        bc_state_activity=model.get("bc_state_activity"),
+        boundary=model.get("boundary"),
         offset_prior=model.get("offset_prior"),
         offset_args=model.get("offset_args"),
     )
     return build_co2_from_materialized(
-        inputs, prepared_inputs=prepared, priors=priors,
+        inputs, prepared_inputs=prepared, priors=priors, boundary=boundary,
         sigma_alignment=model.get("sigma_alignment"),
         sigma_prior=model.get("sigma_prior"),
         fixed_model_mismatch=model.get("fixed_model_mismatch"),
         likelihood_builder=model.get("likelihood_builder"),
         likelihood_kwargs=model.get("likelihood_kwargs"),
         no_model_error=model.get("no_model_error", False),
-        use_bc=model.get("use_bc", False),
-        bc_prior=model.get("bc_prior"),
-        bc_state_activity=model.get("bc_state_activity"),
         offset_prior=model.get("offset_prior"),
         offset_args=model.get("offset_args"),
-        bc_freq=model.get("bc_freq"), bc_anchor_time=model.get("bc_anchor_time"),
     ), None
 
 

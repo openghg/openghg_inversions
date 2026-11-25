@@ -346,7 +346,7 @@ def test_inference_loads_decoded_model_without_reading_unused_affine(tmp_path, m
                          "likelihood": {"kind": "additive_sigma", "no_model_error": True}},
             output_dir=tmp_path / "inference",
         )
-    assert captured[0]["use_bc"] is False
+    assert captured[0]["boundary"] is None
     assert captured[0]["no_model_error"] is True
     assert not (tmp_path / "inference").exists()
 

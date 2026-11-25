@@ -40,6 +40,7 @@ def _probe_pytensor_config(code: str, *, flags: str | None = None) -> dict[str, 
 @pytest.mark.parametrize(
     "module", ["rhime", "inference.sampling", "inference.cached_sigma", "models"]
 )
+@pytest.mark.fresh_process
 def test_fresh_backend_import_defaults_pytensor_to_float32(module: str) -> None:
     """Backend entry points install defaults before loading PyTensor."""
     values = _probe_pytensor_config(
@@ -53,6 +54,7 @@ def test_fresh_backend_import_defaults_pytensor_to_float32(module: str) -> None:
     assert values["warn"] == "warn"
 
 
+@pytest.mark.fresh_process
 def test_rhime_import_honours_explicit_pytensor_float64() -> None:
     """A process-level PyTensor precision selection overrides the default."""
     values = _probe_pytensor_config(
@@ -67,6 +69,7 @@ def test_rhime_import_honours_explicit_pytensor_float64() -> None:
     assert values["warn"] == "ignore"
 
 
+@pytest.mark.fresh_process
 def test_rhime_import_does_not_mutate_initialized_pytensor() -> None:
     """Notebook and host-process owners retain an initialized runtime."""
     values = _probe_pytensor_config(
@@ -80,3 +83,14 @@ def test_rhime_import_does_not_mutate_initialized_pytensor() -> None:
 
     assert values["floatX"] == "float64"
     assert values["warn"] == "ignore"
+
+
+def test_pytest_session_starts_from_package_precision_policy() -> None:
+    """The test session applies the startup policy whichever module pytest imports first."""
+    import pytensor
+
+    from openghg_inversions._pymc_config import _pytensor_flag_is_explicit
+
+    if _pytensor_flag_is_explicit("floatX"):
+        pytest.skip("PYTENSOR_FLAGS selects floatX explicitly.")
+    assert pytensor.config.floatX == "float32"

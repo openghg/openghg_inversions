@@ -92,7 +92,7 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "rhime.co2.run_co2`" in family
     assert "run_rhime_co2_o2_from_prepared_inputs" in family
     assert "co2_model_family" in _toctree_entries("usage.rst")
-    assert _toctree_entries("co2_model_family.rst") == ["co2_models"]
+    assert _toctree_entries("co2_model_family.rst") == ["co2_models", "co2_boundary_corrections"]
     workflow = family.split("   * - Staged workflow\n", 1)[1].split(
         "   * - Outputs and postprocessing\n", 1
     )[0]

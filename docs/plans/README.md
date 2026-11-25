@@ -17,6 +17,7 @@ Repository plans retain delivery history, proposals, research, and validation ev
 | Record | Status / maintained explanation | Owning issues |
 | --- | --- | --- |
 | [Validation-library evaluation and delivery](validation_prototype_followup.md) | Retain the dated 20 October research and the 9 November delivery update. PR #905 adopts merged-input schema validation for standard/multisector preparation and generates its reference; the configuration proposal remains separate. Supported behavior is documented in [customising RHIME](../usage/customising_rhime.rst) and the [generated schema reference](../reference/merged_input_schemas.rst). | [#665](https://github.com/openghg/openghg_inversions/issues/665), [#818](https://github.com/openghg/openghg_inversions/issues/818), [#1031](https://github.com/openghg/openghg_inversions/issues/1031); merge status: [#905](https://github.com/openghg/openghg_inversions/pull/905) |
+| [Boundary-library adoption record](boundary_library_adoption_20261111.rst) | Retain as dated review evidence: builder-signature counts and extension probes recorded at `952949d9` on 11 November 2026. Durable extension and locality rules are in [RHIME model development](../development/rhime_model_development.rst); configuration is in [CO₂ boundary corrections](../usage/co2_boundary_corrections.rst). | merge status: [#1013](https://github.com/openghg/openghg_inversions/pull/1013) |
 
 ## Inventory and remaining cleanup
 

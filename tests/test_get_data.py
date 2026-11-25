@@ -630,7 +630,7 @@ def test_merged_scenario_forwards_requested_output_units(
             merge_kwargs.update(kwargs)
             return expected
 
-    monkeypatch.setattr(scenario_module, "ModelScenario", FakeModelScenario)
+    monkeypatch.setattr("openghg.analyse.ModelScenario", FakeModelScenario)
 
     footprint = SimpleNamespace(data=xr.Dataset())
     result = scenario_module.merged_scenario_data(
@@ -663,7 +663,7 @@ def test_merged_scenario_preserves_footprint_max_level_provenance(
             """Return the simulated merged dataset."""
             return expected
 
-    monkeypatch.setattr(scenario_module, "ModelScenario", FakeModelScenario)
+    monkeypatch.setattr("openghg.analyse.ModelScenario", FakeModelScenario)
     footprint_attrs: dict[str, str | int] = {
         "model": "NAME",
         "transport_model_version": "FLEXPART IFS (version 9.1_Empa)",

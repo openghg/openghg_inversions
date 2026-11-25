@@ -15,11 +15,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from dask.base import compute
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.array_ops import to_dense
+from openghg_inversions.array_ops import materialize_together
 from openghg_inversions.basis.covariance_products import (
     NativeCovarianceProducts,
     RetainedProjectionStrategy,
@@ -58,39 +57,37 @@ class CoherentGaussianReduction:
 def reduce_native_gaussian(
     *,
     covariance: InvertibleNativeCovarianceAction,
-    basis_prolongation: xr.DataArray,
+    strategy: RetainedProjectionStrategy,
     state_dim: str,
     native_mean: xr.DataArray,
     native_sensitivity: xr.DataArray,
     observation_dim: str,
     observation_batch_size: int = 64,
-    strategy: RetainedProjectionStrategy | None = None,
 ) -> CoherentGaussianReduction:
     """Prepare the exact centred Gaussian model for one ``B/H/Pi/m`` set.
 
-    This is a named eager numerical boundary. ``native_mean``,
-    ``native_sensitivity``, and ``basis_prolongation`` may be Dask-backed; their
-    payloads are materialized together so a shared graph is executed once.
-    Inputs are borrowed and are not mutated.
+    This is a named eager numerical boundary. ``native_mean`` and
+    ``native_sensitivity`` may be Dask-backed; their payloads are materialized
+    together so a shared graph is executed once. The strategy then selects and
+    materializes ``Pi`` from its own inputs. Inputs are borrowed and are not
+    mutated.
 
     The inputs must use the covariance action's native dimensions and carry
     exactly matching indexed coordinates on shared dimensions. Unit conversion
     belongs to the upstream OpenGHG/pint-xarray preparation boundary: ``m`` and
-    the basis describe dimensionless scaling, while ``H`` is already expressed
+    ``Pi`` describe dimensionless scaling, while ``H`` is already expressed
     in the desired observation units.
 
     Args:
         covariance: Invertible labelled native covariance action ``B``.
-        basis_prolongation: Canonical labelled basis prolongation used by the
-            retained projection strategy.
-        state_dim: Retained-state dimension shared by the prolongation and
-            restriction.
+        strategy: Authoritative retained restriction strategy, owning the
+            inputs that define ``Pi``.
+        state_dim: Retained-state dimension of ``Pi``.
         native_mean: Dimensionless native scaling mean ``m``.
         native_sensitivity: Native sensitivity ``H`` in canonical observation
             units.
         observation_dim: Observation dimension in ``native_sensitivity``.
         observation_batch_size: Covariance right-hand-side batch size.
-        strategy: Optional authoritative retained restriction strategy.
 
     Returns:
         The retained prior, centred effective forward model, and unresolved
@@ -103,38 +100,21 @@ def reduce_native_gaussian(
     native_dims = tuple(covariance.native_dims)
     mean = native_mean.transpose(*native_dims)
     sensitivity = native_sensitivity.transpose(observation_dim, *native_dims)
-    prolongation = basis_prolongation.transpose(*native_dims, state_dim)
 
-    # xr.dot uses an inner join by default, which could silently discard native
-    # cells. Establish exact compatibility once before any eager computation.
-    mean, sensitivity, prolongation = xr.align(
-        mean,
-        sensitivity,
-        prolongation,
-        join="exact",
-        copy=False,
-    )
-    dense_mean = to_dense(mean)
-    dense_sensitivity = to_dense(sensitivity)
-    dense_prolongation = to_dense(prolongation)
-    mean_data, sensitivity_data, prolongation_data = compute(
-        dense_mean.data,
-        dense_sensitivity.data,
-        dense_prolongation.data,
-    )
-    mean = mean.copy(data=mean_data)
-    sensitivity = sensitivity.copy(data=sensitivity_data)
-    prolongation = prolongation.copy(data=prolongation_data)
+    # The covariance action checks the grids of H and Pi when it is applied,
+    # but m meets only xr.dot, whose default inner join could silently discard
+    # native cells. This index-only check executes no lazy payload.
+    mean, sensitivity = xr.align(mean, sensitivity, join="exact", copy=False)
+    mean, sensitivity = materialize_together(mean, sensitivity, purpose="native mean m and sensitivity H")
 
     products = project_native_covariance(
         covariance=covariance,
-        basis_prolongation=prolongation,
+        strategy=strategy,
         state_dim=state_dim,
         native_sensitivity=sensitivity,
         observation_dim=observation_dim,
         observation_covariance="dense",
         observation_batch_size=observation_batch_size,
-        strategy=strategy,
     )
     return _reduce_native_covariance_products(
         products=products,
@@ -186,6 +166,9 @@ def _reduce_native_covariance_products(
         **linear_units,
     )
 
+    # A = H B H.T - H_alpha C_alpha H_alpha.T, formed positionally in NumPy.
+    # H_alpha's state columns and both C_alpha axes follow Pi's state index,
+    # so their orders already agree.
     unresolved_values = (
         np.asarray(native_observation_covariance.values, dtype=np.float64)
         - np.asarray(effective_operator.values, dtype=np.float64)

@@ -45,28 +45,33 @@ without constructing an inverse, then returns the centred conditional model
 All three retained quantities---the prior, effective forward operator, and
 unresolved covariance---come from the same product set.
 
-The current function accepts a basis prolongation :math:`U`. With the default
-strategy, it constructs the compatible restriction :math:`\Pi_U` using
-:math:`B`, so that the covariance-derived prolongation :math:`U_*` equals the
-supplied basis prolongation. A custom projection strategy can already choose
-:math:`\Pi`, although callers must still supply the basis argument. A future
-interface may accept either operator directly and construct its compatible
-counterpart. The restriction and prolongation are related through :math:`B`;
+The retained projection strategy supplies :math:`\Pi`, by one of two routes:
+
+* ``PreserveBucketProlongation(U)`` holds a basis prolongation :math:`U` and
+  constructs the compatible restriction :math:`\Pi_U` using :math:`B`, so that
+  the covariance-derived prolongation :math:`U_*` equals :math:`U`.
+* ``SuppliedRestriction(Pi)`` holds a physical restriction chosen
+  independently of :math:`B`; no basis prolongation is needed.
+
+Either way, the restriction and prolongation are related through :math:`B`;
 they are not generally transposes of one another.
 
 Preparing the exact result
 --------------------------
 
-Pass the native covariance, canonical basis prolongation, labelled native mean,
-and sensitivity through one operation:
+Pass the native covariance, a retained projection strategy, labelled native
+mean, and sensitivity through one operation. The bucket strategy holds a basis
+operator's canonical prolongation; ``SuppliedRestriction`` instead holds a
+physical restriction (see :doc:`native_covariance`):
 
 .. code-block:: python
 
+   from openghg_inversions.basis import PreserveBucketProlongation
    from openghg_inversions.coherent_reduction import reduce_native_gaussian
 
    reduction = reduce_native_gaussian(
        covariance=covariance,
-       basis_prolongation=basis_prolongation,
+       strategy=PreserveBucketProlongation(basis_prolongation),
        state_dim="state",
        native_mean=native_mean,
        native_sensitivity=native_sensitivity,
@@ -78,8 +83,8 @@ and sensitivity through one operation:
    effective_operator = reduction.effective_observation_operator
    unresolved_covariance = reduction.unresolved_observation_covariance
 
-Calling ``reduce_native_gaussian`` computes any Dask-backed mean, sensitivity,
-and basis-prolongation data. Related arrays are computed together, and the
+Calling ``reduce_native_gaussian`` computes any Dask-backed mean and
+sensitivity together. The strategy computes its own inputs, and the
 returned xarray arrays are eager with explicit retained-state and observation
 labels.
 
@@ -92,14 +97,28 @@ and site metadata. Load the canonical inputs from a checkpoint produced by
 the :doc:`rhime` workflow::
 
    from openghg_inversions.inversion_data import PreparedInputs
+   from openghg_inversions.models.fixed_ou import fixed_ou_mismatch_covariance
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
 
    canonical_inputs = PreparedInputs.load("base-prepared-inputs.zarr")
-   co2_inputs = prepare_co2_inputs(canonical_inputs, reduction)
+   observations = canonical_inputs.inv_inputs
+   reference = fixed_ou_mismatch_covariance(
+       observations["mf"], observations["mf_error"], fixed_site_amplitudes=2.0, amplitude_units="ppm",
+   )
+   co2_inputs = prepare_co2_inputs(
+       canonical_inputs,
+       reduction,
+       reference_covariance=reference,
+   )
 
 The returned
-:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact uses at most
-512 low-rank modes by default, capped at the observation count. Pass
+:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact uses a
+low-rank-plus-diagonal representation by default, with the rank chosen from the
+unresolved covariance's whitened spectrum
+(:class:`~openghg_inversions.observation_error.WhitenedRankRule`; see
+:doc:`co2_models`) and capped at the observation count. The rule needs a
+reference mismatch covariance chosen by the caller, here an independent 2 ppm
+amplitude on top of the reported observation error. Pass
 ``aggregation_error_rank=None`` to keep
 ``reduction.unresolved_observation_covariance`` as an exact dense aggregation
 covariance. The artifact records one representation, and the CO2 runners use
@@ -107,8 +126,9 @@ it without a separate mode argument.
 This handoff does not alter the prepared-input contracts of the standard,
 or multisector paths.
 
-For larger cases, request an explicit low-rank-plus-diagonal (LRPD) rank at the
-handoff::
+For benchmarking, request an explicit low-rank-plus-diagonal (LRPD) rank at the
+handoff. With a ``reference_covariance``, preparation warns when it is below
+the whitened-spectrum rule rank::
 
    co2_inputs = prepare_co2_inputs(
        canonical_inputs,
@@ -119,17 +139,24 @@ handoff::
 This factorization is downstream of coherent reduction: it does not make the
 reduction approximate or change the retained prior and effective operator.
 Let :math:`n` be the observation count and :math:`r` the retained rank. The
-current preparation path first materializes the complete dense
-:math:`n \times n` covariance and computes a full dense eigendecomposition,
-requiring :math:`O(n^2)` peak storage and :math:`O(n^3)` decomposition work.
+current preparation path materializes the complete dense :math:`n \times n`
+covariance and computes a full dense eigendecomposition. When a
+``reference_covariance`` is also supplied, it first materializes the dense
+reference, factorizes it and computes the dense whitened eigenvalues; this runs
+for an integer rank too, so the override is checked against the rule and
+recorded. A bare integer rank, as in the example above, skips the reference,
+the whitened eigenvalues and the rank-selection record. These steps are
+:math:`O(n^3)` and need :math:`O(n^2)` peak storage.
 The saved factor and diagonal use :math:`O(nr+n)` storage. For an ordinary
 diagonal-plus-factor likelihood, Woodbury evaluation uses
 :math:`O(nr^2+r^3)` work. Reducing :math:`r` therefore shrinks the artifact and
 downstream structured-likelihood work; it does not make preparation
 matrix-free or avoid the dense eigendecomposition.
 
-The default 512-mode cap is not an adequacy claim; selecting or overriding the
-LRPD rank remains a caller-owned numerical and scientific decision. LRPD
+The default rank rule is a screening heuristic, not an adequacy claim. The
+rank it selects depends on the reference covariance, and choosing the
+reference or overriding the rank remains a caller-owned numerical and
+scientific decision. LRPD
 preparation preserves the dense covariance diagonal up to accepted roundoff
 and diagonal-tail clipping, reported by ``diagonal_preservation_error``. It
 does not automatically certify that a rank is adequate for a particular
@@ -145,13 +172,19 @@ Inspect the recorded retained-spectrum and reconstruction metrics directly::
 These diagnostics describe the covariance approximation; they do not certify
 that the chosen rank is adequate for a particular likelihood.
 
+See :ref:`migrate-diagonal-aggregation-error` for older inputs that contain
+only aggregation-error standard deviations.
+
 Assumptions and limitations
 ---------------------------
 
-The native coordinates of the mean, sensitivity, and basis prolongation must
-match exactly. The function checks this before computing because xarray dot
-products would otherwise use an inner join and could silently omit unmatched
-native cells.
+The native coordinates of the mean and sensitivity must match exactly. The
+function checks this before computing them, because xarray dot products would
+otherwise use an inner join and could silently omit unmatched native cells.
+The strategy's input, a basis prolongation for ``PreserveBucketProlongation``
+or a restriction for ``SuppliedRestriction``, must use the same native grid.
+The covariance action checks that grid when it applies or solves with that
+input, which may happen after the mean and sensitivity have been computed.
 
 The native mean and basis describe dimensionless scaling factors. Convert the
 sensitivity to the required observation units with OpenGHG's Pint registry
@@ -182,8 +215,10 @@ model-mismatch error is small.
 The conditional model is exact for a Gaussian native state and error
 independent of that state. Using the resulting moments with a LogNormal
 retained state is a moment-matched approximation. A positive sampled state
-requires a separately established nonnegative physical restriction; the
-default restriction is not guaranteed to preserve positivity.
+requires a separately established positivity-preserving physical restriction,
+such as ``SuppliedRestriction`` with ``require_positivity_preserving=True``. The
+bucket-compatible restriction derived by ``PreserveBucketProlongation`` is not
+guaranteed to preserve positivity.
 
 The function does not construct a likelihood, approximate :math:`A`, serialize
 the result, or reconstruct arbitrary native quantities. Do not add another

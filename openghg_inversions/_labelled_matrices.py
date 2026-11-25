@@ -16,6 +16,65 @@ import pandas as pd
 import xarray as xr
 
 
+def coordinates_on_dims(array: xr.DataArray, dims: Iterable[Hashable]) -> dict[str, xr.DataArray]:
+    """Return the coordinates of ``array`` that lie only on ``dims``.
+
+    Scalar coordinates are included, since they lie on no dimension. This is
+    how a result built from new values keeps the labels of the axes it shares
+    with ``array``.
+
+    Args:
+        array: Source of the coordinates.
+        dims: Dimensions the returned coordinates may use.
+
+    Returns:
+        Coordinates keyed by name, including indexes, MultiIndex levels and
+        auxiliary coordinates on those dimensions.
+    """
+    allowed = set(dims)
+    return {
+        str(name): coordinate for name, coordinate in array.coords.items() if set(coordinate.dims).issubset(allowed)
+    }
+
+
+def square_matrix(
+    values: np.ndarray,
+    labels: xr.DataArray,
+    *,
+    row_dim: str,
+    column_dim: str,
+    name: str | None = None,
+    attrs: dict[str, object] | None = None,
+) -> xr.DataArray:
+    """Label a square matrix with one axis of ``labels`` on both its rows and columns.
+
+    Rows keep the ``row_dim`` coordinates of ``labels``. Columns receive the
+    typed, collision-safe copies from :func:`renamed_column_coordinates`, so
+    xarray never contracts both axes at once.
+
+    Args:
+        values: Square matrix ordered like the ``row_dim`` index of ``labels``.
+        labels: Array whose ``row_dim`` axis labels both matrix axes.
+        row_dim: Row dimension shared with ``labels``.
+        column_dim: Distinct, unoccupied column dimension.
+        name: Optional result name.
+        attrs: Optional result attributes.
+
+    Returns:
+        The labelled ``(row_dim, column_dim)`` matrix.
+    """
+    return xr.DataArray(
+        values,
+        dims=(row_dim, column_dim),
+        coords={
+            **coordinates_on_dims(labels, {row_dim}),
+            **renamed_column_coordinates(labels, row_dim=row_dim, column_dim=column_dim),
+        },
+        name=name,
+        attrs=attrs or {},
+    )
+
+
 def matrix_column_dim(row_dim: str, occupied: Iterable[Hashable]) -> str:
     """Return a deterministic unoccupied column dimension for ``row_dim``."""
     candidate = f"{row_dim}_cov"
@@ -104,11 +163,7 @@ def to_column_axis(
 ) -> xr.DataArray:
     """Rename one labelled row axis to a typed, collision-safe column axis."""
     ordered = array.transpose(*leading_dims, row_dim)
-    coords = {
-        str(name): coordinate
-        for name, coordinate in ordered.coords.items()
-        if set(coordinate.dims).issubset(leading_dims)
-    }
+    coords = coordinates_on_dims(ordered, leading_dims)
     coords.update(renamed_column_coordinates(ordered, row_dim=row_dim, column_dim=column_dim))
     return xr.DataArray(
         ordered.data,

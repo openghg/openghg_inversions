@@ -119,12 +119,6 @@ def test_recorded_runtime_aliases_are_now_unsupported(old):
         load_params(overrides={old: "historical"})
 
 
-@pytest.mark.parametrize("value", [False, True, None, 0, "false"])
-def test_tracer_occurrence_is_unsupported_regardless_of_value(value):
-    with pytest.raises(ValueError, match="Unsupported RHIME.*use_tracer"):
-        load_params(overrides={"use_tracer": value})
-
-
 def test_request_source_exclusivity_unknown_case_and_no_environment_fallback(monkeypatch):
     monkeypatch.setenv("CONFIG_FILE", str(FIXTURES / "modern.ini"))
     assert load_params() == {"data": {}, "model": {}, "sampler": {}, "output": {}}
@@ -179,6 +173,7 @@ def test_current_python_name_removal_and_explicit_likelihood_requirement(monkeyp
         standard.run_standard(**params)
 
 
+@pytest.mark.fresh_process
 def test_installed_run_rhime_rejects_nit_before_acquisition(tmp_path):
     executable = shutil.which("rhime", path=str(Path(sys.executable).parent))
     assert executable is not None, "Run from the installed project environment (uv sync --locked)."

@@ -1,0 +1,36 @@
+"""Positive static-type probe for centered boundary transport contracts."""
+
+import xarray as xr
+from typing_extensions import assert_type
+
+from openghg_inversions.models.boundary import (
+    AdditiveChoice,
+    BoundAdditiveSensitivity,
+    BoundCenteredSensitivity,
+    RawCenteredSensitivity,
+)
+
+
+def needs_bound(data: BoundCenteredSensitivity) -> None: ...
+
+
+def needs_dataset(data: xr.Dataset) -> None: ...
+
+
+supplied = xr.Dataset()
+observations = xr.DataArray()
+raw = RawCenteredSensitivity.validate(supplied)
+assert_type(raw, RawCenteredSensitivity)
+
+bound = BoundCenteredSensitivity.bind(raw, observations)
+assert_type(bound, BoundCenteredSensitivity)
+needs_bound(bound)
+needs_bound(BoundCenteredSensitivity.validate(supplied))
+needs_dataset(bound)
+
+extended = BoundAdditiveSensitivity.bind_weights(bound, xr.DataArray())
+assert_type(extended, BoundAdditiveSensitivity)
+needs_bound(extended)
+needs_bound(BoundAdditiveSensitivity.validate(supplied))
+
+AdditiveChoice(None, 0.3, anomalies="independent").bind(observations, raw)

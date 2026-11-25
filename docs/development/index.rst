@@ -10,10 +10,12 @@ See :doc:`specifications` for their ownership and delivery status.
    :maxdepth: 2
 
    rhime_model_development
+   boundary_offset_identifiability
    specifications
    architecture_principles
    numerical_array_ownership
    validation_and_xarray
+   testing
    documentation
    observation_uncertainty
    fixed_ou_likelihood

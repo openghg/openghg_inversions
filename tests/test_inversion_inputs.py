@@ -9,8 +9,69 @@ import xarray as xr
 from dask import array as da
 from dask.callbacks import Callback
 
-from openghg_inversions.inversion_inputs import make_inv_inputs
+from openghg_inversions.inversion_inputs import make_freq_indicator, make_inv_inputs, make_period_calendar
 from openghg_inversions.model_error import MinimumError, percentile_error_method
+
+
+@pytest.mark.parametrize(
+    ("frequency", "anchor", "times", "ordinals", "starts"),
+    [
+        ("monthly", None, ["2020-03-20", "2019-12-31", "2020-03-01"], [3, 0, 3],
+         ["2020-03-01", "2019-12-01", "2020-03-01"]),
+        ("10D", "2020-01-01", ["2020-02-25", "2020-02-03", "2020-02-04"], [2, 0, 0],
+         ["2020-02-20", "2020-01-31", "2020-01-31"]),
+        ("10D", "2020-02-10", ["2020-02-25", "2020-02-03", "2020-02-04"], [2, 0, 0],
+         ["2020-02-20", "2020-01-31", "2020-01-31"]),
+        (None, None, ["2020-02-25", "2020-02-03"], [0, 0], ["2020-02-03", "2020-02-03"]),
+    ],
+)
+def test_period_calendar_shares_ordinal_membership_and_actual_interval_starts(
+    frequency, anchor, times, ordinals, starts
+):
+    time = xr.DataArray(pd.to_datetime(times), dims="nmeasure", coords={"nmeasure": np.arange(len(times))})
+    indicator, interval_starts = make_period_calendar(time, frequency, anchor_time=anchor)
+    np.testing.assert_array_equal(indicator, ordinals)
+    np.testing.assert_array_equal(interval_starts, np.array(starts, dtype="datetime64[ns]"))
+    if frequency is not None:
+        xr.testing.assert_identical(indicator, make_freq_indicator(time, frequency, anchor_time=anchor))
+
+
+@pytest.mark.parametrize(
+    "anchor",
+    ["2020-01-01T00:15:00.123456", np.datetime64("2020-01-01T00:15:00.123456"),
+     pd.Timestamp("2020-01-01T00:15:00.123456"),
+     pd.Timestamp("2020-01-01T00:15:00.123456").to_pydatetime(),
+     pd.Timestamp("2020-01-01T01:15:00.123456+01:00")],
+)
+def test_period_calendar_accepts_datetime_anchor_types_and_normalizes_timezone(anchor):
+    time = xr.DataArray(pd.to_datetime(["2020-01-01T02:00", "2020-01-01T04:00"]), dims="nmeasure")
+    indicator, starts = make_period_calendar(time, "1h", anchor_time=anchor)
+    np.testing.assert_array_equal(indicator, [0, 2])
+    np.testing.assert_array_equal(
+        starts, np.array(["2020-01-01T01:15:00.123456", "2020-01-01T03:15:00.123456"], dtype="datetime64[ns]")
+    )
+
+
+def test_period_calendar_preserves_nanosecond_anchor_precision():
+    time = xr.DataArray(pd.to_datetime(["2020-01-01T02:00"]), dims="nmeasure")
+    _, starts = make_period_calendar(time, "1h", anchor_time=pd.Timestamp("2020-01-01T00:15:00.123456789"))
+    np.testing.assert_array_equal(starts, np.array(["2020-01-01T01:15:00.123456789"], dtype="datetime64[ns]"))
+
+
+@pytest.mark.parametrize("anchor", [np.datetime64("NaT"), pd.NaT, "NaT"])
+@pytest.mark.parametrize("frequency", [None, "monthly", "1h"])
+def test_period_calendar_rejects_missing_anchor_before_time_metadata_compute(anchor, frequency):
+    from dask import delayed
+
+    @delayed
+    def unexpected_time_compute():
+        raise AssertionError("Invalid anchor evaluated time metadata")
+
+    time = xr.DataArray(
+        da.from_delayed(unexpected_time_compute(), shape=(1,), dtype="datetime64[ns]"), dims="nmeasure"
+    )
+    with pytest.raises(ValueError, match="anchor_time.*NaT"):
+        make_period_calendar(time, frequency, anchor_time=anchor)
 
 
 def test_make_inv_inputs_preserves_requested_order_and_column_factors() -> None:
@@ -460,3 +521,11 @@ def test_assembly_custom_nan_selection_and_independent_eager_inputs():
     result = _drop_nan_and_compute(ds, drop_nan_from=("quality", "absent"))
     xr.testing.assert_identical(result, original.isel(nmeasure=[0, 2]))
     xr.testing.assert_identical(ds, original)
+
+
+def test_make_inv_inputs_rejects_per_site_resolved_boundary_weights() -> None:
+    sites = {name: _make_minimal_fp_site(mf_base=400.0, include_inlet_height=False)
+             for name in ("AAA", "BBB")}
+    sites["AAA"]["bc_centering_weights"] = xr.DataArray([1.0, 1.0], dims="bc_region")
+    with pytest.raises(ValueError, match="resolved boundary states"):
+        make_inv_inputs(sites)
