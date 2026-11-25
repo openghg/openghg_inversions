@@ -408,23 +408,24 @@ def test_sigma_step_refreshes_once_only_when_the_returned_value_changes(
 
 @pytest.mark.parametrize("dtype", ["float32", "float64"])
 @pytest.mark.compiled_backend
-def test_shared_quadratic_uses_active_pytensor_dtype(dtype: str) -> None:
+def test_shared_quadratic_stays_float64_under_either_model_dtype(dtype: str) -> None:
+    """Keep cache terms and their evaluation separate from the model's dtype."""
     target = _target()
     cache = target.refresh(np.array([0.4, 0.4]))
+    state_value = np.array([0.3], dtype=dtype)
 
     with pytensor.config.change_flags(floatX=dtype):
         shared = PytensorMarginalQuadraticCache(cache)
         state = pt.vector("state", dtype=dtype)
         evaluate = pytensor.function([state], shared.log_likelihood(state))
-        value = evaluate(np.array([0.3], dtype=dtype))
+        value = evaluate(state_value)
 
-    assert shared.constant.dtype == dtype
-    assert shared.linear.dtype == dtype
-    assert shared.precision.dtype == dtype
-    assert np.asarray(value).dtype == np.dtype(dtype)
+    assert shared.constant.dtype == "float64"
+    assert shared.linear.dtype == "float64"
+    assert shared.precision.dtype == "float64"
+    assert np.asarray(value).dtype == np.dtype("float64")
     assert float(value) == pytest.approx(
-        cache.log_likelihood(np.array([0.3])),
-        rel=2e-6 if dtype == "float32" else 1e-12,
+        cache.log_likelihood(state_value.astype(np.float64)), rel=1e-12,
     )
 
 
