@@ -10,7 +10,7 @@ import pytest
 import xarray as xr
 from dask.callbacks import Callback
 
-from openghg_inversions.inversion_data import MergedData, SiteOptions, prepare_surface_site
+from openghg_inversions.inversion_data import MergedData, SiteOptions, prepare_surface_site, select_boundary_representation
 from openghg_inversions.inversion_data import acquisition, surface
 
 
@@ -421,7 +421,7 @@ def test_resolved_acquisition_requests_history_and_complete_months(inputs, monke
     )
     assert requests[0]["allow_older_flux"] is False
     assert pd.Timestamp(requests[0]["start_date"]) == pd.Timestamp("2019-12-31 22:00")
-    assert pd.Timestamp(requests[0]["end_date"]) - pd.Timedelta(seconds=1) + pd.Timedelta("1ns") == pd.Timestamp("2020-02-01")
+    assert pd.Timestamp(requests[0]["end_date"]) - pd.Timedelta(seconds=2) + pd.Timedelta("1ns") == pd.Timestamp("2020-02-01")
     assert result.flux_data["a"] is flux
 
 
@@ -648,6 +648,7 @@ def test_gather_and_serialization_preserve_each_site_transport_provenance():
             surface_transport_provenance=f"site-{number}",
             surface_provider_revision=f"provider-{number}",
         )
+    sites["BBB"].attrs["boundary_footprint_height_units_assumed"] = "m"
     prepared = prepare_rhime_inputs_from_xarray(sites, basis_functions=_basis_functions())
     restored = PreparedInputs.from_datatree(prepared.to_datatree())
     facts = json.loads(restored.inv_inputs.attrs["surface_preparation_provenance"])
@@ -656,6 +657,8 @@ def test_gather_and_serialization_preserve_each_site_transport_provenance():
     assert facts["AAA"]["surface_provider_revision"] == "provider-0"
     assert facts["BBB"]["surface_provider_revision"] == "provider-1"
     assert "surface_transport_provenance" not in restored.inv_inputs.attrs
+    assert facts["BBB"]["boundary_footprint_height_units_assumed"] == "m"
+    assert "boundary_footprint_height_units_assumed" not in facts["AAA"]
 
 
 @pytest.mark.parametrize("declared", [False, True])
@@ -672,6 +675,61 @@ def test_single_observation_bin_keeps_chosen_cadence_without_sampling_attr(input
     assert result.sizes["time"] == 1
     assert result.attrs["sampling_period"] == 14400
     np.testing.assert_allclose(result.mf_mod, 1.)
+
+
+def test_ordinary_boundary_defaults_unitless_footprint_height_to_metres(inputs):
+    """Store NAME footprints have no height units; CORSO-like curtains declare metres."""
+    obs, fp, flux = inputs
+    fp, bc = boundary_inputs(fp)
+    bc = bc.assign_coords(height=bc.height.assign_attrs(units="m"))
+    assert "units" not in fp.height.attrs
+    borrowed = {name: value.data for name, value in fp.data_vars.items()}
+    boundary_options = dict(
+        boundary_data=bc, boundary_reference=400.0, boundary_reference_units="ppm",
+        boundary_mass_tolerance=1e-8,
+    )
+    with pytest.warns(UserWarning, match="assuming metres"):
+        result = prepare_surface_site(
+            obs, fp, {"a": flux}, species="co2", transport={"a": "integrated"}, **boundary_options,
+        )
+    declared = fp.assign_coords(height=fp.height.assign_attrs(units="m"))
+    reference = prepare_surface_site(
+        obs, declared, {"a": flux}, species="co2", transport={"a": "integrated"}, **boundary_options,
+    )
+    result, reference = (
+        select_boundary_representation({"site": site}, "ordinary")["site"]
+        for site in (result, reference)
+    )
+    for name in ("bc_n", "bc_e", "bc_s", "bc_w", "bc_mod"):
+        xr.testing.assert_identical(result[name].reset_coords(drop=True), reference[name].reset_coords(drop=True))
+    assert "boundary_footprint_height_units_assumed" not in reference.attrs
+    assert result.attrs["boundary_footprint_height_units_assumed"] == "m"
+    assert "units" not in fp.height.attrs  # the caller's footprint is unchanged
+    for name, value in fp.data_vars.items():
+        assert value.data is borrowed[name]
+
+
+@pytest.mark.parametrize("boundary_units, footprint_units", [(None, None), ("m", "m"), ("km", None)])
+def test_ordinary_boundary_height_allowance_is_narrow(inputs, boundary_units, footprint_units):
+    _, fp, _ = inputs
+    fp, bc = boundary_inputs(fp)
+    if boundary_units:
+        bc = bc.assign_coords(height=bc.height.assign_attrs(units=boundary_units))
+    if footprint_units:
+        fp = fp.assign_coords(height=fp.height.assign_attrs(units=footprint_units))
+    returned, assumed = surface._default_curtain_height_units(fp, bc)
+    assert assumed is None and returned is fp
+
+
+def test_unitless_footprint_height_requires_matching_curtain_levels(inputs):
+    """Do not attach metre units to an unverified set of levels."""
+    _, footprint, _ = inputs
+    footprint, boundary = boundary_inputs(footprint)
+    boundary = boundary.assign_coords(height=boundary.height.assign_attrs(units="m"))
+    footprint = footprint.assign_coords(height=[1.0])
+
+    with pytest.raises(ValueError, match="must match the metre boundary grid"):
+        surface._default_curtain_height_units(footprint, boundary)
 
 
 def test_centered_surface_boundary_records_assumed_height_units(inputs):

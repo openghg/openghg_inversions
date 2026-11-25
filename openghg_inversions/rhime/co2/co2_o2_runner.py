@@ -13,7 +13,6 @@ import xarray as xr
 from dask import compute as dask_compute
 
 from openghg_inversions.array_ops import select_gathered_data_array, to_dense_tree
-from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.boundary import Bound, Choice, bind_prepared
@@ -319,14 +318,13 @@ def build_rhime_co2_o2(
     observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = (
         materialized
     )
-    flux_prior = CorrelatedPrior.from_lognormal(prepared.retained_prior)
     model = _build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
         co2_sensitivity=co2_sensitivity,
         o2_sensitivity=o2_sensitivity,
         aggregation_error=prepared.aggregation_error,
-        retained_prior=flux_prior,
+        retained_prior=prepared.retained_prior,
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
         tau_hours=tau_hours,
@@ -417,8 +415,10 @@ def run_rhime_co2_o2_from_prepared_inputs(
             resolved once on the flux prior and shared by both channels.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
-            with the same meanings as the CO2 offset component. Baseline terms
-            require identical channel units and are zero on the other channel.
+            with the same meanings as the CO2 offset component. Each channel's
+            offset is in that channel's units and is zero on the other channel,
+            so offsets allow mixed units (for example ppm CO2 and per-meg O2).
+            Boundary terms still require identical channel units.
         tau_hours: Optional fixed OU timescale, scalar or mapping keyed by
             ``co2:SITE``/``o2:SITE``, in hours. Requires the same channel units.
         fixed_site_amplitudes: Fixed additive species/site standard deviations
@@ -462,7 +462,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
     )
-    trace = sample_rhime_model(built, sampler, recompute_deterministics=True)
+    trace = sample_rhime_model(built, sampler)
     return annotate_co2_o2_trace(trace, built=built)
 
 

@@ -13,6 +13,8 @@ from openghg_inversions._pymc_config import configure_pytensor
 configure_pytensor()
 
 import json
+import logging
+import os
 from collections.abc import Mapping, Sequence
 from copy import copy
 from typing import Any, ClassVar, Literal, cast
@@ -21,6 +23,8 @@ import numpy as np
 import pymc as pm
 import xarray as xr
 from pymc.util import get_random_generator  # type: ignore[import-untyped]
+from pytensor.compile.mode import Mode
+from pytensor.graph.traversal import ancestors
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
@@ -29,6 +33,50 @@ from openghg_inversions.postprocessing.contracts import resolve_predictive_names
 from .convergence import posterior_convergence_check
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
+_JAX_NUTS_SAMPLERS = frozenset({"numpyro", "blackjax"})
+
+logger = logging.getLogger(__name__)
+
+
+def _jax_sampling_precision(model: pm.Model, nuts_sampler: NutsSampler) -> dict[str, bool | str]:
+    """Check and record process-start precision for a JAX sampler.
+
+    Args:
+        model: Built model whose sampler value variables must retain their dtype.
+        nuts_sampler: Resolved NUTS backend.
+
+    Returns:
+        PyTensor's floatX and the effective JAX x64 flag, or an empty mapping
+        for a backend that does not use JAX.
+
+    Raises:
+        ValueError: If the current JAX runtime disagrees with PyTensor floatX
+            or cannot represent the model's value variables.
+    """
+    if nuts_sampler not in _JAX_NUTS_SAMPLERS:
+        return {}
+
+    import jax
+    import pytensor
+    import pytensor.link.jax.dispatch  # noqa: F401  # First import sets JAX precision from floatX.
+
+    floatx = str(pytensor.config.floatX)
+    x64 = bool(jax.config.x64_enabled)
+    if x64 != (floatx == "float64") or (
+        not x64 and any(variable.dtype == "float64" for variable in model.value_vars)
+    ):
+        raise ValueError(
+            "JAX precision does not match PyTensor's floatX or the model's value variables. "
+            "Start a fresh Python process with PYTENSOR_FLAGS=floatX=float32 or floatX=float64 "
+            "before building and sampling the model."
+        )
+    if not x64 and os.environ.get("JAX_ENABLE_X64", "").lower() in {"y", "yes", "t", "true", "on", "1"}:
+        logger.warning(
+            "PyTensor floatX selects float32 for this JAX sampler. Set "
+            "PYTENSOR_FLAGS=floatX=float64 before starting Python to sample in float64."
+        )
+
+    return {"floatX": floatx, "jax_enable_x64": x64}
 
 
 def describe_recorded_sampler(recorded: object) -> dict[str, int | str]:
@@ -186,76 +234,84 @@ def _log_sample_stats(trace: xr.DataTree, *, label: str) -> None:
         log_timing(label, 0.0, **fields)
 
 
-def _burn_retained_draws(trace: xr.DataTree, *, burn: int) -> xr.DataTree:
-    """Discard and relabel post-tuning draws, preserving independent groups.
+def _reset_retained_draws(trace: xr.DataTree, *, burn: int) -> xr.DataTree:
+    """Relabel retained draws and preserve the discarded burn-in count.
 
     Args:
-        trace: Owned trace tree whose posterior-aligned groups are sliced
-            in place. Other groups, such as a ``posterior_predictive`` group
-            supplied through ``idata_kwargs``, are sliced too when their chain
-            and draw indexes match the original posterior's; warmup and prior
-            groups keep their own axes.
-        burn: Number of post-tuning draws to discard and record in metadata.
+        trace: Trace tree whose draw-bearing groups are relabelled in place.
+        burn: Number of discarded burn-in draws to record in metadata.
 
     Returns:
-        The mutated trace tree, with retained draw coordinates reset to
+        The mutated trace tree, with each draw coordinate reset to
         consecutive zero-based integers and ``burn`` stored on the trace and
-        posterior-aligned groups.
+        draw-bearing groups.
     """
     trace.attrs["burn"] = burn
-    # PyMC computes both log-density groups from the same posterior states, and
-    # ZarrTrace(include_transformed=True) records those states' transformed values.
-    aligned = ["posterior", "unconstrained_posterior", "sample_stats", "log_likelihood", "log_prior"]
-    if "posterior" in trace.children:
-        posterior = trace["posterior"].to_dataset()
-        indexes = {name: posterior.indexes[name] for name in ("chain", "draw") if name in posterior.indexes}
-        for name, child in trace.children.items():
-            group = child.to_dataset()
-            if (
-                name not in aligned and not name.startswith(("warmup_", "prior"))
-                and len(indexes) == 2 and all(dim in group.indexes and group.indexes[dim].equals(index)
-                                               for dim, index in indexes.items())
-            ):
-                aligned.append(name)
-    for group_name in aligned:
-        if group_name not in trace.children:
-            continue
-        group = trace[group_name].to_dataset()
+    for group_name, node in trace.children.items():
+        group = node.to_dataset()
         if "draw" not in group.dims:
             continue
-        group = group.isel(draw=slice(burn, None))
         group = group.assign_coords(draw=np.arange(group.sizes["draw"]))
         group.attrs["burn"] = burn
         trace[group_name] = group
     return trace
 
 
-def _restore_deterministics(posterior: xr.Dataset, model: pm.Model) -> xr.Dataset:
-    """Evaluate the unchanged graph after pm.sample returns.
+def _numpy_callback_compile_kwargs(model: pm.Model) -> dict[str, Any]:
+    """Return compile options for a model whose density calls a NumPy/SciPy Op holding prepared arrays.
 
-    PyMC allocates the final arrays once and evaluates one state at a time;
-    merging borrows those arrays rather than copying the complete posterior.
+    Some likelihood Ops (fixed OU, cached sigma) evaluate prepared NumPy/SciPy
+    targets in ``perform``. PyTensor's default Numba linker has no native
+    implementation for them, so it runs them through an object-mode callback
+    that serializes the Op, including every array it holds, into each compiled
+    function. That costs several times the arrays' memory per compiled
+    function (logp, gradient, log likelihood, predictive draws), copies the
+    payload on each call, and fails outright once the serialized Op exceeds
+    2 GiB. The C/VM linker calls ``perform`` directly.
+
+    Args:
+        model: Model whose joint log density is inspected.
+
+    Returns:
+        ``{"mode": Mode(linker="cvm", optimizer="fast_run")}`` when the log
+        density contains an Op marked ``holds_numpy_target = True``, otherwise
+        an empty dict, which keeps PyTensor's default mode.
     """
-    if not model.deterministics:
-        return posterior
-    # Match ordinary recording's observed-value and transform conventions.
-    observed_values = {}
-    for rv in model.observed_RVs:
-        value = model.rvs_to_values[rv]
-        transform = model.rvs_to_transforms.get(rv)
-        if transform is not None:
-            value = transform.backward(value, *rv.owner.inputs)
-            value = rv.type.filter_variable(value, allow_convert=True)
-        observed_values[rv] = value
-    derived = cast(
-        xr.Dataset,
-        pm.compute_deterministics(
-            posterior, model=model, progressbar=False,
-            compile_kwargs={"givens": observed_values},
-        ),
-    )
-    derived = derived.assign_coords(chain=posterior.chain, draw=posterior.draw)
-    return xr.merge([posterior, derived], join="exact", compat="override")
+    logp = getattr(model, "logp", None)
+    if logp is None:
+        return {}
+
+    for variable in ancestors([logp()]):
+        if variable.owner is not None and getattr(variable.owner.op, "holds_numpy_target", False):
+            return {"mode": Mode(linker="cvm", optimizer="fast_run")}
+    return {}
+
+
+def sample_prior_predictive(
+    model: pm.Model,
+    *,
+    draws: int,
+    random_seed: int | np.random.Generator | None = None,
+    compile_kwargs: dict[str, Any] | None = None,
+) -> xr.DataTree:
+    """Draw prior predictions using the model's safe PyTensor linker.
+
+    Args:
+        model: Concrete PyMC model to predict from.
+        draws: Number of prior-predictive draws.
+        random_seed: Seed or generator for the prediction stream.
+        compile_kwargs: Already resolved PyMC compile options, if available.
+            Omit to select options from the model. An empty mapping keeps the
+            PyMC defaults.
+
+    Returns:
+        Prior and prior-predictive draws in PyMC's trace format.
+    """
+    if compile_kwargs is None:
+        compile_kwargs = _numpy_callback_compile_kwargs(model)
+    if compile_kwargs:
+        return pm.sample_prior_predictive(draws, model, random_seed=random_seed, compile_kwargs=compile_kwargs)
+    return pm.sample_prior_predictive(draws, model, random_seed=random_seed)
 
 
 class RhimeSampler:
@@ -399,7 +455,6 @@ class RhimeSampler:
         model: pm.Model,
         *,
         variable_roles: Mapping[str, str] | None = None,
-        recompute_deterministics: bool = False,
     ) -> xr.DataTree:
         """Sample a built RHIME model and append requested predictive groups.
 
@@ -410,13 +465,6 @@ class RhimeSampler:
                 role names. The historical default ``"y"`` resolves to the
                 explicit ``concentration`` role when a custom model has no
                 variable named ``y``.
-            recompute_deterministics: For the PyMC backend, record free random
-                variables and restore every deterministic from the unchanged
-                graph after sampling returns. Evaluation retains final output
-                arrays plus one state's intermediate values. Other backends,
-                explicit traces or callbacks, a separate ``idata_kwargs`` conversion
-                model, transformed-variable requests
-                and empty retained groups use the ordinary recording path.
 
         Returns:
             Sampled trace with requested predictive groups, after burn slicing
@@ -427,28 +475,29 @@ class RhimeSampler:
             random variables, whose names are saved as JSON in
             ``sampler_convergence_variables``. Assessment is eager; a failed or
             incomplete convergence report does not prevent returning the trace.
+            For the ``numpyro`` and ``blackjax`` backends, ``sampler_precision``
+            records the PyTensor floatX and effective JAX x64 flag as JSON.
+
+        Raises:
+            ValueError: If the sampler or predictive options are invalid, or
+                the JAX runtime is incompatible with the model's precision.
         """
         _validate_idata_options(self.sample_kwargs, label="sample_kwargs")
         sample_kwargs = _copy_sampler_options(self.sample_kwargs or {})
         sample_kwargs.pop("return_inferencedata", None)
         idata_kwargs = dict(sample_kwargs.pop("idata_kwargs", {}))
         idata_kwargs.setdefault("log_likelihood", True)
-        compact = (
-            recompute_deterministics
-            and self.nuts_sampler == "pymc"
-            and not idata_kwargs.get("include_transformed", False)
-            and sample_kwargs.get("trace") is None
-            and sample_kwargs.get("callback") is None
-            and self.burn < self.draws
-            # A different conversion model owns observed data and labels.
-            and idata_kwargs.get("model", model) is model
-        )
-        log_likelihood = idata_kwargs["log_likelihood"]
-        if compact:
-            sample_kwargs["var_names"] = [rv.name for rv in model.free_RVs]
-            # Conversion and automatic likelihood otherwise coexist with the
-            # warmup-plus-draw backend buffers inside pm.sample's return path.
-            idata_kwargs["log_likelihood"] = False
+
+        compile_kwargs = _numpy_callback_compile_kwargs(model) if self.nuts_sampler == "pymc" else {}
+        deferred_log_likelihood: Any = False
+        if compile_kwargs:
+            compile_kwargs.update(sample_kwargs.get("compile_kwargs") or {})
+            if sample_kwargs.get("backend") is None:
+                sample_kwargs["compile_kwargs"] = compile_kwargs
+
+            # PyMC's automatic log-likelihood calculation ignores compile options.
+            deferred_log_likelihood = idata_kwargs.pop("log_likelihood")
+
         # Assess the retained samples after burn slicing instead of repeating PyMC's pre-burn checks.
         sample_kwargs.setdefault("compute_convergence_checks", False)
         sample_kwargs.setdefault("progressbar", self.progressbar)
@@ -456,6 +505,7 @@ class RhimeSampler:
         if not isinstance(self.sample_prior_predictive, bool | int | np.integer) or self.sample_prior_predictive < 0:
             raise ValueError("sample_prior_predictive must be a boolean or non-negative integer.")
         posterior_kwargs = self._posterior_predictive_options(model, variable_roles)
+
         # PyMC copies random_seed and spawns one child per chain. Copy here too
         # so spawning prediction streams cannot advance a caller-owned RNG.
         root_rng = get_random_generator(sample_kwargs.get("random_seed"), copy=True)
@@ -474,6 +524,8 @@ class RhimeSampler:
             if not isinstance(posterior_seed, int | np.integer):
                 posterior_kwargs["random_seed"] = normalized_seed
 
+        precision = _jax_sampling_precision(model, self.nuts_sampler)
+
         timing_start = timer_start()
         with model:
             raw_trace = cast(
@@ -488,6 +540,21 @@ class RhimeSampler:
                     **sample_kwargs,
                 ),
             )
+
+        if deferred_log_likelihood:
+            with model:
+                raw_trace = cast(
+                    xr.DataTree,
+                    pm.compute_log_likelihood(
+                        raw_trace,
+                        var_names=None if deferred_log_likelihood is True else list(deferred_log_likelihood),
+                        model=model,
+                        extend_inferencedata=True,
+                        progressbar=False,
+                        compile_kwargs=compile_kwargs,
+                    ),
+                )
+
         log_timing(
             "rhime.sampler.pm_sample",
             timer_seconds(timing_start),
@@ -499,32 +566,19 @@ class RhimeSampler:
         _log_sample_stats(raw_trace, label="rhime.sampler.sample_stats")
 
         timing_start = timer_start()
-        trace = raw_trace.copy(deep=False)
-        trace = _burn_retained_draws(trace, burn=self.burn)
+        trace = raw_trace.isel(draw=slice(self.burn, None), missing_dims="ignore")
+        trace = _reset_retained_draws(trace, burn=self.burn)
         log_timing("rhime.sampler.burn_slicing", timer_seconds(timing_start), burn=self.burn)
 
-        if compact:
-            if log_likelihood:
-                timing_start = timer_start()
-                pm.compute_log_likelihood(
-                    trace,
-                    model=model,
-                    var_names=None if log_likelihood is True else log_likelihood,
-                    progressbar=self.progressbar,
-                )
-                log_timing("rhime.sampler.log_likelihood", timer_seconds(timing_start))
-            timing_start = timer_start()
-            for group_name in ("posterior", "warmup_posterior"):
-                if group_name in trace.children:
-                    trace[group_name] = _restore_deterministics(trace[group_name].to_dataset(), model)
-            log_timing("rhime.sampler.deterministics", timer_seconds(timing_start))
-
         trace = self._extend_predictive(
-            trace, model=model, prior_random_seed=prior_rng,
+            trace,
+            model=model,
+            prior_random_seed=prior_rng,
             posterior_predictive_kwargs=posterior_kwargs,
+            compile_kwargs=compile_kwargs,
         )
-        for name, group in trace.children.items():
-            if not name.startswith("warmup_") and "draw" in group.dims:
+        for group in trace.children.values():
+            if "draw" in group.dims:
                 group.attrs.setdefault("burn", self.burn)
         timing_start = timer_start()
         registry = get_coord_registry(model)
@@ -536,6 +590,8 @@ class RhimeSampler:
             restored=registry is not None,
         )
 
+        if precision:
+            trace.attrs["sampler_precision"] = json.dumps(precision, sort_keys=True)
         variable_names = [variable.name for variable in model.free_RVs]
         trace.attrs["sampler_convergence_variables"] = json.dumps(variable_names)
         timing_start = timer_start()
@@ -584,6 +640,7 @@ class RhimeSampler:
         model: pm.Model,
         prior_random_seed: np.random.Generator,
         posterior_predictive_kwargs: dict[str, Any],
+        compile_kwargs: dict[str, Any],
     ) -> xr.DataTree:
         """Extend sampled trace with configured predictive groups."""
         if self.sample_prior_predictive:
@@ -593,8 +650,11 @@ class RhimeSampler:
                 else int(self.sample_prior_predictive)
             )
             timing_start = timer_start()
-            with model:
-                trace.update(pm.sample_prior_predictive(prior_draws, model, random_seed=prior_random_seed))
+            trace.update(
+                sample_prior_predictive(
+                    model, draws=prior_draws, random_seed=prior_random_seed, compile_kwargs=compile_kwargs
+                )
+            )
             log_timing(
                 "rhime.sampler.prior_predictive",
                 timer_seconds(timing_start),
@@ -602,6 +662,17 @@ class RhimeSampler:
             )
 
         if self.sample_posterior_predictive:
+            if (
+                "compile_kwargs" not in posterior_predictive_kwargs
+                and posterior_predictive_kwargs.get("backend") is None
+            ):
+                prediction_model = posterior_predictive_kwargs.get("model") or model
+                prediction_options = (
+                    compile_kwargs if prediction_model is model else _numpy_callback_compile_kwargs(prediction_model)
+                )
+                if prediction_options:
+                    posterior_predictive_kwargs["compile_kwargs"] = prediction_options
+
             timing_start = timer_start()
             with model:
                 trace.update(pm.sample_posterior_predictive(trace, **posterior_predictive_kwargs))

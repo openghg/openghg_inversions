@@ -48,10 +48,7 @@ from .execution import run_co2
 from .co2_outputs import Co2Output
 from .co2_o2_outputs import Co2O2Output, Co2O2OutputOptions
 
-from .surface_templates import prepare_linked_surface_templates
-
 __all__ = [
-    "prepare_linked_surface_templates",
     "Co2PreparationConfig", "Co2ModelConfig", "Co2O2PreparationConfig", "Co2O2ModelConfig",
     "Co2O2PreparedInputs",
     "Co2O2Output",

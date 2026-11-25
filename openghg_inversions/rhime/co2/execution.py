@@ -14,6 +14,7 @@ from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, l
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import MergedData, PreparedInputs
 from openghg_inversions.models.boundary import boundary_preparation
+from openghg_inversions.observation_error import WhitenedRankRule
 from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
 
 from .co2_affine_output import _bind_affine_flux_map, prepared_inputs_content_id
@@ -80,7 +81,9 @@ def run_co2(
     output_path: str | Path | None = None, start_date: str | None = None, end_date: str | None = None,
     prepared: Co2PreparedInputs | None = None, canonical_inputs: PreparedInputs | None = None,
     reduction: CoherentGaussianReduction | None = None, affine_artifact: AffineFluxMapArtifact | None = None,
-    aggregation_error_rank: int | None = 512, merged_data: MergedData | None = None,
+    aggregation_error_rank: int | WhitenedRankRule | None = WhitenedRankRule(),
+    reference_covariance: xr.DataArray | None = None,
+    merged_data: MergedData | None = None,
     bc_centering_weights: xr.DataArray | None = None,
 ) -> Co2Output:
     """Prepare or load CO2 inputs, sample and create requested products.
@@ -100,6 +103,14 @@ def run_co2(
     centered preparation from canonical inputs, as in
     :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`;
     weighted additive boundaries with a positive ``anomaly_scale`` require it.
+    ``aggregation_error_rank``
+    applies only when creating a preparation from ``canonical_inputs`` and
+    ``reduction``, with the rank contract of
+    :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`:
+    a :class:`~openghg_inversions.observation_error.WhitenedRankRule` (the
+    default), an integer override, or ``None`` for exact storage. So does
+    ``reference_covariance``, the rank rule's reference, which the rule
+    requires a labelled covariance in the canonical observation order.
 
     Returns:
         Scientific result containing the trace, concentration components and
@@ -135,6 +146,8 @@ def run_co2(
     consumed_paths = tuple(Path(path) for path in (config_file, params_file) if path is not None)
     if bc_centering_weights is not None and canonical_inputs is None:
         raise ValueError("bc_centering_weights apply only to a new preparation from canonical_inputs.")
+    if reference_covariance is not None and canonical_inputs is None:
+        raise ValueError("reference_covariance applies only to a new preparation from canonical_inputs.")
     if preparation.native is not None:
         if prepared is not None or canonical_inputs is not None or affine_artifact is not None:
             raise ValueError("Configured acquisition builds its own preparation; do not pass prepared inputs.")
@@ -148,7 +161,7 @@ def run_co2(
     elif canonical_inputs is not None and reduction is not None:
         prepared = prepare_co2_inputs(
             canonical_inputs, reduction, aggregation_error_rank=aggregation_error_rank,
-            bc_centering_weights=bc_centering_weights,
+            reference_covariance=reference_covariance, bc_centering_weights=bc_centering_weights,
         )
     elif prepared is None:
         if source is None:

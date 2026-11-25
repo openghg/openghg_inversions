@@ -15,16 +15,17 @@ from typing import Any, cast
 from uuid import uuid4
 
 import numpy as np
-import pymc as pm
 import xarray as xr
 
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine, save as save_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
+from openghg_inversions.inference.sampling import sample_prior_predictive
 from openghg_inversions.inversion_data import MergedData, PreparedInputs
 from openghg_inversions.models.boundary import Choice, boundary_preparation
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
+from openghg_inversions.observation_error import WhitenedRankRule
 from openghg_inversions.rhime._stage_artifacts import (
     _output_path, check_checkpoint_targets, finish_checkpoint, read_manifest,
     reference, start_checkpoint, write_json,
@@ -133,7 +134,8 @@ def prepare(
     start_date: str | None = None, end_date: str | None = None, domain: str | None = None,
     canonical_inputs: PreparedInputs | None = None,
     reduction: CoherentGaussianReduction | None = None,
-    aggregation_error_rank: int | None = 512,
+    aggregation_error_rank: int | WhitenedRankRule | None = WhitenedRankRule(),
+    reference_covariance: xr.DataArray | None = None,
     bc_centering_weights: xr.DataArray | None = None,
     affine_artifact: AffineFluxMapArtifact | None = None, affine_path: str | Path | None = None,
     boundary_representation: BoundaryRepresentation | None = None, boundary: Choice | None = None,
@@ -158,6 +160,15 @@ def prepare(
     canonical inputs, as in
     :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`;
     weighted additive boundaries with a positive ``anomaly_scale`` require it.
+    ``aggregation_error_rank``
+    applies only when creating a preparation from ``canonical_inputs`` and
+    ``reduction``, with the rank contract of
+    :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`:
+    a :class:`~openghg_inversions.observation_error.WhitenedRankRule` (the
+    default), an integer override, or ``None`` for exact storage. So does
+    ``reference_covariance``, the rank rule's reference, which the rule
+    requires a labelled covariance in the canonical observation order.
+
     ``referenced`` names consumed request files, such as the CLI parameters
     file, which the preparation outputs must not overwrite.
     """
@@ -167,6 +178,8 @@ def prepare(
         raise ValueError("merged_data requires configured native preparation choices.")
     if bc_centering_weights is not None and canonical_inputs is None:
         raise ValueError("bc_centering_weights apply only to a new preparation from canonical_inputs.")
+    if reference_covariance is not None and canonical_inputs is None:
+        raise ValueError("reference_covariance applies only to a new preparation from canonical_inputs.")
     if native is not None:
         if (prepared_path is not None or canonical_inputs is not None or affine_path is not None
                 or affine_artifact is not None):
@@ -196,7 +209,8 @@ def prepare(
             raise ValueError("A new preparation requires affine_artifact, not an imported companion path.")
         prepared = prepare_co2_inputs(
             canonical_inputs, cast(CoherentGaussianReduction, reduction),
-            aggregation_error_rank=aggregation_error_rank, bc_centering_weights=bc_centering_weights,
+            aggregation_error_rank=aggregation_error_rank, reference_covariance=reference_covariance,
+            bc_centering_weights=bc_centering_weights,
         )
         check_prepared_boundary(prepared.inv_inputs, boundary, boundary_representation)
         return save_preparation(
@@ -331,8 +345,10 @@ def _load_samples(sample_manifest: str | Path) -> tuple[Co2Output, tuple[Path, .
     generation = record["preparation_generation"]
     if not isinstance(generation, str) or not generation:
         raise ValueError(f"CO2 samples {path} require a nonempty preparation generation.")
-    preparation = load_preparation(reference(path, record["preparation"]), expected_generation=generation)
-    trace = load_trace(reference(path, record["posterior"]))
+    preparation_path = reference(path, record["preparation"])
+    posterior_path = reference(path, record["posterior"])
+    preparation = load_preparation(preparation_path, expected_generation=generation)
+    trace = load_trace(posterior_path)
     validate_co2_trace(trace, preparation.prepared)
     bound = (
         _bind_affine_flux_map(
@@ -349,10 +365,7 @@ def _load_samples(sample_manifest: str | Path) -> tuple[Co2Output, tuple[Path, .
             "provenance": record.get("provenance") if isinstance(record.get("provenance"), Mapping) else {},
         },
     )
-    consumed: tuple[Path, ...] = (
-        path, reference(path, record["preparation"]), preparation.payload,
-        reference(path, record["posterior"]),
-    )
+    consumed: tuple[Path, ...] = (path, preparation_path, preparation.payload, posterior_path)
     if preparation.affine_payload is not None:
         consumed += (preparation.affine_payload,)
     return result, consumed
@@ -421,8 +434,7 @@ def prior_predictive(
     model_options = model_config.model_arguments()
     report.unlink(missing_ok=True)
     built, cached = build_co2_inference(preparation.prepared, model_options)
-    with built.model:
-        prior = pm.sample_prior_predictive(draws, random_seed=random_seed)
+    prior = sample_prior_predictive(built.model, draws=draws, random_seed=random_seed)
     registry = get_coord_registry(built.model)
     if registry is not None:
         prior = restore_inferencedata_coords(prior, registry)
