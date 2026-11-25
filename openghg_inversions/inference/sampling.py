@@ -263,9 +263,9 @@ def sample_prior_predictive(
     """
     if compile_kwargs is None:
         compile_kwargs = _numpy_callback_compile_kwargs(model)
-    return pm.sample_prior_predictive(
-        draws=draws, model=model, random_seed=random_seed, compile_kwargs=compile_kwargs or None
-    )
+    if compile_kwargs:
+        return pm.sample_prior_predictive(draws, model, random_seed=random_seed, compile_kwargs=compile_kwargs)
+    return pm.sample_prior_predictive(draws, model, random_seed=random_seed)
 
 
 class RhimeSampler:
