@@ -936,7 +936,11 @@ uses NumPyro, while configured linked fixed OU defaults to and requires PyMC.</p
 <td><p>Chosen from the likelihood</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;numpyro&quot;</span></code> for fixed error; <code class="docutils literal notranslate"><span class="pre">&quot;pymc&quot;</span></code> for OU</p></td>
 <td><p>Configured <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> rejects this option. Linked configuration accepts supported
-backends, with <code class="docutils literal notranslate"><span class="pre">&quot;pymc&quot;</span></code> required for <code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code>.</p></td>
+backends, with <code class="docutils literal notranslate"><span class="pre">&quot;pymc&quot;</span></code> required for <code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code>. Set
+<code class="docutils literal notranslate"><span class="pre">PYTENSOR_FLAGS=floatX=float64</span></code> before starting Python to use float64
+with NumPyro or BlackJAX. PyTensor selects the JAX precision when it
+first loads the JAX backend. The trace’s <code class="docutils literal notranslate"><span class="pre">sampler_precision</span></code> records
+<code class="docutils literal notranslate"><span class="pre">floatX</span></code> and the effective JAX x64 flag.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">progressbar</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>

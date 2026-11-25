@@ -2208,10 +2208,16 @@ attribute contains a JSON convergence report from
 using ArviZ’s default thresholds. The report assesses the model’s free
 random variables, whose names are saved as JSON in
 <code class="docutils literal notranslate"><span class="pre">sampler_convergence_variables</span></code>. Assessment is eager; a failed or
-incomplete convergence report does not prevent returning the trace.</p>
+incomplete convergence report does not prevent returning the trace.
+For the <code class="docutils literal notranslate"><span class="pre">numpyro</span></code> and <code class="docutils literal notranslate"><span class="pre">blackjax</span></code> backends, <code class="docutils literal notranslate"><span class="pre">sampler_precision</span></code>
+records the PyTensor floatX and effective JAX x64 flag as JSON.</p>
 </dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the sampler or predictive options are invalid, or
+    the JAX runtime is incompatible with the model’s precision.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
 </dd>
 </dl>
 </dd></dl>
