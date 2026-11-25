@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, cast
 
 import numpy as np
 import pytensor.tensor as pt
@@ -26,36 +26,35 @@ class _GammaStandardQuantile(JAXOp):
     The shape is a prior parameter, so only the latent is differentiated.
     """
 
-    __props__ = ("input_types", "output_types")
-
     def __init__(self, latent_type: TensorType, shape_type: TensorType) -> None:
         """Set the input and output types without importing JAX."""
         # The inherited node and JAX dispatch require only these types.
         # Import JAX at lowering, so CPU-only graph construction cannot set its precision.
         self.input_types = (latent_type, shape_type)
         self.output_types = (latent_type,)
+        self.jax_func = _GammaStandardQuantile.perform_jax
         self.name = None
 
-    def perform(self, node: Apply, inputs: Sequence[np.ndarray], outputs: Sequence[list[np.ndarray]]) -> None:
+    def perform(self, node: Apply, inputs: Sequence[Any], output_storage: list[list[Any]]) -> None:
         """Evaluate the quantile in the latent's dtype using both probability tails."""
         latent, shape = inputs
         p = special.ndtr(-np.abs(latent))
         value = np.where(latent > 0, special.gammainccinv(shape, p), special.gammaincinv(shape, p))
-        outputs[0][0] = np.asarray(value, dtype=latent.dtype)
+        output_storage[0][0] = np.asarray(value, dtype=latent.dtype)
 
     def pullback(
-        self, inputs: Sequence[TensorVariable], outputs: Sequence[TensorVariable],
-        output_gradients: Sequence[TensorVariable],
+        self, inputs: Sequence[Variable], outputs: Sequence[Variable],
+        output_gradients: Sequence[Variable],
     ) -> list[Variable]:
         """Differentiate the inverse CDF via its density in log space."""
-        latent, shape = inputs
-        value = zero_grad(outputs[0])
+        latent, shape = (cast(TensorVariable, variable) for variable in inputs)
+        value = zero_grad(cast(TensorVariable, outputs[0]))
         positive = value > np.finfo(latent.dtype).tiny
         safe = pt.switch(positive, value, 1.0)
         log_density = (shape - 1.0) * pt.log(safe) - safe - pt.gammaln(shape)
         log_normalizer = np.asarray(0.5 * np.log(2.0 * np.pi), dtype=latent.dtype)
         slope = pt.switch(positive, pt.exp(-0.5 * pt.square(latent) - log_normalizer - log_density), 0.0)
-        return [output_gradients[0] * zero_grad(slope), grad_not_implemented(self, 1, shape)]
+        return [cast(TensorVariable, output_gradients[0]) * zero_grad(slope), grad_not_implemented(self, 1, shape)]
 
     def perform_jax(self, latent: Array, shape: Array) -> Array:
         """Evaluate the quantile with a native JAX derivative for NumPyro and BlackJAX."""
