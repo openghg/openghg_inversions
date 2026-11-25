@@ -43,3 +43,12 @@ def test_symmetry_check_is_unit_invariant() -> None:
         assert check_symmetric(nearly * scale, owner="C") == pytest.approx(2e-10 * scale)
         with pytest.raises(ValueError, match="C must be symmetric"):
             check_symmetric(clearly * scale, owner="C")
+
+
+def test_symmetry_check_can_use_only_the_matrix_scale() -> None:
+    """Preserve the scalar-sigma symmetry allowance without an elementwise term."""
+    values = np.array([[2.0, 1.0], [1.0 + 2.5e-10, 2.0]])
+
+    check_symmetric(values, owner="C")
+    with pytest.raises(ValueError, match="C must be symmetric"):
+        check_symmetric(values, owner="C", rtol=0.0)

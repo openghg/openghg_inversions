@@ -98,17 +98,21 @@ def roundoff_tolerance(values: np.ndarray) -> float:
     return ROUNDOFF_RELATIVE_TOLERANCE * float(np.max(np.abs(values), initial=0.0))
 
 
-def check_symmetric(values: np.ndarray, *, owner: str) -> float:
+def check_symmetric(
+    values: np.ndarray, *, owner: str, rtol: float = ROUNDOFF_RELATIVE_TOLERANCE
+) -> float:
     """Require a materialized square matrix to be symmetric within roundoff.
 
     Rows are compared with ``numpy.allclose`` against the transposed columns
-    in blocks, so no transposed copy of a large matrix is formed. Both the
-    relative and the absolute allowance are :data:`ROUNDOFF_RELATIVE_TOLERANCE`
-    on the scale of ``values``.
+    in blocks, so no transposed copy of a large matrix is formed. The
+    absolute allowance is :data:`ROUNDOFF_RELATIVE_TOLERANCE` on the scale
+    of ``values``.
 
     Args:
         values: Materialized square matrix.
         owner: Scientific owner named in the error.
+        rtol: Elementwise relative allowance in addition to the absolute
+            tolerance. Use zero for a matrix-wide allowance only.
 
     Returns:
         The absolute tolerance from :func:`roundoff_tolerance`, for a
@@ -124,7 +128,7 @@ def check_symmetric(values: np.ndarray, *, owner: str) -> float:
         if not np.allclose(
             values[start:stop],
             values[:, start:stop].T,
-            rtol=ROUNDOFF_RELATIVE_TOLERANCE,
+            rtol=rtol,
             atol=tolerance,
         ):
             raise ValueError(f"{owner} must be symmetric.")

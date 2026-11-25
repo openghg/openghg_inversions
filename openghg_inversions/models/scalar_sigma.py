@@ -203,7 +203,7 @@ def scalar_sigma_base_covariance(
         covariance_values += factor_values @ factor_values.T
         covariance_values.flat[:: n_observation + 1] += diagonal_values
 
-    check_symmetric(covariance_values, owner="Scalar-sigma base covariance")
+    check_symmetric(covariance_values, owner="Scalar-sigma base covariance", rtol=0.0)
     covariance_values = (covariance_values + covariance_values.T) * 0.5
     return cast(NDArray[np.float64], covariance_values)
 
