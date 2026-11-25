@@ -221,6 +221,20 @@ def test_postprocess_protects_the_posterior_it_loaded_after_manifest_replacement
     assert posterior.read_bytes() == original
 
 
+def test_invalid_prior_predictive_request_preserves_readiness_report(tmp_path):
+    """Validate configured units before replacing an existing readiness report."""
+    preparation = handoffs.save_preparation(synthetic_inputs(), output_dir=tmp_path / "prepare")
+    report = tmp_path / "prior-predictive-readiness.json"
+    original = json.dumps({"status": "pass"})
+    report.write_text(original)
+
+    model = {"channels": {"co2": {"units": "ppb"}, "o2": {"units": "ppb"}}}
+    with pytest.raises(ValueError, match="do not match prepared"):
+        handoffs.prior_predictive(preparation, model=model, output_dir=tmp_path)
+
+    assert report.read_text() == original
+
+
 def test_heterogeneous_import_fails_before_checkpoint(tmp_path, no_inference):
     from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
     from test_rhime_co2_o2 import _inputs

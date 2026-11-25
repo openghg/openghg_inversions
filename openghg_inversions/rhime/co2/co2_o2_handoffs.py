@@ -302,8 +302,8 @@ def prior_predictive(
         referenced=(Path(preparation_manifest).resolve(), preparation.payload)
         + tuple(Path(path).resolve() for path in referenced),
     )
-    report.unlink(missing_ok=True)
     model_options = model_config.bind(preparation.prepared)
+    report.unlink(missing_ok=True)
     built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
     prior = sample_prior_predictive(built.model, draws=draws, random_seed=random_seed)
     registry = get_coord_registry(built.model)
