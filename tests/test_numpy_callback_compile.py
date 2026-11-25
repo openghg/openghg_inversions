@@ -108,7 +108,7 @@ def test_deferred_evaluation_uses_the_resolved_compiler(monkeypatch, recorded, k
     with model:
         pm.Deterministic("signal", 2 * model["level"])
     posterior = xr.Dataset(
-        {"level": (("chain", "draw"), [[1.0, 1.5, 2.0]])},
+        {"level": (("chain", "draw"), np.array([[1.0, 1.5, 2.0]], dtype=model["level"].dtype))},
         coords={"chain": [0], "draw": [0, 1, 2]},
     )
     monkeypatch.setattr(pm, "sample", lambda **kwargs: xr.DataTree.from_dict({"posterior": posterior}))
