@@ -177,8 +177,9 @@ def test_supplied_state_function_matches_public_density_without_covariance_work(
     sigma_step, state_step = compound.methods
     exact = model.compile_logp()
     gradient = model.compile_dlogp(vars=arguments["states"])
-    # Cached float32 algebra and the public Gaussian gradient round in different orders.
-    gradient_rtol = max(1e-7, 2 * np.finfo(point["state"].dtype).eps)
+    # The cache evaluates in float64 before the gradient is rounded to the state dtype.
+    # The public Gaussian rounds earlier in the state projection and its derivative.
+    gradient_rtol = max(1e-7, 4 * np.finfo(point["state"].dtype).eps)
     for state, amplitudes in ((-0.3, [0.2, 0.7]), (0.4, [0.6, 1.2])):
         point["state"] = np.asarray([state], dtype=point["state"].dtype)
         point["sigma_site_log__"] = np.asarray(np.log(amplitudes), dtype=point["sigma_site_log__"].dtype)
@@ -670,7 +671,8 @@ def test_compound_sampler_matches_independent_dense_posterior_moments(family) ->
             shared_cache=shared,
             initial_cache=initial_cache,
             sigma_target_accept=0.9,
-            state_target_accept=0.9,
+            # Use finer state steps for the posterior quadrature comparison.
+            state_target_accept=0.95,
             rng=np.random.default_rng(710),
         )
         idata = pm.sample(
