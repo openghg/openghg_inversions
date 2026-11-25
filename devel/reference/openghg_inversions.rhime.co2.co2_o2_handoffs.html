@@ -610,13 +610,27 @@ from its previous generation.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_handoffs.prepare">
-<span class="sig-name descname"><span class="pre">prepare</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">end_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_handoffs.prepare" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">prepare</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared_path</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">end_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">referenced</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">()</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_handoffs.prepare" title="Link to this definition">#</a></dt>
 <dd><p>Reference an existing NetCDF/Zarr linked preparation without copying it.</p>
 <p>The caller keeps the referenced numerical artifact for later phases.
 Missing original request facts require explicit values; retained observation
 times cannot recover an interval after filtering. New in-memory preparation
 uses <a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_o2_inputs()</span></code></a> followed by
-<a class="reference internal" href="#openghg_inversions.rhime.co2.co2_o2_handoffs.save_preparation" title="openghg_inversions.rhime.co2.co2_o2_handoffs.save_preparation"><code class="xref py py-func docutils literal notranslate"><span class="pre">save_preparation()</span></code></a>.</p>
+<a class="reference internal" href="#openghg_inversions.rhime.co2.co2_o2_handoffs.save_preparation" title="openghg_inversions.rhime.co2.co2_o2_handoffs.save_preparation"><code class="xref py py-func docutils literal notranslate"><span class="pre">save_preparation()</span></code></a>.
+<code class="docutils literal notranslate"><span class="pre">referenced</span></code> names consumed request files, such as the CLI parameters
+file, which the preparation outputs must not overwrite.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a></p>
@@ -626,11 +640,25 @@ uses <a class="reference internal" href="openghg_inversions.rhime.co2.html#openg
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_handoffs.save_preparation">
-<span class="sig-name descname"><span class="pre">save_preparation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">end_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_handoffs.save_preparation" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">save_preparation</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">end_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">referenced</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">()</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_handoffs.save_preparation" title="Link to this definition">#</a></dt>
 <dd><p>Save joint inputs using their numerical codec, then publish a manifest.</p>
 <p>Requested dates/domain must be explicit or present in preparation provenance.
 Saving materializes the borrowed arrays at the existing serialization boundary.
-A successful replacement creates a new preparation generation.</p>
+A successful replacement creates a new preparation generation.
+<code class="docutils literal notranslate"><span class="pre">referenced</span></code> names consumed request files, such as the CLI parameters
+file, which the preparation outputs must not overwrite.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a></p>
@@ -654,12 +682,14 @@ a preparation replaced after sampling.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_handoffs.sample">
-<span class="sig-name descname"><span class="pre">sample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">preparation_manifest</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'default'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_handoffs.sample" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">sample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">preparation_manifest</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'default'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">referenced</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">()</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_handoffs.sample" title="Link to this definition">#</a></dt>
 <dd><p>Sample one joint model using current scientific choices and saved inputs.</p>
 <p>Compatible baseline and fixed mismatch changes reuse preparation; defining
 retained priors, operators and cross-channel covariance remain prepared facts.
 The full prepared-input runner and this route use the same construction,
-sampling and scientific annotation operations.</p>
+sampling and scientific annotation operations.
+<code class="docutils literal notranslate"><span class="pre">referenced</span></code> names consumed request files, such as the CLI configuration,
+that this stage’s outputs must not overwrite or enclose.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a></p>
@@ -678,13 +708,17 @@ sampling and scientific annotation operations.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">actual_inference</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">preparation_generation</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">referenced</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">()</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_handoffs.save_samples" title="Link to this definition">#</a></dt>
 <dd><p>Write the annotated joint trace and record its preparation generation.</p>
 <p>The trace owns the sampled scientific roles and prior descriptions.
 Inference provenance is descriptive; current configuration is not a replay
-gate. Completion is published only after posterior serialization succeeds.</p>
+gate. Completion is published only after posterior serialization succeeds.
+<code class="docutils literal notranslate"><span class="pre">referenced</span></code> names further inputs, such as consumed request files, that
+the final write must not overwrite; it is checked again here because the
+outputs may have changed during inference.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a></p>
@@ -708,11 +742,13 @@ choices or generate missing predictions.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_handoffs.postprocess">
-<span class="sig-name descname"><span class="pre">postprocess</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sample_manifest</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_handoffs.postprocess" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">postprocess</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sample_manifest</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">referenced</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">()</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_handoffs.postprocess" title="Link to this definition">#</a></dt>
 <dd><p>Calculate and export requested products from saved linked scientific meaning.</p>
 <p>Products are validated and calculated before any output destination opens.
 The posterior and preparation stay borrowed. Prior/predictive outputs are
-available only when the corresponding draws were saved.</p>
+available only when the corresponding draws were saved.
+<code class="docutils literal notranslate"><span class="pre">referenced</span></code> names consumed request files, such as the CLI configuration,
+that this stage’s outputs must not overwrite or enclose.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_outputs.html#openghg_inversions.rhime.co2.co2_o2_outputs.Co2O2Output" title="openghg_inversions.rhime.co2.co2_o2_outputs.Co2O2Output"><em>Co2O2Output</em></a></p>
@@ -733,13 +769,16 @@ available only when the corresponding draws were saved.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">check_output</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">stage</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'prior-predictive'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">random_seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">referenced</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">()</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_handoffs.prior_predictive" title="Link to this definition">#</a></dt>
 <dd><p>Generate native joint prior predictions and report finite-draw readiness.</p>
 <p>This builds the configured joint model without creating an MCMC step.
 Construction errors propagate; evaluated missing, empty or nonfinite
-predictive evidence produces a failed readiness report.</p>
+predictive evidence produces a failed readiness report.
+<code class="docutils literal notranslate"><span class="pre">referenced</span></code> names consumed request files, such as the CLI configuration,
+that this stage’s outputs must not overwrite or enclose.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>

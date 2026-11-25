@@ -395,6 +395,7 @@
 <li class="toctree-l1"><a class="reference internal" href="centered_boundary_conditions.html">Boundary-condition operators</a></li>
 <li class="toctree-l1"><a class="reference internal" href="boundary_correction_structures.html">Boundary correction structures</a></li>
 <li class="toctree-l1"><a class="reference internal" href="atmospheric_baseline.html">Outer-region flux states held at their prior mean</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configured_co2_priors.html">Configured CO2 priors</a></li>
 <li class="toctree-l1"><a class="reference internal" href="prepared_format_support.html">Prepared artifact format support</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
@@ -869,12 +870,17 @@ options; options of another family are rejected rather than used to infer it:</p
 <dt><code class="docutils literal notranslate"><span class="pre">&quot;multiplicative&quot;</span></code> (default)</dt><dd><p>Scales absolute or centered boundary sensitivity, with an optional
 <code class="docutils literal notranslate"><span class="pre">prior</span></code> for the scaling states.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">&quot;additive&quot;</span></code></dt><dd><p>Centred additive corrections, requiring centered preparation, with both
-<code class="docutils literal notranslate"><span class="pre">mean_shift_prior</span></code> and a finite, nonnegative <code class="docutils literal notranslate"><span class="pre">anomaly_scale</span></code>.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">&quot;additive&quot;</span></code></dt><dd><p>Centred additive corrections, requiring centered preparation, with a
+finite, nonnegative <code class="docutils literal notranslate"><span class="pre">anomaly_scale</span></code>, an optional <code class="docutils literal notranslate"><span class="pre">anomalies</span></code> structure
+and an optional <code class="docutils literal notranslate"><span class="pre">mean_shift_prior</span></code> (with <code class="docutils literal notranslate"><span class="pre">mean_by_period</span></code>); see
+<a class="reference internal" href="configured_co2_priors.html"><span class="doc">Configured CO2 priors</span></a>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">&quot;anomaly_scaling&quot;</span></code></dt><dd><p>Scales the prescribed boundary anomaly about a <code class="docutils literal notranslate"><span class="pre">reference</span></code>, requiring
+centered preparation, with a positive dimensionless <code class="docutils literal notranslate"><span class="pre">scale_sd</span></code> and the
+same optional mean shift options.</p>
 </dd>
 </dl>
-<p>A disabled boundary cannot specify a type, prior, anomaly scale or period
-choices.
+<p>A disabled boundary cannot specify a type or any other boundary option.
 For raw reusable inputs, omitting <code class="docutils literal notranslate"><span class="pre">frequency</span></code> selects one period;
 <code class="docutils literal notranslate"><span class="pre">&quot;monthly&quot;</span></code> selects calendar months, and a positive fixed duration such as
 <code class="docutils literal notranslate"><span class="pre">&quot;2D&quot;</span></code> selects fixed-duration periods. <code class="docutils literal notranslate"><span class="pre">anchor_time</span></code> is accepted only with

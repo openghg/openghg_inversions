@@ -711,11 +711,25 @@ scope. Full component draws remain available in <code class="docutils literal no
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_outputs.save_co2_products">
-<span class="sig-name descname"><span class="pre">save_co2_products</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_outputs.save_co2_products" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">save_co2_products</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">referenced</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">()</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_outputs.save_co2_products" title="Link to this definition">#</a></dt>
 <dd><p>Export configured products and the optional trace.</p>
 <p>Full concentration-component draws remain available in memory. Product
 filenames follow the configured RHIME naming convention.</p>
 <dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>result</strong> (<a class="reference internal" href="#openghg_inversions.rhime.co2.co2_outputs.Co2Output" title="openghg_inversions.rhime.co2.co2_outputs.Co2Output"><em>Co2Output</em></a>) – Calculated products, trace and original requested domain/window.</p></li>
+<li><p><strong>output</strong> (<a class="reference internal" href="#openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions" title="openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions"><em>Co2OutputOptions</em></a>) – Product and trace destination choices.</p></li>
+<li><p><strong>referenced</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a><em>, </em><em>...</em><em>]</em>) – Input artifacts consumed by this execution, protected from
+aliases and overlapping output paths alongside active country data.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None. Writes products only after every destination passes protection.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
 </dl>
 </dd></dl>
 

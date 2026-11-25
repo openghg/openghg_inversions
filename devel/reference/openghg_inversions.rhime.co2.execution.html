@@ -647,7 +647,9 @@ references are resolved separately beside their declaring manifest.</p>
 callers use the model-selected inference steps directly. Supplied canonical
 inputs and their coherent reduction are prepared together; an existing
 preparation is reused unchanged. Imported runs must supply requested dates
-and domain explicitly or retain them in preparation provenance.
+and domain explicitly or retain them in preparation provenance. Selected prior
+artifacts and consumed preparation/reconstruction files are protected from
+trace/product output aliases before sampling.
 <code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code> is stored with a new centered preparation, as in
 <a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs" title="openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_co2_inputs()</span></code></a>;
 weighted additive boundaries require it. <code class="docutils literal notranslate"><span class="pre">aggregation_error_rank</span></code>

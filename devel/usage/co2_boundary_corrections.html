@@ -395,6 +395,7 @@
 <li class="toctree-l1"><a class="reference internal" href="centered_boundary_conditions.html">Boundary-condition operators</a></li>
 <li class="toctree-l1"><a class="reference internal" href="boundary_correction_structures.html">Boundary correction structures</a></li>
 <li class="toctree-l1"><a class="reference internal" href="atmospheric_baseline.html">Outer-region flux states held at their prior mean</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configured_co2_priors.html">Configured CO2 priors</a></li>
 <li class="toctree-l1"><a class="reference internal" href="prepared_format_support.html">Prepared artifact format support</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
@@ -499,20 +500,30 @@ dimensionless <code class="docutils literal notranslate"><span class="pre">H_bc_
 <section id="choose-a-boundary">
 <h2>Choose a boundary<a class="headerlink" href="#choose-a-boundary" title="Link to this heading">#</a></h2>
 <p>A boundary is one <em>choice</em>: the prior specification before binding, holding
-no arrays. Two choices are configured here, both from
+no arrays. Three choices are configured here, all from
 <a class="reference internal" href="../reference/openghg_inversions.models.boundary.html#module-openghg_inversions.models.boundary" title="openghg_inversions.models.boundary"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.models.boundary</span></code></a>:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice(prior,</span> <span class="pre">activity=None,</span> <span class="pre">frequency=None,</span>
 <span class="pre">anchor_time=None)</span></code> scales the boundary sensitivity by dimensionless
 states. <code class="docutils literal notranslate"><span class="pre">activity</span></code> marks boundary states as active or fixed. It accepts
 absolute <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> or centered operands.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">AdditiveChoice(mean_prior,</span> <span class="pre">anomaly_scale,</span> <span class="pre">frequency=None,</span>
-<span class="pre">anchor_time=None)</span></code> keeps the projected baseline <span class="math notranslate nohighlight">\(H_{bc}\mathbf1\)</span>
-fixed and infers a constant correction <span class="math notranslate nohighlight">\(\delta\)</span> plus weighted
-region–period anomalies, in concentration units. It replaces the
-multiplicative scaling prior, has no scaling prior or state activity, and
+<li><p><code class="docutils literal notranslate"><span class="pre">AdditiveChoice(mean_prior,</span> <span class="pre">anomaly_scale,</span> <span class="pre">anomalies=&quot;weighted&quot;,</span>
+<span class="pre">mean_by_period=False,</span> <span class="pre">frequency=None,</span> <span class="pre">anchor_time=None)</span></code> keeps the
+projected baseline <span class="math notranslate nohighlight">\(H_{bc}\mathbf1\)</span> fixed and infers a constant
+correction <span class="math notranslate nohighlight">\(\delta\)</span> plus region–period anomalies, in concentration
+units. It replaces the multiplicative scaling prior, has no scaling prior or
+state activity, and requires centered operands. The weighted anomalies
+described below are the default <code class="docutils literal notranslate"><span class="pre">anomalies</span></code> structure.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">AnomalyScalingChoice(mean_prior,</span> <span class="pre">scale_sd,</span> <span class="pre">reference=&quot;stored&quot;,</span>
+<span class="pre">mean_by_period=False,</span> <span class="pre">frequency=None,</span> <span class="pre">anchor_time=None)</span></code> scales the
+prescribed boundary anomaly about a reference by dimensionless states with
+standard deviation <code class="docutils literal notranslate"><span class="pre">scale_sd</span></code>, with the same optional mean shift. It
 requires centered operands.</p></li>
 </ul>
+<p>In configuration, <code class="docutils literal notranslate"><span class="pre">type</span></code> selects the choice: <code class="docutils literal notranslate"><span class="pre">&quot;multiplicative&quot;</span></code> (the
+default), <code class="docutils literal notranslate"><span class="pre">&quot;additive&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;anomaly_scaling&quot;</span></code>. The other anomaly
+structures, reference policies and the optional per-period mean shift are
+described in <a class="reference internal" href="configured_co2_priors.html#co2-configured-boundary-structures"><span class="std std-ref">configured boundary structures</span></a>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">frequency</span></code> and <code class="docutils literal notranslate"><span class="pre">anchor_time</span></code> select the boundary periods with the syntax
 and calendar of <code class="docutils literal notranslate"><span class="pre">bc_freq</span></code>: <code class="docutils literal notranslate"><span class="pre">None</span></code> gives one period over the window,
 <code class="docutils literal notranslate"><span class="pre">&quot;monthly&quot;</span></code> calendar months, and a fixed duration such as <code class="docutils literal notranslate"><span class="pre">&quot;7D&quot;</span></code> periods

@@ -649,6 +649,7 @@ association of the preparation, independent of current output choices.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">fixed_model_mismatch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">likelihood_builder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">likelihood_kwargs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">outer_flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.configuration.Co2ModelConfig" title="Link to this definition">#</a></dt>
@@ -672,12 +673,34 @@ The boundary choice is a prior specification; inference binds it to the preparat
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.configuration.Co2ModelConfig.sampler_arguments">
+<span class="sig-name descname"><span class="pre">sampler_arguments</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.configuration.Co2ModelConfig.sampler_arguments" title="Link to this definition">#</a></dt>
+<dd><p>Return graph-independent policy choices without opening artifacts.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.configuration.Co2ModelConfig.model_arguments">
 <span class="sig-name descname"><span class="pre">model_arguments</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.configuration.Co2ModelConfig.model_arguments" title="Link to this definition">#</a></dt>
 <dd><p>Bind these choices as keywords at the ordinary scientific boundary.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.configuration.Co2ModelConfig.artifact_paths">
+<span class="sig-name descname"><span class="pre">artifact_paths</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.configuration.Co2ModelConfig.artifact_paths" title="Link to this definition">#</a></dt>
+<dd><p>Identify the likelihood artifacts consumed during construction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)">tuple</a>[<a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a>, …]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -788,7 +811,9 @@ section names; this envelope check leaves inactive sections unresolved.</p>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.configuration.Co2ModelConfig"><code class="docutils literal notranslate"><span class="pre">Co2ModelConfig</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.configuration.Co2ModelConfig.from_params"><code class="docutils literal notranslate"><span class="pre">Co2ModelConfig.from_params()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.configuration.Co2ModelConfig.sampler_arguments"><code class="docutils literal notranslate"><span class="pre">Co2ModelConfig.sampler_arguments()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.configuration.Co2ModelConfig.model_arguments"><code class="docutils literal notranslate"><span class="pre">Co2ModelConfig.model_arguments()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.configuration.Co2ModelConfig.artifact_paths"><code class="docutils literal notranslate"><span class="pre">Co2ModelConfig.artifact_paths()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.configuration.co2_config_templates"><code class="docutils literal notranslate"><span class="pre">co2_config_templates()</span></code></a></li>
