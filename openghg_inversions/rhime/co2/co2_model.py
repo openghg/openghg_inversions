@@ -17,7 +17,7 @@ import xarray as xr
 from dask import compute as dask_compute
 
 from openghg_inversions.array_ops import to_dense_tree
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.models.additive_sigma import (
     DEFAULT_ADDITIVE_SIGMA_PRIOR,
     add_additive_sigma_likelihood,
@@ -27,7 +27,7 @@ from openghg_inversions.models.boundary.centered import CenteredBoundary
 from openghg_inversions.models.components import (
     ConcentrationTerm,
     add_coherent_affine_component,
-    add_correlated_lognormal_state_with_activity,
+    add_correlated_state_with_activity,
     add_offset_component,
     apply_linear_sensitivity,
     likelihood_representation,
@@ -134,7 +134,7 @@ def _check_co2_model_options(
 def build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -195,8 +195,8 @@ def build_co2_model(
     Args:
         flux_sensitivity: Reduced CO2 sensitivity with observation dimension
             ``nmeasure`` and one labelled retained-state dimension.
-        retained_prior: Complete labelled arithmetic-moment prior for the
-            retained positive state.
+        retained_prior: Complete labelled arithmetic moments and marginals
+            for the retained state.
         fixed_prior_contribution: Fixed coherent-reduction affine intercept
             named ``fixed_prior_contribution`` on ``nmeasure``.
         observations: Observed CO2 concentrations on ``nmeasure``.
@@ -273,7 +273,7 @@ def build_co2_model(
 def _build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -313,7 +313,7 @@ def _build_co2_model(
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
 
     with registered_model() as model:
-        flux_scaling = add_correlated_lognormal_state_with_activity(
+        flux_scaling = add_correlated_state_with_activity(
             activity,
             retained_prior,
             var_name="flux_scaling",

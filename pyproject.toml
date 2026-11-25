@@ -31,7 +31,9 @@ dependencies = [
     # Explicit lower bound: prevents uv backtracking to numba 0.53 / llvmlite 0.36
     # due to NumPy 2.x + sparse metadata lag
     "numba>=0.59",
-    "pymc>=6,<7",
+    "pymc>=6.3.2,<7",
+    # 3.3.5 fixes float32 Numba multivariate-normal draws under warn_float64 (#770).
+    "pytensor>=3.3.5",
     "arviz>=1.1,<2",
     "numpyro[cpu]",
     "xarray>=2025.08.0",
@@ -110,8 +112,8 @@ pip = "*"
 # entries override matching PyPI dependencies from this project and OpenGHG.
 numpy = ">=2.0"
 numba = ">=0.59"
-pymc = ">=6,<7"
-pytensor = "*"
+pymc = ">=6.3.2,<7"
+pytensor = ">=3.3.5"
 arviz = ">=1.1,<2"
 xarray = ">=2025.08.0"
 pandas = "<3.0"
