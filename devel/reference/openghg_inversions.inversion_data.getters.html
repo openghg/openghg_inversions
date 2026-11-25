@@ -689,7 +689,7 @@ preserve governing interval labels before any permitted older-data fallback.</p>
 <dd class="field-odd"><p><strong>SearchError</strong> – If no flux data can be found before the requested end date.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FluxData" title="(in OpenGHG v0.19.0)"><em>FluxData</em></a>]</p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FluxData" title="(in OpenGHG v0.20.0)"><em>FluxData</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -723,7 +723,7 @@ dimension) are skipped. Return <code class="docutils literal notranslate"><span 
 Retrieval <code class="docutils literal notranslate"><span class="pre">AttributeError</span></code> exceptions are logged with context and re-raised.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.ObsData" title="(in OpenGHG v0.19.0)"><em>ObsData</em></a> | None</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.ObsData" title="(in OpenGHG v0.20.0)"><em>ObsData</em></a> | None</p>
 </dd>
 </dl>
 </dd></dl>
@@ -753,7 +753,7 @@ Retrieval <code class="docutils literal notranslate"><span class="pre">Attribute
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>obs</strong> (<a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.ObsData" title="(in OpenGHG v0.19.0)"><em>ObsData</em></a>) – Observation data supplying site metadata and timestamps.</p></li>
+<li><p><strong>obs</strong> (<a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.ObsData" title="(in OpenGHG v0.20.0)"><em>ObsData</em></a>) – Observation data supplying site metadata and timestamps.</p></li>
 <li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Footprint domain to retrieve.</p></li>
 <li><p><strong>model</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional LPDM model selector.</p></li>
 <li><p><strong>platform</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional observation platform; satellite platforms use their
@@ -781,7 +781,7 @@ unconstrained.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FootprintData" title="(in OpenGHG v0.19.0)"><em>FootprintData</em></a></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FootprintData" title="(in OpenGHG v0.20.0)"><em>FootprintData</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -823,7 +823,7 @@ observation inlet heights.</p></li>
 <li><p><strong>platform</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional observation platform.</p></li>
 <li><p><strong>averaging_period</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional observation averaging period for automatic
 inlet-height matching.</p></li>
-<li><p><strong>obs_data</strong> (<a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.ObsData" title="(in OpenGHG v0.19.0)"><em>ObsData</em></a><em> | </em><em>None</em>) – Observation data required when <code class="docutils literal notranslate"><span class="pre">fp_height</span></code> is <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>.</p></li>
+<li><p><strong>obs_data</strong> (<a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.ObsData" title="(in OpenGHG v0.20.0)"><em>ObsData</em></a><em> | </em><em>None</em>) – Observation data required when <code class="docutils literal notranslate"><span class="pre">fp_height</span></code> is <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>.</p></li>
 <li><p><strong>stores</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.15)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em><em>]</em>) – One or more OpenGHG stores to search in order.</p></li>
 <li><p><strong>time_resolved</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a><em> | </em><em>None</em>) – <code class="docutils literal notranslate"><span class="pre">True</span></code> selects high-frequency footprints, <code class="docutils literal notranslate"><span class="pre">False</span></code>
 selects integrated footprints, and <code class="docutils literal notranslate"><span class="pre">None</span></code> leaves the search
@@ -838,7 +838,7 @@ configured store contains one.</p>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If automatic inlet-height matching lacks observations.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FootprintData" title="(in OpenGHG v0.19.0)"><em>FootprintData</em></a> | None</p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FootprintData" title="(in OpenGHG v0.20.0)"><em>FootprintData</em></a> | None</p>
 </dd>
 </dl>
 </dd></dl>
