@@ -67,11 +67,10 @@ def _model(cached, baseline, offsets, scales=None):
 def test_compact_recording_restores_all_deterministics_at_identical_states(
     monkeypatch, tmp_path, cached, baseline, offsets, scales
 ):
-    """Compare compact reconstruction exactly with ordinary recording at the same states."""
+    """Compare compact reconstruction with ordinary recording at the same states."""
     model = _model(cached, baseline, offsets, scales)
-    # Ordinary NDArray recording is the exact per-state oracle. Prior predictive
-    # evaluation can use a differently optimized/vectorized concentration graph.
-    # One chain isolates graph evaluation; this oracle does not test chain ordering.
+    # NDArray follows the process linker. Deferred recording may use C/VM for
+    # a cached likelihood, so deterministic arithmetic can differ by roundoff.
     point = model.initial_point()
     backend = pm.backends.NDArray(model=model, test_point=point)
     backend.setup(draws=4, chain=0)
@@ -115,8 +114,13 @@ def test_compact_recording_restores_all_deterministics_at_identical_states(
     expected = restore_inferencedata_coords(reference, get_coord_registry(model)).prior.dataset.isel(draw=slice(1, None))
     expected = expected.assign_coords(draw=trace.posterior.draw)
     assert set(trace.posterior.data_vars) == set(expected.data_vars)
+    xr.testing.assert_equal(trace.posterior.coords.to_dataset(), expected.coords.to_dataset())
+    deterministic_names = {variable.name for variable in model.deterministics}
     for name in expected.data_vars:
-        xr.testing.assert_equal(trace.posterior[name], expected[name])
+        if name in deterministic_names:
+            xr.testing.assert_allclose(trace.posterior[name], expected[name], rtol=1e-14, atol=1e-12)
+        else:
+            xr.testing.assert_equal(trace.posterior[name], expected[name])
         assert trace.posterior[name].dtype == expected[name].dtype
     if scales is not None:
         for channel, scale in zip(("co2", "o2"), scales):
