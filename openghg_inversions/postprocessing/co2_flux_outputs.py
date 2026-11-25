@@ -13,8 +13,9 @@ from openghg_inversions.array_ops import sparse_xr_dot, to_dense
 from openghg_inversions.basis.affine_flux_map import _in_dimensionless_units
 
 from ._basis_products import bounded_affine_flux_map
+from .contracts import _MARGINALISED_OUTER_FLUX_MASK
 from .countries import Countries, _bounded_projection
-from .inversion_output import trace_group
+from .inversion_output import _marginalises_outer_flux, trace_group
 from .stats import calculate_stats
 
 if TYPE_CHECKING:
@@ -132,13 +133,16 @@ def co2_native_flux_outputs(trace: xr.DataTree, bound: BoundCo2AffineFluxMap) ->
 
     Raises:
         ValueError: If the recipe, role, samples, native layout, state labels,
-            or units cannot represent these products faithfully.
+            or units cannot represent these products faithfully, or if any
+            outer flux states were marginalised.
 
     Notes:
         Uncertainty describes retained-state-conditional native means only;
         unresolved native covariance is not added. Nonlinear statistics are
         calculated after signed reconstruction and after source summation.
     """
+    if _marginalises_outer_flux(trace):
+        raise ValueError("Native CO2 flux maps require posterior outer flux draws.")
     samples, source_dim, attrs = _output_inputs(trace, bound)
     scale = _flux_unit_scale(bound)
     bound = replace(bound, artifact=replace(bound.artifact, affine_map=bounded_affine_flux_map(bound.affine_map)))
@@ -152,6 +156,24 @@ def co2_native_flux_outputs(trace: xr.DataTree, bound: BoundCo2AffineFluxMap) ->
         for group, state in samples.items()
     ]
     return _with_metadata(xr.merge(outputs), attrs, units="mol m-2 s-1")
+
+
+def _require_zero_outer_loading(
+    trace: xr.DataTree, response: xr.DataArray, state_dim: str,
+) -> None:
+    """Require zero loading on every fitted marginalised state."""
+    constants = trace.children.get("constant_data")
+    if constants is None or _MARGINALISED_OUTER_FLUX_MASK not in constants:
+        raise ValueError("Country flux with marginalised outer states requires the saved outer-state mask.")
+    mask = constants[_MARGINALISED_OUTER_FLUX_MASK]
+    if mask.dims != (state_dim,) or state_dim not in mask.indexes or mask.dtype.kind != "b":
+        raise ValueError("The saved marginalised outer-state mask must be Boolean on the labelled state axis.")
+    response, mask = xr.align(response, mask, join="exact", copy=False)
+    selected = mask.to_numpy()
+    if not selected.any():
+        raise ValueError("The saved marginalised outer-state mask selects no states.")
+    if (response.isel({state_dim: selected}) != 0).any().compute().item():
+        raise ValueError("Requested country flux must have zero loading on every marginalised outer state.")
 
 
 def co2_country_flux_outputs(
@@ -187,7 +209,9 @@ def co2_country_flux_outputs(
             borrowed.
 
     Raises:
-        ValueError: If input requirements or exact country-grid alignment fail.
+        ValueError: If input requirements or exact country-grid alignment fail,
+            or a requested country/source/time quantity depends on a
+            marginalised outer state.
 
     Notes:
         Country reference values ``A F m`` and responses ``A F U*`` are formed
@@ -224,6 +248,9 @@ def co2_country_flux_outputs(
         if response is None:
             response = to_dense(sparse_xr_dot(weighted_flux, prolongation, dim=["lat", "lon"]))
             response = _bounded_projection(response, [affine.state_dim])
+            if _marginalises_outer_flux(trace):
+                _require_zero_outer_loading(trace, response, affine.state_dim)
+                attrs["outer_flux_scope"] = "zero_loading_on_marginalised_states"
             reference = _bounded_projection(reference, [])
         draws = reference + xr.dot(response, centred.astype("float64"), dim=affine.state_dim)
         outputs.append(_summarize(draws, prefix="country", group=group, source_dim=source_dim))

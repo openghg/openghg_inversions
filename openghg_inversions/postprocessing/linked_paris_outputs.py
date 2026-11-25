@@ -19,7 +19,7 @@ from openghg_inversions.postprocessing.boundary_outputs import decode_saved_boun
 from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
-from .inversion_output import InversionOutput, trace_group
+from .inversion_output import InversionOutput, _marginalises_outer_flux, trace_group
 from .make_paris_outputs import (
     PARIS_LATEST_COUNTRIES,
     _add_observation_time_bounds,
@@ -80,11 +80,14 @@ def reconstruct_co2_o2_concentrations(
         Inputs remain borrowed; computation is deferred to product creation.
 
     Raises:
-        ValueError: If roles/prior baseline draws are missing or independently
-            supplied posterior and preparation labels differ.
+        ValueError: If roles/prior baseline draws are missing, independently
+            supplied posterior and preparation labels differ, or outer flux
+            states were marginalised.
     """
     if trace.attrs.get("rhime_recipe") not in {"co2_o2", "co2_o2_cached_sigma_fixed_ou"}:
         raise ValueError("Linked PARIS outputs require one joint co2_o2 posterior.")
+    if _marginalises_outer_flux(trace):
+        raise ValueError("Linked output reconstruction does not yet support marginalised outer flux. Use the saved predictions.")
     roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
     sensitivity = _gather_co2_o2_sensitivity(prepared.co2_sensitivity, prepared.o2_sensitivity)
     state_dim = prepared.retained_prior.state_dim

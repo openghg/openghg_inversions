@@ -103,6 +103,17 @@ def _joint_fixture(
     return prepared, trace
 
 
+def test_linked_marginalised_outer_flux_requires_fitted_design_for_products(tmp_path):
+    """The original design cannot reconstruct components of a conditioned fit."""
+    prepared, trace = _joint_fixture()
+    trace.attrs["rhime_model_metadata"] = json.dumps({"outer_flux_mode": "marginalise"})
+    with pytest.raises(ValueError, match="Use the saved predictions"):
+        reconstruct_co2_o2_concentrations(trace, prepared, require_prior=False)
+    with pytest.raises(ValueError, match="Use the saved predictions"):
+        make_co2_o2_paris_outputs(trace, prepared, output_path=tmp_path)
+    assert not list(tmp_path.iterdir())
+
+
 @pytest.mark.parametrize("tracer_scopes", [None, ["SHARED", "Shared", "sHaReD", "CO2", "O2"]])
 def test_separate_products_close_and_roundtrip(tmp_path, tracer_scopes):
     prepared, trace = _joint_fixture(tracer_scopes=tracer_scopes)

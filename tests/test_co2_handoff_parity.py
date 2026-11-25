@@ -88,6 +88,79 @@ def test_ordinary_output_options_normalize_only_their_paths(tmp_path, monkeypatc
 
 
 @pytest.mark.parametrize("likelihood_kind", ["additive_sigma", "fixed_ou"])
+def test_saved_marginalised_outer_flux_reports_only_verified_inner_totals(tmp_path, likelihood_kind):
+    """Replay accepts a country functional with zero loading on the fitted outer state."""
+    from openghg.util import molar_mass
+
+    from openghg_inversions.array_ops import to_dense
+    from openghg_inversions.postprocessing.co2_flux_outputs import co2_country_flux_outputs, co2_native_flux_outputs
+    from openghg_inversions.postprocessing.countries import Countries
+    from openghg_inversions.rhime.co2 import handoffs
+
+    _, _, prepared, affine, country_path = synthetic_inputs(tmp_path)
+    inputs = prepared.inv_inputs.assign_coords(basis_group=("region", ["inner", "outer"]))
+    prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
+    with xr.open_dataset(country_path) as source:
+        countries = source.load()
+    countries["country"] = countries.country.copy(data=[[0, 1], [0, 1]])
+    countries.to_netcdf(country_path)
+
+    preparation = handoffs.save_preparation(
+        prepared, output_dir=tmp_path / "prepared", start_date=START_DATE, end_date=END_DATE,
+        domain="EUROPE", affine_artifact=affine,
+    )
+    params = configuration(tmp_path / "reports", country_path)
+    params["model"]["outer_flux"] = {"mode": "marginalise", "outer_groups": ["outer"]}
+    if likelihood_kind == "fixed_ou":
+        params["likelihood"] = {
+            "kind": "fixed_ou", "tau_hours": 24.0,
+            "site_amplitude_prior": {"pdf": "gamma", "alpha": 2.0, "beta": 3.0},
+        }
+    samples = handoffs.sample(
+        preparation, model=Co2ModelConfig.from_params(params),
+        sampling=params["sampling"], output_dir=tmp_path / "samples",
+    )
+
+    output = Co2OutputOptions(
+        output_format="basic", country_file=country_path,
+        paris_postprocessing_kwargs={"country_selections": ["FRANCE"]},
+    )
+    result = handoffs.postprocess(samples, output=output)
+    assert set(result.outputs) == {"basic", "country_flux", "concentration_components"}
+    components = result.outputs["concentration_components"]
+    shift = inputs.H.isel(region=1, drop=True) * (.03 / .2) * 1.1
+    np.testing.assert_allclose(components.affine, inputs.fixed_prior_contribution - shift, rtol=0, atol=3e-5)
+    np.testing.assert_allclose(components.predictive_posterior, result.idata.posterior_predictive.y)
+    assert "flux_scale_posterior" not in components
+    scale = result.idata.posterior.flux_scaling.isel(region=0).mean()
+    inner_countries = Countries.from_file(country_path, country_selections=["FRANCE"])
+    area = inner_countries.area_grid.sel(lon=-2.0)
+    flux = affine.affine_map.flux.sel(lon=-2.0)
+    expected = (flux * area).sum() * (.8 + scale - 1.1) * (365 * 24 * 3600) * molar_mass("co2")
+    np.testing.assert_allclose(result.outputs["country_flux"].country_total_posterior_mean, expected)
+
+    with pytest.raises(ValueError, match="zero loading on every marginalised outer state"):
+        handoffs.postprocess(samples, output=replace(output, paris_postprocessing_kwargs=None))
+    with pytest.raises(ValueError, match="PARIS export requires a fitted native posterior flux map"):
+        handoffs.postprocess(samples, output=replace(output, output_format="paris"))
+
+    assert result.bound is not None
+    with pytest.raises(ValueError, match="Native CO2 flux maps require posterior outer flux draws"):
+        co2_native_flux_outputs(result.idata, result.bound)
+
+    # An explicit prolongation can mix the outer state into a geographically inner cell.
+    affine_map = result.bound.affine_map
+    bucket = to_dense(affine_map._prolongation_array())
+    outer_inner_overlap = (bucket.region == bucket.region[-1]) & (bucket.lon == -2.0)
+    coupled = (bucket + outer_inner_overlap * 0.1).assign_attrs(units="1")
+    bound = replace(result.bound, artifact=replace(result.bound.artifact, affine_map=replace(
+        affine_map, prolongation=coupled,
+    )))
+    with pytest.raises(ValueError, match="zero loading on every marginalised outer state"):
+        co2_country_flux_outputs(result.idata, bound, inner_countries)
+
+
+@pytest.mark.parametrize("likelihood_kind", ["additive_sigma", "fixed_ou"])
 def test_shared_inference_preserves_coherent_equations_and_products(
     tmp_path, monkeypatch, likelihood_kind,
 ):

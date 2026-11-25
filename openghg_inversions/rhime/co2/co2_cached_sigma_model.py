@@ -59,6 +59,7 @@ from openghg_inversions.observation_error import (
     validate_observation_error_arrays,
 )
 from openghg_inversions.sigma import SigmaAlignment
+from openghg_inversions.postprocessing.contracts import _MARGINALISED_OUTER_FLUX_MASK
 
 
 OU_SITE_DIM = "ou_site"
@@ -508,6 +509,8 @@ def _build_co2_cached_sigma_model(
         site_labels=site_labels,
     )
     with registered_model():
+        if outer_states is not None and outer_states.choice.mode == "marginalise":
+            add_model_data(outer_states.fixed, _MARGINALISED_OUTER_FLUX_MASK)
         state_result = _add_prepared_correlated_lognormal_state_with_activity(
             activity,
             active_state_prior,

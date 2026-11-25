@@ -15,6 +15,7 @@ from openghg_inversions._serialization_codecs import _copy_json_mapping
 
 _SCHEMA = "openghg_inversions.output_contract"
 _FORMATS = frozenset({"none", "inv_out", "basic", "paris", "legacy"})
+_MARGINALISED_OUTER_FLUX_MASK = "marginalised_outer_flux"
 
 
 DEFAULT_VARIABLE_ROLES: dict[str, str] = {

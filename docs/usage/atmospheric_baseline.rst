@@ -10,10 +10,8 @@ their uncertainty as an observation-error term.
 
 Outer states are the flux states whose ``basis_group`` coordinate is in
 ``outer_groups``. Their entries in ``flux_scaling`` retain the prior mean in
-both modes. With ``"marginalise"``, native and country flux products use
-those prior-mean entries. They omit the marginalised outer uncertainty and,
-for correlated states, the conditional outer adjustment used in the
-concentration model.
+both modes. In ``"marginalise"`` mode those entries are placeholders in
+the raw trace.
 
 ``"fixed"`` mode
 ----------------
@@ -141,6 +139,24 @@ mean and adds any marginalised covariance to ``aggregation_error``. Every label 
 than its prior mean is rejected. Run metadata records the
 mode and selectors.
 
+Reporting with marginalised outer flux
+--------------------------------------
+
+CO2 ``basic`` reporting provides fitted concentrations and saved predictive
+draws where available. It uses the fitted affine intercept, including any
+adjustment for correlated outer states. The full native flux map and the
+combined PARIS concentration-and-flux export require posterior outer flux
+draws.
+
+To report an inner-domain total, supply an exact-grid country or reporting
+region mask in ``outputs.country_file``. Use
+``outputs.paris_postprocessing_kwargs.country_selections`` to request specific
+names. Every requested quantity must have zero loading on each marginalised
+state through the bound affine map, whose prolongation can couple
+geographically separate regions. The same check runs on saved samples using
+the fitted state labels. These totals retain the affine map's
+retained-state-conditional uncertainty scope.
+
 Linked CO2/O2
 -------------
 
@@ -149,7 +165,10 @@ channels, so each builder resolves the choice once on that shared prior.
 ``"fixed"`` sets the selected states to their prior means. ``"marginalise"``
 adds a joint covariance term spanning both channels, including the covariance
 between CO2 and O2 induced by the selected states. Both modes are available
-in the ordinary and cached linked recipes.
+in the ordinary and cached linked recipes. For marginalised outer flux,
+use the saved joint concentration predictions. Linked basic and PARIS
+products require the fitted design and intercept for their component
+reconstruction.
 
 .. code-block:: python
 

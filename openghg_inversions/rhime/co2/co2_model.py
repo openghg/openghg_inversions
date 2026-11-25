@@ -33,7 +33,7 @@ from openghg_inversions.models.components import (
     likelihood_representation,
     warn_constant_offset_confounding,
 )
-from openghg_inversions.models.coords import registered_model
+from openghg_inversions.models.coords import add_model_data, registered_model
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
@@ -47,6 +47,7 @@ from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.rhime._model_building import _call_custom_likelihood
 from openghg_inversions.rhime.builders import RhimeLikelihoodBuilder
 from openghg_inversions.sigma import SigmaAlignment
+from openghg_inversions.postprocessing.contracts import _MARGINALISED_OUTER_FLUX_MASK
 
 
 def _fixed_mismatch_array(
@@ -348,6 +349,8 @@ def _build_co2_model(
         aggregation_error = outer_states.add_marginal_error(flux_sensitivity, aggregation_error, output_dim="nmeasure")
 
     with registered_model() as model:
+        if outer_states is not None and outer_states.choice.mode == "marginalise":
+            add_model_data(outer_states.fixed, _MARGINALISED_OUTER_FLUX_MASK)
         flux_scaling = add_correlated_state_with_activity(
             activity,
             retained_prior,
