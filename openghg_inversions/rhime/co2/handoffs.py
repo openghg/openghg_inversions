@@ -307,8 +307,10 @@ def _load_samples(sample_manifest: str | Path) -> tuple[Co2Output, tuple[Path, .
     generation = record["preparation_generation"]
     if not isinstance(generation, str) or not generation:
         raise ValueError(f"CO2 samples {path} require a nonempty preparation generation.")
-    preparation = load_preparation(reference(path, record["preparation"]), expected_generation=generation)
-    trace = load_trace(reference(path, record["posterior"]))
+    preparation_path = reference(path, record["preparation"])
+    posterior_path = reference(path, record["posterior"])
+    preparation = load_preparation(preparation_path, expected_generation=generation)
+    trace = load_trace(posterior_path)
     validate_co2_trace(trace, preparation.prepared)
     bound = (
         _bind_affine_flux_map(
@@ -325,10 +327,7 @@ def _load_samples(sample_manifest: str | Path) -> tuple[Co2Output, tuple[Path, .
             "provenance": record.get("provenance") if isinstance(record.get("provenance"), Mapping) else {},
         },
     )
-    consumed: tuple[Path, ...] = (
-        path, reference(path, record["preparation"]), preparation.payload,
-        reference(path, record["posterior"]),
-    )
+    consumed: tuple[Path, ...] = (path, preparation_path, preparation.payload, posterior_path)
     if preparation.affine_payload is not None:
         consumed += (preparation.affine_payload,)
     return result, consumed

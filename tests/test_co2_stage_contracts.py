@@ -288,6 +288,34 @@ def test_staged_product_writer_preserves_consumed_inputs(tmp_path, kind, output_
         assert alias.read_bytes() == before[paths[kind]]
 
 
+def test_staged_replay_protects_posterior_after_alias_changes(tmp_path, monkeypatch):
+    """Protect the resolved input even if its manifest alias changes after the read."""
+    prepared, trace = _components_fixture()
+    prep = handoffs.save_preparation(prepared, output_dir=tmp_path / "prepare", **FACTS)
+    samples = handoffs.save_samples(prep, trace, actual_inference={},
+        preparation_generation=handoffs.load_preparation(prep).generation, output_dir=tmp_path / "sample")
+    posterior = samples.parent / "posterior.nc"
+    original = posterior.read_bytes()
+    alias = samples.parent / "trace-alias.nc"
+    alias.symlink_to(posterior)
+    record = json.loads(samples.read_text())
+    record["posterior"] = alias.name
+    samples.write_text(json.dumps(record))
+    load_trace = handoffs.load_trace
+
+    def retarget_alias(path):
+        """Change the alias once the original trace has been loaded."""
+        loaded = load_trace(path)
+        alias.unlink()
+        alias.symlink_to(samples.parent / "replacement.nc")
+        return loaded
+
+    monkeypatch.setattr(handoffs, "load_trace", retarget_alias)
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+        handoffs.postprocess(samples, output=Co2OutputOptions(output_format="basic", save_trace=posterior))
+    assert posterior.read_bytes() == original
+
+
 @pytest.mark.parametrize("stage", ["full", "sample", "prior"])
 def test_consumed_eigenbasis_is_protected_before_construction(full_run_files, tmp_path, monkeypatch, stage):
     from openghg_inversions.rhime.co2 import execution
