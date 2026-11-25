@@ -529,6 +529,43 @@ follows from <span class="math notranslate nohighlight">\(KZ=W^TB\)</span>; it d
 estimate of residual-rounding error relative to column energies. Rejected
 cases use the general covariance solve and then form the Gram matrix.</p>
 </section>
+<section id="precision-of-the-state-and-amplitude-steps">
+<span id="fixed-ou-step-precision"></span><h2>Precision of the state and amplitude steps<a class="headerlink" href="#precision-of-the-state-and-amplitude-steps" title="Link to this heading">#</a></h2>
+<p>The state sampler stores and evaluates the coefficients <span class="math notranslate nohighlight">\(c\)</span>,
+<span class="math notranslate nohighlight">\(h\)</span> and <span class="math notranslate nohighlight">\(P\)</span> in float64, including in a float32 PyTensor process.
+With a large absolute boundary contribution, the terms in the expanded
+quadratic can be large even when the observation residual is small.
+Downcasting the coefficients can distort the log-density difference between
+nearby states enough to reverse their ordering. The float64 cache adds
+<span class="math notranslate nohighlight">\(4(p^2+p+1)\)</span> bytes per stored copy compared with float32 for <span class="math notranslate nohighlight">\(p\)</span>
+active affine coefficients. The cache dtype leaves the observation-sized
+model data and sampler coordinates at their existing precision.</p>
+<p>The inferred-amplitude step uses the model’s transformed point dtype for its
+sampler coordinates. It evaluates its conditional likelihood and amplitude
+gradient in float64 after installing the observation residual. The physical
+amplitude transform and the forward mean can still contribute rounding
+before that evaluation.</p>
+<p>For a centered boundary, the model subtracts the fixed reference shift from
+the observations and computes the centered likelihood mean directly. In the
+multiplicative case the correction uses the deviation <span class="math notranslate nohighlight">\(b-1\)</span>, where
+<span class="math notranslate nohighlight">\(b\)</span> is the physical boundary scale. With the default multiplicative
+prior in a float32 process, the model computes this deviation directly
+as <code class="docutils literal notranslate"><span class="pre">expm1(eta)</span></code> in the log-scale coordinate <span class="math notranslate nohighlight">\(\eta\)</span>. The shifted
+prior and its Jacobian describe the same prior on the physical scale.
+This avoids rounding a scale near one before subtracting one. Model data
+still follows the process dtype, so restored absolute concentrations
+can round at the absolute concentration scale. The state quadratic’s
+float64 storage cannot recover rounding from model data registration or
+the forward mean. Other centered choices and priors use float64. See
+<a class="reference internal" href="../usage/co2_boundary_corrections.html"><span class="doc">Configure CO₂ boundary corrections</span></a> for configuration.</p>
+<p>When evaluating a precision change, compare nearby-state log-density
+differences and gradients through the compiled graph, and check that the
+saved reference shift restores absolute predictions. Compare local float64
+arithmetic with formulations that reduce cancellation before promoting
+large arrays. The
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/1130">RHIME CO₂ precision audit</a>
+tracks the centered-boundary experiments and performance checks.</p>
+</section>
 <section id="cache-and-evaluator-routing">
 <h2>Cache and evaluator routing<a class="headerlink" href="#cache-and-evaluator-routing" title="Link to this heading">#</a></h2>
 <p>The cache and direct evaluator need different outputs and have distinct
@@ -715,6 +752,7 @@ index; none of these ideas defines supported behavior.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#implementation-scope">Implementation scope</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#covariance-and-prepared-coordinates">Covariance and prepared coordinates</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cached-state-quadratic">Cached state quadratic</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#precision-of-the-state-and-amplitude-steps">Precision of the state and amplitude steps</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cache-and-evaluator-routing">Cache and evaluator routing</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#amplitude-gradients-and-trajectory-local-reuse">Amplitude gradients and trajectory-local reuse</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#costs-limits-and-regression-coverage">Costs, limits and regression coverage</a></li>

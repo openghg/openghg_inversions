@@ -491,7 +491,11 @@ absolute <code class="docutils literal notranslate"><span class="pre">H_bc</span
 dimensionless <code class="docutils literal notranslate"><span class="pre">H_bc_mass</span></code> and scalar <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code>); see
 <a class="reference internal" href="surface_preparation.html"><span class="doc">Surface CO₂/O₂ preparation pilot</span></a>.</p></li>
 <li><p>For centered operands, a PyTensor process configured with
-<code class="docutils literal notranslate"><span class="pre">floatX=float64</span></code>. Binding checks this once.</p></li>
+<code class="docutils literal notranslate"><span class="pre">floatX=float64</span></code> for additive corrections, anomaly scaling and custom
+multiplicative priors. The default multiplicative prior supports
+<code class="docutils literal notranslate"><span class="pre">floatX=float32</span></code> as well. Binding checks the selected prior and precision.
+The <a class="reference internal" href="../development/fixed_ou_likelihood.html#fixed-ou-step-precision"><span class="std std-ref">precision guide</span></a> explains the dtype
+choices and the rounding of absolute concentrations in float32.</p></li>
 <li><p>For weighted additive corrections, the complete averaging weights
 <code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code>, stored when the artifact is prepared (see
 <a class="reference internal" href="#co2-boundary-weights"><span class="std std-ref">Store the averaging weights</span></a>).</p></li>

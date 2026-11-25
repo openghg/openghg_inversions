@@ -672,9 +672,9 @@ sensitivity; only <a class="reference internal" href="#openghg_inversions.models
 that checks a choice against the representation preparation produced. Centered
 sensitivity keeps small anomalies after cancellation: likelihoods use
 observations shifted by the fixed <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">M</span> <span class="pre">1</span></code>, while absolute outputs add it
-back. Centered graphs need a float64 PyTensor process
-(<a class="reference internal" href="#openghg_inversions.models.boundary.require_centered_precision" title="openghg_inversions.models.boundary.require_centered_precision"><code class="xref py py-func docutils literal notranslate"><span class="pre">require_centered_precision()</span></code></a>), checked once when centered sensitivity
-is bound.</p>
+back. Binding checks precision. A default centered multiplicative prior
+supports float32 and float64. Additive and anomaly scaling corrections and
+custom multiplicative priors require float64.</p>
 <p>Validation happens where data enters: preparation and artifact loading
 establish the raw contract’s units, labels and layout; binding owns calendar
 and row alignment and establishes the bound contract by construction; <code class="docutils literal notranslate"><span class="pre">add</span></code>
@@ -1374,6 +1374,7 @@ selects and masks rows, so even nonzero raw mass may become all zero.</p>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">frequency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">anchor_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">require_float64</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.boundary.BoundCenteredSensitivity.bind" title="Link to this definition">#</a></dt>
@@ -1390,14 +1391,16 @@ The contract holds by construction. Weights are not included; see
 axis first, as established by observation preparation.</p></li>
 <li><p><strong>frequency</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional frequency expanding spatial states by period.</p></li>
 <li><p><strong>anchor_time</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional origin for fixed-duration periods.</p></li>
+<li><p><strong>require_float64</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Check process precision before binding. A model
+that supports float32 for its centered terms may disable this.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Bound sensitivity.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If PyTensor is not configured for float64, or periods or
-    indexed timestamps conflict with the observations.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If required float64 precision is unavailable, or periods
+    or indexed timestamps conflict with the observations.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html#openghg_inversions.models.boundary.contracts.BoundCenteredSensitivity" title="openghg_inversions.models.boundary.contracts.BoundCenteredSensitivity"><em>BoundCenteredSensitivity</em></a></p>
@@ -1757,8 +1760,10 @@ first. Its labels select and order the sensitivity rows; its
 <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code>. Numerical payloads stay borrowed and lazy.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If PyTensor is not configured for float64, or periods or
-    indexed timestamps conflict with the observations.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the process precision is incompatible with the
+    scaling prior, or periods or indexed timestamps conflict
+    with the observations. The default scaling prior supports
+    float32 and float64. Other priors require float64.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html#openghg_inversions.models.boundary.multiplicative.CenteredMultiplicativeBoundary" title="openghg_inversions.models.boundary.multiplicative.CenteredMultiplicativeBoundary"><em>CenteredMultiplicativeBoundary</em></a></p>
@@ -1978,10 +1983,10 @@ the caller. Alignment and materialization belong to the caller.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.boundary.require_centered_precision">
 <span class="sig-name descname"><span class="pre">require_centered_precision</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.boundary.require_centered_precision" title="Link to this definition">#</a></dt>
-<dd><p>Require a process-wide PyTensor <code class="docutils literal notranslate"><span class="pre">floatX</span></code> of float64 for centered graphs.</p>
-<p><code class="docutils literal notranslate"><span class="pre">pm.Data</span></code> casts registered arrays to the global <code class="docutils literal notranslate"><span class="pre">floatX</span></code>. Centered
-operands rely on float64 to keep small anomalies after cancellation, so a
-float32 process would silently round them. This only reads the global
+<dd><p>Require process-wide float64 for a boundary formulation that needs it.</p>
+<p><code class="docutils literal notranslate"><span class="pre">pm.Data</span></code> casts registered arrays to the global <code class="docutils literal notranslate"><span class="pre">floatX</span></code>. Boundary
+families use this check where they rely on float64 to preserve small
+anomalies after cancellation. This only reads the global
 configuration; set <code class="docutils literal notranslate"><span class="pre">PYTENSOR_FLAGS=floatX=float64</span></code> before starting Python.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Raises<span class="colon">:</span></dt>

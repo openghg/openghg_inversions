@@ -740,9 +740,9 @@ agree with the observation timestamps; conflicting values raise an error.</p>
 likelihoods with fixed or inferred amplitudes, and inferred-amplitude fixed OU
 using the matched cached sampler. Both multiplicative and additive BC priors
 can use numerical centering; a linked model can retain multiplicative CO2
-boundaries while fitting additive O2 corrections. Configure PyTensor
-<code class="docutils literal notranslate"><span class="pre">floatX=float64</span></code> before model construction; these routes reject an explicit
-float32 choice.</p>
+boundaries while fitting additive O2 corrections. Set PyTensor precision
+before starting the process. See <a class="reference internal" href="co2_boundary_corrections.html"><span class="doc">Configure CO₂ boundary corrections</span></a> for the
+requirements of each centered boundary choice.</p>
 <p>The concrete CO2 builder accepts <code class="docutils literal notranslate"><span class="pre">likelihood_builder=None</span></code> for the default
 additive-Gaussian likelihood or the exact
 <a class="reference internal" href="../reference/openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood" title="openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">add_fixed_ou_gaussian_likelihood()</span></code></a>

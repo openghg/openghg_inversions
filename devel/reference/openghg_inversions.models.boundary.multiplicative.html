@@ -849,8 +849,10 @@ first. Its labels select and order the sensitivity rows; its
 <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code>. Numerical payloads stay borrowed and lazy.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If PyTensor is not configured for float64, or periods or
-    indexed timestamps conflict with the observations.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the process precision is incompatible with the
+    scaling prior, or periods or indexed timestamps conflict
+    with the observations. The default scaling prior supports
+    float32 and float64. Other priors require float64.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.models.boundary.multiplicative.CenteredMultiplicativeBoundary" title="openghg_inversions.models.boundary.multiplicative.CenteredMultiplicativeBoundary"><em>CenteredMultiplicativeBoundary</em></a></p>

@@ -2671,8 +2671,8 @@ sigma-then-state CompoundStep, refreshing the accepted amplitude cache
 before each affine-state update. With <code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code> there is
 no amplitude step: the state quadratic is built once, never refreshed,
 and the CompoundStep holds only the state NUTS step.</p>
-<p>Selected centered boundary operands currently require PyTensor
-<code class="docutils literal notranslate"><span class="pre">floatX=float64</span></code>. This is a restriction of the current implementation.
+<p>Centered boundary precision requirements depend on the selected boundary
+choices and priors. Binding checks them once.
 Observations, predictions, and boundary contributions are restored to
 absolute concentrations; see the
 <a class="reference internal" href="../usage/surface_preparation.html#surface-centered-boundary-contract"><span class="std std-ref">centered boundary contract</span></a>.</p>
@@ -2748,8 +2748,8 @@ step targets. No artifact is written to disk.</p>
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If independent errors are missing, invalid, mislabelled,
     or conflict with saved errors; channel units or grouping
     coordinates are invalid; selected boundary/offset settings are
-    inconsistent; selected centered boundaries use a floatX other
-    than float64; not exactly one amplitude option is given; OU scales
+    inconsistent; process precision is incompatible with a centered
+    boundary choice; not exactly one amplitude option is given; OU scales
     or amplitudes are invalid; fixed amplitudes leave no active state;
     or the sampler requests an unsupported backend, step, tuning
     control, or predictive keyword. Label, prior, covariance, and

@@ -306,9 +306,9 @@ Centered inference supports the additive-Gaussian recipe, ordinary fixed-OU
 likelihoods with fixed or inferred amplitudes, and inferred-amplitude fixed OU
 using the matched cached sampler. Both multiplicative and additive BC priors
 can use numerical centering; a linked model can retain multiplicative CO2
-boundaries while fitting additive O2 corrections. Configure PyTensor
-``floatX=float64`` before model construction; these routes reject an explicit
-float32 choice.
+boundaries while fitting additive O2 corrections. Set PyTensor precision
+before starting the process. See :doc:`co2_boundary_corrections` for the
+requirements of each centered boundary choice.
 
 The concrete CO2 builder accepts ``likelihood_builder=None`` for the default
 additive-Gaussian likelihood or the exact

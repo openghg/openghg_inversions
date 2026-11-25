@@ -667,8 +667,8 @@ value directly. Likewise <code class="docutils literal notranslate"><span class=
 Updating these saved scalars does not update the distributions’ widths.</p>
 <p>Validation is not repeated along this path. Preparation and artifact loading
 own units, labels and layout; <code class="docutils literal notranslate"><span class="pre">bind</span></code> owns calendar and row alignment and the
-single float64 check for centered sensitivity; <code class="docutils literal notranslate"><span class="pre">add</span></code> checks only values that
-become available once lazy payloads are materialized.</p>
+precision check for the chosen centered formulation. <code class="docutils literal notranslate"><span class="pre">add</span></code> checks values
+that become available when lazy payloads are materialized.</p>
 <p>A new supported boundary prior reaches these owners:</p>
 <ul class="simple">
 <li><p>A new module under <code class="docutils literal notranslate"><span class="pre">models/boundary/</span></code>: define the choice (with <code class="docutils literal notranslate"><span class="pre">bind</span></code>) and
