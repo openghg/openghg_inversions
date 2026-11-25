@@ -60,8 +60,9 @@ Under the default LogNormal-copula flux prior it is an approximation, not a
 pure reparameterisation of sampling the outer states:
 :math:`\Sigma_{OO}` is the prior's arithmetic covariance, so the outer
 contribution is replaced by the Gaussian with the same mean and covariance,
-and the posterior can differ. In one WUR BASE July 2021 test (5314
-observations, 18 marginalised outer states), NUTS with ``"marginalise"``
+and the posterior can differ. In one WUR BASE July 2021 synthetic-observation
+experiment (5314 observations, 18 marginalised outer states), NUTS with
+``"marginalise"``
 moved the inner NET_BIOSPHERE and TOTAL posterior means by +90 Tg CO2/yr
 (0.05 posterior SD, about two Monte Carlo standard errors) relative to
 sampling the outer states, and left FF unchanged. Exact solves of the same

@@ -113,7 +113,6 @@ def test_saved_marginalised_outer_flux_reports_only_verified_inner_totals(tmp_pa
     )
     params = configuration(tmp_path / "reports", country_path)
     params["model"]["outer_flux"] = {"mode": "marginalise", "outer_groups": ["outer"]}
-    params["sampling"]["nuts_sampler"] = backend
     if likelihood_kind == "fixed_ou":
         params["likelihood"] = {
             "kind": "fixed_ou", "tau_hours": 24.0,
