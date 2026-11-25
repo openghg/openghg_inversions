@@ -8,9 +8,11 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.models import get_coord_registry, restore_inferencedata_coords
+from openghg_inversions.postprocessing.contracts import OutputContract
+from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.co2.co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
 from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
-from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 from openghg_inversions.serialization import load_trace, save_trace
 
 from test_co2_o2_additive_boundary import _additive_inputs
@@ -620,3 +622,22 @@ def test_compact_request_keeps_explicit_posterior_selection_rejection(monkeypatc
     sampler.sample_kwargs = {"var_names": ["state"]}
     with pytest.raises(ValueError, match="var_names"):
         sampler.sample(pm.Model(), defer_deterministics=True)
+
+
+@pytest.mark.parametrize("defer", [False, True])
+def test_model_adapter_preserves_the_custom_sampler_call(defer):
+    """An existing sampler override receives its usual arguments."""
+    model = pm.Model()
+    roles = {"concentration": "y"}
+    built = RhimeModelBuildResult(model, OutputContract(variable_roles=roles))
+    trace = xr.DataTree()
+
+    class CustomSampler(RhimeSampler):
+        """A sampler that owns its recording behavior."""
+
+        def sample(self, model_to_sample, *, variable_roles=None):
+            """Return the known trace using the existing override signature."""
+            assert model_to_sample is model and variable_roles == roles
+            return trace
+
+    assert sample_rhime_model(built, CustomSampler(), defer_deterministics=defer) is trace

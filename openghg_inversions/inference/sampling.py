@@ -676,10 +676,11 @@ class RhimeSampler:
         log_timing("rhime.sampler.burn_slicing", timer_seconds(timing_start), burn=self.burn)
 
         if compact:
+            evaluation_compile_kwargs = compile_kwargs or sample_kwargs.get("compile_kwargs") or {}
             if deferred_log_likelihood:
                 timing_start = timer_start()
                 trace = _extend_log_likelihood(
-                    trace, model, deferred_log_likelihood, compile_kwargs=compile_kwargs,
+                    trace, model, deferred_log_likelihood, compile_kwargs=evaluation_compile_kwargs,
                     progressbar=self.progressbar,
                 )
                 log_timing("rhime.sampler.log_likelihood", timer_seconds(timing_start))
@@ -688,7 +689,7 @@ class RhimeSampler:
             for group_name in ("posterior", "warmup_posterior"):
                 if group_name in trace.children:
                     trace[group_name] = _restore_deterministics(
-                        trace[group_name].to_dataset(), model, compile_kwargs=compile_kwargs,
+                        trace[group_name].to_dataset(), model, compile_kwargs=evaluation_compile_kwargs,
                     )
             log_timing("rhime.sampler.deterministics", timer_seconds(timing_start))
 

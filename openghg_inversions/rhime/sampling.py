@@ -29,19 +29,22 @@ def sample_rhime_model(
         sampler: Configured sampler used for posterior and predictive draws.
         defer_deterministics: Evaluate deterministics for the retained
             posterior and any saved warmup draws after PyMC returns. The default
-            records them during sampling. See
+            records them during sampling. Samplers that override
             :meth:`~openghg_inversions.inference.sampling.RhimeSampler.sample`
-            for recording options that use the ordinary path.
+            retain their own recording behavior.
 
     Returns:
         Sampled posterior and predictive groups.
     """
+    model = model_build_result.model
+    roles = model_build_result.output_contract.variable_roles
+
     timing_start = timer_start()
-    idata = sampler.sample(
-        model_build_result.model,
-        variable_roles=model_build_result.output_contract.variable_roles,
-        defer_deterministics=defer_deterministics,
-    )
+    if defer_deterministics and type(sampler).sample is RhimeSampler.sample:
+        idata = sampler.sample(model, variable_roles=roles, defer_deterministics=True)
+    else:
+        idata = sampler.sample(model, variable_roles=roles)
+
     log_timing(
         "rhime.sampler_total",
         timer_seconds(timing_start),

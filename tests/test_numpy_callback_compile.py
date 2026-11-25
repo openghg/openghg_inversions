@@ -93,10 +93,18 @@ def test_fixed_ou_sampling_never_uses_the_numba_callback(recorded):
     assert trace["log_likelihood"]["y"].sizes["draw"] == 20
 
 
-@pytest.mark.parametrize("mode", [None, "FAST_COMPILE"])
-def test_deferred_evaluation_uses_the_resolved_callback_compiler(monkeypatch, recorded, mode):
+@pytest.mark.parametrize(
+    "kind,mode",
+    [("fixed_ou", None), ("fixed_ou", "FAST_COMPILE"), ("normal", "FAST_COMPILE")],
+)
+def test_deferred_evaluation_uses_the_resolved_compiler(monkeypatch, recorded, kind, mode):
     """Use the same selected compiler for likelihoods and deferred deterministics."""
-    model = _model("fixed_ou")
+    if kind == "fixed_ou":
+        model = _model(kind)
+    else:
+        with pm.Model() as model:
+            level = pm.Normal("level")
+            pm.Normal("y", level, observed=1.0)
     with model:
         pm.Deterministic("signal", 2 * model["level"])
     posterior = xr.Dataset(

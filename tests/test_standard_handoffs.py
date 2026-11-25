@@ -103,8 +103,7 @@ def test_saved_sampling_forwards_scientific_objects_and_persists_returned_trace(
         assert kwargs["likelihood_kwargs"] == likelihood_kwargs
         return built
 
-    def sample(actual_sampler, model, *, variable_roles, defer_deterministics=False):
-        assert defer_deterministics is False
+    def sample(actual_sampler, model, *, variable_roles):
         assert actual_sampler.describe() == inference
         assert model is built.model and variable_roles == contract.variable_roles
         return posterior
