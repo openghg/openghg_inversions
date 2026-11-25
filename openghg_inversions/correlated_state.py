@@ -683,12 +683,7 @@ _SERIES_VARIANCE_TOLERANCE = 1e-6
 _WEIBULL_SHAPE_BOUNDS = (0.02, 1000.0)
 
 _LATENT_REPAIR_MAX_CORRELATION_CHANGE = 0.01
-"""Largest change in an implied state correlation the latent-correlation floor may make.
-
-The floor's change is set by how negative the latent eigenvalues are, not by
-the floor. Beyond this the pairwise targets cannot belong to one copula, and
-the prior is refused instead of silently given different correlations.
-"""
+"""Maximum absolute change in any implied arithmetic correlation after repair."""
 
 GAMMA_LATENT_CAP = 8.0
 """Gamma states are held at their quantile for latent ``u = 8`` above it.
@@ -894,9 +889,19 @@ def _implied_covariance(
 ) -> np.ndarray:
     """Return the arithmetic covariance a latent correlation implies through the marginals.
 
-    The inverse of :func:`_solve_latent_correlation`, with the same closed forms
-    and Hermite series. Variances are the marginals' own, since the latent
-    correlation has a unit diagonal.
+    Uses the same closed forms and Hermite series as
+    :func:`_solve_latent_correlation`.
+
+    Args:
+        family: Marginal family per state.
+        mean: Arithmetic means in state order.
+        shape: Shape parameter per marginal.
+        coefficients: Hermite coefficients per state and series term.
+        sd: Arithmetic standard deviations in state order.
+        correlation: Latent correlation with unit diagonal.
+
+    Returns:
+        Arithmetic covariance with the marginals' variances on the diagonal.
     """
     size = mean.size
     rows, cols = np.triu_indices(size, 1)
@@ -923,17 +928,36 @@ def _implied_covariance(
 
 
 def _floor_latent_correlation(correlation: np.ndarray, floor: float) -> tuple[np.ndarray, np.ndarray]:
-    """Raise a correlation matrix's eigenvalues to ``floor`` and restore its unit diagonal.
+    """Floor the spectrum within each independent block and restore its unit diagonal.
 
-    Returns the repaired correlation and the eigenvalues before the repair.
-    The rescaling is a congruence, so the result stays positive definite.
+    Keeping the blocks separate preserves exact zeros between independent
+    states. Rescaling by the diagonal preserves positive definiteness.
+
+    Args:
+        correlation: Symmetric latent-correlation matrix with unit diagonal.
+        floor: Minimum eigenvalue before restoring the diagonal.
+
+    Returns:
+        Repaired correlation and the eigenvalues before repair.
     """
-    eigenvalues, vectors = np.linalg.eigh(correlation)
-    repaired = (vectors * np.maximum(eigenvalues, floor)) @ vectors.T
-    scale = np.sqrt(np.diag(repaired))
-    repaired = repaired / np.outer(scale, scale)
-    repaired = 0.5 * (repaired + repaired.T)
-    np.fill_diagonal(repaired, 1.0)
+    from scipy.sparse.csgraph import connected_components
+
+    count, labels = connected_components(correlation != 0, directed=False)
+    repaired = np.zeros_like(correlation)
+    eigenvalues = np.empty(correlation.shape[0], dtype=correlation.dtype)
+    for label in range(count):
+        positions = np.flatnonzero(labels == label)
+        index = np.ix_(positions, positions)
+        block = correlation[index]
+        values, vectors = np.linalg.eigh(block)
+        eigenvalues[positions] = values
+        if np.any(values < floor):
+            block = (vectors * np.maximum(values, floor)) @ vectors.T
+            scale = np.sqrt(np.diag(block))
+            block = block / np.outer(scale, scale)
+            block = 0.5 * (block + block.T)
+            np.fill_diagonal(block, 1.0)
+        repaired[index] = block
     return repaired, eigenvalues
 
 
@@ -1045,6 +1069,7 @@ class CorrelatedPrior:
             }
             if applied:
                 implied = _implied_covariance(family, mean_values, shape, coefficients, sd, repaired)
+                np.fill_diagonal(implied, np.diag(covariance_values))
                 change = np.abs(implied - covariance_values)
                 record.update(
                     max_abs_latent_correlation_change=float(np.max(np.abs(repaired - correlation))),
@@ -1053,13 +1078,14 @@ class CorrelatedPrior:
                 )
                 if record["max_abs_state_correlation_change"] > _LATENT_REPAIR_MAX_CORRELATION_CHANGE:
                     raise ValueError(
-                        "The latent correlation that reproduces the arithmetic covariance with these marginals "
-                        f"is far from positive definite (minimum eigenvalue {record['minimum_eigenvalue']:.6g}); "
-                        "repairing it would change implied state correlations by up to "
+                        f"Latent-correlation floor {floor:g} would change implied state correlations by up to "
                         f"{record['max_abs_state_correlation_change']:.3g}, more than "
-                        f"{_LATENT_REPAIR_MAX_CORRELATION_CHANGE}. Choose other marginals or covariances."
+                        f"{_LATENT_REPAIR_MAX_CORRELATION_CHANGE} "
+                        f"(minimum eigenvalue {record['minimum_eigenvalue']:.6g}). "
+                        "Choose a smaller floor or revise the marginals or covariance."
                     )
                 correlation = repaired
+                self._arithmetic_covariance = covariance.copy(data=implied)
             self._latent_repair = record
         try:
             cholesky = np.linalg.cholesky(correlation)
@@ -1176,7 +1202,10 @@ class CorrelatedPrior:
 
     @property
     def arithmetic_covariance(self) -> xr.DataArray:
-        """Return the arithmetic covariance.
+        """Return the arithmetic covariance of this copula.
+
+        After an applied repair, the covariance is implied by the repaired
+        latent correlation and the selected marginals.
 
         Returns:
             An independent deep copy of the dense labelled covariance.

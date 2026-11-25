@@ -73,27 +73,18 @@ has a latent minimum eigenvalue of :math:`-5.3\times10^{-4}`. Such priors fail
 by default. ``latent_correlation_floor`` (a
 :class:`~openghg_inversions.correlated_state.CorrelatedPrior` argument, or a ``latent_correlation_floor`` attribute on the
 ``prior_marginal`` given to ``prepare_co2_inputs``)
-opts in to a repair: eigenvalues below the floor are raised to it, and the
-matrix is rescaled to a unit diagonal. Each marginal is unchanged, so every
-state keeps its mean and SD exactly. The pair covariances move slightly off
-their targets. How far they move depends on how negative the eigenvalues were,
-not on the floor, so a repair that would move any implied state correlation by
-more than 0.01 is refused: such pairwise targets do not belong to one copula.
-For example, five Weibull states with CV 1.5 and equal arithmetic correlation
--0.24 have a positive-definite arithmetic covariance, but a latent minimum
-eigenvalue of about -0.9, and repairing it would change state correlations by
-about 0.1.
+opts in to repair. Within each independent block, eigenvalues below the floor
+are raised to it and the block is rescaled to a unit diagonal. Each state
+keeps its arithmetic mean and variance. Pair covariances may change.
+The repair is refused if any implied state correlation changes by more than
+0.01. For example, five Weibull states with CV 1.5 and equal arithmetic
+correlation -0.24 have positive-definite arithmetic covariance but a latent
+minimum eigenvalue of about -0.9. The repair would shift the correlations by
+about 0.1, so the prior is refused.
 
-The repair is an eigenvalue floor rather than the nearest correlation matrix
-(Higham's alternating projections). It is one deterministic step with no
-convergence tolerance, and it always yields a positive-definite matrix, which
-the Cholesky factor needs; Higham's result is only semidefinite and needs a
-floor anyway. For a few small negative eigenvalues the two differ negligibly.
-A floor of ``1e-6`` is a reasonable choice: lower values give the same
-covariance but a worse-conditioned factor. On the ORCHIDEE prior above, a
-floor of ``1e-6`` raises one eigenvalue, changes latent correlations by at
-most :math:`3.0\times10^{-4}` and implied state correlations by at most
-:math:`4.4\times10^{-4}`.
+On the ORCHIDEE prior, a floor of ``1e-6`` raises one eigenvalue. It changes
+the latent correlations by at most :math:`3.0\times10^{-4}` and implied
+arithmetic correlations by at most :math:`4.4\times10^{-4}`.
 
 :attr:`~openghg_inversions.correlated_state.CorrelatedPrior.latent_correlation_repair`
 records the floor, whether it was applied, the minimum eigenvalue before the
@@ -101,10 +92,12 @@ repair, the number of eigenvalues raised, and the largest changes in the latent
 correlation and in the implied state covariance and correlation. The CO2
 runners write it, the marginal family counts and the prior description into
 the trace's ``rhime_model_metadata`` as ``prior_latent_correlation_repair``,
-``prior_marginals`` and ``prior``. Partial activity uses the block of the
-repaired correlation, so the active prior is still the marginal of the full
-one. The floor does not apply when every marginal is lognormal: that prior's
-latent covariance must be positive definite as before.
+``prior_marginals`` and ``prior``. After repair, the built prior's
+``arithmetic_covariance`` is the implied covariance of the repaired copula.
+Saved preparations retain the requested covariance and floor. Partial
+activity uses the corresponding submatrix of the full repaired prior,
+including its implied covariance. All-lognormal priors require a positive-
+definite latent covariance and use their existing construction.
 
 A CO₂ preparation stores a marginal per retained state as
 ``alpha_prior_marginal`` when ``prepare_co2_inputs`` is given
