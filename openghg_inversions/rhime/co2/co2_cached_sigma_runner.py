@@ -3,6 +3,8 @@
 This boundary validates the named input inventory, materializes related
 arrays together, restores the cached covariance basis during model building,
 and coordinates the compound sampler for site amplitudes and model states.
+Fixed site amplitudes use the same graph and sampler without the amplitude
+step: the state quadratic is built once and never refreshed.
 """
 
 from __future__ import annotations
@@ -15,9 +17,10 @@ from typing import Any, cast
 import xarray as xr
 from pymc.initial_point import convert_str_to_rv_dict, make_initial_point_fn  # type: ignore[import-untyped]
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
 from openghg_inversions.models.boundary import Choice
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
@@ -87,12 +90,28 @@ def co2_cached_sigma_input_names(
     return tuple(names)
 
 
-def validate_cached_co2_sampler(sampler: RhimeSampler) -> None:
-    """Reject incompatible inference choices before preparing any arrays."""
+FIXED_AMPLITUDE_STATE_TARGET_ACCEPT = 0.8
+"""State NUTS target for fixed amplitudes when none is given: PyMC's NUTS default.
+
+This is the value the previous plain NUTS fixed-amplitude route used when no
+``target_accept`` was supplied.
+"""
+
+
+def validate_cached_co2_sampler(sampler: RhimeSampler, *, fixed_amplitudes: bool = False) -> None:
+    """Reject incompatible inference choices before preparing any arrays.
+
+    With ``fixed_amplitudes`` the sampler has only the state NUTS step, so a
+    ``sample_kwargs['target_accept']`` is accepted and applies to that step.
+    """
     if sampler.nuts_sampler != "pymc":
-        raise ValueError("Inferred fixed-OU amplitudes require nuts_sampler='pymc'.")
+        raise ValueError(
+            "Fixed-amplitude fixed-OU sampling requires nuts_sampler='pymc'."
+            if fixed_amplitudes
+            else "Inferred fixed-OU amplitudes require nuts_sampler='pymc'."
+        )
     sample_kwargs = dict(sampler.sample_kwargs or {})
-    if "target_accept" in sample_kwargs:
+    if "target_accept" in sample_kwargs and not fixed_amplitudes:
         raise ValueError(
             "Inferred fixed-OU amplitudes use separate NUTS tuning controls; pass "
             "separate `sigma_target_accept` and `state_target_accept` controls instead of "
@@ -103,6 +122,8 @@ def validate_cached_co2_sampler(sampler: RhimeSampler) -> None:
             "The fixed-OU amplitude sampler constructs its required sigma-then-state "
             "CompoundStep; do not pass sample_kwargs['step']."
         )
+    if fixed_amplitudes:
+        return
     requested = sampler.sample_posterior_predictive
     if not isinstance(requested, bool):
         unsupported_names = set(requested) - {"y", "concentration"}
@@ -119,15 +140,82 @@ def validate_cached_co2_sampler(sampler: RhimeSampler) -> None:
         )
 
 
+def resolve_cached_target_accept(
+    sampler: RhimeSampler,
+    *,
+    fixed_amplitudes: bool,
+    sigma_target_accept: float | None = None,
+    state_target_accept: float | None = None,
+) -> tuple[float | None, float]:
+    """Resolve the step targets of the cached fixed-OU sampler.
+
+    Inferred amplitudes default to 0.8 (amplitude step) and 0.9 (state step).
+    Fixed amplitudes have no amplitude step, so ``sigma_target_accept`` is
+    rejected; the state step uses ``state_target_accept``, else the sampler's
+    ``sample_kwargs['target_accept']`` or ``sample_kwargs['nuts']['target_accept']``
+    (the controls of the previous plain NUTS route), else
+    :data:`FIXED_AMPLITUDE_STATE_TARGET_ACCEPT`.
+
+    Returns:
+        The amplitude-step target (``None`` for fixed amplitudes) and the
+        state-step target.
+
+    Raises:
+        ValueError: If fixed amplitudes receive ``sigma_target_accept`` or more
+            than one state-step target.
+        TypeError: If fixed amplitudes receive a non-mapping NUTS option.
+    """
+    if not fixed_amplitudes:
+        return (
+            0.8 if sigma_target_accept is None else sigma_target_accept,
+            0.9 if state_target_accept is None else state_target_accept,
+        )
+    if sigma_target_accept is not None:
+        raise ValueError(
+            "sigma_target_accept tunes the amplitude step of inferred fixed-OU amplitudes; "
+            "fixed amplitudes have no amplitude step."
+        )
+    sample_kwargs = sampler.sample_kwargs or {}
+    nuts_kwargs = sample_kwargs.get("nuts", {})
+    if not isinstance(nuts_kwargs, Mapping):
+        raise TypeError("Fixed-OU sample_kwargs['nuts'] must be a mapping.")
+    targets = [section["target_accept"] for section in (sample_kwargs, nuts_kwargs) if "target_accept" in section]
+    if state_target_accept is not None:
+        targets.append(state_target_accept)
+    if len(targets) > 1:
+        raise ValueError(
+            "Pass only one target for the fixed-OU state step: state_target_accept, "
+            "sample_kwargs['target_accept'], or sample_kwargs['nuts']['target_accept']."
+        )
+    return None, float(targets[0]) if targets else FIXED_AMPLITUDE_STATE_TARGET_ACCEPT
+
+
 def _sampler_for_cached_graph(
     sampler: RhimeSampler,
     *,
     cached_model: Co2CachedSigmaModel,
-    sigma_target_accept: float,
-    state_target_accept: float,
+    sigma_target_accept: float | None = None,
+    state_target_accept: float | None = None,
 ) -> RhimeSampler:
-    validate_cached_co2_sampler(sampler)
+    """Return a sampler copy whose ``step`` is the matched cached CompoundStep.
+
+    Inferred amplitudes get the sigma-then-state sweep. Fixed amplitudes get
+    the state step alone, with targets resolved by
+    :func:`resolve_cached_target_accept`. Fixed amplitudes forward the
+    caller's nested ``sample_kwargs['nuts']`` options onto that step.
+    """
+    fixed = bool(getattr(cached_model, "fixed_amplitudes", False))
+    validate_cached_co2_sampler(sampler, fixed_amplitudes=fixed)
+    sigma_target_accept, state_target_accept = resolve_cached_target_accept(
+        sampler,
+        fixed_amplitudes=fixed,
+        sigma_target_accept=sigma_target_accept,
+        state_target_accept=state_target_accept,
+    )
     sample_kwargs = dict(sampler.sample_kwargs or {})
+    sample_kwargs.pop("target_accept", None)
+    nuts_kwargs = dict(sample_kwargs.pop("nuts", {})) if fixed else {}
+    nuts_kwargs.pop("target_accept", None)
     model = cached_model.model
     defaults = convert_str_to_rv_dict(model, cached_model.initial_values)
 
@@ -147,7 +235,7 @@ def _sampler_for_cached_graph(
     with model:
         sample_kwargs["step"] = make_cached_sigma_compound_step(
             model=model,
-            sigma=cached_model.amplitude,
+            sigma=None if fixed else cached_model.amplitude,
             states=cached_model.states,
             modelled_mean=cached_model.modelled_mean,
             target=cached_model.target,
@@ -155,8 +243,9 @@ def _sampler_for_cached_graph(
             initial_cache=cached_model.initial_cache,
             cached_state_logp=cached_model.cached_state_logp,
             initial_point=baseline,
-            sigma_target_accept=sigma_target_accept,
+            sigma_target_accept=0.8 if sigma_target_accept is None else sigma_target_accept,
             state_target_accept=state_target_accept,
+            state_nuts_kwargs=nuts_kwargs,
         )
     sample_kwargs.setdefault("mp_ctx", "spawn")
     configured = copy.copy(sampler)
@@ -218,9 +307,11 @@ def build_rhime_co2_cached_sigma(
     *,
     prepared_inputs: Co2PreparedInputs,
     tau_hours: float | Mapping[str, float],
-    site_amplitude_prior: PriorArgs,
+    site_amplitude_prior: PriorArgs | None = None,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
+    fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     boundary: Choice | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> Co2CachedSigmaModel:
@@ -232,11 +323,18 @@ def build_rhime_co2_cached_sigma(
         tau_hours: Fixed OU decorrelation time in hours, as a scalar or a
             mapping covering all observed sites.
         site_amplitude_prior: Independent positive site-amplitude prior in
-            observation concentration units.
+            observation concentration units. Exactly one of this or
+            ``fixed_site_amplitudes`` is required.
         initial_site_amplitudes: Positive scalar or site mapping in the same
-            units; defaults to the prior support point.
+            units; defaults to the prior support point. Only valid with
+            ``site_amplitude_prior``.
+        fixed_site_amplitudes: Fixed non-negative scalar or site mapping in the
+            same units. The graph then holds them as ``ou_site_amplitude``
+            model data and the matched sampler has only the state step.
         boundary: Optional boundary choice, bound once to the prepared
             ``H_bc`` or centered operands. ``None`` omits the boundary.
+        outer_flux: Optional outer-flux choice, which the model builder
+            resolves on the retained flux prior.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added.
         offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
@@ -251,22 +349,27 @@ def build_rhime_co2_cached_sigma(
     """
     if offset_prior is None and offset_args:
         raise ValueError("offset_args require offset_prior.")
+    if (site_amplitude_prior is None) == (fixed_site_amplitudes is None):
+        raise ValueError("Pass exactly one of `site_amplitude_prior` or `fixed_site_amplitudes`.")
     offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
     prepared = prepared_inputs
     names = co2_cached_sigma_input_names(prepared)
     model_inputs, eager_priors, bound = _materialize_co2_inputs(
         prepared.rhime_inputs, names,
-        {"amplitude": site_amplitude_prior, **({"offset": offset_prior} if offset_prior is not None else {})},
+        {
+            **({"amplitude": site_amplitude_prior} if site_amplitude_prior is not None else {}),
+            **({"offset": offset_prior} if offset_prior is not None else {}),
+        },
         _bind_co2_boundary(prepared.inv_inputs, boundary),
     )
-    site_amplitude_prior = eager_priors["amplitude"]
+    site_amplitude_prior = eager_priors.get("amplitude")
     offset_prior = eager_priors.get("offset")
     aggregation_error = resolve_aggregation_error(
         model_inputs,
         prepared.aggregation_error_mode,
     )
     prior_covariance = model_inputs["alpha_prior_covariance"]
-    retained_prior = CorrelatedLognormalPrior(
+    retained_prior = CorrelatedPrior(
         model_inputs["alpha_prior_mean"],
         prior_covariance,
         covariance_dim=str(prior_covariance.dims[-1]),
@@ -281,8 +384,10 @@ def build_rhime_co2_cached_sigma(
         tau_hours=tau_hours,
         site_amplitude_prior=site_amplitude_prior,
         initial_site_amplitudes=initial_site_amplitudes,
+        fixed_site_amplitudes=fixed_site_amplitudes,
         state_activity=cast(StateActivity | None, _state_activity_from_inputs(model_inputs)),
         boundary=bound,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_freq=offset_freq,
         offset_drop_first=offset_drop_first,
@@ -331,12 +436,15 @@ def co2_cached_sigma_build_result(
         "emissions_sensitivity": "co2_sensitivity",
         "coherent_prior_contribution": "fixed_prior_contribution",
     }
-    if cached_model.boundary is not None:
-        outputs = cached_model.boundary.outputs()
+    if cached_model.boundary_outputs is not None:
+        outputs = cached_model.boundary_outputs
         variable_roles.update(outputs.roles)
         metadata.update(outputs.metadata, boundary_units=outputs.units)
     else:
         metadata["boundary_units"] = {}
+    if cached_model.outer_flux_outputs is not None:
+        variable_roles.update(cached_model.outer_flux_outputs.roles)
+        metadata.update(cached_model.outer_flux_outputs.metadata)
     if metadata.get("boundary_representation") == "centered-v1":
         variable_roles["observation"] = "y"
     if "offset" in cached_model.model.named_vars:
@@ -358,7 +466,9 @@ def co2_cached_sigma_build_result(
 
 
 __all__ = [
+    "FIXED_AMPLITUDE_STATE_TARGET_ACCEPT",
     "build_rhime_co2_cached_sigma",
     "co2_cached_sigma_build_result",
     "co2_cached_sigma_input_names",
+    "resolve_cached_target_accept",
 ]

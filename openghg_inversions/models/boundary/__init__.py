@@ -78,9 +78,9 @@ sensitivity; only :class:`MultiplicativeChoice` is also an
 that checks a choice against the representation preparation produced. Centered
 sensitivity keeps small anomalies after cancellation: likelihoods use
 observations shifted by the fixed ``c M 1``, while absolute outputs add it
-back. Centered graphs need a float64 PyTensor process
-(:func:`require_centered_precision`), checked once when centered sensitivity
-is bound.
+back. Binding checks precision. A default centered multiplicative prior
+supports float32 and float64. Additive and anomaly scaling corrections and
+custom multiplicative priors require float64.
 
 Validation happens where data enters: preparation and artifact loading
 establish the raw contract's units, labels and layout; binding owns calendar

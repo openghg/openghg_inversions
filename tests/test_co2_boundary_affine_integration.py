@@ -118,7 +118,7 @@ def _record_binding(monkeypatch):
 
 @pytest.mark.parametrize("cached", [False, True])
 @pytest.mark.parametrize("mode", ["absent", "disabled", "default", "explicit", "additive"])
-def test_materialization_runner_binds_boundary_choice_once(monkeypatch, mode, cached):
+def test_materialization_runner_binds_boundary_choice_once(double_precision, monkeypatch, mode, cached):
     from test_co2_affine_output import _prepared
 
     prepared, _ = _prepared()

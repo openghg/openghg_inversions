@@ -131,12 +131,17 @@ class ResolvedStateActivity:
         zero_sensitivity: Labelled mask identifying exactly-zero design
             columns and carrying the state coordinates used for graph
             construction.
+        explicitly_inactive: Mask of states the policy itself made inactive,
+            through ``active`` or ``fixed_groups``, whatever their
+            sensitivity. ``None`` when the activity was not resolved from a
+            policy.
     """
 
     state_dim: str
     active: xr.DataArray
     fixed_value: xr.DataArray
     zero_sensitivity: xr.DataArray
+    explicitly_inactive: xr.DataArray | None = None
 
     @property
     def n_state(self) -> int:
@@ -467,6 +472,7 @@ def resolve_state_activity(
     _require_finite(_materialize_1d(fixed_value, name="fixed_value"), name="fixed_value")
 
     active = explicit_active & ~zero_sensitivity
+    explicitly_inactive = ~explicit_active
 
     if policy.fixed_groups:
         if policy.group_coord not in zero_sensitivity.coords:
@@ -489,12 +495,14 @@ def resolve_state_activity(
             coords={state_dim: zero_sensitivity.coords[state_dim]},
         )
         active = active & ~group_is_fixed
+        explicitly_inactive = explicitly_inactive | group_is_fixed
 
     return ResolvedStateActivity(
         state_dim=state_dim,
         active=active.rename("active"),
         fixed_value=fixed_value,
         zero_sensitivity=zero_sensitivity,
+        explicitly_inactive=explicitly_inactive.rename("explicitly_inactive"),
     )
 
 

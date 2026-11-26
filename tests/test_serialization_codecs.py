@@ -102,6 +102,22 @@ def test_empty_lazy_payload_preserves_shape_graph_and_borrowed_encoding(tmp_path
         assert json.loads((path / "pattern" / ".zarray").read_text())["chunks"] == expected_chunks
 
 
+def test_netcdf_writer_accepts_numpy_variable_width_strings(tmp_path: Path) -> None:
+    """Zarr-reloaded strings, in data or in a stale encoding, write as netCDF strings."""
+    strings = np.dtypes.StringDType()
+    species = xr.Variable("species", np.array(["co2", "o2"], dtype=strings), attrs={"long_name": "species"})
+    label = xr.Variable("species", np.array(["a", "b"], dtype=object), encoding={"dtype": strings})
+    dataset = xr.Dataset({"label": label, "value": ("species", [1.0, 2.0])}, coords={"species": species})
+
+    save_datatree(xr.DataTree(dataset), tmp_path / "strings.nc")
+
+    assert dataset.species.dtype == strings and dataset.label.encoding == {"dtype": strings}
+    with xr.open_dataset(tmp_path / "strings.nc") as reopened:
+        assert reopened.species.values.tolist() == ["co2", "o2"]
+        assert reopened.label.values.tolist() == ["a", "b"]
+        assert reopened.species.attrs["long_name"] == "species"
+
+
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
 def test_cf_mixed_level_labels_roundtrip_real_file(tmp_path: Path, suffix: str) -> None:
     """Real storage preserves integer/string identity alongside ordinary levels."""

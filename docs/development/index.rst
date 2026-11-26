@@ -15,6 +15,7 @@ See :doc:`specifications` for their ownership and delivery status.
    architecture_principles
    numerical_array_ownership
    validation_and_xarray
+   testing
    documentation
    observation_uncertainty
    fixed_ou_likelihood

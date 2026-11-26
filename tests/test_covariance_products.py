@@ -781,7 +781,7 @@ def test_redundant_bucket_states_are_rejected(monkeypatch: pytest.MonkeyPatch, c
             accepted.append(True)
             return factor
 
-        monkeypatch.setattr("openghg_inversions.basis.covariance_products.cho_factor", accepting_cholesky)
+        monkeypatch.setattr("openghg_inversions._linalg.cho_factor", accepting_cholesky)
 
     with pytest.raises(ValueError, match="positive definite|redundant|rank"):
         PreserveBucketProlongation(redundant).projection(

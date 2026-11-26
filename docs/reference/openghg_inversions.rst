@@ -41,3 +41,4 @@ openghg\_inversions
    openghg_inversions.sigma
    openghg_inversions.source_covariance
    openghg_inversions.utils
+   openghg_inversions.xr_contracts
