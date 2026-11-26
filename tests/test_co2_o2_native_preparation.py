@@ -281,3 +281,14 @@ def test_rejects_inconsistent_sources_and_scopes() -> None:
         _prepare(source_states={key: value for key, value in STATES.items() if key != "ff"})
     with pytest.raises(ValueError, match="both channels or neither"):
         _prepare(channels=(co2, LinkedNativeChannel(o2.observations, o2.native_sensitivity, "ppm")))
+
+
+def test_rejects_gpp_ter_correlation_with_an_ocean_source() -> None:
+    params = _prior().to_params()
+    params["gpp_source"] = "co2_ocean"
+    params["sources"]["co2_ocean"].update(
+        latitude_correlation_length=LENGTHS["ter"][0], longitude_correlation_length=LENGTHS["ter"][1],
+    )
+    prior = Co2MultiSourceNativePrior.from_params(params)
+    with pytest.raises(ValueError, match="declared shared GPP and TER sources"):
+        _prepare(prior=prior)
