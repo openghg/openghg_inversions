@@ -184,6 +184,69 @@ non-sample blocks and return computed summaries, retaining complete required
 samples within each block.
 Neither function mutates the trace or reconstruction inputs.
 
+Country totals as sums of whole regions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When every basis region with flux in a country lies inside it, for every
+source, the country total is the sum of those regions' totals. A
+region-constrained basis built with the same class layer for every source,
+for example :func:`~openghg_inversions.basis.algorithms.country_border_classes`
+intersected with the land/sea classes, preserves the listed borders.
+:func:`~openghg_inversions.postprocessing.border_countries.check_border_preserving_countries`
+certifies this from the labels, a membership matrix and a support weight
+(``|flux| * area``), so an ocean source with no flux on land is exempt.
+Negative labels are inactive cells; country support on them, like support in
+crossing regions, counts against the country. The check is strict by default;
+``tolerance`` admits fractional border cells, and the opt-in
+``negligible_source_share`` ignores a failing source that carries almost none
+of the country's flux. Both leaks are recorded.
+
+A border-preserving total is still retained-state conditional. In a coherent
+reduction it omits ``Q x_perp`` unless the country functional ``Q`` lies in the
+row space of the restriction ``Pi``. For an absolute-flux-weighted regional
+mean, that holds for whole regions only when the flux keeps one sign and one
+spatial pattern over time. Mixed-sign or time-varying flux leaves a residual
+even when no border is crossed.
+:func:`~openghg_inversions.postprocessing.border_countries.co2_region_sum_country_outputs`
+labels each country with ``country_total_method``:
+
+* ``exact_region_sum``: no border leak, and the row-space residual of every
+  source and time against the supplied ``restriction=Pi`` is negligible;
+* ``region_sum_retained_conditional``: a border-preserving region sum without
+  that guarantee. This includes every map without ``restriction``. Bucket
+  prolongations also come from a coherent reduction: for
+  ``PreserveBucketProlongation``, ``Pi_U = (U^T B^-1 U)^-1 U^T B^-1``, and a
+  whole-region functional lies in its row space only when ``B Q^T`` is
+  constant within each region;
+* ``retained_state_functional``: a country whose border is crossed, written only
+  with ``country_outputs="all"``.
+
+The default ``country_outputs="border_preserving_only"`` writes only the
+border-preserving countries. Others are listed in
+``non_border_preserving_countries``, with their failing sources, regions and
+leak fractions in ``border_check_details``. Country coordinates
+``border_leak_fraction`` and ``restriction_residual`` record each row's leak
+and largest residual::
+
+   from openghg_inversions.postprocessing.border_countries import (
+       co2_region_sum_country_outputs,
+   )
+
+   totals = co2_region_sum_country_outputs(
+       trace, bound, countries, labels, restriction=restriction
+   )
+
+``labels`` maps each native source to its region labels; bucket maps supply
+them. Passing ``membership=region_class_membership(region_classes)`` reports
+the classes the basis was built with instead of countries. In a CO2 run, set
+``country_outputs = "border_preserving_only"`` in ``Co2OutputOptions`` (basic
+output with a ``country_file``). Labels then come from the prepared bucket
+basis. The saved reconstruction does not carry ``Pi``, so rows there are
+labelled ``region_sum_retained_conditional``. Border preservation makes the
+unresolved part small (in one OPE-188 study at least 99.6% of each focus
+country's prior variance was resolved), but complete country totals still
+need the unresolved term.
+
 Both products retain prepared-artifact identity, reconstruction provenance and
 ``uncertainty_scope="retained_state_conditional"``. Their intervals exclude
 unresolved native-state uncertainty and its observation-conditioned mean
