@@ -1018,10 +1018,10 @@ class CorrelatedPrior:
             marginal: One family name for every state, or names on the state
                 dimension with the mean's labels.
             covariance_dim: Optional name for the covariance column dimension.
-            latent_correlation_floor: Opt-in repair for a copula prior whose
-                latent correlation is not positive definite, in ``(0, 0.1]``.
-                Eigenvalues below it are raised to it and the unit diagonal
-                is restored. A repair that would move an implied state
+            latent_correlation_floor: Opt-in eigenvalue floor for the
+                latent correlation, in ``(0, 0.1]``. Eigenvalues below the
+                floor are raised and the unit diagonal is restored. A repair
+                that would move an implied state
                 correlation by more than 0.01 is refused. ``None`` (the
                 default) rejects such priors. It does not apply when every
                 marginal is lognormal.
