@@ -39,6 +39,7 @@ from openghg_inversions.coherent_reduction import (
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.postprocessing.co2_flux_outputs import COUNTRY_FUNCTIONAL_DIM
+from openghg_inversions.postprocessing.unresolved_functionals import _functional_covariance_scale
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
     AGGREGATION_ERROR_SD,
@@ -641,6 +642,9 @@ def _bound_country_functionals(
         raise ValueError("CO2 country unresolved_covariance must be functional-by-functional.")
     if covariance.shape != (functional_index.size, functional_index.size):
         raise ValueError("CO2 country unresolved_covariance must be square on the functional axis.")
+    validate_covariance_coordinates(
+        covariance, dim=COUNTRY_FUNCTIONAL_DIM, covariance_dim=str(covariance.dims[1])
+    )
     for name, array in (("retained_response", response), ("unresolved_observation_covariance", cross)):
         if not same_index(array.indexes[COUNTRY_FUNCTIONAL_DIM], functional_index):
             raise ValueError(f"CO2 country {name} functional labels differ from functional_mean.")
@@ -660,21 +664,23 @@ def _bound_country_functionals(
             "CO2 country functional products were computed for a different coherent reduction "
             "(native observation operator, covariance or restriction); prepare again."
         )
-    _require_psd(np.asarray(covariance.values, dtype=np.float64))
     _require_functional_units(products, str(inputs["mf"].attrs["units"]))
-    return replace(
+    bound = replace(
         products,
         retained_covariance=inputs["alpha_prior_covariance"],
         effective_observation_operator=inputs["H"],
     )
+    _require_psd(bound)
+    return bound
 
 
-def _require_psd(covariance: np.ndarray) -> None:
+def _require_psd(products: NativeFunctionalProducts) -> None:
     """Require a symmetric positive-semidefinite matrix up to relative roundoff."""
-    scale = float(np.max(np.abs(covariance), initial=0.0))
+    covariance = np.asarray(products.unresolved_covariance.values, dtype=np.float64)
+    scale = _functional_covariance_scale(products, covariance)
     if np.max(np.abs(covariance - covariance.T), initial=0.0) > _SYMMETRY_TOLERANCE * scale:
         raise ValueError("CO2 country unresolved_covariance must be symmetric.")
-    if scale and np.linalg.eigvalsh((covariance + covariance.T) * 0.5).min() < -_PSD_TOLERANCE * scale:
+    if covariance.size and np.linalg.eigvalsh((covariance + covariance.T) * 0.5).min() < -_PSD_TOLERANCE * scale:
         raise ValueError("CO2 country unresolved_covariance must be positive semidefinite.")
 
 

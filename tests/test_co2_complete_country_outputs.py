@@ -655,6 +655,34 @@ def test_products_require_a_positive_semidefinite_unresolved_covariance() -> Non
         replace(prepared, country_functionals=indefinite)
 
 
+def test_prepared_products_allow_roundoff_when_retained_states_resolve_the_functionals(tmp_path) -> None:
+    """Persist near-zero unresolved covariance at the scale of the full functional covariance."""
+    from dataclasses import replace
+
+    _, _, prepared, _ = _case()
+    products = prepared.country_functionals
+    response = products.retained_response.to_numpy()
+    resolved = response @ products.retained_covariance.to_numpy() @ response.T
+    unresolved = products.unresolved_covariance.copy(data=-np.finfo(np.float64).eps * resolved)
+    exact_up_to_roundoff = replace(prepared, country_functionals=replace(products, unresolved_covariance=unresolved))
+    path = tmp_path / "roundoff.nc"
+    exact_up_to_roundoff.save(path)
+    loaded = Co2PreparedInputs.load(path)
+    xr.testing.assert_identical(loaded.country_functionals.unresolved_covariance, unresolved)
+
+
+def test_prepared_products_require_matching_functional_covariance_columns() -> None:
+    """Reject covariance columns whose functional labels differ from the row order."""
+    from dataclasses import replace
+
+    _, _, prepared, _ = _case()
+    products = prepared.country_functionals
+    covariance = products.unresolved_covariance
+    reversed_columns = covariance.isel({covariance.dims[1]: slice(None, None, -1)})
+    with pytest.raises(ValueError, match="same values in the same order"):
+        replace(prepared, country_functionals=replace(products, unresolved_covariance=reversed_columns))
+
+
 def test_conditioning_with_another_a_is_not_reported_as_complete() -> None:
     """A solve whose A is not the products' A fails the library's clipping guard."""
     from dataclasses import replace
