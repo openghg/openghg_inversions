@@ -27,7 +27,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import xarray as xr
@@ -36,12 +36,14 @@ from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_s
 from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.basis.boundary import BoundaryBasis, boundary_basis, nesw_basis
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR, BasisFunctions
+from openghg_inversions.basis.options import FluxBasisOptions
 from openghg_inversions.boundary_sensitivity import scale_satellite_boundary_sensitivity_to_column_signal
 from openghg_inversions.filters import filtering
 from openghg_inversions.inversion_data import MergedData, PreparedInputs, SiteOptions
 from openghg_inversions.inversion_data.observation_errors import prepare_observation_errors
 from openghg_inversions.inversion_data.prepared_inputs import _make_site_metadata
 from openghg_inversions.inversion_inputs import make_inv_inputs
+from openghg_inversions.rhime.params import BcBasisOptions
 
 __all__ = [
     "assemble_inputs",
@@ -207,6 +209,7 @@ def assemble_inputs(
     domain: str,
     start_date: str,
     use_bc: bool = True,
+    flux_response: Literal["H", "fp_x_flux"] = "H",
 ) -> PreparedInputs:
     """Construct and validate durable, backend-neutral RHIME model inputs.
 
@@ -226,6 +229,7 @@ def assemble_inputs(
         domain: Domain label attached to the assembled site data.
         start_date: Requested start date of the preparation interval.
         use_bc: Whether missing boundary-condition inputs should be checked.
+        flux_response: Projected sensitivity or the native response for a coherent reduction.
 
     Returns:
         Validated, backend-neutral inputs with observation-aligned arrays,
@@ -243,6 +247,7 @@ def assemble_inputs(
         inv_inputs = make_inv_inputs(
             fp_data=owned_site_data,
             sites=list(site_options.sites),
+            flux_response=flux_response,
         )
     inv_inputs = scale_satellite_boundary_sensitivity_to_column_signal(
         inv_inputs,
@@ -286,7 +291,7 @@ def assemble_inputs(
 
 def _warn_for_nan_inputs(inv_inputs: xr.Dataset, *, use_bc: bool) -> None:
     """Warn when prepared sensitivity matrices contain NaN values."""
-    if np.isnan(inv_inputs.H.values).any():
+    if "H" in inv_inputs and np.isnan(inv_inputs.H.values).any():
         warnings.warn(
             f"H matrix contains {np.isnan(inv_inputs.H.values).flatten().sum()} NaN values", stacklevel=3
         )
@@ -357,7 +362,7 @@ def _validate_multisector_sensitivity_sources(
 
 
 
-def resolve_bc_basis(data_config: Any) -> BoundaryBasis:
+def resolve_bc_basis(selection: BcBasisOptions, *, use_bc: bool) -> BoundaryBasis:
     """Load enabled exact BC resources, or select a built-in basis builder.
 
     Configuration owns algorithm validation. Exact files take precedence over
@@ -369,7 +374,8 @@ def resolve_bc_basis(data_config: Any) -> BoundaryBasis:
     borrowed scientific inputs remain unchanged.
 
     Args:
-        data_config: Resolved acquisition/preparation configuration.
+        selection: Resolved paths, algorithm and split height.
+        use_bc: Whether this preparation needs boundary sensitivities.
 
     Returns:
         Loaded labelled BC basis or a built-in per-site basis builder.
@@ -380,15 +386,14 @@ def resolve_bc_basis(data_config: Any) -> BoundaryBasis:
     """
     from openghg_inversions.basis.support import load_bc_basis
 
-    if not data_config.use_bc:
+    if not use_bc:
         return nesw_basis
-    selection = data_config.bc_basis
     if selection.paths is not None:
         return load_bc_basis(selection.paths)
     return boundary_basis(selection.algorithm, split_height=selection.split_height)
 
 
-def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:
+def resolve_basis_inputs(data_config: FluxBasisOptions) -> dict[str, Any]:
     """Resolve exact scientific inputs before acquisition.
 
     Configuration resolution itself stays data-free. This application boundary
@@ -398,7 +403,7 @@ def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:
     validated separately by the output owner.
 
     Args:
-        data_config: Resolved :class:`~openghg_inversions.rhime.params.DataConfig`.
+        data_config: Resolved flux basis selection and transport domain.
             Explicit retained artifacts and partition files bypass algorithm
             support defaults; explicitly selected support files are still read.
             Plural partition paths are sorted before loading; the first file

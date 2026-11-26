@@ -19,7 +19,7 @@ FACTS = {"start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE
 
 def _request():
     return {
-        "prepared_inputs": FACTS,
+        "data": FACTS,
         "likelihood": {"kind": "fixed_ou", "tau_hours": {"MHD": 4.0, "DROPPED": 7.0},
                        "site_amplitude_prior": {"pdf": "gamma", "alpha": 2.0, "beta": 3.0},
                        "initial_site_amplitudes": {"MHD": 0.4, "DROPPED": 0.8}},
@@ -51,7 +51,7 @@ def test_scientific_likelihood_selects_backend_and_matched_graph(kind, choices, 
 def test_configured_sampler_rejection_precedes_input_loading(monkeypatch, sampling):
     request = _request()
     request["sampling"] = sampling
-    request["prepared_inputs"] = {"path": "missing.nc"}
+    request["data"] = {"path": "missing.nc"}
 
     def forbidden(*args, **kwargs):
         raise AssertionError("Invalid sampler policy must fail before loading or building")

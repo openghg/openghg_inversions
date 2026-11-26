@@ -1,4 +1,5 @@
 # Linked CO2/O2 execution from a public prepared-input artifact.
+# Linked preparation imports a saved artifact; configured acquisition is CO2-only for now.
 # The current configuration requires one shared concentration-unit label.
 format_version = 1
 recipe = "co2_o2"

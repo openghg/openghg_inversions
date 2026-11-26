@@ -182,9 +182,10 @@ def test_runners_preserve_ini_basis_algorithm_when_overriding_height(tmp_path, m
     class BasisSelected(Exception):
         """Stop once the runner reaches boundary-basis resolution."""
 
-    def check_basis(data):
+    def check_basis(selection, *, use_bc):
         """Check the selection before the runner accesses any store."""
-        assert data.bc_basis == BcBasisOptions(algorithm="twelve-region", split_height=2000.0)
+        assert use_bc
+        assert selection == BcBasisOptions(algorithm="twelve-region", split_height=2000.0)
         raise BasisSelected
 
     monkeypatch.setattr(module, "resolve_bc_basis", check_basis)

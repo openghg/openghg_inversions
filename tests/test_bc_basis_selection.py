@@ -35,7 +35,7 @@ def test_omitted_and_explicit_nesw_preserve_directional_labels_and_lazy_inputs(m
             config = RhimeConfig.from_params(load_params(overrides=request), multisector=False)
             assert config.data.bc_basis.algorithm == "NESW"
             assert isinstance(config.data.bc_basis.algorithm, str)
-            basis = resolve_bc_basis(config.data)
+            basis = resolve_bc_basis(config.data.bc_basis, use_bc=config.data.use_bc)
             assert basis is nesw_basis
             results.append(bc_sensitivity({"TAC": site}, bc_basis=basis)["TAC"].H_bc)
             assert request == original
@@ -58,7 +58,7 @@ def test_files_override_inactive_algorithm_without_reinterpreting_time_alignment
         use_bc=True, bc_basis={"algorithm": algorithm, "paths": [late, early]},
     ), multisector=False)
     saved = config.data.to_params()
-    basis = resolve_bc_basis(config.data)
+    basis = resolve_bc_basis(config.data.bc_basis, use_bc=config.data.use_bc)
     snapshot = basis.copy(deep=True)
     result = bc_sensitivity({"TAC": _contributions()}, bc_basis=basis)["TAC"].H_bc
     np.testing.assert_array_equal(result.compute(), [[20, 30]])
@@ -78,7 +78,7 @@ def test_disabled_bc_does_not_load_selected_resources_or_activate_algorithm(monk
     config = RhimeConfig.from_params(_params(
         use_bc=False, bc_basis={"algorithm": algorithm, "paths": [tmp_path / "absent.nc"]},
     ), multisector=False)
-    assert resolve_bc_basis(config.data) is nesw_basis
+    assert resolve_bc_basis(config.data.bc_basis, use_bc=config.data.use_bc) is nesw_basis
 
 
 @pytest.mark.parametrize("multisector", [False, True])
@@ -118,6 +118,6 @@ def test_nested_inner_preparation_keeps_bc_disabled_with_outer_file_selection(mo
     inner = nested.inner_data_config(outer, inner_domain="6km")
     assert not inner.use_bc
     assert inner.bc_basis.paths is None
-    assert resolve_bc_basis(inner) is nesw_basis
+    assert resolve_bc_basis(inner.bc_basis, use_bc=inner.use_bc) is nesw_basis
     assert outer.use_bc
     assert outer.bc_basis.paths == (tmp_path / "outer.nc",)

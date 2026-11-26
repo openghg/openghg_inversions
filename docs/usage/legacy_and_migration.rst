@@ -436,6 +436,13 @@ selects the matched cached sampler automatically. Use a supported positive-prior
 table rather than ``site_amplitude_prior_scale``. The packaged example is now
 ``co2_fixed_ou.toml``.
 
+Update ordinary CO₂ TOML files to use ``[data]``. The usual unknown-option
+validation reports ``[prepared_inputs]`` as an unknown section for this recipe.
+Use ``data.path`` for a saved preparation. For a new preparation, put retrieval
+choices in ``[data.acquisition]`` and scientific preparation choices in
+``[data.preparation]``. See :ref:`co2-configured-preparation`. Linked CO₂/O₂
+still uses ``[prepared_inputs]`` for saved preparations.
+
 Replace linked ``Co2O2RunSetup`` and ``resolve_co2_family_config`` with
 ``Co2O2ModelConfig.from_params(config)`` and pass ``model.bind(prepared)`` as
 scientific keywords to ``run_rhime_co2_o2_from_prepared_inputs``. Remove linked

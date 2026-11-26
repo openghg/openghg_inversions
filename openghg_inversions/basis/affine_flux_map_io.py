@@ -41,6 +41,9 @@ _ROOT_ATTRS = {
     "reconstruction_provenance",
     "source_provenance",
 }
+# Coordinate attributes the format keeps; input metadata such as an inventory's ``notes`` is dropped
+# on save, like ancillary variable attributes, so the strict reader accepts every written file.
+_COORDINATE_ATTRS = frozenset({"units", "long_name", "standard_name", "axis", "calendar", "compress"})
 _STATE_METADATA_VARS = {"basis_group", "basis_partition", "region_in_partition"}
 _PROHIBITED_NAMES = {
     "fp_x_flux",
@@ -109,12 +112,22 @@ def _array_node(array: xr.DataArray, name: str) -> xr.DataTree:
     array = to_dense(array) if name == "prolongation" else array
     array = array.copy(deep=False)
     array.attrs = {"units": units}
-    return xr.DataTree(encode_multiindexes_for_storage(array.rename(name).to_dataset()))
+    dataset = _coordinate_attrs_for_storage(array.rename(name).to_dataset())
+    return xr.DataTree(encode_multiindexes_for_storage(dataset))
+
+
+def _coordinate_attrs_for_storage(dataset: xr.Dataset) -> xr.Dataset:
+    """Return a shallow copy whose coordinates keep only the format's coordinate attributes."""
+    result = dataset.copy(deep=False)
+    for name in result.coords:
+        variable = result.variables[name]
+        variable.attrs = {key: value for key, value in variable.attrs.items() if key in _COORDINATE_ATTRS}
+    return result
 
 
 def _operator_dataset_for_storage(dataset: xr.Dataset) -> xr.Dataset:
     """Keep only the bucket representation's declared variable attributes."""
-    result = dataset.copy(deep=False)
+    result = _coordinate_attrs_for_storage(dataset)
     for name in result.data_vars:
         attrs = result[name].attrs
         result[name].attrs = {"units": attrs["units"]} if "units" in attrs else {}
@@ -193,14 +206,7 @@ def _validate_coordinates(dataset: xr.Dataset, context: str) -> None:
     if extra:
         raise ValueError(f"Unexpected {context} coordinate {min(extra, key=repr)!r}.")
     for name, coordinate in dataset.coords.items():
-        unexpected_attrs = set(coordinate.attrs) - {
-            "units",
-            "long_name",
-            "standard_name",
-            "axis",
-            "calendar",
-            "compress",
-        }
+        unexpected_attrs = set(coordinate.attrs) - _COORDINATE_ATTRS
         if unexpected_attrs:
             raise ValueError(
                 f"Unexpected {context} coordinate {name!r} attribute {sorted(unexpected_attrs)[0]!r}."

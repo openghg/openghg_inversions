@@ -21,9 +21,9 @@ Stages and owners:
 Absolute ``H_bc`` sensitivity, used only by the multiplicative family, keeps its
 own supported state layouts and has no contract in this pilot.
 
-Validators inspect names, dimensions, eager indexes and attributes only. They
-never compute numerical payloads or auxiliary coordinates, so Dask-backed
-values stay lazy and the identical object is returned.
+Structural validators inspect names, dimensions, eager indexes and attributes
+only. Fit calendar checks may compute an auxiliary timestamp coordinate.
+Numerical payloads stay lazy in both cases.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ from xarray_validate import AttrSchema, DataArraySchema, DatasetSchema, DimsSche
 
 from openghg_inversions.xr_contracts import xr_contract
 from openghg_inversions.boundary_sensitivity import bind_period_states
-from openghg_inversions.inversion_inputs import DatetimeLike
+from openghg_inversions.inversion_inputs import DatetimeLike, make_period_calendar
 
 
 CENTERED_NAMES = ("H_bc_anomaly", "H_bc_mass", "bc_reference")
@@ -510,26 +510,64 @@ class BoundAdditiveSensitivity(BoundCenteredSensitivity):
             ValueError: If the weights' curtain and period labels differ from the
                 bound states.
         """
-        periods = weights.indexes["bc_period"]
-        if isinstance(periods, pd.DatetimeIndex):
-            # Period starts from the fit calendar are nanosecond timestamps.
-            weights = weights.assign_coords(bc_period=periods.as_unit("ns"))
-        stacked = weights.stack(bc_region=STATE_LEVELS)
-        expected_index, given_index = bound.indexes["bc_region"], stacked.indexes["bc_region"]
-        if not given_index.equals(expected_index):
-            expected, given = set(expected_index), set(given_index)
-            if expected != given or len(given_index) != len(expected_index):
-                raise ValueError(
-                    "Centering-weight labels do not align with the bound boundary states. Weights must be "
-                    "labelled by every (bc_curtain, bc_period) state of this fit's calendar, where bc_period is "
-                    "the interval start (the first selected observation time when there is no frequency). "
-                    f"Missing from the weights: {sorted(expected - given, key=str)[:5]}; "
-                    f"unexpected in the weights: {sorted(given - expected, key=str)[:5]}."
-                )
-            # Same labels in another order: select the weights in the bound state order.
-            stacked = stacked.sel(bc_region=expected_index)
-        # Labels now match in order, so the bound state index is reused for the weights.
+        stacked = _align_centering_weights(weights, bound.indexes["bc_region"])
         return cast(BoundAdditiveSensitivity, bound.assign(bc_centering_weights=stacked.variable))
+
+
+def validate_centering_weight_labels(
+    weights: xr.DataArray,
+    observations: xr.DataArray,
+    curtains: pd.Index,
+    *,
+    frequency: str | None,
+    anchor_time: DatetimeLike | None,
+) -> None:
+    """Check prepared weights against the selected fit's calendar.
+
+    Only the observation timestamps may be materialized. Boundary payloads
+    are unnecessary, and the check is independent of model precision.
+
+    Args:
+        weights: Structurally valid weights on ``(bc_curtain, bc_period)``.
+        observations: Selected observations carrying their ``time`` coordinate.
+        curtains: The spatial boundary state index before period expansion.
+        frequency: The selected fit's boundary period frequency.
+        anchor_time: The selected fit's fixed-duration period anchor, if any.
+
+    Raises:
+        ValueError: If observation timestamps or weight labels are incompatible
+            with the selected fit.
+    """
+    time = observations.coords.get("time")
+    if time is None or time.dims != observations.dims or time.dtype.kind != "M":
+        raise ValueError("Boundary period expansion requires a datetime time coordinate along observations.")
+    if time.chunks is not None:
+        time = time.compute()
+    _, periods = make_period_calendar(time, frequency, anchor_time=anchor_time)
+    expected = pd.MultiIndex.from_product([curtains, np.unique(periods.data)], names=STATE_LEVELS)
+    _align_centering_weights(weights, expected)
+
+
+def _align_centering_weights(weights: xr.DataArray, expected_index: pd.Index) -> xr.DataArray:
+    """Match weights to the exact curtain and period labels, reordering when needed."""
+    periods = weights.indexes["bc_period"]
+    if isinstance(periods, pd.DatetimeIndex):
+        # Period starts from the fit calendar are nanosecond timestamps.
+        weights = weights.assign_coords(bc_period=periods.as_unit("ns"))
+    stacked = weights.stack(bc_region=STATE_LEVELS)
+    given_index = stacked.indexes["bc_region"]
+    if given_index.equals(expected_index):
+        return stacked
+    expected, given = set(expected_index), set(given_index)
+    if expected != given or len(given_index) != len(expected_index):
+        raise ValueError(
+            "Centering-weight labels do not align with the bound boundary states. Weights must be "
+            "labelled by every (bc_curtain, bc_period) state of this fit's calendar, where bc_period is "
+            "the interval start (the first selected observation time when there is no frequency). "
+            f"Missing from the weights: {sorted(expected - given, key=str)[:5]}; "
+            f"unexpected in the weights: {sorted(given - expected, key=str)[:5]}."
+        )
+    return stacked.sel(bc_region=expected_index)
 
 
 __all__ = [
@@ -538,5 +576,6 @@ __all__ = [
     "RawCenteredSensitivity",
     "normalize_centering_weights",
     "require_centered_precision",
+    "validate_centering_weight_labels",
     "validate_centering_weights",
 ]

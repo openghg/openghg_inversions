@@ -369,7 +369,7 @@ def test_full_run_protects_consumed_request_before_model_resolution(tmp_path, mo
     destination = source if alias == "direct" else tmp_path / "trace.nc"
     facts = {"start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE"}
     request = {
-        "prepared_inputs": facts,
+        "data": facts,
         "likelihood": {"kind": "additive_sigma"},
         "outputs": {"output_format": "basic", "save_trace": str(destination)},
     }
@@ -377,7 +377,7 @@ def test_full_run_protects_consumed_request_before_model_resolution(tmp_path, mo
         source.write_text(json.dumps(request), encoding="utf-8")
     else:
         source.write_text(
-            "[prepared_inputs]\n" + "\n".join(f"{key} = {json.dumps(value)}" for key, value in facts.items())
+            "[data]\n" + "\n".join(f"{key} = {json.dumps(value)}" for key, value in facts.items())
             + '\n[likelihood]\nkind = "additive_sigma"\n[outputs]\noutput_format = "basic"\nsave_trace = '
             + json.dumps(str(destination)) + "\n", encoding="utf-8",
         )
@@ -398,7 +398,7 @@ def test_full_run_mapping_request_adds_no_file_to_protected_inputs(tmp_path, mon
     from openghg_inversions.rhime.co2 import execution
 
     request = {
-        "prepared_inputs": {"start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE"},
+        "data": {"start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE"},
         "likelihood": {"kind": "additive_sigma"},
         "outputs": {"output_format": "basic", "save_trace": str(tmp_path / "trace.nc")},
     }
