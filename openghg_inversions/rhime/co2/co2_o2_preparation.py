@@ -30,7 +30,9 @@ import xarray as xr
 from openghg_inversions._serialization_codecs import _copy_json_mapping, _decode_json_mapping
 from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array, to_dense
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.inversion_data.o2n2 import DeltaO2N2Declaration
+from openghg_inversions.inversion_data.o2n2 import (
+    MOLE_FRACTION, O2_OBSERVABLE_PROVENANCE_KEY, DeltaO2N2Declaration,
+)
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
     AggregationError,
@@ -782,6 +784,24 @@ def _joint_covariance(
     )
 
 
+def _resolve_o2_declaration(
+    provenance: Mapping[str, Any], attrs: Mapping[str, Any], o2_units: str,
+) -> DeltaO2N2Declaration | None:
+    """Combine provenance and O2-attribute declarations; both routes must agree when both are given."""
+    from_provenance = DeltaO2N2Declaration.from_provenance(provenance)
+    from_attrs = DeltaO2N2Declaration.from_attrs(attrs, units=o2_units)
+    if from_attrs is None:
+        return from_provenance
+    record = provenance.get(O2_OBSERVABLE_PROVENANCE_KEY)
+    declared_mole_fraction = isinstance(record, Mapping) and record.get("kind") == MOLE_FRACTION
+    if declared_mole_fraction or (from_provenance is not None and from_provenance != from_attrs):
+        raise ValueError(
+            "The delta(O2/N2) declaration on the O2 observation attributes and the one in "
+            f"provenance[{O2_OBSERVABLE_PROVENANCE_KEY!r}] disagree."
+        )
+    return from_attrs
+
+
 def prepare_co2_o2_inputs(
     *,
     co2_observations: xr.DataArray,
@@ -853,9 +873,11 @@ def prepare_co2_o2_inputs(
         co2_units: Non-empty units label for CO2 observations and sensitivity rows.
         o2_units: Non-empty units label for O2 observations and sensitivity rows.
         provenance: Optional JSON-serializable preparation provenance. A
-            delta(O2/N2) declaration under ``o2_observable`` (see
-            :class:`~openghg_inversions.inversion_data.o2n2.DeltaO2N2Declaration`)
-            is validated here and must name ``o2_units``.
+            delta(O2/N2) declaration under ``o2_observable``, or the same
+            fields as ``o2_observations`` attributes (see
+            :meth:`~openghg_inversions.inversion_data.o2n2.DeltaO2N2Declaration.from_attrs`),
+            is validated here, must name ``o2_units`` and is stored in the
+            returned provenance. Both routes must agree when both are given.
         boundary_sensitivity: Optional co2/o2 mapping of labelled H_bc arrays
             on native observation rows and one unique boundary-state axis.
             Channels must currently have identical units. Payloads remain borrowed.
@@ -890,7 +912,9 @@ def prepare_co2_o2_inputs(
     if not co2_units.strip() or not o2_units.strip():
         raise ValueError("CO2 and O2 channel units must be non-empty.")
     prepared_provenance = _copy_json_mapping(provenance or {}, "CO2/O2 provenance")
-    declaration = DeltaO2N2Declaration.from_provenance(prepared_provenance)
+    declaration = _resolve_o2_declaration(prepared_provenance, o2_observations.attrs, o2_units)
+    if declaration is not None:
+        prepared_provenance[O2_OBSERVABLE_PROVENANCE_KEY] = declaration.to_provenance()
     if declaration is not None and o2_units != declaration.units:
         raise ValueError(
             f"Linked O2 observation_units {o2_units!r} do not match the declared "

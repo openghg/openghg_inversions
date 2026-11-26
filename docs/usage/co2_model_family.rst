@@ -390,7 +390,15 @@ meg is supported when the artifact declares that observable:
 A per-meg O2 channel is declared, not inferred from its unit label: preparation
 provenance must hold an ``o2_observable`` record from
 :class:`~openghg_inversions.inversion_data.o2n2.DeltaO2N2Declaration`, giving
-the reference O2/N2 ratio, its source and the per-meg unit label. The rows,
+the reference O2/N2 ratio, its source and the per-meg unit label, and
+optionally the N2 policy and the observations' calibration scale. The same
+fields can instead be attributes on the O2 observations passed to
+``prepare_co2_o2_inputs``: ``observable = "delta_o2_n2"``,
+``delta_o2_n2_reference_ratio``, ``delta_o2_n2_reference_ratio_source``,
+``delta_o2_n2_n2_policy`` and ``delta_o2_n2_scale``. Preparation stores the
+declaration in provenance, so later steps do not depend on attributes
+surviving; when both routes are given they must agree. The reference ratio is
+never defaulted, and a declaration without one is rejected. The rows,
 errors and covariance blocks must already be in per meg; OpenGHG Inversions
 does not apply the transform. Configure ``channels.o2.observable =
 "delta_o2_n2"`` and ``channels.o2.units`` equal to the declared label. CO2

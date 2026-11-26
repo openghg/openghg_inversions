@@ -233,3 +233,66 @@ def test_configured_units_spelling_must_match_the_declared_artifact():
     model = Co2O2ModelConfig.from_params(_config(o2_units="per_meg"))
     with pytest.raises(ValueError, match="do not match prepared"):
         model.bind(_declared())
+
+
+ATTRS = {
+    "observable": "delta_o2_n2",
+    "delta_o2_n2_reference_ratio": 0.20946 / 0.78084,
+    "delta_o2_n2_reference_ratio_source": "CORSO TM5 O2 and N2 curtains",
+    "delta_o2_n2_n2_policy": "curtain",
+}
+
+
+def _inputs_with_o2_attrs(attrs: dict, provenance: dict | None = None) -> dict:
+    inputs = _inputs()
+    inputs["o2_observations"] = inputs["o2_observations"].assign_attrs(attrs)
+    inputs["provenance"] = {**FACTS, **(provenance or {})}
+    return inputs
+
+
+def test_declaration_can_arrive_as_o2_observation_attributes():
+    """Preparation lifts attribute declarations into provenance, so later steps never rely on attrs."""
+    prepared = prepare_co2_o2_inputs(**_inputs_with_o2_attrs(ATTRS))
+    assert DeltaO2N2Declaration.from_provenance(prepared.provenance) == DECLARATION
+    assert validate_co2_o2_channel_units(prepared) == {"co2": "ppm", "o2": "per meg"}
+
+
+def test_attribute_and_provenance_declarations_must_agree():
+    same = prepare_co2_o2_inputs(
+        **_inputs_with_o2_attrs(ATTRS, {O2_OBSERVABLE_PROVENANCE_KEY: DECLARATION.to_provenance()})
+    )
+    assert DeltaO2N2Declaration.from_provenance(same.provenance) == DECLARATION
+    other = {**DECLARATION.to_provenance(), "reference_ratio": 0.2685}
+    with pytest.raises(ValueError, match="disagree"):
+        prepare_co2_o2_inputs(**_inputs_with_o2_attrs(ATTRS, {O2_OBSERVABLE_PROVENANCE_KEY: other}))
+    with pytest.raises(ValueError, match="disagree"):
+        prepare_co2_o2_inputs(
+            **_inputs_with_o2_attrs(ATTRS, {O2_OBSERVABLE_PROVENANCE_KEY: {"kind": "mole_fraction"}})
+        )
+
+
+@pytest.mark.parametrize(
+    ("attrs", "message"),
+    [
+        ({k: v for k, v in ATTRS.items() if k != "delta_o2_n2_reference_ratio"}, "reference_ratio"),
+        ({k: v for k, v in ATTRS.items() if k != "observable"}, "observable"),
+        ({**ATTRS, "observable": "mole_fraction"}, "mole_fraction"),
+        ({**ATTRS, "observable": "apo"}, "observable"),
+        ({**ATTRS, "delta_o2_n2_extra": 1}, "Unknown"),
+    ],
+)
+def test_attribute_declarations_are_explicit_and_complete(attrs, message):
+    """A missing reference ratio is an error, never a default; the observable must be stated."""
+    with pytest.raises(ValueError, match=message):
+        prepare_co2_o2_inputs(**_inputs_with_o2_attrs(attrs))
+
+
+def test_declaration_records_the_observation_scale():
+    declared = DeltaO2N2Declaration(0.20946 / 0.78084, "CORSO TM5 O2 and N2 curtains", scale="provider scale X")
+    record = declared.to_provenance()
+    assert record["scale"] == "provider scale X"
+    assert DeltaO2N2Declaration.from_provenance({O2_OBSERVABLE_PROVENANCE_KEY: record}) == declared
+    prepared = prepare_co2_o2_inputs(**_inputs_with_o2_attrs({**ATTRS, "delta_o2_n2_scale": "provider scale X"}))
+    assert DeltaO2N2Declaration.from_provenance(prepared.provenance).scale == "provider scale X"
+    with pytest.raises(ValueError, match="scale"):
+        DeltaO2N2Declaration(0.2, "source", scale=" ")
