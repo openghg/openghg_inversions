@@ -55,11 +55,11 @@ Supported stage manifests
    * - Identifier
      - Version
    * - ``openghg_inversions.standard.prepare``
-     - 2
+     - 2, 3
    * - ``openghg_inversions.standard.sample``
      - 3
    * - ``openghg_inversions.multisector.prepare``
-     - 2
+     - 2, 3
    * - ``openghg_inversions.multisector.sample``
      - 3
    * - ``openghg_inversions.co2.prepare``
@@ -74,8 +74,9 @@ Supported stage manifests
 Standard and multisector sample version 3 records the supported model choices
 without the retired aggregation-error option. Older sample manifests, including
 version 2, require the software version that wrote them or repeating sampling
-from a supported preparation. Preparation manifests remain version 2, including
-when they reference a supported ordinary raw version-2 numerical artifact.
+from a supported preparation. Current writers use preparation manifest version
+3 with nested ``data.bc_basis``. Readers also accept version 2 with flat
+boundary-basis settings.
 
 A manifest's version is independent of the numerical artifact it references.
 Preparation generation and final artifact bindings still control sample and
