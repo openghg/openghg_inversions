@@ -229,6 +229,13 @@ def test_configuration_rejects_inconsistent_choices(partition_path: Path, change
         Co2O2PreparationConfig.from_params(load_co2_o2_params(params=request), require_source=True)
 
 
+def test_configured_native_rejects_delta_o2_n2_before_preparation(partition_path: Path) -> None:
+    request = _request(partition_path)
+    request["channels"]["o2"] = {"observable": "delta_o2_n2", "units": "per meg"}
+    with pytest.raises(ValueError, match="Configured native preparation requires O2 mole fractions"):
+        Co2O2PreparationConfig.from_params(load_co2_o2_params(params=request), require_source=True)
+
+
 def test_flux_weighting_tracer_is_accepted_when_set(partition_path: Path) -> None:
     request = _request(partition_path, restriction="absolute_flux_weighted_mean", flux_tracer="o2")
     config = Co2O2PreparationConfig.from_params(load_co2_o2_params(params=request), require_source=True)

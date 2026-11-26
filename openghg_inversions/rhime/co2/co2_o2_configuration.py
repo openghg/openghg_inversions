@@ -419,7 +419,14 @@ class Co2O2PreparationConfig:
             if isinstance(channels, Mapping):
                 for channel in LINKED_CHANNELS:
                     table = channels.get(channel)
-                    if isinstance(table, Mapping) and "boundary" in table:
+                    if not isinstance(table, Mapping):
+                        continue
+                    if channel == "o2" and table.get("observable") == DELTA_O2_N2:
+                        raise ValueError(
+                            "Configured native preparation requires O2 mole fractions. Use prepared_inputs.path "
+                            "to import a preparation with a declared delta(O2/N2) channel."
+                        )
+                    if "boundary" in table:
                         choice = {key: value for key, value in _table(table["boundary"], f"channels.{channel}.boundary").items()
                                   if key != "activity"}
                         boundary[channel] = _boundary_choice(choice, f"channels.{channel}.boundary")
