@@ -22,7 +22,7 @@ which the products must share, and records a structured account of the
 
 from __future__ import annotations
 
-from collections.abc import Hashable
+from collections.abc import Callable, Hashable
 from dataclasses import replace
 import json
 
@@ -322,7 +322,7 @@ def _diagonal_solve(
     return ObservationCovarianceSolve(index, solve, varies_by_draw=True, description=description)
 
 
-def _diagonal_update(aggregation: AggregationError, variance: FloatArray):
+def _diagonal_update(aggregation: AggregationError, variance: FloatArray) -> Callable[[FloatArray], FloatArray]:
     """Factorize ``A + diag(variance)`` once and return its solve.
 
     Dense ``A`` uses a Cholesky factor. Low-rank ``A = F F.T + diag(d)`` uses
