@@ -34,7 +34,6 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 from pymc.pytensorf import floatX
-from pytensor.gradient import zero_grad
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
@@ -42,6 +41,7 @@ from pytensor.tensor.variable import TensorVariable
 from openghg_inversions.correlated_state import GAMMA_LATENT_CAP, CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.array_ops import select_gathered_data_array
 from openghg_inversions.inversion_inputs import make_freq_indicator, make_site_indicator
+from openghg_inversions.models._gamma_quantile import _GammaStandardQuantile
 from openghg_inversions.models.coords import add_component_data, add_coords, add_model_data as add_model_data, component_coords
 from openghg_inversions.models._flux import _namespace_sector_state_coords
 from openghg_inversions.models.priors import parse_prior
@@ -494,12 +494,17 @@ def add_state_vector(
     prior_args: dict[str, Any],
     var_name: str,
     coordinate_owner: str | None = None,
+    *,
+    transform: pm.distributions.transforms.Transform | None = None,
 ) -> StateVectorResult:
     """Construct an active/fixed state graph from a resolved activity contract.
 
     When every state is active, this creates the same base prior graph as
-    ``add_linear_component``. Partial activity creates an active-only prior and
-    restores it into a full deterministic state vector. An all-fixed policy
+    ``add_linear_component``. The ``<var_name>_is_active`` mask is registered as
+    model data for every policy, including all-active, so postprocessing can
+    read which states were sampled from the trace. Partial activity creates
+    an active-only prior and restores it into a full deterministic state
+    vector. An all-fixed policy
     creates no random variable and exposes the fixed values as the full
     deterministic state.
 
@@ -510,6 +515,7 @@ def add_state_vector(
             full-state arrays, or labelled state ``DataArray`` objects.
         var_name: Name of the full user-facing state vector.
         coordinate_owner: Optional namespace for registered state coordinates.
+        transform: Optional replacement for the prior's default PyMC transform.
 
     Returns:
         The effective latent, full state vector, and supplied activity.
@@ -536,18 +542,21 @@ def add_state_vector(
         for name, value in active_prior_args(prior_args, activity, select_active=False).items()
     }
 
+    # The activity mask is recorded for every policy, including all-active, so
+    # postprocessing reads which states were sampled from the fitted model.
+    add_model_data(
+        component_coords(activity.active, coordinate_owner).rename(f"{var_name}_is_active"),
+        f"{var_name}_is_active",
+    )
+    transform_options = {} if transform is None else {"transform": transform, "default_transform": None}
     if activity.n_active == activity.n_state:
-        state = parse_prior(var_name, parameters, dims=state_dim)
+        state = parse_prior(var_name, parameters, dims=state_dim, **transform_options)
         return StateVectorResult(
             latent=get_model_latent(state, var_name),
             state=state,
             activity=activity,
         )
 
-    add_model_data(
-        component_coords(activity.active, coordinate_owner).rename(f"{var_name}_is_active"),
-        f"{var_name}_is_active",
-    )
     fixed_value = add_model_data(
         component_coords(activity.fixed_value, coordinate_owner).rename(f"{var_name}_fixed_value"),
         f"{var_name}_fixed_value",
@@ -564,6 +573,7 @@ def add_state_vector(
             dims=active_dim,
             active_indices=active_indices,
             record_name=var_name,
+            **transform_options,
         )
         latent = get_model_latent(active_state, f"{var_name}_active")
 
@@ -633,10 +643,10 @@ def _add_multisource_state_vector(
         )
         draws.append((positions[active_indices], draw))
 
+    add_model_data(zero_sensitivity.copy(data=active).rename(f"{var_name}_is_active"))
     if active.all():
         state = pt.zeros(len(state_index))
     else:
-        add_model_data(zero_sensitivity.copy(data=active).rename(f"{var_name}_is_active"))
         state = add_model_data(zero_sensitivity.copy(data=fixed_values).rename(f"{var_name}_fixed_value"))
     for positions, draw in draws:
         state = pt.set_subtensor(state[positions], draw)
@@ -790,6 +800,10 @@ def _add_prepared_state_with_activity(
     """Construct a full state from an active prior and its state builder."""
     state_dim = activity.state_dim
     add_coords(activity.zero_sensitivity.coords, model_dims=(state_dim,))
+    add_model_data(
+        activity.active.rename(f"{var_name}_is_active"),
+        f"{var_name}_is_active",
+    )
 
     if activity.n_active == activity.n_state:
         assert active_prior is not None
@@ -803,10 +817,6 @@ def _add_prepared_state_with_activity(
             activity=activity,
         )
 
-    add_model_data(
-        activity.active.rename(f"{var_name}_is_active"),
-        f"{var_name}_is_active",
-    )
     fixed_value = add_model_data(
         activity.fixed_value.rename(f"{var_name}_fixed_value"),
         f"{var_name}_fixed_value",
@@ -901,55 +911,27 @@ def _as_lognormal_prior(prior: CorrelatedLognormalPrior | CorrelatedPrior) -> Co
     return prior.lognormal if isinstance(prior, CorrelatedPrior) else prior
 
 
-_ASYMPTOTIC_ERFC_START = 10.0
-"""Above this ``a = u / sqrt(2)``, ``log erfc(a)`` uses its asymptotic series."""
+def _log_negative_log_normal_sf(u: TensorVariable) -> TensorVariable:
+    """Return ``log(-log(Phi(-u)))`` for the Weibull quantile.
 
-
-def _negative_log_normal_sf(u: TensorVariable) -> TensorVariable:
-    """Return ``-log Phi(-u)`` accurately for all ``u``, with JAX-supported ops only.
-
-    ``u <= 0``: ``-log1p(-Phi(u))``. Moderate ``u``: ``-log(erfc(a) / 2)``.
-    Large ``u``: ``a**2 + log(2 a sqrt(pi)) - log(S(a))`` with the asymptotic
-    series ``S`` of ``erfc(a) a sqrt(pi) exp(a**2)``, whose first omitted term
-    is below 1e-11 at the switch. The result is floored at the smallest
-    normal float so its logarithm and gradient stay finite far in the lower
-    tail, where the Weibull state is zero to working precision.
+    Use the asymptotic ``erfc`` series before the probability underflows.
+    Below ``u = -8``, ``-log(1 - Phi(u))`` equals ``Phi(u)`` to working
+    precision. Keeping its logarithm preserves narrow Weibull values there.
     """
-    a = u / np.sqrt(2.0)
-    lower = -pt.log1p(-0.5 * pt.erfc(-pt.minimum(a, 0.0)))
-    middle = -pt.log(0.5 * pt.erfc(pt.clip(a, 0.0, _ASYMPTOTIC_ERFC_START)))
-    large = pt.maximum(a, _ASYMPTOTIC_ERFC_START)
+    a = pt.switch(u < 0, -u, u) / np.asarray(np.sqrt(2.0), dtype=u.dtype)
+    switch = 8.0 if u.dtype == "float32" else 10.0
+    direct = pt.log(0.5 * pt.erfc(pt.minimum(a, switch)))
+    large = pt.maximum(a, switch)
     inverse = 1.0 / pt.square(large)
     # S(a) = sum_n (-1)**n (2n - 1)!! / (2 a**2)**n, n = 0..6, in Horner form.
     series = 10395 / 64
     for coefficient in (-945 / 32, 105 / 16, -15 / 8, 3 / 4, -1 / 2, 1.0):
         series = coefficient + inverse * series
-    upper = pt.square(large) + pt.log(2.0 * np.sqrt(np.pi) * large) - pt.log(series)
-    value = pt.switch(a <= 0, lower, pt.switch(a <= _ASYMPTOTIC_ERFC_START, middle, upper))
-    return pt.maximum(value, np.finfo(np.asarray(floatX(0.0)).dtype).tiny)
-
-
-def _gamma_standard_quantile(u: TensorVariable, k: TensorVariable) -> TensorVariable:
-    """Return the unit-scale gamma quantile ``G_k^-1(Phi(u))`` with a log-space gradient.
-
-    PyTensor's gradient of the inverse incomplete gamma is
-    ``exp(y) * Gamma(k) * y**(1 - k)``, which overflows when ``Gamma(k)`` does:
-    for ``k`` above about 35 (coefficient of variation below about 0.17) in
-    float32 and above 171 in float64. The value here is the same quantile,
-    but its derivative is ``exp(log phi(u) - log g_k(y))``, with ``g_k`` the
-    gamma density evaluated through ``gammaln``, so it stays finite. Where the
-    quantile is zero to working precision the derivative is zero.
-    Second derivatives are not provided.
-    """
-    lower = 0.5 * pt.erfc(-pt.minimum(u, 0) / np.sqrt(2.0))
-    upper = 0.5 * pt.erfc(pt.maximum(u, 0) / np.sqrt(2.0))
-    value = zero_grad(pt.switch(u > 0, pt.gammainccinv(k, upper), pt.gammaincinv(k, lower)))
-    tiny = np.finfo(np.asarray(floatX(0.0)).dtype).tiny
-    positive = value > tiny
-    safe = pt.switch(positive, value, 1.0)
-    log_density = (k - 1.0) * pt.log(safe) - safe - pt.gammaln(k)
-    slope = pt.switch(positive, pt.exp(-0.5 * pt.square(u) - 0.5 * np.log(2.0 * np.pi) - log_density), 0.0)
-    return value + zero_grad(slope) * (u - zero_grad(u))
+    scale = np.asarray(2.0 * np.sqrt(np.pi), dtype=u.dtype)
+    asymptotic = -pt.square(large) - pt.log(scale * large) + pt.log(series)
+    log_tail = pt.switch(a <= switch, direct, asymptotic)
+    lower = pt.log(-pt.log1p(-pt.exp(pt.maximum(log_tail, -40.0))))
+    return pt.switch(u >= 0, pt.log(-log_tail), pt.switch(u < -8, log_tail, lower))
 
 
 def _copula_marginal_map(
@@ -961,9 +943,7 @@ def _copula_marginal_map(
 ) -> TensorVariable:
     """Return ``F_i^-1(Phi(u_i))`` for correlated standard-normal ``u``.
 
-    Every branch uses only built-in PyTensor operations, so the graph pickles
-    to spawned sampler processes. Both sides of each switch are evaluated at
-    clamped arguments so that neither produces NaN or infinite gradients.
+    The Gamma map supplies a stable latent derivative for both sampler backends.
     """
     pieces: list[tuple[np.ndarray, TensorVariable]] = []
     for name in dict.fromkeys(family):
@@ -976,9 +956,10 @@ def _copula_marginal_map(
         elif name == "normal":
             value = pt.as_tensor_variable(floatX(mean[index])) + theta * u
         elif name == "gamma":
-            value = theta * _gamma_standard_quantile(pt.minimum(u, GAMMA_LATENT_CAP), k)
+            u = pt.minimum(u, GAMMA_LATENT_CAP)
+            value = theta * _GammaStandardQuantile(u.type, k.type)(u, k)
         else:
-            value = theta * pt.exp(pt.log(_negative_log_normal_sf(u)) / k)
+            value = theta * pt.exp(_log_negative_log_normal_sf(u) / k)
         pieces.append((index, value))
     if len(pieces) == 1:
         return pieces[0][1]
@@ -1088,10 +1069,9 @@ def prepare_active_correlated_prior(
 ) -> CorrelatedLognormalPrior | CorrelatedPrior | None:
     """Subset a correlated prior to its active states before graph construction.
 
-    The active prior keeps each active state's marginal. Its latent
-    correlation is the active block of the full one (repaired, if the full
-    prior was), so it is the full prior's marginal on the active states. Pass the result to
-    ``_add_prepared_correlated_lognormal_state_with_activity``.
+    The active prior keeps each active state's marginal and the corresponding
+    block of the full prior's latent correlation, including any applied repair.
+    Pass the result to ``_add_prepared_correlated_lognormal_state_with_activity``.
 
     Args:
         activity: Resolved activity in canonical full-state order.

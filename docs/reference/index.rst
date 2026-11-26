@@ -190,6 +190,7 @@ operands and supported model routes.
    openghg_inversions.rhime.co2.co2_o2_handoffs.prior_predictive
    openghg_inversions.rhime.co2.co2_o2_handoffs.postprocess
    openghg_inversions.rhime.co2.prepare_co2_inputs
+   openghg_inversions.models.fixed_ou.fixed_ou_mismatch_covariance
    openghg_inversions.rhime.co2.handoffs.prepare
    openghg_inversions.rhime.co2.handoffs.save_preparation
    openghg_inversions.rhime.co2.handoffs.load_preparation
@@ -274,9 +275,15 @@ mathematical contracts and eager-computation boundaries.
    openghg_inversions.basis.project_native_covariance
    openghg_inversions.coherent_reduction.CoherentGaussianReduction
    openghg_inversions.coherent_reduction.reduce_native_gaussian
+   openghg_inversions.coherent_reduction.NativeFunctionalProducts
+   openghg_inversions.coherent_reduction.project_native_functionals
+   openghg_inversions.coherent_reduction.marginalise_functional_states
    openghg_inversions.observation_error.AggregationError
    openghg_inversions.observation_error.prepare_low_rank_aggregation_error
    openghg_inversions.observation_error.resolve_aggregation_error
+   openghg_inversions.observation_error.WhitenedRankRule
+   openghg_inversions.observation_error.select_whitened_rank
+   openghg_inversions.observation_error.whitened_eigenvalue_kl
 
 Compose a RHIME model
 ---------------------
@@ -325,6 +332,8 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.boundary.bind_prepared
    openghg_inversions.models.boundary.Outputs
    openghg_inversions.array_ops.to_dense_tree
+   openghg_inversions.models.outer_flux.OuterFluxChoice
+   openghg_inversions.models.outer_flux.OuterStates
    openghg_inversions.models.add_linked_linear_component
    openghg_inversions.models.add_correlated_lognormal_state
    openghg_inversions.models.add_correlated_state_with_activity
@@ -354,6 +363,12 @@ and samples; it does not write products. See
    openghg_inversions.postprocessing.output_views.make_inversion_output
    openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs
    openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs
+   openghg_inversions.postprocessing.co2_flux_outputs.co2_country_functionals
+   openghg_inversions.postprocessing.unresolved_functionals.UnresolvedFunctionalConditioning
+   openghg_inversions.postprocessing.unresolved_functionals.ObservationCovarianceSolve
+   openghg_inversions.postprocessing.unresolved_functionals.complete_functional_draws
+   openghg_inversions.postprocessing.unresolved_functionals.dense_solve
+   openghg_inversions.postprocessing.unresolved_functionals.fixed_ou_solve
    openghg_inversions.rhime.co2.co2_outputs.make_co2_output
    openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request
    openghg_inversions.rhime.co2.co2_outputs.calculate_co2_products

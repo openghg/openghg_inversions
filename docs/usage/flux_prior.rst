@@ -8,12 +8,8 @@ arithmetic mean :math:`m` and covariance :math:`B` from preparation, with a
 marginal family per state. The ordinary and cached CO₂ builders and the linked
 CO₂/O₂ builders take one ``retained_prior`` value. They also accept a validated
 :class:`~openghg_inversions.correlated_state.CorrelatedLognormalPrior` directly.
-The runners build the prior from the prepared mean and covariance and any
-stored marginals and latent-correlation floor: ``alpha_prior_marginal`` in CO₂
-preparations, and ``retained_prior_marginal`` and ``latent_correlation_floor``
-in linked :class:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs`, which
-:func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs` sets from its
-``prior_marginal`` and ``latent_correlation_floor`` arguments.
+The runners build the prior from the prepared mean and covariance, the stored
+marginal families and the optional latent-correlation floor.
 
 .. _sampled-marginals:
 
@@ -25,8 +21,8 @@ The model samples a
 moments joined by a Gaussian copula, with a marginal family per state. A whitened
 :math:`z\sim N(0,I)` is correlated as :math:`u=Lz` and each state is
 :math:`x_i=F_i^{-1}(\Phi(u_i))`, where :math:`F_i` has the state's arithmetic
-mean and SD. The latent correlations :math:`LL^T` are chosen pair by pair so
-that the arithmetic covariance is reproduced exactly.
+mean and SD. The latent correlations :math:`LL^T` are chosen pair by pair to
+reproduce the arithmetic covariance.
 
 ``"lognormal"`` is the default. With it on every state the prior is
 :class:`~openghg_inversions.correlated_state.CorrelatedLognormalPrior` and the
@@ -50,17 +46,22 @@ The other marginals have the same mean and SD with less right skew:
   only in a sum of states (net flux) is not pulled towards small gross terms,
   but scalings can be negative (about 6% probability at CV 0.63). Mainly a
   test and comparison family.
-- ``"weibull"`` and ``"gamma"``: positive and defined for any CV. A mean-one
+- ``"weibull"`` and ``"gamma"``: positive with nonzero prior variance. The
+  Weibull moment solver accepts shape parameters from 0.02 to 1000, so
+  a coefficient of variation below about 0.00128 is too small. A mean-one
   lognormal at CV 0.63 has median 0.85; the Weibull 0.89 and gamma 0.87. In
   OPE-188 July 2021 fits, Weibull GPP/TER marginals removed about two thirds
   of the lognormal's gross shrinkage relative to a Gaussian in CO2-only fits
   and about half in linked fits; gamma removed a fifth to a quarter. Gamma
-  states are held at their quantile for latent :math:`u=8` above it
-  (probability 6e-16), because the JAX inverse incomplete gamma overflows
-  near :math:`u=10`; both samplers use the same map.
+  states use the quantile at latent :math:`u=8` for larger values
+  (standard-normal probability about :math:`6\times 10^{-16}`). The cap
+  applies in NumPy, PyMC and NumPyro. Very small probabilities in the lower
+  tail can underflow at the sampler's working precision.
 
 A pair with a normal state, or two lognormal states, has a closed-form latent
-correlation. Weibull and gamma pairs solve a 60-term Hermite series for it.
+correlation. For the remaining Weibull and gamma pairs, the solver matches the
+covariance using a 60-term Hermite approximation. It checks that the series
+reproduces each affected marginal variance to within :math:`10^{-6}` relative.
 A pair covariance no latent correlation can reach (for example strong negative
 correlation between very skewed states) fails clearly.
 
@@ -71,50 +72,49 @@ Latent-correlation repair
 
 Each latent correlation is solved pair by pair, so the whole matrix need not be
 positive definite even when the arithmetic covariance is. This happens with
-wide, strongly correlated priors: for example, the OPE-188 July 2021 retained
-prior with ORCHIDEE GPP/TER means (CV up to 2.3) and Weibull GPP/TER marginals
-has a latent minimum eigenvalue of :math:`-5.3\times10^{-4}`. Such priors fail
-by default. ``latent_correlation_floor`` (a
-:class:`~openghg_inversions.correlated_state.CorrelatedPrior` argument, or a ``latent_correlation_floor`` attribute on the
-``prior_marginal`` given to ``prepare_co2_inputs``)
-opts in to a repair: eigenvalues below the floor are raised to it, and the
-matrix is rescaled to a unit diagonal. Each marginal is unchanged, so every
-state keeps its mean and SD exactly. The pair covariances move slightly off
-their targets. How far they move depends on how negative the eigenvalues were,
-not on the floor, so a repair that would move any implied state correlation by
-more than 0.01 is refused: such pairwise targets do not belong to one copula.
-For example, five Weibull states with CV 1.5 and equal arithmetic correlation
--0.24 have a positive-definite arithmetic covariance, but a latent minimum
-eigenvalue of about -0.9, and repairing it would change state correlations by
-about 0.1.
+some wide, strongly correlated priors. The repository's rounded fixture of
+15 retained GPP/TER states from the OPE-188 July 2021 ORCHIDEE prior has a
+latent minimum eigenvalue of :math:`-6.5\times10^{-5}` with Weibull marginals.
+Such priors fail by default. Set ``latent_correlation_floor`` to opt in to
+repair. Pass it to :class:`~openghg_inversions.correlated_state.CorrelatedPrior`
+or ``prepare_co2_o2_inputs``. For ``prepare_co2_inputs``, set it as an
+attribute on the ``prior_marginal`` array. Within each independent block, eigenvalues below the floor
+are raised to it and the block is rescaled to a unit diagonal. Each state
+keeps its arithmetic mean and variance. Pair covariances may change.
+The repair is refused if any implied state correlation changes by more than
+0.01. For example, five Weibull states with CV 1.5 and equal arithmetic
+correlation -0.24 have positive-definite arithmetic covariance but a latent
+minimum eigenvalue of about -0.9. The repair would shift the correlations by
+about 0.1, so the prior is refused.
 
-The repair is an eigenvalue floor rather than the nearest correlation matrix
-(Higham's alternating projections). It is one deterministic step with no
-convergence tolerance, and it always yields a positive-definite matrix, which
-the Cholesky factor needs; Higham's result is only semidefinite and needs a
-floor anyway. For a few small negative eigenvalues the two differ negligibly.
-A floor of ``1e-6`` is a reasonable choice: lower values give the same
-covariance but a worse-conditioned factor. On the ORCHIDEE prior above, a
-floor of ``1e-6`` raises one eigenvalue, changes latent correlations by at
-most :math:`3.0\times10^{-4}` and implied state correlations by at most
-:math:`4.4\times10^{-4}`.
+On the ORCHIDEE fixture, a floor of ``1e-6`` raises one eigenvalue. It changes
+the latent correlations by at most :math:`3.8\times10^{-5}` and implied
+arithmetic correlations by at most :math:`5.6\times10^{-5}`. The fixture is
+in ``tests/data/copula/orchidee_weibull_block.json``.
 
 :attr:`~openghg_inversions.correlated_state.CorrelatedPrior.latent_correlation_repair`
 records the floor, whether it was applied, the minimum eigenvalue before the
 repair, the number of eigenvalues raised, and the largest changes in the latent
-correlation and in the implied state covariance and correlation. The CO2
-and linked CO2/O2 runners write it, the marginal family counts and the prior description into
+correlation and in the implied state covariance and correlation. The CO₂ and
+linked CO₂/O₂ runners write it, the marginal family counts and the prior description into
 the trace's ``rhime_model_metadata`` as ``prior_latent_correlation_repair``,
-``prior_marginals`` and ``prior``. Partial activity uses the block of the
-repaired correlation, so the active prior is still the marginal of the full
-one. The floor does not apply when every marginal is lognormal: that prior's
-latent covariance must be positive definite as before.
+``prior_marginals`` and ``prior``. After repair, the built prior's
+``arithmetic_covariance`` is the implied covariance of the repaired copula.
+Saved preparations retain the requested covariance and floor. Partial
+activity uses the corresponding submatrix of the full repaired prior,
+including its implied covariance. All-lognormal priors require a positive-
+definite latent covariance and use their existing construction.
 
-A CO₂ preparation stores a marginal per retained state as
-``alpha_prior_marginal`` when ``prepare_co2_inputs`` is given
-``prior_marginal``; the ordinary and cached CO₂ runners pass it to the prior.
-Preparations without it are unchanged. Every marginal works with both PyMC's
-sampler and numpyro; under numpyro, gamma uses TensorFlow Probability.
+Pass ``prior_marginal`` to
+:func:`~openghg_inversions.rhime.co2.prepare_co2_inputs` or
+:func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs` as a labelled
+array of family names on the retained state axis. CO₂ preparations store it as
+``alpha_prior_marginal``. Linked CO₂/O₂ preparations store it as
+``retained_prior_marginal`` and take the optional floor as a separate
+``latent_correlation_floor`` argument. Preparations without a marginal
+choice use the lognormal prior. Gamma uses TensorFlow Probability for the
+central quantile in NumPyro and a survival-probability solve in the upper
+tail.
 
 Activity
 --------

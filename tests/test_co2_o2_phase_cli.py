@@ -63,7 +63,7 @@ def test_installed_unequal_axis_sequence_retains_joint_science(tmp_path, monkeyp
         samplers.append(sampler)
         return constructed_joint_trace(prepared, chains=sampler.chains, draws=sampler.draws)
 
-    monkeypatch.setattr(handoffs, "sample_rhime_model", constructed)
+    monkeypatch.setattr(handoffs, "_sample_linked_rhime_model", constructed)
     main(["sample", "--model", "co2_o2", "--params-file", str(params),
           "--preparation-manifest", str(prep_manifest), "--output-dir", str(sample_dir)])
     (sampler,) = samplers
@@ -106,7 +106,7 @@ def test_sample_ignores_inactive_preparation_and_outputs(tmp_path, monkeypatch):
     manifest.write_text(json.dumps({"schema": "openghg_inversions.co2_o2.prepare"}))
     calls = []
 
-    def sample(preparation, *, model, sampler, output_dir):
+    def sample(preparation, *, model, sampler, output_dir, referenced=()):
         calls.append((preparation, model, sampler.draws))
         return output_dir / "sample-manifest.json"
 

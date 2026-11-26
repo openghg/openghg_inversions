@@ -36,14 +36,17 @@ Supported numerical envelopes
        unstacked curtain/period averaging weights. The embedded ``rhime_inputs``
        tree follows the generic format rules above.
    * - ``openghg_inversions.co2_o2_prepared_inputs``
-     - 5
+     - 6
      - Linked channels with absolute or independently labelled centered
-       transport and optional unstacked curtain/period averaging weights.
+       transport, optional unstacked curtain/period averaging weights, and
+       optional retained-prior marginal families and latent-correlation floor.
+   * - ``openghg_inversions.co2_o2_prepared_inputs``
+     - 5 (read only)
+     - Linked channels with the default all-lognormal retained prior.
 
-Only the current CO₂ and linked envelopes are accepted; older internal artifacts
-require preparation and sampling again. The envelopes have independent histories. Their versions do not
-follow the generic version number. Coherent-reduction covariance remains part of
-the CO₂ scientific contract.
+Internal artifacts outside this map require preparation and sampling again.
+The envelopes have independent histories and version numbers.
+Coherent-reduction covariance remains part of the CO₂ scientific contract.
 
 Supported stage manifests
 -------------------------
@@ -55,11 +58,11 @@ Supported stage manifests
    * - Identifier
      - Version
    * - ``openghg_inversions.standard.prepare``
-     - 2
+     - 2, 3
    * - ``openghg_inversions.standard.sample``
      - 3
    * - ``openghg_inversions.multisector.prepare``
-     - 2
+     - 2, 3
    * - ``openghg_inversions.multisector.sample``
      - 3
    * - ``openghg_inversions.co2.prepare``
@@ -74,8 +77,9 @@ Supported stage manifests
 Standard and multisector sample version 3 records the supported model choices
 without the retired aggregation-error option. Older sample manifests, including
 version 2, require the software version that wrote them or repeating sampling
-from a supported preparation. Preparation manifests remain version 2, including
-when they reference a supported ordinary raw version-2 numerical artifact.
+from a supported preparation. Current writers use preparation manifest version
+3 with nested ``data.bc_basis``. Readers also accept version 2 with flat
+boundary-basis settings.
 
 A manifest's version is independent of the numerical artifact it references.
 Preparation generation and final artifact bindings still control sample and

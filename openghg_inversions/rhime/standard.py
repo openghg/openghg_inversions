@@ -415,6 +415,7 @@ def prepare_standard(
     fix_basis_outer_regions: bool, use_bc: bool,
     basis_inputs: Mapping[str, Any], bc_basis: BoundaryBasis = nesw_basis,
     filter_options: Mapping[str, Mapping[str, Any]] | None = None,
+    basis_seed: int | None = None,
 ) -> PreparedInputs:
     """Prepare observations and sensitivities from supplied scientific resources.
 
@@ -427,6 +428,7 @@ def prepare_standard(
         filter_options: Keyword options for named observation filters.
         basis_algorithm: Selected basis-generation algorithm.
         nbasis: Requested generated basis size.
+        basis_seed: Seed for a generated quadtree basis; None leaves it random.
         fix_basis_outer_regions: Keep the supplied outer partition fixed.
         use_bc: Construct boundary-condition sensitivities.
         merged_data: Borrowed acquired observations, transport and current flux.
@@ -461,7 +463,7 @@ def prepare_standard(
             runtime_flux=runtime_flux,
             weighting_flux=merged_data.flux_data[flux_sources[0]]["flux"],
             domain=domain, start_date=start_date, basis_algorithm=basis_algorithm, nbasis=nbasis,
-            fix_outer_regions=fix_basis_outer_regions,
+            fix_outer_regions=fix_basis_outer_regions, seed=basis_seed,
             **basis_inputs,
         )
 
@@ -599,7 +601,7 @@ def run_standard(
             merged_data, basis_inputs=basis_inputs, bc_basis=bc_basis,
             **config.data.select(
                 "domain", "start_date", "flux_sources", "averaging_error", "filters", "filter_options",
-                "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc",
+                "basis_algorithm", "nbasis", "basis_seed", "fix_basis_outer_regions", "use_bc",
             ),
         )
     else:

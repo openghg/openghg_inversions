@@ -549,7 +549,7 @@ def test_inner_data_config_is_reusable_independently_of_reporting(tmp_path, outp
     assert inner.basis_partition_paths is None
     assert inner.basis_output_path is None
     assert inner.use_bc is False
-    assert inner.bc_input is None and inner.bc_basis_paths is None
+    assert inner.bc_input is None and inner.bc_basis.paths is None
     explicit = nested_module.inner_data_config(
         config.data, inner_domain="EUROPE-6km", inner_nbasis=40,
         inner_basis_path=tmp_path / "inner.nc", inner_basis_output_path=tmp_path / "export.nc",
@@ -558,6 +558,19 @@ def test_inner_data_config_is_reusable_independently_of_reporting(tmp_path, outp
     assert explicit.nbasis == 40
     assert explicit.basis_path == tmp_path / "inner.nc"
     assert explicit.basis_output_path == tmp_path / "export.nc"
+
+
+def test_inner_data_config_inherits_basis_seed_only_for_a_generated_quadtree(tmp_path):
+    from tests.test_staged_workflow import _params
+
+    config = RhimeConfig.from_params(_params(basis_algorithm="quadtree", basis_seed=5), multisector=False)
+    assert nested_module.inner_data_config(config.data, inner_domain="6km").basis_seed == 5
+    saved = nested_module.inner_data_config(
+        config.data, inner_domain="6km", inner_basis_algorithm="weighted", inner_basis_path=tmp_path / "inner.nc",
+    )
+    assert saved.basis_seed == 5
+    with pytest.raises(ValueError, match="basis_seed.*inner_basis_algorithm"):
+        nested_module.inner_data_config(config.data, inner_domain="6km", inner_basis_algorithm="weighted")
 
 
 def test_nested_automatic_basis_budget_uses_bounded_sensitivity_share() -> None:

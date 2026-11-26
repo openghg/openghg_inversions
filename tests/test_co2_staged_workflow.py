@@ -17,6 +17,7 @@ from time import perf_counter
 
 from netCDF4 import Dataset as NetCDFDataset
 import numpy as np
+import pymc as pm
 import pytest
 import xarray as xr
 
@@ -359,7 +360,7 @@ def test_saved_co2_product_adapter_preserves_in_memory_products_and_time_codecs(
     def forbidden(*args, **kwargs):
         pytest.fail("Saved-product adaptation must not construct a graph or sampler")
 
-    monkeypatch.setattr(handoffs.pm.Model, "__init__", forbidden)
+    monkeypatch.setattr(pm.Model, "__init__", forbidden)
     monkeypatch.setattr(handoffs, "build_co2_inference", forbidden)
     monkeypatch.setattr(inference, "build_co2_inference", forbidden)
     monkeypatch.setattr(inference, "sample_rhime_model", forbidden)

@@ -61,7 +61,7 @@ from openghg_inversions.rhime import (
     sample_rhime_model,
 )
 from openghg_inversions.rhime.standard import build_standard_model, materialize_standard_inputs
-from openghg_inversions.rhime.requests import load_params
+from openghg_inversions.rhime.requests import merge_params
 from openghg_inversions.rhime.preparation import resolve_bc_basis, acquire_merged_data
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
@@ -265,21 +265,21 @@ def run_custom_rhime(
         checked against the built model contract before posterior sampling.
     """
     params = read_rhime_ini(config_file) if config_file is not None else {}
-    params.update(kwargs)
-    configured_project_basis_path = params.pop("project_basis_path", None)
+    configured_project_basis_path = kwargs.pop("project_basis_path", params.pop("project_basis_path", None))
     if project_basis_path is None:
         project_basis_path = configured_project_basis_path
-    configured_eccentricity = params.pop(
+    configured_eccentricity = kwargs.pop(
         "max_child_pca_eccentricity",
-        DEFAULT_MAX_CHILD_PCA_ECCENTRICITY,
+        params.pop("max_child_pca_eccentricity", DEFAULT_MAX_CHILD_PCA_ECCENTRICITY),
     )
     if max_child_pca_eccentricity is None:
         max_child_pca_eccentricity = float(configured_eccentricity)
     # The project basis stage owns its algorithm and optional saved artifact.
     # A built-in algorithm choice is irrelevant to this copied recipe.
-    params.pop("basis_algorithm", None)
-    params.pop("basis_path", None)
-    config = RhimeConfig.from_params(load_params(overrides=params), multisector=False)
+    for values in (params, kwargs):
+        values.pop("basis_algorithm", None)
+        values.pop("basis_path", None)
+    config = RhimeConfig.from_params(merge_params(params, overrides=kwargs), multisector=False)
     validate_standard_output_resources(config.output)
     bc_basis = resolve_bc_basis(config.data)
 

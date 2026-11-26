@@ -30,6 +30,9 @@ import xarray as xr
 from openghg_inversions._serialization_codecs import _copy_json_mapping, _decode_json_mapping
 from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array, to_dense
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
+from openghg_inversions.inversion_data.o2n2 import (
+    MOLE_FRACTION, O2_OBSERVABLE_ATTR, O2_OBSERVABLE_PROVENANCE_KEY, DeltaO2N2Declaration,
+)
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
     AggregationError,
@@ -49,6 +52,7 @@ from openghg_inversions.serialization import (
 
 CO2_O2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_o2_prepared_inputs"
 CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 6
+_READABLE_PREPARED_INPUTS_SCHEMA_VERSIONS = (5, CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION)
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -204,13 +208,14 @@ class Co2O2PreparedInputs:
 
         Args:
             tree: Tree using the dedicated CO2/O2 prepared-input schema.
-                Only the current format is accepted; prepare older inputs again.
+                Version 5 trees use the default lognormal marginal on every
+                retained state. Version 6 may include copula marginal choices.
 
         Returns:
             Validated scientific inputs. Observations, fixed intercept, dense
-            covariance, prior moments, ocean-loading slices, available ratio
-            values, and independent error are materialized for validation;
-            sensitivity payloads may otherwise remain lazy.
+            covariance, prior moments and marginals, ocean-loading slices,
+            available ratio values, and independent error are materialized for
+            validation. Sensitivity payloads may otherwise remain lazy.
 
         Raises:
             KeyError: If a required node or scientific variable is absent.
@@ -219,9 +224,13 @@ class Co2O2PreparedInputs:
         if tree.attrs.get("schema") != CO2_O2_PREPARED_INPUTS_SCHEMA:
             raise ValueError(f"Expected Co2O2PreparedInputs schema {CO2_O2_PREPARED_INPUTS_SCHEMA!r}.")
         version = tree.attrs.get("schema_version")
-        if isinstance(version, bool) or not isinstance(version, Integral) or version != CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION:
+        if (
+            isinstance(version, bool)
+            or not isinstance(version, Integral)
+            or version not in _READABLE_PREPARED_INPUTS_SCHEMA_VERSIONS
+        ):
             raise ValueError(
-                f"Expected Co2O2PreparedInputs schema_version {CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION}; "
+                f"Expected Co2O2PreparedInputs schema_version in {_READABLE_PREPARED_INPUTS_SCHEMA_VERSIONS}; "
                 f"got {version!r}; prepare again."
             )
         unexpected_boundaries = {
@@ -248,6 +257,9 @@ class Co2O2PreparedInputs:
             datasets[name] = decode_cf_multiindexes(dataset, indexes) if indexes else dataset
         provenance = _decode_json_mapping(tree.attrs.get("provenance_json"), "Serialized CO2/O2 provenance")
         prior_data = datasets["retained_prior"]
+        floor = prior_data.attrs.get("latent_correlation_floor")
+        if version == 5 and ("marginal" in prior_data or "latent_correlation_floor" in prior_data.attrs):
+            raise ValueError("Serialized retained-prior marginals and floors require schema version 6.")
         prior = CorrelatedLognormalPrior(
             _stored_array(prior_data, "arithmetic_mean"),
             _stored_array(prior_data, "arithmetic_covariance"),
@@ -255,7 +267,6 @@ class Co2O2PreparedInputs:
         )
         if prior.state_dim != prior_data.attrs["state_dim"]:
             raise ValueError("Serialized retained-prior state_dim does not match its arithmetic mean.")
-        floor = prior_data.attrs.get("latent_correlation_floor")
         if floor is not None and (isinstance(floor, bool) or not isinstance(floor, (int, float, np.number))):
             raise ValueError(f"Serialized latent_correlation_floor must be a number; got {floor!r}.")
         joint = datasets["joint"]
@@ -565,11 +576,19 @@ def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
         if boundary.dims[1] not in boundary.indexes or not boundary.indexes[boundary.dims[1]].is_unique:
             raise ValueError(f"{channel} boundary states require unique labels.")
     _validate_independent_error(observations, prepared.independent_error_sd, materialize=True)
-    _correlated_prior(prepared.retained_prior, prepared.retained_prior_marginal, prepared.latent_correlation_floor)
+    if prepared.retained_prior_marginal is not None or prepared.latent_correlation_floor is not None:
+        _correlated_prior(prepared.retained_prior, prepared.retained_prior_marginal, prepared.latent_correlation_floor)
 
 
 def _retained_marginal(prior: CorrelatedLognormalPrior, marginal: xr.DataArray) -> xr.DataArray:
-    """Return marginal family names on the retained prior's exact state labels.
+    """Canonicalize marginal family names on the retained prior's state axis.
+
+    Args:
+        prior: Validated moments with the retained state's index.
+        marginal: Borrowed array of family names to materialize and validate.
+
+    Returns:
+        String family names on the retained state's coordinates.
 
     Raises:
         ValueError: If the names are not on the retained-state dimension with
@@ -582,9 +601,8 @@ def _retained_marginal(prior: CorrelatedLognormalPrior, marginal: xr.DataArray) 
         or not _same_index(marginal.indexes[state_dim], prior.mean.indexes[state_dim])
     ):
         raise ValueError("retained_prior_marginal must use the retained prior's state labels in the same order.")
-    return prior.mean.copy(data=np.asarray(marginal.values).astype(str)).rename("retained_prior_marginal").drop_attrs(
-        deep=False
-    )
+    names = np.asarray(marginal.values, dtype=object).astype(str)
+    return prior.mean.copy(data=names).rename("retained_prior_marginal").drop_attrs(deep=False)
 
 
 def _correlated_prior(
@@ -593,12 +611,14 @@ def _correlated_prior(
     latent_correlation_floor: float | None,
 ) -> CorrelatedPrior:
     """Build the retained states' copula prior from moments, marginals and floor."""
-    if marginal is None and latent_correlation_floor is not None:
-        raise ValueError("latent_correlation_floor applies only to copula priors; set retained_prior_marginal too.")
+    if marginal is None:
+        if latent_correlation_floor is not None:
+            raise ValueError("latent_correlation_floor applies only to copula priors; set retained_prior_marginal too.")
+        return CorrelatedPrior.from_lognormal(prior)
     return CorrelatedPrior(
         prior.mean,
         prior.arithmetic_covariance,
-        marginal="lognormal" if marginal is None else _retained_marginal(prior, marginal),
+        marginal=marginal,
         covariance_dim=prior.covariance_dim,
         latent_correlation_floor=latent_correlation_floor,
     )
@@ -840,6 +860,53 @@ def _joint_covariance(
     )
 
 
+def _resolve_o2_observable(
+    provenance: Mapping[str, Any], attrs: Mapping[str, Any], o2_units: str,
+) -> Literal["mole_fraction"] | DeltaO2N2Declaration | None:
+    """Resolve the O2 observable from observation attributes and provenance.
+
+    When both sources specify an observable, they must agree. For delta(O2/N2),
+    their reference ratio and other declaration fields must also agree.
+
+    Args:
+        provenance: Preparation provenance, which may contain an
+            ``o2_observable`` record.
+        attrs: Attributes on the O2 observation array.
+        o2_units: Unit label used to read a delta(O2/N2) declaration from the
+            observation attributes.
+
+    Returns:
+        ``"mole_fraction"`` if either source explicitly identifies O2 mole
+        fractions, a ``DeltaO2N2Declaration`` if either source identifies
+        delta(O2/N2), or ``None`` if neither source specifies an observable.
+
+    Raises:
+        ValueError: If either source contains invalid observable metadata or
+            the two sources disagree.
+    """
+    provenance_observable: Literal["mole_fraction"] | DeltaO2N2Declaration | None = (
+        DeltaO2N2Declaration.from_provenance(provenance)
+    )
+    attribute_observable: Literal["mole_fraction"] | DeltaO2N2Declaration | None = (
+        DeltaO2N2Declaration.from_attrs(attrs, units=o2_units)
+    )
+    record = provenance.get(O2_OBSERVABLE_PROVENANCE_KEY)
+    if isinstance(record, Mapping) and record.get("kind") == MOLE_FRACTION:
+        provenance_observable = "mole_fraction"
+    if attrs.get(O2_OBSERVABLE_ATTR) == MOLE_FRACTION:
+        attribute_observable = "mole_fraction"
+    if (
+        provenance_observable is not None
+        and attribute_observable is not None
+        and provenance_observable != attribute_observable
+    ):
+        raise ValueError(
+            "The O2 observable in the observation attributes and the one in "
+            f"provenance[{O2_OBSERVABLE_PROVENANCE_KEY!r}] disagree."
+        )
+    return attribute_observable if attribute_observable is not None else provenance_observable
+
+
 def prepare_co2_o2_inputs(
     *,
     co2_observations: xr.DataArray,
@@ -912,7 +979,14 @@ def prepare_co2_o2_inputs(
             one consistent spelling, including case.
         co2_units: Non-empty units label for CO2 observations and sensitivity rows.
         o2_units: Non-empty units label for O2 observations and sensitivity rows.
-        provenance: Optional JSON-serializable preparation provenance.
+        provenance: Optional JSON-serializable preparation provenance. A
+            delta(O2/N2) declaration under ``o2_observable``, or the same
+            fields as ``o2_observations`` attributes (see
+            :meth:`~openghg_inversions.inversion_data.o2n2.DeltaO2N2Declaration.from_attrs`),
+            is validated here, must name ``o2_units`` and is stored in the
+            returned provenance. An explicit ``mole_fraction`` observable is
+            also stored in provenance. When both sources specify an
+            observable, they must agree.
         boundary_sensitivity: Optional co2/o2 mapping of labelled H_bc arrays
             on native observation rows and one unique boundary-state axis.
             Channels must currently have identical units. Payloads remain borrowed.
@@ -936,7 +1010,9 @@ def prepare_co2_o2_inputs(
             Omit it for the lognormal prior.
         latent_correlation_floor: Optional opt-in eigenvalue floor in
             ``(0, 0.1]`` that repairs a copula prior's latent correlation when
-            it is not positive definite. Requires ``prior_marginal``.
+            it is not positive definite. Requires ``prior_marginal`` and applies
+            to mixed or non-lognormal marginals. The preparation retains the
+            requested arithmetic covariance.
 
     Returns:
         Labelled, backend-neutral joint inputs. Observation vectors, affine
@@ -957,6 +1033,16 @@ def prepare_co2_o2_inputs(
     if not co2_units.strip() or not o2_units.strip():
         raise ValueError("CO2 and O2 channel units must be non-empty.")
     prepared_provenance = _copy_json_mapping(provenance or {}, "CO2/O2 provenance")
+    observable = _resolve_o2_observable(prepared_provenance, o2_observations.attrs, o2_units)
+    if isinstance(observable, DeltaO2N2Declaration):
+        if o2_units != observable.units:
+            raise ValueError(
+                f"Linked O2 observation_units {o2_units!r} do not match the declared "
+                f"delta(O2/N2) units {observable.units!r}."
+            )
+        prepared_provenance[O2_OBSERVABLE_PROVENANCE_KEY] = observable.to_provenance()
+    elif observable == MOLE_FRACTION:
+        prepared_provenance[O2_OBSERVABLE_PROVENANCE_KEY] = {"kind": MOLE_FRACTION}
 
     boundary_sensitivity = dict(boundary_sensitivity or {})
     raw_operands = _raw_centered_channels(boundary_operands or {}, bc_centering_weights or {})
@@ -991,8 +1077,8 @@ def prepare_co2_o2_inputs(
     if prior_marginal is not None:
         prior_marginal = _retained_marginal(retained_prior, prior_marginal)
     floor = None if latent_correlation_floor is None else float(latent_correlation_floor)
-    # Solve the copula now so infeasible marginals fail at preparation, not at sampling.
-    _correlated_prior(retained_prior, prior_marginal, floor)
+    if prior_marginal is not None or floor is not None:
+        _correlated_prior(retained_prior, prior_marginal, floor)
     _sensitivity(co2_sensitivity, co2_observations, state_mean, "CO2")
     _sensitivity(o2_sensitivity, o2_observations, state_mean, "O2")
     o2_co2_flux_ratio_unavailable_reason = str(o2_co2_flux_ratio_unavailable_reason or "").strip() or None

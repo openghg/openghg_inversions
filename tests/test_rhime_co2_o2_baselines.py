@@ -190,7 +190,7 @@ def test_configuration_and_runner_forward_same_channel_options(monkeypatch):
             )
         return restore_inferencedata_coords(trace, get_coord_registry(built.model))
 
-    monkeypatch.setattr(co2_o2_runner, "sample_rhime_model", prior_sample)
+    monkeypatch.setattr(co2_o2_runner, "_sample_linked_rhime_model", prior_sample)
     trace = run_rhime_co2_o2_from_prepared_inputs(**configured)
     roles = json.loads(trace.attrs["rhime_variable_roles"])
     assert roles["co2_boundary_concentration"] == "co2_mu_bc"

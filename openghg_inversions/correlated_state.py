@@ -22,8 +22,8 @@ closure, not exact marginalization of a LogNormal state. Fixing a state at a
 known value is instead handled by ``models.StateActivity``.
 
 Model builders take a ``CorrelatedPrior``: arithmetic moments with a marginal
-family per state, joined by a Gaussian copula. Its only marginal is lognormal,
-built by ``CorrelatedLognormalPrior``. That class's constructor eagerly
+family per state, joined by a Gaussian copula. All-lognormal priors use
+``CorrelatedLognormalPrior``. That class's constructor eagerly
 computes xarray inputs and owns independent copies; ``to_dataset`` and
 ``from_dataset`` provide persistence boundaries. Construction warns before
 dense covariance materialization when the reduced state exceeds 1,000
@@ -683,12 +683,7 @@ _SERIES_VARIANCE_TOLERANCE = 1e-6
 _WEIBULL_SHAPE_BOUNDS = (0.02, 1000.0)
 
 _LATENT_REPAIR_MAX_CORRELATION_CHANGE = 0.01
-"""Largest change in an implied state correlation the latent-correlation floor may make.
-
-The floor's change is set by how negative the latent eigenvalues are, not by
-the floor. Beyond this the pairwise targets cannot belong to one copula, and
-the prior is refused instead of silently given different correlations.
-"""
+"""Maximum absolute change in any implied arithmetic correlation after repair."""
 
 GAMMA_LATENT_CAP = 8.0
 """Gamma states are held at their quantile for latent ``u = 8`` above it.
@@ -894,9 +889,19 @@ def _implied_covariance(
 ) -> np.ndarray:
     """Return the arithmetic covariance a latent correlation implies through the marginals.
 
-    The inverse of :func:`_solve_latent_correlation`, with the same closed forms
-    and Hermite series. Variances are the marginals' own, since the latent
-    correlation has a unit diagonal.
+    Uses the same closed forms and Hermite series as
+    :func:`_solve_latent_correlation`.
+
+    Args:
+        family: Marginal family per state.
+        mean: Arithmetic means in state order.
+        shape: Shape parameter per marginal.
+        coefficients: Hermite coefficients per state and series term.
+        sd: Arithmetic standard deviations in state order.
+        correlation: Latent correlation with unit diagonal.
+
+    Returns:
+        Arithmetic covariance with the marginals' variances on the diagonal.
     """
     size = mean.size
     rows, cols = np.triu_indices(size, 1)
@@ -923,17 +928,36 @@ def _implied_covariance(
 
 
 def _floor_latent_correlation(correlation: np.ndarray, floor: float) -> tuple[np.ndarray, np.ndarray]:
-    """Raise a correlation matrix's eigenvalues to ``floor`` and restore its unit diagonal.
+    """Floor the spectrum within each independent block and restore its unit diagonal.
 
-    Returns the repaired correlation and the eigenvalues before the repair.
-    The rescaling is a congruence, so the result stays positive definite.
+    Keeping the blocks separate preserves exact zeros between independent
+    states. Rescaling by the diagonal preserves positive definiteness.
+
+    Args:
+        correlation: Symmetric latent-correlation matrix with unit diagonal.
+        floor: Minimum eigenvalue before restoring the diagonal.
+
+    Returns:
+        Repaired correlation and the eigenvalues before repair.
     """
-    eigenvalues, vectors = np.linalg.eigh(correlation)
-    repaired = (vectors * np.maximum(eigenvalues, floor)) @ vectors.T
-    scale = np.sqrt(np.diag(repaired))
-    repaired = repaired / np.outer(scale, scale)
-    repaired = 0.5 * (repaired + repaired.T)
-    np.fill_diagonal(repaired, 1.0)
+    from scipy.sparse.csgraph import connected_components
+
+    count, labels = connected_components(correlation != 0, directed=False)
+    repaired = np.zeros_like(correlation)
+    eigenvalues = np.empty(correlation.shape[0], dtype=correlation.dtype)
+    for label in range(count):
+        positions = np.flatnonzero(labels == label)
+        index = np.ix_(positions, positions)
+        block = correlation[index]
+        values, vectors = np.linalg.eigh(block)
+        eigenvalues[positions] = values
+        if np.any(values < floor):
+            block = (vectors * np.maximum(values, floor)) @ vectors.T
+            scale = np.sqrt(np.diag(block))
+            block = block / np.outer(scale, scale)
+            block = 0.5 * (block + block.T)
+            np.fill_diagonal(block, 1.0)
+        repaired[index] = block
     return repaired, eigenvalues
 
 
@@ -943,9 +967,9 @@ class CorrelatedPrior:
     The prior is a Gaussian copula. A whitened standard-normal vector ``z`` is
     correlated as ``u = L z`` and each state is ``x_i = F_i^-1(Phi(u_i))``,
     where ``F_i`` is the state's marginal with its arithmetic mean and SD. The
-    latent correlations ``L L^T`` are chosen pair by pair so that the
-    arithmetic covariance is matched exactly (the NORTA construction).
-    Changing a marginal changes only the shape of that state's distribution.
+    latent correlations ``L L^T`` are chosen pair by pair to reproduce the
+    arithmetic covariance (the NORTA construction). Changing a marginal
+    preserves its declared arithmetic mean and variance.
 
     Marginals (:data:`STATE_MARGINALS`):
 
@@ -958,13 +982,12 @@ class CorrelatedPrior:
       a sum of states is pulled less towards small values.
 
     Pairs with a normal state, and lognormal pairs, have closed-form latent
-    correlations. Weibull and gamma pairs solve a Hermite series. A pair whose
-    covariance no latent correlation can reach is rejected. A latent
-    correlation that is not positive definite is rejected too, unless
-    ``latent_correlation_floor`` is given: then its eigenvalues are raised to
-    the floor and its unit diagonal restored, which moves the implied
-    arithmetic covariance slightly off the target. The size of that change is
-    recorded in :attr:`latent_correlation_repair`.
+    correlations. Remaining pairs involving Weibull or Gamma use a truncated
+    Hermite series for covariance matching. A pair whose covariance no latent
+    correlation can reach is rejected. A latent correlation that is not
+    positive definite is rejected by default. An explicit
+    ``latent_correlation_floor`` permits repair subject to the 0.01 bound on
+    arithmetic correlation changes. See :attr:`latent_correlation_repair`.
 
     Attributes:
         lognormal: Validated lognormal copula when every marginal is
@@ -1045,6 +1068,7 @@ class CorrelatedPrior:
             }
             if applied:
                 implied = _implied_covariance(family, mean_values, shape, coefficients, sd, repaired)
+                np.fill_diagonal(implied, np.diag(covariance_values))
                 change = np.abs(implied - covariance_values)
                 record.update(
                     max_abs_latent_correlation_change=float(np.max(np.abs(repaired - correlation))),
@@ -1053,13 +1077,14 @@ class CorrelatedPrior:
                 )
                 if record["max_abs_state_correlation_change"] > _LATENT_REPAIR_MAX_CORRELATION_CHANGE:
                     raise ValueError(
-                        "The latent correlation that reproduces the arithmetic covariance with these marginals "
-                        f"is far from positive definite (minimum eigenvalue {record['minimum_eigenvalue']:.6g}); "
-                        "repairing it would change implied state correlations by up to "
+                        f"Latent-correlation floor {floor:g} would change implied state correlations by up to "
                         f"{record['max_abs_state_correlation_change']:.3g}, more than "
-                        f"{_LATENT_REPAIR_MAX_CORRELATION_CHANGE}. Choose other marginals or covariances."
+                        f"{_LATENT_REPAIR_MAX_CORRELATION_CHANGE} "
+                        f"(minimum eigenvalue {record['minimum_eigenvalue']:.6g}). "
+                        "Choose a smaller floor or revise the marginals or covariance."
                     )
                 correlation = repaired
+                self._arithmetic_covariance = covariance.copy(data=implied)
             self._latent_repair = record
         try:
             cholesky = np.linalg.cholesky(correlation)
@@ -1080,7 +1105,17 @@ class CorrelatedPrior:
         covariance_dim: str | None,
         marginal: str | xr.DataArray,
     ) -> tuple[np.ndarray, xr.DataArray]:
-        """Validate and store a copula prior's moments and marginal names; return the mean values and covariance."""
+        """Validate and store the copula's labelled moments and marginal names.
+
+        Args:
+            mean: Arithmetic means indexed by state.
+            arithmetic_covariance: State covariance aligned with the mean.
+            covariance_dim: Optional covariance column dimension.
+            marginal: Family shared by the states or labels for each state.
+
+        Returns:
+            Numerical means in state order and their labelled covariance.
+        """
         state_dim, covariance_dim, mean_values, covariance = _validate_arithmetic_moments(
             mean, arithmetic_covariance, covariance_dim=covariance_dim, stacklevel=6
         )
@@ -1106,9 +1141,19 @@ class CorrelatedPrior:
     def _restrict(self, mean: xr.DataArray, marginal: xr.DataArray, indices: np.ndarray) -> CorrelatedPrior:
         """Return the prior of the states at ``indices``, relabelled by ``mean`` and ``marginal``.
 
-        The latent correlation is the block of this prior's, repaired or not,
-        so the result is this prior's marginal on those states. Its repair
-        record is this prior's.
+        The subset keeps the parent's latent correlation block and repair
+        provenance.
+
+        Args:
+            mean: Arithmetic means relabelled for the selected states.
+            marginal: Marginal families with the same new labels.
+            indices: Positions of these states in the parent prior.
+
+        Returns:
+            Marginal prior on the selected states.
+
+        Raises:
+            ValueError: If the prior uses the all-lognormal construction.
         """
         if self.lognormal is not None:
             raise ValueError("Restrict an all-lognormal prior through its CorrelatedLognormalPrior.")
@@ -1176,7 +1221,10 @@ class CorrelatedPrior:
 
     @property
     def arithmetic_covariance(self) -> xr.DataArray:
-        """Return the arithmetic covariance.
+        """Return the arithmetic covariance of this copula.
+
+        After an applied repair, the covariance is implied by the repaired
+        latent correlation and the selected marginals.
 
         Returns:
             An independent deep copy of the dense labelled covariance.
@@ -1197,6 +1245,24 @@ class CorrelatedPrior:
     def is_lognormal(self) -> bool:
         """Whether every state has the lognormal marginal."""
         return self.lognormal is not None
+
+    def metadata(self) -> dict[str, Any]:
+        """Describe this prior for saved model outputs.
+
+        Returns:
+            JSON-safe prior description, state counts per marginal family
+            and the repair diagnostics. The repair field is ``None`` when no
+            repair was requested.
+        """
+        families, counts = np.unique(self.marginal.values, return_counts=True)
+        return {
+            "prior": (
+                "correlated arithmetic-moment lognormal" if self.is_lognormal
+                else "correlated arithmetic-moment Gaussian copula"
+            ),
+            "prior_marginals": {str(family): int(count) for family, count in zip(families, counts, strict=True)},
+            "prior_latent_correlation_repair": self.latent_correlation_repair,
+        }
 
     def _state_matrix(self, values: np.ndarray, name: str) -> xr.DataArray:
         coords = {key: coord for key, coord in self._mean.coords.items()}
@@ -1233,24 +1299,6 @@ class CorrelatedPrior:
         squared mean units) and ``max_abs_state_correlation_change``.
         """
         return None if self._latent_repair is None else dict(self._latent_repair)
-
-    def metadata(self) -> dict[str, Any]:
-        """Describe the prior for model and trace metadata.
-
-        Returns:
-            JSON-safe ``prior`` description, state counts per marginal family
-            (``prior_marginals``) and the latent-correlation repair record
-            (``prior_latent_correlation_repair``, ``None`` without one).
-        """
-        families, counts = np.unique(np.asarray(self.marginal.values).astype(str), return_counts=True)
-        return {
-            "prior": (
-                "correlated arithmetic-moment lognormal" if self.is_lognormal
-                else "correlated arithmetic-moment Gaussian copula"
-            ),
-            "prior_marginals": {str(name): int(count) for name, count in zip(families, counts, strict=True)},
-            "prior_latent_correlation_repair": self.latent_correlation_repair,
-        }
 
     @property
     def marginal_shape(self) -> xr.DataArray:

@@ -19,6 +19,7 @@ from openghg_inversions.rhime.co2 import co2_o2_runner
 from openghg_inversions.rhime.co2.co2_o2_cached_sigma_runner import run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2, run_rhime_co2_o2_from_prepared_inputs
 from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.serialization import save_datatree
 
 from test_co2_o2_fixed_ou import _prepared
 from test_rhime_co2_o2 import _independent_error
@@ -137,6 +138,33 @@ def test_weibull_and_gamma_marginals_and_floor_survive_save_and_load(tmp_path: P
         assert "latent_correlation_floor" not in prepared.to_datatree()["retained_prior"].attrs
 
 
+def test_version_five_preparation_loads_with_original_lognormal_prior(tmp_path: Path) -> None:
+    """Read the previous wire format with its original prior semantics."""
+    prepared = prepare_co2_o2_inputs(**_durable_inputs())
+    tree = prepared.to_datatree()
+    tree.attrs["schema_version"] = 5
+    path = tmp_path / "linked-v5.nc"
+    save_datatree(tree, path)
+
+    restored = Co2O2PreparedInputs.load(path)
+
+    assert restored.retained_prior_marginal is None
+    assert restored.latent_correlation_floor is None
+    xr.testing.assert_identical(restored.retained_prior.mean, prepared.retained_prior.mean)
+    xr.testing.assert_identical(
+        restored.retained_prior.arithmetic_covariance, prepared.retained_prior.arithmetic_covariance
+    )
+
+
+def test_version_five_rejects_copula_fields() -> None:
+    """Require the version that declares the changed prior semantics."""
+    inputs = _durable_inputs()
+    tree = prepare_co2_o2_inputs(**inputs, prior_marginal=_marginal(inputs["retained_prior"])).to_datatree()
+    tree.attrs["schema_version"] = 5
+    with pytest.raises(ValueError, match="require schema version 6"):
+        Co2O2PreparedInputs.from_datatree(tree)
+
+
 def test_preparation_rejects_invalid_marginals_and_floor() -> None:
     inputs = _durable_inputs()
     prior = inputs["retained_prior"]
@@ -198,11 +226,11 @@ def test_linked_runner_builds_the_copula_prior_with_partial_activity(monkeypatch
         assert built.model.initial_point()["flux_scaling_active_latent"].shape == (4,)
 
 
-@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("route", ["ordinary", "cached", "fixed_cached"])
 @pytest.mark.parametrize("partial", [False, True])
-def test_saved_marginals_sample_through_ordinary_and_cached_linked_runners(tmp_path: Path, cached, partial) -> None:
+def test_saved_marginals_sample_through_ordinary_and_cached_linked_runners(tmp_path: Path, route, partial) -> None:
     """Smoke test: a reloaded Weibull/gamma preparation samples through both linked runners."""
-    prepared = _with_marginals(_prepared())
+    prepared = _with_marginals(_prepared(), floor=1e-6)
     prepared = replace(prepared, independent_error_sd=_independent_error(prepared))
     path = tmp_path / "prepared.nc"
     prepared.save(path)
@@ -217,12 +245,19 @@ def test_saved_marginals_sample_through_ordinary_and_cached_linked_runners(tmp_p
             ),
             fixed_value=0.75,
         )
-    runner = run_rhime_co2_o2_cached_sigma_from_prepared_inputs if cached else run_rhime_co2_o2_from_prepared_inputs
+    if route == "cached":
+        runner = run_rhime_co2_o2_cached_sigma_from_prepared_inputs
+    else:
+        runner = run_rhime_co2_o2_from_prepared_inputs
+    amplitudes = (
+        {"fixed_site_amplitudes": 0.5}
+        if route == "fixed_cached"
+        else {"site_amplitude_prior": {"pdf": "uniform", "lower": 0.1, "upper": 1.5}}
+    )
     trace = runner(
         prepared_inputs=prepared,
         state_activity=activity,
         tau_hours={"co2:A": 6.0, "o2:A": 8.0, "o2:B": 2.0},
-        site_amplitude_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.5},
         sampler=RhimeSampler(
             nuts_sampler="pymc",
             draws=5,
@@ -230,6 +265,7 @@ def test_saved_marginals_sample_through_ordinary_and_cached_linked_runners(tmp_p
             chains=1,
             sample_kwargs={"cores": 1, "random_seed": 1099, "progressbar": False, "compute_convergence_checks": False},
         ),
+        **amplitudes,
     )
     flux = trace.posterior["flux_scaling"].values
     assert flux.shape[-1] == 5 and np.isfinite(flux).all() and (flux > 0).all()
@@ -238,3 +274,8 @@ def test_saved_marginals_sample_through_ordinary_and_cached_linked_runners(tmp_p
     metadata = json.loads(trace.attrs["rhime_model_metadata"])
     assert metadata["prior"] == "correlated arithmetic-moment Gaussian copula"
     assert metadata["prior_marginals"] == {"gamma": 2, "lognormal": 1, "weibull": 2}
+    assert metadata["prior_latent_correlation_repair"]["floor"] == 1e-6
+    assert metadata["recipe"] == ("co2_o2_cached_sigma_fixed_ou" if route == "cached" else "co2_o2")
+    if route == "fixed_cached":
+        actual = json.loads(trace.attrs["rhime_actual_inference"])
+        assert actual["algorithm"] == "cached_fixed_ou_state_nuts"

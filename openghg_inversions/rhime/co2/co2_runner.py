@@ -25,6 +25,7 @@ from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.models.boundary import Bound, Choice, RawCenteredSensitivity, bind_prepared
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.models.scalar_sigma import (
     ScalarSigmaEigenbasis,
@@ -467,6 +468,7 @@ def build_co2_from_materialized(
     prepared_inputs: Co2PreparedInputs,
     priors: Mapping[str, PriorArgs],
     boundary: Bound | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     sigma_alignment: SigmaAlignment | None = None,
     sigma_prior: PriorArgs | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,
@@ -495,6 +497,8 @@ def build_co2_from_materialized(
         prepared_inputs: Preparation supplying aggregation mode and provenance.
         priors: Materialized prior parameters under their concrete graph names.
         boundary: Jointly materialized bound boundary, or None when disabled.
+        outer_flux: Optional outer-flux choice, which the model builder
+            resolves on the retained flux prior.
 
     Returns:
         Constructed PyMC model with component-declared scientific roles, units
@@ -560,6 +564,7 @@ def build_co2_from_materialized(
         fixed_model_mismatch=prepared_mismatch,
         state_activity=_state_activity_from_inputs(model_inputs),
         boundary=boundary,
+        outer_flux=outer_flux,
         offset_prior=priors["offset_latent"] if offset_prior is not None else None,
         offset_args=offset_args,
     )
@@ -578,6 +583,9 @@ def build_co2_from_materialized(
     boundary_outputs = boundary.outputs() if boundary is not None else None
     if boundary_outputs is not None:
         variable_roles.update(boundary_outputs.roles)
+    outer_outputs = outer_flux.outputs() if outer_flux is not None else None
+    if outer_outputs is not None:
+        variable_roles.update(outer_outputs.roles)
     if offset_prior is not None:
         variable_roles["offset_concentration"] = "offset"
     for role, name in {
@@ -602,6 +610,7 @@ def build_co2_from_materialized(
                 "use_bc": boundary is not None,
                 **(boundary_outputs.metadata if boundary_outputs is not None else {"boundary_formulation": None}),
                 "boundary_units": boundary_outputs.units if boundary_outputs is not None else {},
+                **(outer_outputs.metadata if outer_outputs is not None else {}),
                 "add_offset": offset_prior is not None,
                 "offset_args": resolved_offset_args,
                 "likelihood": (
