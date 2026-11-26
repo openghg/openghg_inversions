@@ -7,13 +7,14 @@ import json
 import warnings
 
 import pytest
+import xarray as xr
 
 from openghg_inversions.rhime.ini import read_rhime_ini
 from openghg_inversions.rhime.params import (
     DATA_OPTION_GROUPS, BcBasisOptions, DataConfig, OptionGroup, RhimeConfig, group_params, nest_flat_options,
 )
 from openghg_inversions.rhime.requests import load_params
-from tests.test_staged_workflow import _params
+from tests.test_staged_workflow import _params, _prepared
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,33 @@ def test_group_in_both_forms_is_rejected():
         group_params(_params(bc_basis={"algorithm": "NESW"}, bc_basis_split_height=2.0))
 
 
+@pytest.mark.parametrize("entries", [
+    [("bc_basis_algorithm", "NESW"), ("data", {"bc_basis": {"algorithm": "twelve-region"}})],
+    [("bc_basis", {"algorithm": "twelve-region"}), ("data", {"bc_basis_algorithm": "NESW"})],
+])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_request_rejects_mixed_basis_spellings_across_locations(tmp_path, entries, reverse):
+    """Reject mixed spelling within either source regardless of placement or key order."""
+    options = dict(reversed(entries) if reverse else entries)
+    source = tmp_path / "params.json"
+    source.write_text(json.dumps(options))
+    with pytest.raises(ValueError, match="bc_basis.*both as a mapping and as flat"):
+        load_params(params_file=source)
+    with pytest.raises(ValueError, match="bc_basis.*both as a mapping and as flat"):
+        load_params(overrides=options)
+
+
+def test_inactive_basis_fields_are_checked_without_resolving_values(tmp_path):
+    """Check names in inactive preparation options without opening paths or parsing values."""
+    source = tmp_path / "params.json"
+    phases = {"model", "sampler"}
+    source.write_text(json.dumps({"data": {"bc_basis": {"paths": 42, "split_heigth": 2.5}}}))
+    with pytest.raises(ValueError, match=r"data\.bc_basis\.split_heigth"):
+        load_params(params_file=source, phase_groups=phases)
+    source.write_text(json.dumps({"data": {"bc_basis": {"paths": 42}}}))
+    assert load_params(params_file=source, phase_groups=phases)["data"] == {}
+
+
 def test_nested_request_needs_no_warning_and_round_trips():
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
@@ -61,14 +89,40 @@ def test_flat_python_request_is_deprecated_but_equivalent():
     assert flat.data == nested.data
 
 
-def test_old_flat_manifest_data_still_loads(tmp_path):
-    config = RhimeConfig.from_params(_params(bc_basis={"paths": [tmp_path / "bc.nc"]}), multisector=False).data
-    record = config.to_params()
-    del record["bc_basis"]
-    record.update(bc_basis_paths=[str(tmp_path / "bc.nc")], bc_basis_algorithm="NESW", bc_basis_split_height=3000.0)
-    with pytest.warns(DeprecationWarning):
-        loaded = DataConfig.from_params(record)
-    assert loaded.bc_basis == config.bc_basis
+@pytest.mark.parametrize("multisector", [False, True], ids=["standard", "multisector"])
+def test_preparation_manifest_round_trip_reads_nested_v3_and_flat_v2(tmp_path, multisector):
+    """Save and reopen a current preparation and the former v2 layout."""
+    from examples.multisector_handoffs import synthetic_inputs
+    from openghg_inversions.rhime import _standard_stages, multisector_stages
+
+    basis = {"paths": None, "algorithm": "twelve-region", "split_height": 2000.0}
+    output = tmp_path / "prepared"
+    if multisector:
+        stages = multisector_stages
+        merged, params, *_ = synthetic_inputs(tmp_path / "inputs")
+        data = DataConfig.from_params({**params, "bc_basis": basis}, multisector=True)
+        manifest = stages.prepare(data, output_dir=output, merged_data=merged)
+    else:
+        stages = _standard_stages
+        data = RhimeConfig.from_params(_params(bc_basis=basis), multisector=False).data
+        manifest = stages.save_preparation(_prepared(), data_config=data, output_dir=output)
+
+    record = json.loads(manifest.read_text())
+    assert record["schema_version"] == 3
+    assert record["data"]["bc_basis"] == basis
+    prepared, recorded, generation = stages.load_preparation(manifest)
+    assert recorded == data
+    assert generation == record["generation"]
+
+    record["schema_version"] = 2
+    record["data"].update({f"bc_basis_{key}": value for key, value in record["data"].pop("bc_basis").items()})
+    legacy = manifest.with_name("v2-prepare.json")
+    legacy.write_text(json.dumps(record))
+    with pytest.warns(DeprecationWarning, match="bc_basis_algorithm"):
+        old_prepared, old_data, old_generation = stages.load_preparation(legacy)
+    xr.testing.assert_identical(old_prepared.inv_inputs, prepared.inv_inputs)
+    assert old_data == recorded
+    assert old_generation == generation
 
 
 def test_unknown_group_field_is_rejected():

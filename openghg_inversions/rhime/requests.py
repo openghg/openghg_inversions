@@ -97,7 +97,7 @@ def merge_params(
     groups: dict[str, dict[str, Any]] = {group: {} for group in owners}
     unsuitable = []
     # Classify names only: values of inactive groups are never resolved.
-    group_keys = {group.key for group in DATA_OPTION_GROUPS}
+    group_fields = {group.key: frozenset(group.flat_names().values()) for group in DATA_OPTION_GROUPS}
     for values, is_override in ((params, False), (overrides or {}, True)):
         if not isinstance(values, Mapping):
             raise ValueError(f"RHIME parameters must be a mapping; got {type(values).__name__}.")
@@ -116,8 +116,10 @@ def merge_params(
                 if owner is None or name not in owners[owner] or (is_override and owner not in active):
                     unsuitable.append(f"{key}.{name}" if key in owners else name)
                     continue
+                if owner == "data" and name in group_fields and isinstance(item, Mapping):
+                    unsuitable.extend(f"data.{name}.{field}" for field in item if field not in group_fields[name])
                 previous = groups[owner].get(name)
-                if name in group_keys and isinstance(previous, Mapping) and isinstance(item, Mapping):
+                if name in group_fields and isinstance(previous, Mapping) and isinstance(item, Mapping):
                     item = {**previous, **item}
                 groups[owner][name] = item
     if unsuitable:
@@ -134,8 +136,14 @@ def merge_params(
 
 
 def _nest_data_groups(values: Mapping[str, Any]) -> dict[str, Any]:
-    """Nest deprecated flat data option-group names, at top level and under ``data``."""
+    """Reject mixed spellings in one source, then nest its deprecated flat keys."""
+    data = values.get("data")
+    if isinstance(data, Mapping):
+        for group in DATA_OPTION_GROUPS:
+            flat = group.flat_names().keys()
+            if (group.key in data and flat & values.keys()) or (group.key in values and flat & data.keys()):
+                raise ValueError(f"`{group.key}` is given both as a mapping and as flat option(s); use one form.")
     result = nest_flat_options(values, DATA_OPTION_GROUPS, deprecated=True)
-    if isinstance(result.get("data"), Mapping):
-        result["data"] = nest_flat_options(result["data"], DATA_OPTION_GROUPS, deprecated=True)
+    if isinstance(data, Mapping):
+        result["data"] = nest_flat_options(data, DATA_OPTION_GROUPS, deprecated=True)
     return result

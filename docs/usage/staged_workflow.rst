@@ -46,8 +46,10 @@ resolution. A direct builder checks that producer-resolved BC and floor operands
 match its settings; it does not recalculate them. See
 :doc:`concrete_rhime_model` for the backend-neutral resolution interface.
 
-Standard and multisector preparation manifests use version 2; sample manifests
-use version 3, whose model records omit retired aggregation-error options.
+Standard and multisector preparation manifests use version 3, which stores
+nested boundary-basis settings under ``data.bc_basis``. The readers also
+accept version 2 with the flat boundary-basis fields. Sample manifests use
+version 3, whose model records omit retired aggregation-error options.
 Older sample manifests are rejected before loading scientific payloads: use the
 software version that wrote them, or repeat sampling from a supported preparation.
 Do not change a manifest's version field to bypass this check. Generic prepared
