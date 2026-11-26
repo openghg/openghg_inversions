@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
 import pymc as pm
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 class RegisteredAggregationError:
     """Aggregation-error tensors registered with the active PyMC model."""
 
-    mode: str
+    mode: Literal["none", "dense", "low_rank"]
     marginal_variance: TensorVariable
     covariance: TensorVariable | None = None
     factor: TensorVariable | None = None
@@ -235,7 +235,7 @@ def add_gaussian_observation_likelihood(
         mean: Completed forward-model concentration.
         independent_variance: Observation-aligned variance independent of the
             fixed aggregation error.
-        aggregation_error: Selected diagonal, dense, or low-rank fixed
+        aggregation_error: Selected dense or low-rank fixed
             aggregation covariance.
         output_dim: Named observation dimension for the PyMC variable.
         paired_error: Optional fixed correlations between pairs of rows.
@@ -261,14 +261,10 @@ def add_gaussian_observation_likelihood(
             aggregation_error=aggregation_error, output_dim=output_dim,
             paired_error=paired_error, paired_error_sd=paired_error_sd,
         )
-    if aggregation_error.mode in ("none", "diagonal"):
-        variance = independent_variance
-        if aggregation_error.mode == "diagonal":
-            assert aggregation_error.diagonal_variance is not None
-            variance = variance + aggregation_error.diagonal_variance
+    if aggregation_error.mode == "none":
         return cast(
             TensorVariable,
-            pm.Normal("y", mu=mean, sigma=pt.sqrt(variance), observed=observed, dims=output_dim),
+            pm.Normal("y", mu=mean, sigma=pt.sqrt(independent_variance), observed=observed, dims=output_dim),
         )
 
     if aggregation_error.mode == "dense":
@@ -324,7 +320,7 @@ def _add_paired_gaussian_likelihood(
             pm.MvNormal("y", mu=mean, cov=covariance, observed=observed, dims=output_dim),
         )
     variance = independent_variance
-    if aggregation_error.mode in ("diagonal", "low_rank"):
+    if aggregation_error.mode == "low_rank":
         assert aggregation_error.diagonal_variance is not None
         variance = variance + aggregation_error.diagonal_variance
     variance = pt.broadcast_to(variance, mean.shape)

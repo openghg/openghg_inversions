@@ -13,10 +13,10 @@ import pytensor.tensor as pt
 import xarray as xr
 
 from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array, to_dense_tree
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.models import (
     StateActivity,
-    add_correlated_lognormal_state_with_activity,
+    add_correlated_state_with_activity,
     apply_linear_sensitivity,
     prepare_linear_sensitivity,
     registered_model,
@@ -34,6 +34,7 @@ from openghg_inversions.models.components import (
     warn_constant_offset_confounding,
 )
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.observation_error import AggregationError
 
@@ -218,8 +219,14 @@ def _add_co2_o2_baseline_components(
     _validate_channel_offset_options(offset_prior, offset_args)
     if not boundary and not offset_prior:
         return []
-    if len(np.unique(observations["observation_units"].values)) != 1:
-        raise ValueError("Linked boundary and offset components currently require identical channel units.")
+    # Offsets are channel-native: each prior is in its channel's units and the
+    # padded design is zero on the other channel, so mixed units are well defined.
+    # Linked boundaries keep the identical-unit contract until their per-channel
+    # scaling is defined.
+    if any(bound is not None for bound in (boundary or {}).values()) and (
+        len(np.unique(observations["observation_units"].values)) != 1
+    ):
+        raise ValueError("Linked boundary components currently require identical channel units.")
     output_dim = str(observations.dims[0])
     components = []
     boundaries = []
@@ -279,10 +286,11 @@ def build_co2_o2_model(
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
     aggregation_error: AggregationError,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -338,17 +346,24 @@ def build_co2_o2_model(
             embed the fixed oxidation ratios.
         aggregation_error: Joint fixed aggregation covariance, including its
             cross-channel block.
-        retained_prior: Correlated arithmetic-moment prior for the one state
-            vector shared by both channels.
+        retained_prior: Correlated arithmetic moments and marginals for the
+            one state vector shared by both channels.
         independent_error_sd: Joint per-row independent standard deviations in
             each observation row's native units.
         state_activity: Optional labelled policy fixing or activating retained
             states.
         boundary: Resolved boundary component, keyed by channel.
+        outer_flux: Optional outer-flux choice, resolved here once on the
+            shared ``retained_prior`` for both channels. Its fixed outer states
+            are held at their prior mean with zero uncertainty after joint
+            exact-zero pruning. See
+            :doc:`/usage/atmospheric_baseline`.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
-            with the same meanings as the CO2 offset component. Baseline terms
-            require identical channel units and are zero on the other channel.
+            with the same meanings as the CO2 offset component. Each channel's
+            offset is in that channel's units and is zero on the other channel,
+            so offsets allow mixed units (for example ppm CO2 and per-meg O2).
+            Boundary terms still require identical channel units.
         output_dim: Joint observation dimension used by the likelihood.
         tau_hours: Optional fixed OU timescale in hours, scalar or mapping keyed
             by ``co2:SITE``/``o2:SITE``.
@@ -377,7 +392,8 @@ def build_co2_o2_model(
     (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd), boundary, priors = (
         dask_compute(*to_dense_tree((
             (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd),
-            dict(boundary or {}), {"amplitude": site_amplitude_prior, "offset": offset_prior},
+            dict(boundary or {}),
+            {"amplitude": site_amplitude_prior, "offset": offset_prior},
         )))
     )
     site_amplitude_prior, offset_prior = priors["amplitude"], priors["offset"]
@@ -391,6 +407,7 @@ def build_co2_o2_model(
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
         boundary=boundary,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
         output_dim=output_dim,
@@ -408,10 +425,11 @@ def _build_co2_o2_model(
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
     aggregation_error: AggregationError,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -438,9 +456,12 @@ def _build_co2_o2_model(
         output_dim=output_dim,
     )
     activity = resolve_state_activity(prepared_sensitivity.removed, state_activity)
+    if outer_flux is not None:
+        # Resolve the choice once on the shared prior the model samples.
+        activity = outer_flux.resolve_states(retained_prior).fix_states(activity)
 
     with registered_model() as model:
-        state = add_correlated_lognormal_state_with_activity(
+        state = add_correlated_state_with_activity(
             activity,
             retained_prior,
             var_name="flux_scaling",

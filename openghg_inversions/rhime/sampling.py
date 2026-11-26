@@ -29,11 +29,33 @@ def sample_rhime_model(
     Returns:
         Sampled posterior and predictive groups.
     """
+    return _sample_rhime_model(model_build_result, sampler, defer_deterministics=False)
+
+
+def _sample_linked_rhime_model(
+    model_build_result: RhimeModelBuildResult, sampler: RhimeSampler,
+) -> xr.DataTree:
+    """Sample a linked CO2/O2 recipe with deferred recording where supported."""
+    return _sample_rhime_model(model_build_result, sampler, defer_deterministics=True)
+
+
+def _sample_rhime_model(
+    model_build_result: RhimeModelBuildResult,
+    sampler: RhimeSampler,
+    *,
+    defer_deterministics: bool,
+) -> xr.DataTree:
+    """Run the recipe's sampler and record its total elapsed time."""
+    model = model_build_result.model
+    roles = model_build_result.output_contract.variable_roles
+    sample = sampler.sample
+
     timing_start = timer_start()
-    idata = sampler.sample(
-        model_build_result.model,
-        variable_roles=model_build_result.output_contract.variable_roles,
-    )
+    if defer_deterministics and getattr(sample, "__func__", None) is RhimeSampler.sample:
+        idata = RhimeSampler._sample(sampler, model, variable_roles=roles, defer_deterministics=True)
+    else:
+        idata = sample(model, variable_roles=roles)
+
     log_timing(
         "rhime.sampler_total",
         timer_seconds(timing_start),

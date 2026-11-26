@@ -11,7 +11,7 @@ import xarray as xr
 from openghg_inversions.boundary_sensitivity import validate_boundary_operands
 from openghg_inversions.models import StateActivity, get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.observation_error import resolve_aggregation_error
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.rhime.co2 import build_co2_model, Co2PreparedInputs, Co2O2PreparedInputs
 from openghg_inversions.models.boundary import AdditiveChoice, CenteredMultiplicativeBoundary, MultiplicativeChoice
 from openghg_inversions.postprocessing.boundary_outputs import restore_absolute_predictives
@@ -68,7 +68,7 @@ def _single_models(constant, fixed, frequency=None, default_prior=False):
     aligned = BoundCenteredSensitivity.bind(raw_transport(operands), inputs.mf, frequency=frequency)
     absolute = aligned.H_bc_anomaly + aligned.bc_reference * aligned.H_bc_mass
     options = dict(
-        retained_prior=CorrelatedLognormalPrior(
+        retained_prior=CorrelatedPrior(
             inputs.alpha_prior_mean, inputs.alpha_prior_covariance, covariance_dim="region_cov"
         ),
         fixed_prior_contribution=inputs.fixed_prior_contribution,
@@ -113,7 +113,7 @@ def test_centered_operand_dimensions_use_observation_dimension_labels(frequency)
     )
     operands = _operands(inputs.mf)
     options = dict(
-        retained_prior=CorrelatedLognormalPrior(
+        retained_prior=CorrelatedPrior(
             inputs.alpha_prior_mean, inputs.alpha_prior_covariance, covariance_dim="region_cov"
         ),
         fixed_prior_contribution=inputs.fixed_prior_contribution,
@@ -512,7 +512,7 @@ def test_related_centered_arrays_materialize_one_shared_graph():
     assert isinstance(prepared.inv_inputs.H_bc_mass.data, da.Array)
 
 
-def test_centered_cached_rejects_float32_before_materialization(monkeypatch):
+def test_nondefault_centered_prior_rejects_float32_before_materialization(monkeypatch):
     import dask.array as da
     from dask import delayed
     from openghg_inversions.rhime.co2 import co2_cached_sigma_runner
@@ -539,7 +539,7 @@ def test_centered_cached_rejects_float32_before_materialization(monkeypatch):
                 prepared_inputs=prepared,
                 tau_hours=2.0,
                 site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.1},
-                boundary=MultiplicativeChoice(dict(DEFAULT_BC_PRIOR)),
+                boundary=MultiplicativeChoice({**DEFAULT_BC_PRIOR, "sigma": 0.1}),
             )
         assert pytensor.config.floatX == "float32"
     assert executions == []

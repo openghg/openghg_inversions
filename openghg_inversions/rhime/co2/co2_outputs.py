@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 import json
 from pathlib import Path
@@ -23,7 +23,7 @@ from openghg_inversions.rhime.outputs import (
     _define_output_filename,
     _resolve_output_path,
 )
-from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
+from openghg_inversions.rhime._stage_artifacts import _validate_filename_component, check_checkpoint_targets
 from openghg_inversions.serialization import reset_serialisation_multiindexes, save_datatree, save_trace
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
@@ -251,6 +251,8 @@ def validate_co2_product_request(
     returned country matrix. Saved prior-draw availability is checked separately
     when products consume the completed trace.
     """
+    if output.output_format == "none":
+        return None
     validate_co2_outputs(output, bound=bound, source_to_sector=source_to_sector)
     return validate_co2_reporting_inputs(output, prepared, bound)
 
@@ -541,6 +543,20 @@ def prepared_period(result: Co2Output) -> str:
     return averaging_period[0] or "0h"
 
 
+def _co2_product_names(output: Co2OutputOptions, *, has_reconstruction: bool, has_countries: bool) -> tuple[str, ...]:
+    """Predict the products :func:`calculate_co2_products` attaches, for early output-path preflight."""
+    if output.output_format == "none":
+        return ()
+    names = ["basic"]
+    if has_reconstruction:
+        names.append("native_flux")
+        if has_countries:
+            names.append("country_flux")
+        if output.output_format == "paris":
+            names.extend(("paris_concentration", "paris_flux"))
+    return tuple(names)
+
+
 def calculate_co2_products(
     *,
     result: Co2Output,
@@ -581,25 +597,65 @@ def calculate_co2_products(
     result.outputs.update(products, concentration_components=components)
 
 
-def save_co2_products(
-    result: Co2Output, *, output: Co2OutputOptions,
-) -> None:
-    """Export configured products and the optional trace.
-
-    Full concentration-component draws remain available in memory. Product
-    filenames follow the configured RHIME naming convention.
-    """
+def _co2_output_paths(
+    output: Co2OutputOptions, *, domain: str, start_date: str, product_names: Iterable[str],
+) -> tuple[dict[str, Path], Path | None]:
+    """Resolve the writer's concrete product and trace paths before inference."""
     if output.output_format == "none":
-        return
-    domain = result.domain
-    start_date = result.start_date
+        return {}, None
     product_paths = {
         name: _define_output_filename(
             output.output_path, "co2", domain, f"{output.output_name}_{name}", start_date,
             filename_convention="rhime",
         )
-        for name in result.outputs if name != "concentration_components"
+        for name in product_names if name != "concentration_components"
     } if output.output_path is not None else {}
+    trace_path = _resolve_output_path(output.save_trace, output.output_path,
+                                      f"{output.output_name}{start_date}_trace.nc")
+    return product_paths, trace_path
+
+
+def _checked_co2_output_paths(
+    output: Co2OutputOptions, *, domain: str, start_date: str,
+    product_names: Iterable[str], referenced: tuple[Path, ...] = (),
+) -> tuple[dict[str, Path], Path | None]:
+    """Check every actual target before any writer opens a destination."""
+    product_names = tuple(product_names)
+    paths, trace_path = _co2_output_paths(
+        output, domain=domain, start_date=start_date, product_names=product_names,
+    )
+    reporting = (Path(output.country_file),) if output.country_file is not None and "country_flux" in product_names else ()
+    protected = referenced + reporting
+    for path in (*paths.values(), *((trace_path,) if trace_path is not None else ())):
+        check_checkpoint_targets(path.parent, stage=None, payloads=(path.name,), referenced=protected)
+        protected += (path,)
+    return paths, trace_path
+
+
+def save_co2_products(
+    result: Co2Output, *, output: Co2OutputOptions, referenced: tuple[Path, ...] = (),
+) -> None:
+    """Export configured products and the optional trace.
+
+    Full concentration-component draws remain available in memory. Product
+    filenames follow the configured RHIME naming convention.
+
+    Args:
+        result: Calculated products, trace and original requested domain/window.
+        output: Product and trace destination choices.
+        referenced: Input artifacts consumed by this execution, protected from
+            aliases and overlapping output paths alongside active country data.
+
+    Returns:
+        None. Writes products only after every destination passes protection.
+    """
+    if output.output_format == "none":
+        return
+    domain = result.domain
+    start_date = result.start_date
+    product_paths, trace_path = _checked_co2_output_paths(
+        output, domain=domain, start_date=start_date, product_names=result.outputs, referenced=referenced,
+    )
     for name, path in product_paths.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         product = result.outputs[name]
@@ -608,8 +664,6 @@ def save_co2_products(
         else:
             write_netcdf_preserving_bounds_attrs(product, path)
         result.output_metadata[f"{name}_path"] = str(path)
-    trace_path = _resolve_output_path(output.save_trace, output.output_path,
-                                      f"{output.output_name}{start_date}_trace.nc")
     if trace_path is not None:
         trace_path.parent.mkdir(parents=True, exist_ok=True)
         save_trace(result.idata, trace_path)

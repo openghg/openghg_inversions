@@ -23,9 +23,10 @@ Choose the smallest starting point that fits the change:
 
 * To change only the likelihood, pass a Python function to ``run_standard``.
 * To run the matched fixed-tau Ornstein--Uhlenbeck (OU) CO₂ model with inferred
-  site amplitudes, use :ref:`the package-supported cached-sigma CO₂ recipe
-  <co2-cached-sigma-recipe>` in
-  the :doc:`CO₂ model family <co2_model_family>`.
+  or fixed site amplitudes, use :ref:`the package-supported cached-sigma CO₂
+  recipe <co2-cached-sigma-recipe>` in the :doc:`CO₂ model family
+  <co2_model_family>`. Fixed amplitudes use the same sampler without its
+  amplitude step.
 * To resume from externally supplied merged observations, footprints, and
   fluxes, pass a borrowed ``MergedData`` object as ``merged_data``.
 * To change a preparation stage such as basis construction, copy the visible
@@ -444,7 +445,14 @@ requires every generalized base-plus-OU mode variance to be strictly positive.
 An exact zero mode is rejected before applying the low-rank factor, even when
 that factor would make a materialized dense covariance positive definite; a
 positive OU amplitude can lift a zero base mode. The component currently
-requires PyMC's native No-U-Turn Sampler (NUTS) backend. Sampled tau is a
+requires PyMC's native No-U-Turn Sampler (NUTS) backend. Its likelihood runs
+prepared NumPy/SciPy arrays in a Python Op, so
+:class:`~openghg_inversions.inference.sampling.RhimeSampler` compiles such
+models (sampling, log likelihood and predictive draws) with PyTensor's C/VM
+linker rather than the default Numba linker, whose object-mode callback would
+copy the prepared arrays into every compiled function. The staged
+prior-predictive checks use the same inference policy.
+Explicit ``sample_kwargs["compile_kwargs"]`` still take precedence. Sampled tau is a
 separate extension; the package-supported cached sampler is the matched recipe
 described in :ref:`co2-cached-sigma-recipe`.
 

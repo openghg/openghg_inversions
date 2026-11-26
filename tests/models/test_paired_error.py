@@ -32,12 +32,6 @@ def _aggregation(mode: str) -> tuple[AggregationError | None, np.ndarray]:
     coords = {"nmeasure": LABELS}
     if mode == "none":
         return None, np.zeros((5, 5))
-    if mode == "diagonal":
-        return AggregationError(
-            mode="diagonal",
-            marginal_variance=diagonal,
-            diagonal_variance=xr.DataArray(diagonal, dims="nmeasure", coords=coords),
-        ), np.diag(diagonal)
     if mode == "low_rank":
         return AggregationError(
             mode="low_rank",
@@ -112,7 +106,7 @@ def test_zero_correlation_pairs_add_no_factor_columns():
 
 @pytest.mark.usefixtures("double_precision")
 @pytest.mark.parametrize("pairs", [PAIRS, ZERO_PAIR], ids=["correlated", "zero-pair"])
-@pytest.mark.parametrize("mode", ["none", "diagonal", "low_rank", "dense"])
+@pytest.mark.parametrize("mode", ["none", "low_rank", "dense"])
 def test_additive_likelihood_matches_dense_paired_covariance(mode, pairs):
     observations, error = _observations()
     aggregation, aggregation_covariance = _aggregation(mode)
@@ -183,7 +177,7 @@ def _additive_model(mode, pairs):
 
 
 @pytest.mark.usefixtures("double_precision")
-@pytest.mark.parametrize("mode", ["none", "diagonal", "low_rank", "dense"])
+@pytest.mark.parametrize("mode", ["none", "low_rank", "dense"])
 def test_zero_correlations_keep_the_unpaired_numerical_path(mode):
     """Supplying only rho = 0 pairs records them but builds the original likelihood."""
     plain = _additive_model(mode, None)
@@ -198,7 +192,7 @@ def test_zero_correlations_keep_the_unpaired_numerical_path(mode):
 
 
 @pytest.mark.usefixtures("double_precision")
-@pytest.mark.parametrize("mode", ["none", "diagonal", "low_rank"])
+@pytest.mark.parametrize("mode", ["none", "low_rank"])
 def test_correlated_pairs_stay_blockwise_and_sample_their_covariance(mode):
     """No n x n covariance and no extra factor columns; draws follow the paired covariance."""
     model = _additive_model(mode, PAIRS)

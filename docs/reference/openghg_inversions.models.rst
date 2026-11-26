@@ -6,17 +6,23 @@ openghg\_inversions.models
    :show-inheritance:
 
 
+.. toctree::
+   :maxdepth: 4
+
+   openghg_inversions.models.boundary
+
+
 
 .. toctree::
    :maxdepth: 4
 
    openghg_inversions.models.additive_sigma
-   openghg_inversions.models.boundary
    openghg_inversions.models.cached_sigma
    openghg_inversions.models.components
    openghg_inversions.models.coords
    openghg_inversions.models.fixed_error
    openghg_inversions.models.fixed_ou
+   openghg_inversions.models.outer_flux
    openghg_inversions.models.paired_error
    openghg_inversions.models.pollution_event
    openghg_inversions.models.priors

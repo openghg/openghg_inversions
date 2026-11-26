@@ -1,6 +1,5 @@
 from typing import Any, cast
 
-from numba.core.errors import TypingError
 import numpy as np
 import pymc as pm
 import pytensor
@@ -141,19 +140,23 @@ def test_fixed_error_likelihood_uses_reported_and_aggregation_error_only() -> No
     data = _base_data()
     data["mf_error"] = ("nmeasure", np.array([0.0, 0.3, 0.4]))
     data["min_error"] = ("nmeasure", np.full(3, 20.0))
-    data["aggregation_error_sd"] = ("nmeasure", np.array([0.1, 0.2, 0.3]))
+    aggregation_sd = np.array([0.1, 0.2, 0.3])
+    data["aggregation_error_covariance"] = (
+        ("nmeasure", "nmeasure_cov"),
+        np.diag(aggregation_sd**2),
+    )
 
     with registered_model(coords={"nmeasure": data.coords["nmeasure"]}) as model:
         likelihood = add_fixed_error_likelihood(
             observations=data["mf"],
             observation_error=data["mf_error"],
-            aggregation_error=resolve_aggregation_error(data, "diagonal"),
+            aggregation_error=resolve_aggregation_error(data, "dense"),
             mean=pm.math.constant(np.ones(3)),
         )
 
     small_amount = 1e-12 * np.nanmean(data["mf"].values)
     independent_scale = np.maximum(np.abs(data["mf_error"].values), small_amount)
-    expected = np.sqrt(independent_scale**2 + data["aggregation_error_sd"].values ** 2)
+    expected = np.sqrt(independent_scale**2 + aggregation_sd**2)
     assert likelihood is model.named_vars["y"]
     assert "sigma" not in model.named_vars
     assert "min_error" not in model.named_vars
@@ -164,21 +167,17 @@ def test_fixed_error_likelihood_uses_reported_and_aggregation_error_only() -> No
 @pytest.mark.parametrize(
     ("mode", "payload_names"),
     [
-        ("diagonal", {"diagonal_residual_variance"}),
         ("dense", {"aggregation_error_covariance"}),
         ("low_rank", {"low_rank_factor", "diagonal_residual_variance"}),
     ],
 )
 def test_aggregation_error_is_preserved_as_labelled_constant_data(
-    double_precision,
     mode: str,
     payload_names: set[str],
 ) -> None:
     """Every fixed aggregation term used by the graph remains inspectable."""
     data = _base_data()
-    if mode == "diagonal":
-        data["aggregation_error_sd"] = ("nmeasure", [0.1, 0.2, 0.3])
-    elif mode == "dense":
+    if mode == "dense":
         data["aggregation_error_covariance"] = (
             ("nmeasure", "nmeasure_cov"),
             np.diag([0.1, 0.2, 0.3]),
@@ -202,31 +201,25 @@ def test_aggregation_error_is_preserved_as_labelled_constant_data(
         )
 
 
-@pytest.mark.xfail(
-    strict=False,
-    raises=TypingError,
-    reason=(
-        "PyTensor's Numba MvNormalRV dots a float32 Cholesky factor with float64 normal draws "
-        "when warn_float64 disables its float64 parameter upcast (#770). Newer PyTensor "
-        "releases do not reproduce it, so an unexpected pass is allowed."
-    ),
-)
 def test_float32_numba_multivariate_normal_draw_with_float64_warnings() -> None:
-    """The package's float32 startup policy (floatX=float32, warn_float64=warn) breaks dense predictive draws."""
+    """Dense multivariate-normal draws compile under the package's float32 startup policy.
+
+    PyTensor before 3.3.5 dotted a float32 Cholesky factor with float64 normal
+    draws in Numba when ``warn_float64`` disabled its float64 parameter upcast.
+    """
     with pytensor.config.change_flags(floatX="float32", warn_float64="warn"):
         draw = pt.random.multivariate_normal(
             pt.zeros(3, dtype="float32"), pt.constant(np.eye(3, dtype="float32")),
         )
         assert pytensor.function([], draw, mode="NUMBA")().dtype == np.float32
 
-@pytest.mark.parametrize("mode", ["diagonal", "dense", "low_rank"])
+
+@pytest.mark.parametrize("mode", ["dense", "low_rank"])
 def test_min_error_is_a_floor_on_total_marginal_sd(mode: str) -> None:
     data = _base_data()
     data["min_error"] = ("nmeasure", np.full(3, 2.0))
     aggregation_variance = np.array([0.5, 0.6, 0.7])
-    if mode == "diagonal":
-        data["aggregation_error_sd"] = ("nmeasure", np.sqrt(aggregation_variance))
-    elif mode == "dense":
+    if mode == "dense":
         data["aggregation_error_covariance"] = (
             ("nmeasure", "nmeasure_cov"),
             np.diag(aggregation_variance),
@@ -391,11 +384,15 @@ def test_likelihoods_reject_reordered_observation_error_coordinates(
                 )
 
 
-def test_additive_sigma_likelihood_applies_minimum_error_floor() -> None:
+def test_additive_sigma_likelihood_applies_minimum_error_floor(double_precision) -> None:
     """The complete additive likelihood floors total marginal error."""
     data = _base_data()
     data["min_error"] = ("nmeasure", np.array([0.0, 1.0, 0.0]))
-    data["aggregation_error_sd"] = ("nmeasure", np.array([0.1, 0.2, 0.3]))
+    aggregation_sd = np.array([0.1, 0.2, 0.3])
+    data["aggregation_error_covariance"] = (
+        ("nmeasure", "nmeasure_cov"),
+        np.diag(aggregation_sd**2),
+    )
     sigma_alignment = SigmaAlignment.from_frequency(
         data["site_indicator"], frequency=None, per_site=False
     )
@@ -404,7 +401,7 @@ def test_additive_sigma_likelihood_applies_minimum_error_floor() -> None:
             observations=data["mf"],
             observation_error=data["mf_error"],
             minimum_error_floor=data["min_error"],
-            aggregation_error=resolve_aggregation_error(data, "diagonal"),
+            aggregation_error=resolve_aggregation_error(data, "dense"),
             mean=pm.math.constant(np.ones(3)),
             additive_sigma_alignment=sigma_alignment,
             additive_sigma_prior={"pdf": "uniform", "lower": 0.5, "upper": 0.500001},
@@ -414,10 +411,12 @@ def test_additive_sigma_likelihood_applies_minimum_error_floor() -> None:
     unconstrained_scale = np.sqrt(
         data["mf_error"].values ** 2
         + sigma**2
-        + data["aggregation_error_sd"].values ** 2
+        + aggregation_sd**2
     )
     expected_scale = np.maximum(unconstrained_scale, data["min_error"].values)
-    np.testing.assert_allclose(model["epsilon"].eval(), expected_scale)
+    # epsilon is evaluated at the session floatX (float32 by default), so the
+    # comparison with the float64 expectation must allow float32 roundoff.
+    np.testing.assert_allclose(model["epsilon"].eval(), expected_scale, rtol=10 * np.finfo(np.float32).eps)
 
 
 def test_additive_sigma_likelihood_omits_optional_sigma_and_minimum_error() -> None:
