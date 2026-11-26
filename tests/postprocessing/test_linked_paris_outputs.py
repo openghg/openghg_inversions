@@ -412,7 +412,7 @@ def test_cached_joint_draws_with_baseline_emit_paris(tmp_path, native_multiindex
         trace["posterior"] = trace["prior"].to_dataset().isel(draw=slice(0, 3))
         return restore_inferencedata_coords(trace, get_coord_registry(built.model))
 
-    monkeypatch.setattr(co2_o2_cached_sigma_runner, "sample_rhime_model", graph_draws)
+    monkeypatch.setattr(co2_o2_cached_sigma_runner, "_sample_linked_rhime_model", graph_draws)
     monkeypatch.setattr(co2_o2_cached_sigma_runner, "_sampler_for_cached_graph", lambda sampler, **_: sampler)
 
     if native_multiindex:

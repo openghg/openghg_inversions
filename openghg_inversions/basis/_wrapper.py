@@ -48,6 +48,7 @@ def prepare_basis(
     contrast_sigma_design: float | None = None,
     contrast_s_diag: xr.DataArray | None = None,
     allow_empty_inner_region: bool = False,
+    seed: int | None = None,
 ) -> BasisFunctions:
     """Load or generate an operator and bind current flux without exporting it.
 
@@ -101,6 +102,9 @@ def prepare_basis(
         contrast_s_diag: Optional diagonal design covariance entries.
         allow_empty_inner_region: Keep a finite, all-zero inner region unsplit
             during fixed-outer fitting; intended for nested outer domains.
+        seed: Seed for a generated quadtree fit, making the basis reproducible.
+            Other algorithms reject it; saved inputs ignore it because nothing
+            is fitted.
 
     Returns:
         Retained operator bound to runtime flux with artifact-source metadata
@@ -159,6 +163,7 @@ def prepare_basis(
             contrast_sigma_design=contrast_sigma_design,
             contrast_s_diag=contrast_s_diag,
             allow_empty_inner_region=allow_empty_inner_region,
+            seed=seed,
         )
         print(f"Using InTEM regions with {basis_algorithm} to derive basis functions for inner region.")
         print("Using generated in-memory basis artifact.")
@@ -193,6 +198,7 @@ def prepare_basis(
             domain,
             basis_algorithm,
             nbasis,
+            seed=seed,
             **algorithm_kwargs,
         )
         print("Using generated in-memory basis artifact.")

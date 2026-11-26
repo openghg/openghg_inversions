@@ -9,8 +9,8 @@ are not alternative species settings for the complete standard runner.
 The experimental :doc:`surface preparation pilot <surface_preparation>` adds
 explicit source transport and centered stable-BC operands for additive-Gaussian
 recipes, ordinary fixed-OU likelihoods, and the matched cached fixed-OU samplers.
-Centered construction requires
-PyTensor ``floatX=float64``. Coherent-reduction construction remains explicit.
+:doc:`co2_boundary_corrections` lists the precision required by each
+centered boundary choice. Coherent-reduction construction remains explicit.
 
 Current support
 ---------------
@@ -51,11 +51,13 @@ Current support
      - A packaged TOML template configures linked saved phases. The direct
        Python runners retain their separate configuration resolver.
    * - Fixed-OU mismatch
-     - Fixed tau and fixed or inferred site amplitudes. Inferred amplitudes
-       automatically use the matched cached quadratic sampler.
+     - Fixed tau and fixed or inferred site amplitudes. Both automatically use
+       the matched cached quadratic sampler; fixed amplitudes build the
+       quadratic once and sample only the states.
      - Fixed tau and fixed or inferred amplitudes by species/site, preserving
        cross-channel aggregation covariance. The matched cached sampler
-       updates all active affine coefficients. Requires the same channel units.
+       updates all active affine coefficients; fixed amplitudes build its
+       quadratic once. Inferred amplitudes require the same channel units.
    * - Boundary conditions and offsets
      - Model configuration can select prepared ``H_bc``
        boundary sensitivity and add global, site, or site-by-period offsets.
@@ -203,8 +205,10 @@ counts, tuning length, chains and seed in ``sampling``; do not specify
 fixed-amplitude OU use PyMC. The :doc:`inference policy table <co2_models>`
 explains which choices are technical requirements and which are defaults.
 Inferred-OU tuning belongs to ``sampling.sigma_target_accept`` and
-``sampling.state_target_accept``. Saved Python sampling takes the same
-``sampling`` mapping as the full configuration.
+``sampling.state_target_accept``. Fixed-amplitude OU uses the same cached
+sampler without the amplitude step; ``sampling.state_target_accept`` or
+``sampling.target_accept`` tunes its state step. Saved Python sampling takes
+the same ``sampling`` mapping as the full configuration.
 
 The configured ``rhime run --model co2`` CLI route uses
 ``run_co2`` and writes requested products. Python
@@ -417,9 +421,10 @@ joint aggregation covariance once. Alternatively configure
 ``likelihood.kind = "fixed_ou"`` with positive ``tau_hours`` and nonnegative
 ``fixed_site_amplitudes``. Linked OU mappings use ``"co2:MHD"`` and
 ``"o2:MHD"`` species/site keys. The installed route supports fixed OU
-amplitudes and requires PyMC for OU sampling. Inferred OU amplitude and cached
-sampler consolidation remain separate work; existing direct Python runners
-retain those interfaces.
+amplitudes, requires PyMC for OU sampling, and samples them with the cached
+fixed-OU sampler (quadratic built once, state NUTS only). Configured inferred
+OU amplitudes remain separate work; existing direct Python runners retain
+that interface.
 
 .. code-block:: bash
 

@@ -23,7 +23,7 @@ def test_inference_phase_ignores_inactive_resources_and_uses_current_sampler(tmp
     }))
     calls = []
 
-    def sample(preparation, *, model, sampling, output_dir):
+    def sample(preparation, *, model, sampling, output_dir, referenced=()):
         calls.append((preparation, model, sampling["draws"], output_dir))
         return output_dir / "sample-manifest.json"
 
