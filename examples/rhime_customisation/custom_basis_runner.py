@@ -281,7 +281,7 @@ def run_custom_rhime(
         values.pop("basis_path", None)
     config = RhimeConfig.from_params(merge_params(params, overrides=kwargs), multisector=False)
     validate_standard_output_resources(config.output)
-    bc_basis = resolve_bc_basis(config.data)
+    bc_basis = resolve_bc_basis(config.data.bc_basis, use_bc=config.data.use_bc)
 
     # This project selects and loads its scientific class map before acquisition.
     region_classes = None

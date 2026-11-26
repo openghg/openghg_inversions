@@ -11,7 +11,7 @@ from scipy.stats import multivariate_normal
 
 from openghg_inversions.models.coords import get_coord_registry, registered_model
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
-from openghg_inversions.observation_error import AggregationError
+from openghg_inversions.observation_error import ObservationCovariance
 from tests.standard_model_helpers import build_standard_graph
 
 
@@ -42,12 +42,12 @@ def _aggregation_error(
     covariance: np.ndarray | None = None,
     factor: np.ndarray | None = None,
     diagonal: np.ndarray | None = None,
-) -> AggregationError:
+) -> ObservationCovariance:
     """Build a small validated-by-construction aggregation error fixture."""
     nmeasure = 3
     if mode == "dense":
         assert covariance is not None
-        return AggregationError(
+        return ObservationCovariance(
             mode="dense",
             marginal_variance=np.diag(covariance),
             covariance=xr.DataArray(
@@ -58,7 +58,7 @@ def _aggregation_error(
         )
     if mode == "low_rank":
         assert factor is not None and diagonal is not None
-        return AggregationError(
+        return ObservationCovariance(
             mode="low_rank",
             marginal_variance=np.sum(factor**2, axis=1) + diagonal,
             factor=xr.DataArray(
@@ -79,7 +79,7 @@ def _build_model(
     *,
     observations: xr.DataArray | None = None,
     observation_error: np.ndarray | None = None,
-    aggregation_error: AggregationError | None = None,
+    aggregation_error: ObservationCovariance | None = None,
     fixed_site_amplitudes: Mapping[str, float] | None = FIXED_SITE_SIGMA,
     site_amplitude_prior: Mapping[str, Any] | None = None,
 ) -> pm.Model:
@@ -171,7 +171,7 @@ def test_low_rank_logp_matches_the_four_row_reference_fixture() -> None:
         },
     )
     reported_error = xr.zeros_like(observations)
-    aggregation = AggregationError(
+    aggregation = ObservationCovariance(
         mode="low_rank",
         marginal_variance=np.sum(factor**2, axis=1) + residual_variance,
         factor=xr.DataArray(factor, dims=("nmeasure", "agg_rank")),

@@ -77,7 +77,7 @@ def run_custom_rhime(
 
     # Resolve selected support files before acquiring observations or flux.
     basis_inputs = resolve_basis_inputs(config.data)
-    bc_basis = resolve_bc_basis(config.data)
+    bc_basis = resolve_bc_basis(config.data.bc_basis, use_bc=config.data.use_bc)
     merged = acquire_merged_data(config.data)
 
     # Keep the scientific preparation order visible; ``merged`` stays acquired data.

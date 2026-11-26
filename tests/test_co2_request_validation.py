@@ -88,7 +88,7 @@ def test_cli_co2_request_names_have_one_outer_owner(monkeypatch, tmp_path, famil
 
     monkeypatch.setattr(handoffs, phase.replace("-", "_"), execute)
     options = {
-        "prepared_inputs": {"path": "unopened.nc"},
+        ("data" if family == "co2" else "prepared_inputs"): {"path": "unopened.nc"},
         "outputs": {"output_format": "none"},
     }
     if family == "co2":

@@ -137,6 +137,11 @@ See :doc:`rhime_configuration` for complete resource selection examples and
 Additional development Python API changes
 ------------------------------------------
 
+Import :class:`~openghg_inversions.observation_error.ObservationCovariance`
+in place of ``AggregationError`` when constructing covariance objects or
+annotating custom likelihoods. ``resolve_aggregation_error`` returns the new
+type. Pass it to likelihood builders through the ``aggregation_error`` keyword.
+
 .. _prepared-input-factory-retirement:
 
 Replace ``PreparedInputs.from_legacy_inputs(...)`` with
@@ -435,6 +440,13 @@ Remove CO2 ``variant`` and ``sampling.nuts_sampler`` settings. The likelihood
 selects the matched cached sampler automatically. Use a supported positive-prior
 table rather than ``site_amplitude_prior_scale``. The packaged example is now
 ``co2_fixed_ou.toml``.
+
+Update ordinary CO₂ TOML files to use ``[data]``. The usual unknown-option
+validation reports ``[prepared_inputs]`` as an unknown section for this recipe.
+Use ``data.path`` for a saved preparation. For a new preparation, put retrieval
+choices in ``[data.acquisition]`` and scientific preparation choices in
+``[data.preparation]``. See :ref:`co2-configured-preparation`. Linked CO₂/O₂
+still uses ``[prepared_inputs]`` for saved preparations.
 
 Replace linked ``Co2O2RunSetup`` and ``resolve_co2_family_config`` with
 ``Co2O2ModelConfig.from_params(config)`` and pass ``model.bind(prepared)`` as

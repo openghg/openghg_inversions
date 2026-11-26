@@ -81,7 +81,7 @@ def test_projection_is_lazy_preserves_reference_and_collapses_to_nesw(centered):
     site = _curtains(centered=centered)
     original = site.copy(deep=True)
     config = RhimeConfig.from_params(_params(use_bc=True, bc_basis={"algorithm": "twelve-region"}), multisector=False)
-    builder = resolve_bc_basis(config.data)
+    builder = resolve_bc_basis(config.data.bc_basis, use_bc=config.data.use_bc)
     with Callback(pretask=lambda *args: pytest.fail("computed borrowed curtains")):
         projected = bc_sensitivity({"AAA": site}, builder)["AAA"]
         nesw = bc_sensitivity({"AAA": site})["AAA"]

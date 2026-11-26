@@ -1,15 +1,17 @@
-Outer-region flux states held at their prior mean
-=================================================
+Outer-region flux states held or marginalised
+=============================================
 
 By default the CO2 recipes sample every retained flux state, including the
 outer-region states, uncentred and beside any boundary correction. The
-outer-flux option selects the outer-region states once on the flux prior and
-holds chosen ones at their prior mean. Existing model defaults are unchanged.
+outer-flux option selects outer-region states on the flux prior. The
+``"fixed"`` mode holds them at their prior mean with zero uncertainty.
+The ``"marginalise"`` mode integrates them out of the likelihood and carries
+their uncertainty as an observation-error term.
 
 Outer states are the flux states whose ``basis_group`` coordinate is in
-``outer_groups``. They stay in the ordinary ``flux_scaling`` state, so CO2
-outputs, state activity and the :doc:`retained flux prior <flux_prior>` work
-as they do without the option.
+``outer_groups``. Their entries in ``flux_scaling`` retain the prior mean in
+both modes. In ``"marginalise"`` mode those entries are placeholders in
+the raw trace.
 
 ``"fixed"`` mode
 ----------------
@@ -25,13 +27,88 @@ states, so the variance their prior would contribute,
 :math:`\operatorname{diag}(H_O\Sigma_{OO}H_O^T)`, is left out of the model.
 When the outer prior mean is close to the truth, holding it there can look
 better than sampling it; that is the benefit of the known prior, not evidence
-that the outer flux need not be sampled. Leaving the outer flux unsampled
-fairly would marginalise it, adding :math:`H_O\Sigma_{OO}H_O^T` to the error
-covariance; this option does not do that.
+that the outer flux need not be sampled. Use ``"marginalise"`` to leave the
+outer flux unsampled fairly.
 
-Holding a state at its prior mean while sampling the marginal prior of the
-others is exact only when the held state is uncorrelated with them, so the
-option rejects held outer states with nonzero prior covariance.
+``"marginalise"`` mode
+----------------------
+
+For selected outer states :math:`O` uncorrelated with the other states,
+``"marginalise"`` includes :math:`H_O m_O` in the likelihood mean and uses
+the covariance
+
+.. math::
+
+   W = R + A + H_O \Sigma_{OO} H_O^T,
+
+Here :math:`R` is the observation and model-mismatch covariance and :math:`A`
+is the supplied aggregation-error covariance, which represents variability
+unresolved by the flux basis. The last term projects the prior covariance
+:math:`\Sigma_{OO}` of the selected states into observation space through
+their sensitivity :math:`H_O`. It enters the likelihood even when
+aggregation error is absent. In linked CO2/O2 recipes it spans both channels,
+carrying the cross-channel covariance induced by the shared states.
+
+For a linear Gaussian model with uncorrelated outer states this is exact: the
+posterior of the other states equals their marginal posterior when the outer
+states are sampled uncentred (the default). Correlated outer states are
+conditioned on the others as described below. In a synthetic-observation
+experiment with 5,314 observations and 18 selected outer states, exact Gaussian
+posterior solves with and without integration agreed within 2e-9 Tg CO2/yr.
+
+Under the default LogNormal-copula flux prior it is an approximation, not a
+pure reparameterisation of sampling the outer states:
+:math:`\Sigma_{OO}` is the prior's arithmetic covariance, so the outer
+contribution is replaced by the Gaussian with the same mean and covariance,
+and the posterior can differ. In the same experiment under the LogNormal-copula
+prior, marginalisation increased the inner-domain net biosphere and total flux
+posterior means by about 90 Tg CO2/yr relative to sampling the outer states with
+NUTS. That shift was 0.05 posterior standard deviations and about two Monte
+Carlo standard errors. The fossil-fuel flux posterior mean was unchanged.
+
+Marginalisation reduces the number of sampled states and adds a covariance
+term to the likelihood. In the test above, marginalisation took slightly
+longer than sampling the outer states.
+
+The outer ocean can be marginalised the same way instead of being held with
+zero uncertainty, with ``fixed_sources=("ocean",)``.
+
+Correlated outer states
+-----------------------
+
+``"fixed"`` requires zero prior covariance between the selected outer states
+and the states outside the selection.
+
+``"marginalise"`` accepts them. With cross-covariance :math:`\Sigma_{OI}`
+between the selected states and all other states :math:`I`, the outer states
+are replaced by their best linear predictor from :math:`I` under the prior's
+arithmetic moments,
+
+.. math::
+
+   x_O = m_O + B(x_I - m_I) + r, \qquad B = \Sigma_{OI}\Sigma_{II}^{+},
+
+and :math:`r` is integrated out. So
+
+- the design of the other states becomes :math:`H_I + H_O B`;
+- the fixed term gains :math:`-H_O B m_I`;
+- the error term is :math:`H_O\Sigma_{O|I}H_O^T` with
+  :math:`\Sigma_{O|I} = \Sigma_{OO} - B\Sigma_{IO}`.
+
+The prior of the other states is unchanged, so a LogNormal-copula inner prior
+stays positive. For a Gaussian prior this is exact. Under the LogNormal copula
+:math:`r` is uncorrelated with :math:`x_I` but not independent of it, a
+moment-level approximation of the same kind as the :doc:`coherent reduction
+<coherent_reduction>`. States
+that state activity or exact-zero pruning hold fixed enter at their fixed
+values. A state with no direct response but correlated with the outer states
+gains a column through :math:`H_O B`, so it is sampled rather than pruned.
+The selected outer entries in ``flux_scaling`` are prior-mean placeholders.
+Given the other states, :math:`m_O + B(x_I - m_I)` is the conditional prior
+mean in the Gaussian model and the linear predictor in the LogNormal
+approximation. Conditioning on the observations also updates the outer
+residual. Posterior reconstruction is tracked in
+`#1129 <https://github.com/openghg/openghg_inversions/issues/1129>`_.
 
 Building a model
 ----------------
@@ -45,7 +122,7 @@ samples:
    from openghg_inversions.models.outer_flux import OuterFluxChoice
    from openghg_inversions.rhime.co2.co2_cached_sigma_model import build_co2_cached_sigma_model
 
-   outer_flux = OuterFluxChoice("fixed", ("outer",))
+   outer_flux = OuterFluxChoice("marginalise", ("outer",))
 
    cached = build_co2_cached_sigma_model(
        flux_sensitivity, retained_prior=flux_prior,
@@ -57,25 +134,53 @@ samples:
    )
 
 :func:`~openghg_inversions.rhime.co2.co2_model.build_co2_model` takes the same
-``outer_flux`` argument. Any boundary, or none, may be used with it. Exact-zero
-columns of :math:`H` are pruned first, as in the ordinary recipe, and the held
-states are then made inactive at their prior mean. Every label in
+``outer_flux`` argument. Any boundary, or none, may be used with it. For
+correlated marginalisation the builder adjusts the design before pruning
+exact-zero columns. It then sets the selected states inactive at their prior
+mean and includes the marginalised covariance in the likelihood. Every label in
 ``outer_groups`` and ``fixed_sources`` must match a state, and a
 ``state_activity`` policy that explicitly fixes a held state at a value other
 than its prior mean is rejected. Run metadata records the
 mode and selectors.
 
+Reporting with marginalised outer flux
+--------------------------------------
+
+CO2 ``basic`` reporting provides fitted concentrations and saved predictive
+draws where available. It uses the fitted affine intercept, including any
+adjustment for correlated outer states. The full native flux map and the
+combined PARIS concentration-and-flux export require posterior outer flux
+draws.
+
+To report an inner-domain total, supply the matching affine reconstruction
+artifact, enable ``sampling.sample_prior_predictive``, and give an exact-grid
+country or reporting region mask in ``outputs.country_file``. For a configured
+full run, set ``data.reconstruction_path``. For staged reporting,
+use a preparation saved with its affine artifact and samples with prior draws. Use
+``outputs.paris_postprocessing_kwargs.country_selections`` to request specific
+names. Every requested quantity must have zero loading on each marginalised
+state through the bound affine map, whose prolongation can couple
+geographically separate regions. The full runner checks the projection before
+sampling. Replay checks it against the fitted state labels saved in the trace.
+These totals retain the affine map's retained-state-conditional uncertainty scope.
+For these totals, prepare without complete native country functionals.
+
 Linked CO2/O2
 -------------
 
 The linked recipes share one flux state and prior between the CO2 and O2
-channels, so each builder resolves the choice once on that shared prior. The
-held states are fixed in the joint state after joint exact-zero pruning, with
-the same meaning as above: zero uncertainty and nothing added to the error
-covariance, in the ordinary and cached linked recipes alike:
+channels, so each builder resolves the choice once on that shared prior.
+``"fixed"`` sets the selected states to their prior means. ``"marginalise"``
+adds a joint covariance term spanning both channels, including the covariance
+between CO2 and O2 induced by the selected states. Both modes are available
+in the ordinary and cached linked recipes. For marginalised outer flux,
+use the saved joint concentration predictions. Linked basic and PARIS
+products require the fitted design and intercept for their component
+reconstruction.
 
 .. code-block:: python
 
+   from openghg_inversions.models.outer_flux import OuterFluxChoice
    from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
 
-   model = build_co2_o2_model(..., outer_flux=OuterFluxChoice("fixed", ("outer",)))
+   model = build_co2_o2_model(..., outer_flux=OuterFluxChoice("marginalise", ("outer",)))
