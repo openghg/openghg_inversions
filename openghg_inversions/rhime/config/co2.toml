@@ -140,12 +140,13 @@ random_seed = 12345
 #   mean_by_period = true (requires frequency), or type = "anomaly_scaling" with
 #   scale_sd = 0.8 and reference = "whole_window_transport_mean".
 
-# Hold outer-region flux states at their prior mean with zero uncertainty, a
-# what-if for a known outer prior (see docs/usage/atmospheric_baseline.rst).
-# Needs basis_group labels on the prepared retained states, which come from the
-# coherent reduction's restriction; configured CO2 preparation does not add
-# them yet (issue #1094). fixed_sources holds only outer states with those
-# source labels.
+# "fixed" holds selected outer flux states at their prior means with zero uncertainty.
+# "marginalise" integrates those states into the observation mean and covariance.
+# Basic reports can include country totals whose weights have zero outer loading.
+# See docs/usage/atmospheric_baseline.rst.
+# A basis prepared with fix_outer_regions labels its states "outer" and "inner".
+# When per-source native priors supply source labels, fixed_sources selects
+# only outer states with the specified sources, for example ["ocean"].
 # [model.outer_flux]
-# mode = "fixed"
+# mode = "marginalise"
 # outer_groups = ["outer"]

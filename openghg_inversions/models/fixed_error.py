@@ -30,7 +30,7 @@ from openghg_inversions.models._gaussian_observation import (
 )
 from openghg_inversions.models.components import add_model_data
 from openghg_inversions.observation_error import (
-    AggregationError,
+    ObservationCovariance,
     validate_observation_error_arrays,
 )
 
@@ -39,7 +39,7 @@ def add_fixed_error_likelihood(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError | None = None,
+    aggregation_error: ObservationCovariance | None = None,
     mean: TensorVariable,
     output_dim: str = "nmeasure",
     observation_error_name: str = "error",
