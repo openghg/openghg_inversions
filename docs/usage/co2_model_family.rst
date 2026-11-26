@@ -399,9 +399,13 @@ unit parsers otherwise read ``"per meg"`` as 1e-6 mol/mol. The shared
 mole-fraction parser used by surface preparation and reporting rejects
 ratio-anomaly labels (per meg, per mil, ``‰``) for the same reason.
 
-Linked boundary corrections and fixed OU still require identical channel
-units, so a per-meg run currently uses the fixed-error likelihood without
-linked boundaries.
+Mixed channel units (for example ppm CO2 with per-meg O2) support the
+fixed-error likelihood and fixed OU. Fixed OU amplitudes must then be a
+mapping keyed by species and site (``"co2:MHD"``, ``"o2:MHD"``), each value in
+its own channel's units; a nonzero scalar amplitude is rejected because it
+would mean different things on each channel. Inferred OU amplitudes and
+fitted linked boundary corrections still require common channel units, so a
+per-meg run uses fixed amplitudes and no linked boundaries.
 
 With the current PyMC 6/Numba backend, native multivariate-normal predictive
 draws require ``floatX=float64`` in ``PYTENSOR_FLAGS`` before starting Python or

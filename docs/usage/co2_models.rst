@@ -850,8 +850,9 @@ boundary sensitivity :math:`H_{bc,c}`, and an observation-aligned offset
 
 An omitted channel term is zero. These boundary and offset contributions form
 the optional reporting baseline; they remain distinct from the coherent affine
-intercept and shared or tracer-specific flux states. Baseline terms currently
-require identical channel units.
+intercept and shared or tracer-specific flux states. Boundary terms currently
+require identical channel units; each channel's offset is in that channel's
+own units.
 
 Thus this is a row-stacked, block-sparse sensitivity acting on one state vector,
 not two independent block-diagonal models. Its fixed-error likelihood is
