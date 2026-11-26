@@ -27,4 +27,5 @@ openghg\_inversions.postprocessing
    openghg_inversions.postprocessing.paris_options
    openghg_inversions.postprocessing.sigma
    openghg_inversions.postprocessing.stats
+   openghg_inversions.postprocessing.unresolved_functionals
    openghg_inversions.postprocessing.utils

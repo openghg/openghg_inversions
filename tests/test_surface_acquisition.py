@@ -7,6 +7,7 @@ import dask.array as da
 import numpy as np
 import pandas as pd
 import pytest
+import sparse
 import xarray as xr
 from dask.callbacks import Callback
 
@@ -260,6 +261,7 @@ def test_actual_resolved_kernel_counts_residual_once(inputs, species, compatible
     assert result.attrs["surface_provider_policy_revision"] == "openghg-time-resolved-v1"
 
 
+
 def test_resolved_provider_borrows_lazy_flux(inputs, compatible_provider):
     obs, fp, flux = resolved_inputs(inputs)
     flux = flux.chunk({"time": 744})
@@ -336,6 +338,8 @@ def test_invalid_inputs_fail_clearly(inputs, change, message):
         prepare_surface_site(obs, fp, {"a": flux}, species=species, transport=transport or {"a": mode})
 
 
+
+
 def test_opt_in_reuses_getters_retention_and_provenance(inputs, monkeypatch):
     obs, fp, flux = inputs
     options = SiteOptions.from_inputs(
@@ -397,6 +401,43 @@ def test_fresh_rejects_mixed_native_axes(inputs, monkeypatch):
         )
 
 
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_sparse_boundary_weights_through_surface_preparation(inputs, lazy):
+    obs, fp, flux = inputs
+    fp = fp.assign_coords(height=[10., 20.])
+    bc = xr.Dataset(coords={"height": fp.height, "lat": fp.lat, "lon": fp.lon, "time": fp.time},
+                    attrs={"time_period": "1 hour"})
+    for direction in "nesw":
+        side = "lon" if direction in "ns" else "lat"
+        weights = np.zeros((2, 1, 3))
+        weights[0] = 0.25
+        fp[f"particle_locations_{direction}"] = xr.DataArray(
+            sparse.COO.from_numpy(weights), dims=("height", side, "time"), attrs={"units": "1"}
+        )
+        bc[f"vmr_{direction}"] = xr.DataArray(
+            np.full((2, 1, 3), 400.05), dims=("height", side, "time"), attrs={"units": "ppm"}
+        )
+    if lazy:
+        fp, bc = fp.chunk({"time": 1}), bc.chunk({"time": 1})
+    borrowed = {name: value.data for name, value in fp.data_vars.items()}
+    with Callback(pretask=lambda *args: pytest.fail("preparation computed borrowed payload")):
+        result = prepare_surface_site(
+            obs, fp, {"a": flux}, species="co2", transport={"a": "integrated"},
+            boundary_data=bc,
+        )
+    if lazy:
+        assert isinstance(result.bc_mod.data, da.Array)
+        result = result.compute(scheduler="synchronous")
+    np.testing.assert_allclose(result.bc_mod.data.todense(), 400.05, rtol=0,
+                               atol=2e-5)
+    for name, value in fp.data_vars.items():
+        assert value.data is borrowed[name]
+
+
+
+
 def test_resolved_acquisition_requests_history_and_complete_months(inputs, monkeypatch, compatible_provider):
     obs, fp, flux = resolved_inputs(inputs)
     obs = obs.rename({"co2": "o2"})
@@ -421,7 +462,7 @@ def test_resolved_acquisition_requests_history_and_complete_months(inputs, monke
     )
     assert requests[0]["allow_older_flux"] is False
     assert pd.Timestamp(requests[0]["start_date"]) == pd.Timestamp("2019-12-31 22:00")
-    assert pd.Timestamp(requests[0]["end_date"]) - pd.Timedelta(seconds=1) + pd.Timedelta("1ns") == pd.Timestamp("2020-02-01")
+    assert pd.Timestamp(requests[0]["end_date"]) - pd.Timedelta(seconds=2) + pd.Timedelta("1ns") == pd.Timestamp("2020-02-01")
     assert result.flux_data["a"] is flux
 
 
@@ -499,6 +540,43 @@ def test_mapped_footprints_require_explicit_site_transport(inputs):
     obs, fp, flux = inputs
     with pytest.raises(ValueError, match="require explicit site_footprint_data"):
         prepare_surface_site(obs, {"a": fp}, {"a": flux}, species="co2", transport={"a": "integrated"})
+
+
+def test_mapped_boundaries_use_explicit_site_transport(inputs, monkeypatch):
+    obs, fp, flux = inputs
+    site_fp, bc = boundary_inputs(fp.assign(pblh=fp.pblh + 500))
+    site_fp.attrs = {**fp.attrs, "uuid": "explicit-site-transport", "model": "site-model"}
+    contribution = fp.assign(pblh=fp.pblh * 0)
+
+    def provider(boundary, footprint, **kwargs):
+        xr.testing.assert_identical(footprint.pblh, site_fp.pblh)
+        raise RuntimeError("explicit site transport reached boundary provider")
+
+    import openghg.analyse._modelled_baseline as boundary_provider
+    monkeypatch.setattr(boundary_provider, "baseline_sensitivities", provider)
+    with pytest.raises(RuntimeError, match="explicit site transport reached"):
+        prepare_surface_site(
+            obs,
+            {"a": contribution},
+            {"a": flux},
+            species="co2",
+            transport={"a": "integrated"},
+            site_footprint_data=site_fp,
+            boundary_data=bc,
+        )
+    result = prepare_surface_site(
+        obs,
+        {"a": contribution},
+        {"a": flux},
+        species="co2",
+        transport={"a": "integrated"},
+        site_footprint_data=site_fp,
+    )
+    assert result.attrs["footprint_transport_model"] == "site-model"
+    provenance = json.loads(result.attrs["surface_transport_provenance"])
+    assert provenance["site_footprint_selection"] == "explicit"
+    assert provenance["site_footprint"]["uuid"] == "explicit-site-transport"
+    assert provenance["sources"]["a"]["mode"] == "integrated"
 
 
 def test_resolved_requires_provider_convolution_operation(inputs, monkeypatch):
@@ -608,6 +686,62 @@ def test_integrated_declared_year_validity_never_reuses_climatological_year(inpu
     np.testing.assert_allclose(result.mf_mod, 1.0)
 
 
+
+
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+@pytest.mark.parametrize("mode", ["integrated", "time_resolved"])
+@pytest.mark.parametrize("extra_releases", [False, True])
+def test_native_products_precede_observation_averaging(inputs, mode, lazy, extra_releases):
+    if mode == "time_resolved":
+        obs, fp, flux = resolved_inputs(inputs)
+    else:
+        obs, fp, flux = inputs
+    times = pd.date_range("2020-01-01", periods=4, freq="h")
+    obs = obs.reindex(time=times, method="ffill")
+    obs = obs.isel(time=[0, 2])
+    obs.attrs["sampling_period"] = 7200
+    fp = fp.reindex(time=times, method="ffill")
+    fp["fp"] = fp.fp.copy(data=np.array([[[1., 3., 1., 3.]]]))
+    if mode == "integrated":
+        flux = flux.reindex(time=times, method="ffill")
+    flux["flux"] = flux.flux.copy(data=np.where(flux.time.dt.hour.values % 2, 3e-6, 1e-6)[None, None, :])
+    if mode == "time_resolved":
+        fp["fp_time_resolved"] = fp.fp.expand_dims(H_back=[0, 1]) / 2
+        fp.fp_time_resolved.attrs["units"] = fp.fp.attrs["units"]
+        fp["fp_residual"] = fp.fp * 0
+        fp.fp_residual.attrs["units"] = fp.fp.attrs["units"]
+    fp = fp.assign_coords(height=[10.])
+    bc = xr.Dataset(coords={"height": [10.], "lat": fp.lat, "lon": fp.lon, "time": times})
+    for direction in "nesw":
+        horizontal = "lon" if direction in "ns" else "lat"
+        fp[f"particle_locations_{direction}"] = xr.DataArray(
+            np.array([.1, .4, .1, .4] if direction == "n" else [.3, .2, .3, .2])[None, None, :],
+            dims=("height", horizontal, "time"), attrs={"units": "dimensionless"},
+        )
+        bc[f"vmr_{direction}"] = xr.DataArray(
+            np.array([400., 404., 400., 404.])[None, None, :],
+            dims=("height", horizontal, "time"), attrs={"units": "ppm"},
+        )
+    bc.attrs["time_period"] = "hourly"
+    if extra_releases:
+        # These unused releases must not require flux or boundary coverage.
+        fp = fp.reindex(time=pd.date_range(times[0], periods=6, freq="h"), method="ffill")
+    if lazy:
+        fp, flux, bc = (value.chunk({"time": 2}) for value in (fp, flux, bc))
+    before = [value.copy(deep=True) for value in (obs, fp, flux, bc)]
+    result = prepare_surface_site(
+        obs, fp, {"a": flux}, species="co2", transport={"a": mode}, boundary_data=bc,
+    )
+    # Integrated native products: mean(1*1, 3*3)=5; resolved uses the two-hour history mean=2.
+    np.testing.assert_allclose(result.mf_mod, 5. if mode == "integrated" else 4.)
+    np.testing.assert_allclose(result.bc_mod, 402.)
+    np.testing.assert_allclose(result.bc_n, (400. * .1 + 404. * .4) / 2)
+    for value, saved in zip((obs, fp, flux, bc), before, strict=True):
+        xr.testing.assert_identical(value, saved)
+
+
 def test_transport_metadata_falls_back_to_wrapper_and_serializes_numpy(inputs):
     obs, fp, flux = inputs
     fp.attrs.update(model="not_set", transport_model_version=None, met_model="", max_level=np.int64(40))
@@ -648,6 +782,7 @@ def test_gather_and_serialization_preserve_each_site_transport_provenance():
             surface_transport_provenance=f"site-{number}",
             surface_provider_revision=f"provider-{number}",
         )
+    sites["BBB"].attrs["boundary_footprint_height_units_assumed"] = "m"
     prepared = prepare_rhime_inputs_from_xarray(sites, basis_functions=_basis_functions())
     restored = PreparedInputs.from_datatree(prepared.to_datatree())
     facts = json.loads(restored.inv_inputs.attrs["surface_preparation_provenance"])
@@ -656,6 +791,8 @@ def test_gather_and_serialization_preserve_each_site_transport_provenance():
     assert facts["AAA"]["surface_provider_revision"] == "provider-0"
     assert facts["BBB"]["surface_provider_revision"] == "provider-1"
     assert "surface_transport_provenance" not in restored.inv_inputs.attrs
+    assert facts["BBB"]["boundary_footprint_height_units_assumed"] == "m"
+    assert "boundary_footprint_height_units_assumed" not in facts["AAA"]
 
 
 @pytest.mark.parametrize("declared", [False, True])
@@ -672,3 +809,68 @@ def test_single_observation_bin_keeps_chosen_cadence_without_sampling_attr(input
     assert result.sizes["time"] == 1
     assert result.attrs["sampling_period"] == 14400
     np.testing.assert_allclose(result.mf_mod, 1.)
+
+
+def test_ordinary_boundary_defaults_unitless_footprint_height_to_metres(inputs):
+    """Store NAME footprints have no height units; CORSO-like curtains declare metres."""
+    obs, fp, flux = inputs
+    fp, bc = boundary_inputs(fp)
+    bc = bc.assign_coords(height=bc.height.assign_attrs(units="m"))
+    for direction in "nesw":  # OpenGHG's ordinary path quantifies these; use a plain unit
+        bc[f"vmr_{direction}"] = (bc[f"vmr_{direction}"] / 4).assign_attrs(units="ppm")
+    assert "units" not in fp.height.attrs
+    borrowed = {name: value.data for name, value in fp.data_vars.items()}
+    with pytest.warns(UserWarning, match="assuming metres"):
+        result = prepare_surface_site(
+            obs, fp, {"a": flux}, species="co2", transport={"a": "integrated"}, boundary_data=bc,
+        )
+    declared = fp.assign_coords(height=fp.height.assign_attrs(units="m"))
+    reference = prepare_surface_site(
+        obs, declared, {"a": flux}, species="co2", transport={"a": "integrated"}, boundary_data=bc,
+    )
+    for name in ("bc_n", "bc_e", "bc_s", "bc_w", "bc_mod"):
+        xr.testing.assert_identical(result[name].reset_coords(drop=True), reference[name].reset_coords(drop=True))
+    assert "boundary_footprint_height_units_assumed" not in reference.attrs
+    assert result.attrs["boundary_footprint_height_units_assumed"] == "m"
+    assert "units" not in fp.height.attrs  # the caller's footprint is unchanged
+    for name, value in fp.data_vars.items():
+        assert value.data is borrowed[name]
+
+
+@pytest.mark.parametrize("boundary_units, footprint_units", [(None, None), ("m", "m"), ("km", None)])
+def test_ordinary_boundary_height_allowance_is_narrow(inputs, boundary_units, footprint_units):
+    _, fp, _ = inputs
+    fp, bc = boundary_inputs(fp)
+    if boundary_units:
+        bc = bc.assign_coords(height=bc.height.assign_attrs(units=boundary_units))
+    if footprint_units:
+        fp = fp.assign_coords(height=fp.height.assign_attrs(units=footprint_units))
+    returned, assumed = surface._default_curtain_height_units(fp, bc)
+    assert assumed is None and returned is fp
+
+
+def test_unitless_footprint_height_requires_matching_curtain_levels(inputs):
+    """Do not attach metre units to an unverified set of levels."""
+    _, footprint, _ = inputs
+    footprint, boundary = boundary_inputs(footprint)
+    boundary = boundary.assign_coords(height=boundary.height.assign_attrs(units="m"))
+    footprint = footprint.assign_coords(height=[1.0])
+
+    with pytest.raises(ValueError, match="must match the metre boundary grid"):
+        surface._default_curtain_height_units(footprint, boundary)
+
+
+def test_centered_surface_boundary_records_assumed_height_units(inputs):
+    """Use the same height convention for centred surface preparation."""
+    obs, footprint, flux = inputs
+    footprint, boundary = boundary_inputs(footprint)
+    boundary = boundary.assign_coords(height=boundary.height.assign_attrs(units="m"))
+
+    with pytest.warns(UserWarning, match="assuming metres"):
+        result = prepare_surface_site(
+            obs, footprint, {"a": flux}, species="co2", transport={"a": "integrated"},
+            boundary_data=boundary, boundary_representation="centered",
+            boundary_reference=400.0, boundary_reference_units="ppm", boundary_mass_tolerance=1e-8,
+        )
+
+    assert result.attrs["boundary_footprint_height_units_assumed"] == "m"

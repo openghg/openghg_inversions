@@ -93,6 +93,7 @@ def synthetic_inputs(destination: Path) -> tuple:
         observation_intercept=(mean - xr.DataArray([.8, .7, .9], dims="observation")).assign_attrs(units="ppm"),
         unresolved_observation_covariance=covariance,
         projection_strategy="synthetic-coherent-restriction",
+        native_identity="sha256:synthetic-native-inputs",
     )
     prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=1)
     native_mean = flux.copy(data=[[.8, 1.4], [.8, 1.4]]).assign_attrs(units="1")
@@ -109,7 +110,7 @@ def configuration(destination: Path, countries: Path) -> dict:
     """Select explicit inference, requested-window and output choices."""
     return {
         "format_version": 1, "recipe": "co2",
-        "prepared_inputs": {"start_date": START_DATE, "end_date": END_DATE, "domain": "EUROPE"},
+        "data": {"start_date": START_DATE, "end_date": END_DATE, "domain": "EUROPE"},
         "likelihood": {"kind": "additive_sigma", "no_model_error": True, "fixed_model_mismatch": 0.0},
         "model": {
             "boundary": {"enabled": True, "prior": {"pdf": "normal", "mu": 1., "sigma": .1}},

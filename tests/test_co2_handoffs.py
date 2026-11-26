@@ -134,7 +134,7 @@ def test_affine_routes_load_prepared_inputs_once(tmp_path, monkeypatch, route):
         with pytest.raises(RuntimeError, match="model boundary reached"):
             execution.run_co2(params={
                 "format_version": 1, "recipe": "co2",
-                "prepared_inputs": {
+                "data": {
                     "path": str(preparation.payload),
                     "reconstruction_path": str(preparation.affine_payload), **FACTS,
                 },
@@ -209,7 +209,7 @@ def test_graph_free_replay_keeps_recorded_sampler_and_provenance(tmp_path, monke
 
     monkeypatch.setattr(RhimeSampler, "__init__", forbidden)
     monkeypatch.setattr(handoffs, "prepare_co2_inputs", forbidden)
-    monkeypatch.setattr(handoffs.pm, "sample_prior_predictive", forbidden)
+    monkeypatch.setattr(handoffs, "sample_prior_predictive", forbidden)
     monkeypatch.setattr(co2_inference, "sample_rhime_model", forbidden)
     monkeypatch.setattr(co2_inference, "build_co2_from_materialized", forbidden)
     monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)

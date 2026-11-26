@@ -130,13 +130,16 @@ class NativeBAmplitudeCalibration:
             ``(source, *slice_dims)``, plus the class dimension when amplitudes
             were calibrated per class.  A class absent from a source's labels
             has a missing amplitude; a class at the floor has the floor value.
+            Scalar slice coordinates of the flux, such as the ``time`` left by
+            ``flux.isel(time=0)``, are kept as scalar coordinates.
         diagnostics: Dataset over ``(source, functional, *slice_dims)`` with
             signed and absolute totals, the target scale and ``total_status``,
             unit-amplitude SDs, requested and achieved SDs, their ratio and log
             residual, and the per-functional ``status``.  ``to_dataframe()``
             gives a table.
         calibration_slices: Labels of every slice dimension that was
-            calibrated, in order.  ``amplitudes`` carries the same labels.
+            calibrated, in order, and the one label of every scalar slice
+            coordinate.  ``amplitudes`` carries the same labels.
         class_at_bound: Boolean ``(source, *slice_dims, class)`` mask of
             per-class amplitudes at the floor, or ``None`` for one amplitude
             per source.
@@ -197,7 +200,8 @@ def calibrate_native_b_amplitudes(
     Args:
         flux: Native flux with the source and native grid dimensions.  Any
             other dimension (for example ``time``) is a slice dimension and is
-            calibrated independently.
+            calibrated independently.  Scalar coordinates, such as the
+            ``time`` left by ``flux.isel(time=0)``, label the calibrated slice.
         functional_weights: Functional weights, such as region masks times
             cell area, with the functional and native grid dimensions.  An
             optional source dimension gives per-source weights.
@@ -266,12 +270,13 @@ def calibrate_native_b_amplitudes(
     totals = components["native_signed_total"]
     unit_variance = components["unit_class_variance"]
     slice_dims = [str(dim) for dim in totals.dims if dim not in (source_dim, functional_dim)]
+    scalar_slices = _scalar_coords(flux, exclude=(functional_dim, class_dim))
     class_values = unit_variance[class_dim].values
     amplitude_dims = [source_dim, *slice_dims] + ([class_dim] if per_class else [])
     amplitudes = xr.DataArray(
         np.full([unit_variance.sizes[dim] for dim in amplitude_dims], np.nan),
         dims=amplitude_dims,
-        coords={dim: unit_variance[dim] for dim in amplitude_dims},
+        coords={**{dim: unit_variance[dim] for dim in amplitude_dims}, **scalar_slices},
         name="native_grid_cell_stdev",
     )
     at_bound = xr.zeros_like(components["class_present"]) if per_class else None
@@ -313,7 +318,10 @@ def calibrate_native_b_amplitudes(
     return NativeBAmplitudeCalibration(
         amplitudes=amplitudes,
         diagnostics=diagnostics,
-        calibration_slices={dim: tuple(totals[dim].values) for dim in slice_dims},
+        calibration_slices={
+            **{dim: tuple(totals[dim].values) for dim in slice_dims},
+            **{name: (coord.values[()],) for name, coord in scalar_slices.items()},
+        },
         class_at_bound=None if at_bound is None else at_bound.astype(bool),
         statistic=statistic,
         correlation_length=kernel.correlation_length,
@@ -776,19 +784,31 @@ def _slice_indices(array: xr.DataArray, dims: Sequence[Hashable]) -> list[dict[H
     ]
 
 
+def _scalar_coords(array: xr.DataArray, *, exclude: Sequence[Hashable] = ()) -> dict[str, xr.Variable]:
+    """Return the scalar coordinates of ``array``, such as a selected ``time``."""
+    return {
+        str(name): coord.variable
+        for name, coord in array.coords.items()
+        if coord.ndim == 0 and name not in exclude
+    }
+
+
 def _restack(pieces: list[xr.DataArray], flux: xr.DataArray, slice_dims: Sequence[Hashable]) -> xr.DataArray:
     """Reassemble per-slice results, in slice order, along the slice dimensions.
 
     The scalar slice coordinates left by positional selection are dropped
     first, so that slice dimensions of any size, including one, are rebuilt
-    from ``flux``'s own coordinates.
+    from ``flux``'s own coordinates.  ``flux``'s own scalar coordinates are
+    kept, as they are when there is no slice dimension.
     """
     if not slice_dims:
         return pieces[0]
     stacked = xr.concat([piece.reset_coords(drop=True) for piece in pieces], dim="_slice")
     index = np.arange(stacked.sizes["_slice"]).reshape(tuple(flux.sizes[dim] for dim in slice_dims))
     result = stacked.isel(_slice=xr.DataArray(index, dims=list(slice_dims)))
-    return result.assign_coords({dim: flux[dim].values for dim in slice_dims})
+    return result.assign_coords({dim: flux[dim].values for dim in slice_dims}).assign_coords(
+        _scalar_coords(flux)
+    )
 
 
 def _absolute_targets(

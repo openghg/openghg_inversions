@@ -321,6 +321,63 @@ def test_length_one_slice_dimension_is_supported():
     assert result.diagnostics["achieved_sd"].sizes["time"] == 1
 
 
+def test_scalar_selected_slice_keeps_its_label():
+    """A month chosen with isel(time=0) is recorded and guarded like a dimension slice."""
+    case = _toy_case()
+    time = xr.DataArray(np.array(["2021-01-01", "2021-07-01"], dtype="datetime64[ns]"), dims="time")
+    flux = xr.concat([case["flux"], case["flux"] * 1.3], dim=time)
+    target = xr.DataArray([0.1], dims="functional", coords={"functional": ["EUROPE_INNER"]})
+    kwargs = {"correlation_length": 1.5, "class_labels": case["classes"]}
+    january = calibrate_native_b_amplitudes(
+        flux.isel(time=0), case["weights"], target_relative_sd=target, **kwargs
+    )
+    assert january.amplitudes.dims == ("source",)
+    assert january.amplitudes["time"].values == time.values[0]
+    assert january.calibration_slices == {"time": (time.values[0],)}
+
+    calibrated = calibrated_source_covariance(
+        january.amplitudes, latitude=flux["lat"], longitude=flux["lon"], **kwargs
+    )
+    assert calibrated.calibrated_slice == {"time": time.values[0]}
+    assert require_calibrated_slice(calibrated, {"time": time.values[0]}) is calibrated.covariance
+    with pytest.raises(ValueError, match="calibrated for time="):
+        require_calibrated_slice(calibrated, {"time": time.values[1]})
+    assert (
+        require_calibrated_slice(calibrated, {"time": time.values[1]}, allow_broadcast=True)
+        is calibrated.covariance
+    )
+
+    same_month = evaluate_native_b_amplitudes(
+        flux.isel(time=0), case["weights"], january.amplitudes, target_relative_sd=target, **kwargs
+    )
+    np.testing.assert_allclose(same_month["achieved_relative_sd"].sel(functional="EUROPE_INNER"), 0.1)
+    with pytest.raises(ValueError, match="allow_broadcast"):
+        evaluate_native_b_amplitudes(
+            flux.isel(time=1), case["weights"], january.amplitudes, target_relative_sd=target, **kwargs
+        )
+    evaluate_native_b_amplitudes(
+        flux.isel(time=1),
+        case["weights"],
+        january.amplitudes,
+        target_relative_sd=target,
+        allow_broadcast=True,
+        **kwargs,
+    )
+
+
+def test_scalar_slice_coordinates_are_kept_beside_slice_dimensions():
+    """A scalar slice label survives when the flux also has a slice dimension."""
+    case = _toy_case()
+    flux = case["flux"].expand_dims(member=["a", "b"], time=[1, 2]).sel(member="b")
+    result = calibrate_native_b_amplitudes(
+        flux, case["weights"], correlation_length=1.5, target_relative_sd=0.1, class_labels=case["classes"]
+    )
+    assert result.amplitudes.dims == ("source", "time")
+    assert result.amplitudes["member"].values == "b"
+    assert result.calibration_slices == {"time": (1, 2), "member": ("b",)}
+    assert result.diagnostics["member"].values == "b"
+
+
 def test_two_slice_dimensions_keep_their_labels():
     """Slice dimensions beyond time are reassembled with the right labels."""
     case = _toy_case()
