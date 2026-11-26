@@ -610,7 +610,19 @@ class Co2PreparationConfig:
 
     def preparation_arguments(self) -> dict[str, Any]:
         """Return explicit keywords for the saved preparation boundary."""
-        return {item.name: getattr(self, item.name) for item in fields(self)}
+        arguments: dict[str, Any] = {
+            "prepared_path": self.prepared_path,
+            "affine_path": self.affine_path,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "domain": self.domain,
+            "boundary_representation": self.boundary_representation,
+            "boundary": self.boundary,
+            "native": self.native,
+        }
+        if self.native is not None:
+            arguments.update(flux_sources=self.flux_sources, acquisition=self.acquisition)
+        return arguments
 
 
 def resolve_co2_boundary_representation(config: Mapping[str, Any]) -> BoundaryRepresentation | None:
