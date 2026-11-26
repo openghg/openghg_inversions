@@ -35,6 +35,7 @@ from openghg_inversions.rhime._stage_checks import (
 )
 from openghg_inversions.serialization import load_trace, save_trace
 
+from .acquisition import acquire_co2_data
 from .co2_affine_output import (
     _bind_affine_flux_map, load_and_bind_affine_flux_map, prepared_inputs_content_id,
 )
@@ -49,9 +50,7 @@ from .execution import load_co2_params
 from .inference import (
     annotate_co2_inference, build_co2_inference, sample_co2_inference, describe_co2_inference,
 )
-from .prepare_from_merged_data import (
-    acquire_co2_data, prepare_co2_from_merged_data, resolve_co2_preparation_resources,
-)
+from .prepare_from_merged_data import prepare_co2_from_merged_data, resolve_co2_preparation_resources
 from .configuration import Co2ModelConfig, Co2NativePreparationConfig, _resolve_co2_sampling
 
 

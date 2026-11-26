@@ -16,6 +16,7 @@ from openghg_inversions.inversion_data import MergedData, PreparedInputs
 from openghg_inversions.observation_error import WhitenedRankRule
 from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
 
+from .acquisition import acquire_co2_data
 from .co2_affine_output import _bind_affine_flux_map, prepared_inputs_content_id
 from .co2_outputs import (
     Co2Output, Co2OutputOptions, calculate_co2_products, save_co2_products, make_co2_output,
@@ -23,9 +24,7 @@ from .co2_outputs import (
 )
 from .co2_preparation import Co2PreparedInputs, check_prepared_boundary, prepare_co2_inputs, requested_co2_facts
 from .inference import sample_co2_inference
-from .prepare_from_merged_data import (
-    acquire_co2_data, prepare_co2_from_merged_data, resolve_co2_preparation_resources,
-)
+from .prepare_from_merged_data import prepare_co2_from_merged_data, resolve_co2_preparation_resources
 from .configuration import (
     load_co2_family_config, validate_co2_config, _validate_co2_option_names, Co2PreparationConfig,
     Co2ModelConfig, _BASIS_FILE_FIELDS, _resolve_co2_sampling,

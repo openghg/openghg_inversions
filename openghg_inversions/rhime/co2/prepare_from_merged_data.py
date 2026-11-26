@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -48,33 +47,6 @@ class Co2PreparationResources:
     basis_inputs: dict[str, Any]
     bc_basis: BoundaryBasis
     bc_centering_weights: xr.DataArray | None
-
-
-def acquire_co2_data(
-    acquisition: Mapping[str, Any] | None, *,
-    flux_sources: tuple[str, ...], domain: str, start_date: str, end_date: str,
-) -> MergedData:
-    """Retrieve native CO2 inputs before observation filtering or basis construction.
-
-    Args:
-        acquisition: Resolved arguments for surface retrieval.
-        flux_sources: Requested flux inventory names.
-        domain: Requested transport domain.
-        start_date: Requested window start.
-        end_date: Requested window end.
-
-    Returns:
-        Acquired observations, transport and native flux.
-
-    Raises:
-        ValueError: If no acquisition selectors are configured.
-    """
-    if acquisition is None:
-        raise ValueError("Pass merged_data or configure data.acquisition for fresh retrieval.")
-    return MergedData.from_options(
-        species="co2", domain=domain, start_date=start_date, end_date=end_date,
-        flux_sources=flux_sources, **acquisition,
-    )
 
 
 def _load_centering_weights(path: Path | None) -> xr.DataArray | None:
@@ -243,7 +215,6 @@ def prepare_co2_from_merged_data(
 
 __all__ = [
     "Co2PreparationResources",
-    "acquire_co2_data",
     "prepare_co2_from_merged_data",
     "resolve_co2_preparation_resources",
 ]
