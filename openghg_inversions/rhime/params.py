@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, get_args, get_type_hints
 
 from openghg_inversions.basis.boundary import BOUNDARY_BASIS_ALGORITHMS, boundary_basis
+from openghg_inversions.basis.options import BoundaryBasisOptions, FluxBasisOptions
 from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.filters import validate_filter_options
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
@@ -53,37 +54,24 @@ def _resolve_basis_seed(seed: Any, basis_algorithm: str | None, *, generated: bo
 
 
 @dataclass(frozen=True, kw_only=True)
-class DataConfig:
+class DataConfig(FluxBasisOptions, BoundaryBasisOptions):
     """Resolved acquisition and preparation choices, independent of inference.
 
     External options enter through ``from_params``. Ordinary option containers
     are owned; numerical payloads remain borrowed. Direct construction expects
     resolved values and does not copy or execute scientific work.
+    The inherited basis options keep their names in flat requests and manifests.
 
     Attributes:
-        bc_basis_paths: Exact labelled BC basis files. When ``use_bc`` is true
-            and these are set, they take precedence and ``bc_basis_algorithm``
-            is inactive.
-        bc_basis_algorithm: Built-in basis used without files: ``"NESW"``
-            (one region per whole curtain) or ``"twelve-region"`` (two lower
-            horizontal halves and one upper region per curtain).
-        bc_basis_split_height: Finite twelve-region split in the curtains'
-            native height-coordinate units; no unit conversion or vertical
-            datum is assumed. Ignored by NESW and by exact files.
         filters: Filter names, or per-site filter names, applied before
             observation errors and basis construction.
         filter_options: Keyword options for named filters, such as
             ``{"local_influence": {"window_size": 5, "threshold": 0.15}}``.
             Omitted options keep each filter's defaults.
-        basis_seed: Non-negative integer seed for a generated quadtree basis.
-            Without it, the quadtree search is random and each run fits a
-            different basis. Rejected when another algorithm is generated;
-            inactive when a saved basis or partition is selected.
     """
 
     site_options: SiteOptions
     species: str
-    domain: str
     start_date: str
     end_date: str
     flux_sources: tuple[str, ...]
@@ -96,22 +84,9 @@ class DataConfig:
     fp_model: str | None = None
     fp_species: str | None = None
     calibration_scale: str | None = None
-    use_bc: bool = True
-    basis_path: Path | None = None
-    basis_partition_path: Path | None = None
-    landsea_path: Path | None = None
-    basis_partition_paths: tuple[Path, ...] | None = None
-    bc_basis_paths: tuple[Path, ...] | None = None
-    bc_basis_algorithm: str | None = "NESW"
-    bc_basis_split_height: float = 3000.0
-    outer_regions_path: Path | None = None
     bc_input: str | None = None
-    basis_algorithm: str | None = "weighted"
-    nbasis: int = 100
-    basis_seed: int | None = None
     filters: str | list[str | None] | dict[str, str | None | list[str | None]] | None = None
     filter_options: dict[str, dict[str, Any]] | None = None
-    fix_basis_outer_regions: bool = False
     averaging_error: bool = True
     basis_output_path: Path | None = None
     flux_non_finite_check: FluxNonFiniteCheck = "lazy"

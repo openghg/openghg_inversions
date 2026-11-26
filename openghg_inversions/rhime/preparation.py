@@ -36,6 +36,7 @@ from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_s
 from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.basis.boundary import BoundaryBasis, boundary_basis, nesw_basis
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR, BasisFunctions
+from openghg_inversions.basis.options import BoundaryBasisOptions, FluxBasisOptions
 from openghg_inversions.boundary_sensitivity import scale_satellite_boundary_sensitivity_to_column_signal
 from openghg_inversions.filters import filtering
 from openghg_inversions.inversion_data import MergedData, PreparedInputs, SiteOptions
@@ -360,7 +361,7 @@ def _validate_multisector_sensitivity_sources(
 
 
 
-def resolve_bc_basis(data_config: Any) -> BoundaryBasis:
+def resolve_bc_basis(data_config: BoundaryBasisOptions) -> BoundaryBasis:
     """Load enabled exact BC resources, or select a built-in basis builder.
 
     Configuration owns algorithm validation. Exact files take precedence over
@@ -372,7 +373,7 @@ def resolve_bc_basis(data_config: Any) -> BoundaryBasis:
     borrowed scientific inputs remain unchanged.
 
     Args:
-        data_config: Resolved acquisition/preparation configuration.
+        data_config: Resolved boundary basis selection and whether to use it.
 
     Returns:
         Loaded labelled BC basis or a built-in per-site basis builder.
@@ -390,7 +391,7 @@ def resolve_bc_basis(data_config: Any) -> BoundaryBasis:
     return boundary_basis(data_config.bc_basis_algorithm, split_height=data_config.bc_basis_split_height)
 
 
-def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:
+def resolve_basis_inputs(data_config: FluxBasisOptions) -> dict[str, Any]:
     """Resolve exact scientific inputs before acquisition.
 
     Configuration resolution itself stays data-free. This application boundary
@@ -400,7 +401,7 @@ def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:
     validated separately by the output owner.
 
     Args:
-        data_config: Resolved :class:`~openghg_inversions.rhime.params.DataConfig`.
+        data_config: Resolved flux basis selection and transport domain.
             Explicit retained artifacts and partition files bypass algorithm
             support defaults; explicitly selected support files are still read.
             Plural partition paths are sorted before loading; the first file

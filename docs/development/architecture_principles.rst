@@ -84,6 +84,12 @@ steps and saves the pair. A caller supplying ``MergedData`` starts at the
 preparation step. File-backed acquisition remains tracked in
 `#829 <https://github.com/openghg/openghg_inversions/issues/829>`_.
 
+Basis resource resolvers declare their inputs as
+:class:`~openghg_inversions.basis.options.FluxBasisOptions` and
+:class:`~openghg_inversions.basis.options.BoundaryBasisOptions`. Recipe
+parsers populate those shared types from their own configuration layouts.
+The basis builders take the resolved settings and scientific arrays explicitly.
+
 Current file-backed commands and their restrictions are documented in
 :doc:`../usage/staged_workflow` and :doc:`../usage/co2_model_family`.
 The reusable recipe execution and prepared/sample handoffs in `PR 802

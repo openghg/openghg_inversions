@@ -15,6 +15,7 @@ import tomllib
 
 
 from openghg_inversions.basis.boundary import BOUNDARY_BASIS_ALGORITHMS
+from openghg_inversions.basis.options import BoundaryBasisOptions, FluxBasisOptions
 from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 from openghg_inversions.inversion_data import SiteOptions, check_surface_request
 from openghg_inversions.models.boundary import (
@@ -240,8 +241,10 @@ def _validate_co2_option_names(*requests: Mapping[str, object]) -> None:
         "": _CO2_REQUEST_OPTION_NAMES,
         "data": _DATA_OPTION_NAMES,
         "data.acquisition": _ACQUISITION_OPTION_NAMES,
-        "data.preparation": frozenset(field.name for field in fields(Co2NativePreparationConfig))
-        | {"use_bc", "boundary_representation"},
+        "data.preparation": (
+            frozenset(field.name for field in fields(Co2NativePreparationConfig)) - {"bc_basis"}
+            | {"use_bc", "boundary_representation"}
+        ),
         "data.preparation.basis": _BASIS_OPTION_NAMES,
         "data.preparation.native_prior": frozenset(field.name for field in fields(Co2NativePrior)),
         "model": frozenset({"boundary", "offset", "outer_flux"}),
@@ -270,84 +273,46 @@ def _positive_int(value: object, path: str) -> int:
     return value
 
 
-@dataclass(frozen=True)
-class Co2BasisSelection:
-    """Select flux regions and boundary basis functions for CO2 preparation.
+def _basis_options(
+    value: object, *, domain: str, use_bc: bool,
+) -> tuple[FluxBasisOptions, BoundaryBasisOptions]:
+    """Translate the CO2 basis table to the choices used by each basis resolver."""
+    path = "data.preparation.basis"
+    options = _table(value, path)
+    flux: dict[str, Any] = {}
+    boundary: dict[str, Any] = {}
+    if "algorithm" in options:
+        flux["basis_algorithm"] = _string(options.pop("algorithm"), f"{path}.algorithm")
+    if "nbasis" in options:
+        flux["nbasis"] = _positive_int(options.pop("nbasis"), f"{path}.nbasis")
+    for name, field in (("path", "basis_path"), ("partition_path", "basis_partition_path"),
+                        ("landsea_path", "landsea_path"), ("outer_regions_path", "outer_regions_path")):
+        if name in options:
+            flux[field] = _path(options.pop(name), f"{path}.{name}")
+    if "fix_outer_regions" in options:
+        flux["fix_basis_outer_regions"] = _bool(options.pop("fix_outer_regions"), f"{path}.fix_outer_regions")
+    if "bc_algorithm" in options:
+        boundary["bc_basis_algorithm"] = _string(options.pop("bc_algorithm"), f"{path}.bc_algorithm")
+    if "bc_split_height" in options:
+        boundary["bc_basis_split_height"] = _number(options.pop("bc_split_height"), f"{path}.bc_split_height")
+    if "bc_paths" in options:
+        paths = options.pop("bc_paths")
+        if isinstance(paths, str | bytes) or not isinstance(paths, Sequence) or not paths:
+            raise TypeError(f"{path}.bc_paths must be a non-empty list of paths.")
+        boundary["bc_basis_paths"] = tuple(_path(item, f"{path}.bc_paths item") for item in paths)
+    _reject_unknown(options, path)
 
-    Flux regions come from a saved basis operator, a labelled grid partition,
-    or a generated basis. Boundary functions come from explicit files or a
-    built-in algorithm. Resolve file paths from the invocation directory.
-    """
-
-    domain: str
-    use_bc: bool = True
-    basis_algorithm: str | None = "weighted"
-    nbasis: int = 100
-    basis_path: Path | None = None
-    basis_partition_path: Path | None = None
-    basis_partition_paths: tuple[Path, ...] | None = None
-    landsea_path: Path | None = None
-    outer_regions_path: Path | None = None
-    fix_basis_outer_regions: bool = False
-    bc_basis_paths: tuple[Path, ...] | None = None
-    bc_basis_algorithm: str = "NESW"
-    bc_basis_split_height: float = 3000.0
-
-    @classmethod
-    def from_params(cls, value: object, *, domain: str, use_bc: bool) -> Co2BasisSelection:
-        """Parse the configured flux and boundary basis choices.
-
-        Args:
-            value: Contents of the basis table.
-            domain: Requested transport domain.
-            use_bc: Whether preparation uses boundary sensitivities.
-
-        Returns:
-            Validated basis choices with resolved resource paths.
-
-        Raises:
-            ValueError: If the request has unknown or incompatible choices.
-            TypeError: If an option has an invalid type.
-        """
-        options = _table(value, "data.preparation.basis")
-        result: dict[str, Any] = {"domain": domain, "use_bc": use_bc}
-        for name, field in (("algorithm", "basis_algorithm"), ("bc_algorithm", "bc_basis_algorithm")):
-            if name in options:
-                result[field] = _string(options.pop(name), f"data.preparation.basis.{name}")
-        if "nbasis" in options:
-            result["nbasis"] = _positive_int(options.pop("nbasis"), "data.preparation.basis.nbasis")
-        for name, field in (("path", "basis_path"), ("partition_path", "basis_partition_path"),
-                            ("landsea_path", "landsea_path"), ("outer_regions_path", "outer_regions_path")):
-            if name in options:
-                result[field] = _path(options.pop(name), f"data.preparation.basis.{name}")
-        if "fix_outer_regions" in options:
-            result["fix_basis_outer_regions"] = _bool(
-                options.pop("fix_outer_regions"), "data.preparation.basis.fix_outer_regions",
-            )
-        if "bc_split_height" in options:
-            result["bc_basis_split_height"] = _number(
-                options.pop("bc_split_height"), "data.preparation.basis.bc_split_height",
-            )
-        if "bc_paths" in options:
-            paths = options.pop("bc_paths")
-            if isinstance(paths, str | bytes) or not isinstance(paths, Sequence) or not paths:
-                raise TypeError("data.preparation.basis.bc_paths must be a non-empty list of paths.")
-            result["bc_basis_paths"] = tuple(
-                _path(item, "data.preparation.basis.bc_paths item") for item in paths
-            )
-        _reject_unknown(options, "data.preparation.basis")
-        selected = cls(**result)
-        # region_constrained also needs a configured class map, which waits on #454.
-        algorithms = ("quadtree", "weighted")
-        if selected.basis_path is None and selected.basis_partition_path is None and (
-            selected.basis_algorithm not in algorithms
-        ):
-            raise ValueError(f"data.preparation.basis.algorithm must be one of {algorithms!r}.")
-        if selected.bc_basis_algorithm not in BOUNDARY_BASIS_ALGORITHMS:
-            raise ValueError(
-                f"data.preparation.basis.bc_algorithm must be one of {BOUNDARY_BASIS_ALGORITHMS!r}."
-            )
-        return selected
+    flux_basis = FluxBasisOptions(domain=domain, **flux)
+    bc_basis = BoundaryBasisOptions(use_bc=use_bc, **boundary)
+    # region_constrained also needs a configured class map, which waits on #454.
+    algorithms = ("quadtree", "weighted")
+    if flux_basis.basis_path is None and flux_basis.basis_partition_path is None and (
+        flux_basis.basis_algorithm not in algorithms
+    ):
+        raise ValueError(f"{path}.algorithm must be one of {algorithms!r}.")
+    if bc_basis.bc_basis_algorithm not in BOUNDARY_BASIS_ALGORITHMS:
+        raise ValueError(f"{path}.bc_algorithm must be one of {BOUNDARY_BASIS_ALGORITHMS!r}.")
+    return flux_basis, bc_basis
 
 
 @dataclass(frozen=True)
@@ -398,13 +363,15 @@ class Co2NativePreparationConfig:
     Attributes:
         filters: Observation filters applied before deriving errors.
         averaging_error: Include variability when deriving observation errors.
-        basis: Flux and boundary basis choices, including whether to use BCs.
+        basis: Saved or generated flux basis selection.
+        bc_basis: Boundary basis selection and whether to use it.
         native_prior: Native prior used for the coherent reduction and affine map.
         aggregation_error_rank: Maximum stored rank, or None for exact covariance.
         bc_centering_weights_path: Optional netCDF weights for weighted boundaries.
     """
 
-    basis: Co2BasisSelection
+    basis: FluxBasisOptions
+    bc_basis: BoundaryBasisOptions
     native_prior: Co2NativePrior
     filters: Any = None
     averaging_error: bool = True
@@ -431,8 +398,10 @@ class Co2NativePreparationConfig:
             TypeError: If an option has an invalid type.
         """
         path = "data.preparation"
+        basis, bc_basis = _basis_options(preparation.pop("basis", {}), domain=domain, use_bc=use_bc)
         result: dict[str, Any] = {
-            "basis": Co2BasisSelection.from_params(preparation.pop("basis", {}), domain=domain, use_bc=use_bc),
+            "basis": basis,
+            "bc_basis": bc_basis,
             "native_prior": Co2NativePrior.from_params(_take(preparation, "native_prior", path)),
         }
         if "filters" in preparation:
@@ -461,7 +430,7 @@ class Co2NativePreparationConfig:
         basis = self.basis
         paths = (
             basis.basis_path, basis.basis_partition_path, *(basis.basis_partition_paths or ()),
-            basis.landsea_path, basis.outer_regions_path, *(basis.bc_basis_paths or ()),
+            basis.landsea_path, basis.outer_regions_path, *(self.bc_basis.bc_basis_paths or ()),
             self.bc_centering_weights_path,
         )
         return tuple(Path(path).resolve() for path in paths if path is not None)
@@ -1120,7 +1089,7 @@ def _resolve_co2_sampling(config: Mapping[str, object], *, model: Mapping[str, A
 
 
 __all__ = [
-    "Co2PreparationConfig", "Co2NativePreparationConfig", "Co2BasisSelection", "Co2NativePrior",
+    "Co2PreparationConfig", "Co2NativePreparationConfig", "Co2NativePrior",
     "Co2ModelConfig", "co2_config_templates",
     "load_co2_family_config", "resolve_co2_prior_seed", "validate_co2_config",
 ]
