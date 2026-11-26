@@ -877,6 +877,7 @@ def test_build_rhime_model_contains_expected_variables(
     assert set(model.named_vars) == {
         "Y",
         "bc",
+        "bc_is_active",
         "epsilon",
         "error",
         "hbc",
@@ -888,11 +889,13 @@ def test_build_rhime_model_contains_expected_variables(
         "sigma_period_index",
         "sigma_site_index",
         "x",
+        "x_is_active",
         "y",
     }
     assert model.named_vars_to_dims == {
         "Y": ("nmeasure",),
         "bc": ("bc_region",),
+        "bc_is_active": ("bc_region",),
         "epsilon": ("nmeasure",),
         "error": ("nmeasure",),
         "hbc": ("nmeasure", "bc_region"),
@@ -904,6 +907,7 @@ def test_build_rhime_model_contains_expected_variables(
         "sigma_period_index": ("nmeasure",),
         "sigma_site_index": ("nmeasure",),
         "x": ("region",),
+        "x_is_active": ("region",),
         "y": ("nmeasure",),
     }
 
@@ -3883,7 +3887,7 @@ def test_rhime_configuration_builds_specs_before_preparation(tmp_path: Path) -> 
     assert setup.data.site_options.time_resolved == (True,)
     assert setup.data.basis_algorithm == "weighted"
     assert setup.data.nbasis == 100
-    assert setup.data.bc_basis_paths is None
+    assert setup.data.bc_basis.paths is None
     assert setup.model.likelihood.min_error_options == {"by_site": False}
     for selector in ("inlet", "instrument", "platform", "fp_height"):
         assert getattr(setup.data.site_options, selector) == (None,)
