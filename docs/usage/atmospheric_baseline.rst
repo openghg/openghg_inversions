@@ -43,18 +43,11 @@ the covariance
 
 Here :math:`R` is the observation and model-mismatch covariance and :math:`A`
 is the supplied aggregation-error covariance, which represents variability
-unresolved by the flux basis. The last term comes from integrating out the
-selected states that the basis does represent.
-
-The model combines the two fixed covariance terms at likelihood assembly so
-they can use the same covariance calculations. If :math:`A` is low rank plus
-diagonal, the builder appends the columns of :math:`H_O L_O` to its existing
-factor, where :math:`L_O L_O^T = \Sigma_{OO}`. The concatenated factor's
-product with its transpose adds the two covariances and leaves the diagonal
-residual unchanged. For dense :math:`A`, the builder adds the covariance
-directly. When aggregation error is absent, the outer-state covariance still
-enters the likelihood on its own. In linked CO2/O2 recipes it spans both
-channels, carrying the cross-channel covariance induced by the shared states.
+unresolved by the flux basis. The last term projects the prior covariance
+:math:`\Sigma_{OO}` of the selected states into observation space through
+their sensitivity :math:`H_O`. It enters the likelihood even when
+aggregation error is absent. In linked CO2/O2 recipes it spans both channels,
+carrying the cross-channel covariance induced by the shared states.
 
 For a linear Gaussian model with uncorrelated outer states this is exact: the
 posterior of the other states equals their marginal posterior when the outer
@@ -73,9 +66,9 @@ posterior means by about 90 Tg CO2/yr relative to sampling the outer states with
 NUTS. That shift was 0.05 posterior standard deviations and about two Monte
 Carlo standard errors. The fossil-fuel flux posterior mean was unchanged.
 
-Taking the outer states out of the sampler makes the state smaller, but it
-need not make NUTS faster: the likelihood gains a low-rank term, and in the
-test above sampling took slightly longer than sampling the outer states.
+Marginalisation reduces the number of sampled states and adds a covariance
+term to the likelihood. In the test above, marginalisation took slightly
+longer than sampling the outer states.
 
 The outer ocean can be marginalised the same way instead of being held with
 zero uncertainty, with ``fixed_sources=("ocean",)``.
