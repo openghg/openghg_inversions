@@ -154,16 +154,19 @@ def _request(files: dict[str, Path], native_prior: dict) -> dict:
     """A complete configured CO2 request building a per-source preparation."""
     return {
         "format_version": 1, "recipe": "co2",
-        "prepared_inputs": {
+        "data": {
             **WINDOW,
+            "flux_sources": list(SOURCES),
             "acquisition": {
-                "sites": ["TOY"], "averaging_period": "3h", "flux_sources": list(SOURCES),
+                "sites": ["TOY"], "averaging_period": "3h",
                 "surface_transport": dict.fromkeys(SOURCES, "integrated"),
                 "boundary_reference": 400.0, "boundary_reference_units": "ppm", "boundary_mass_tolerance": 1e-6,
             },
-            "basis": {"partition_path": str(files["partition"])},
-            "native_prior": native_prior,
-            "aggregation_error_rank": "exact",
+            "preparation": {
+                "basis": {"partition_path": str(files["partition"])},
+                "native_prior": native_prior,
+                "aggregation_error_rank": "exact",
+            },
         },
         "likelihood": {"kind": "additive_sigma", "no_model_error": True, "fixed_model_mismatch": 0.0},
     }
@@ -273,8 +276,8 @@ def test_multisource_configuration_round_trips(files: dict[str, Path]) -> None:
         assert again.native.native_prior == prior
     assert prior.sources["gpp"].sigma is None and prior.calibration.statistic == "median"
     assert prior.sources["ff"].geodesic_correlation_length_km == {"1": FF_GEODESIC_KM}
-    single = Co2PreparationConfig.from_params(_request(files, {"sigma": 0.2}), require_source=True)
-    assert single.native.native_prior == Co2NativePrior(sigma=0.2)
+    single = Co2PreparationConfig.from_params(_request(files, {"stdev": 0.2}), require_source=True)
+    assert single.native.native_prior == Co2NativePrior(stdev=0.2)
 
 
 @pytest.mark.parametrize("change,message", [
@@ -310,7 +313,7 @@ def test_multisource_configuration_rejects_inconsistent_options(
 
 def test_single_field_options_reject_multisource_keys(files: dict[str, Path]) -> None:
     with pytest.raises(ValueError, match="requires per-source priors"):
-        Co2PreparationConfig.from_params(_request(files, {"sigma": 0.2, "gpp_ter_correlation": 0.5}))
+        Co2PreparationConfig.from_params(_request(files, {"stdev": 0.2, "gpp_ter_correlation": 0.5}))
 
 
 @pytest.mark.parametrize("template", ["co2.toml", "co2_fixed_ou.toml"])
@@ -327,7 +330,7 @@ def test_template_multisource_examples_parse(template: str, example: str) -> Non
         if not line.startswith("#"):
             break
         block.append(line.removeprefix("#").removeprefix(" "))
-    prior = Co2MultiSourceNativePrior.from_params(tomllib.loads("\n".join(block))["prepared_inputs"]["native_prior"])
+    prior = Co2MultiSourceNativePrior.from_params(tomllib.loads("\n".join(block))["data"]["preparation"]["native_prior"])
     gpp, ter = prior.sources["co2_BASE_GPP"], prior.sources["co2_BASE_TER"]
     assert prior.gpp_ter_correlation == pytest.approx(0.7) and gpp.kernel_key == ter.kernel_key
     if example == "E-r07":
@@ -479,7 +482,6 @@ def test_single_field_route_is_bit_identical_to_the_direct_reduction(tmp_path: P
     from openghg_inversions.native_covariance import SeparableExponentialCovariance
     from openghg_inversions.native_flux import resolve_runtime_flux
     from openghg_inversions.rhime.co2 import prepare_co2_inputs
-    from openghg_inversions.rhime.co2.co2_native_preparation import _native_sensitivity
     from openghg_inversions.rhime.preparation import (
         assemble_inputs, build_sensitivities, filter_observations, resolve_basis_inputs,
     )
@@ -492,9 +494,9 @@ def test_single_field_route_is_bit_identical_to_the_direct_reduction(tmp_path: P
     partition = tmp_path / "partition.nc"
     xr.ones_like(fluxes["fossil"].flux.isel(time=0, drop=True), dtype=int).rename("basis").to_dataset().to_netcdf(
         partition)
-    config = _request({"partition": partition}, {"sigma": 0.2, "mean": 1.1, "correlation_length": 1.0})
-    config["prepared_inputs"]["acquisition"].update(
-        flux_sources=["biosphere", "fossil"], surface_transport={"biosphere": "integrated", "fossil": "integrated"})
+    config = _request({"partition": partition}, {"stdev": 0.2, "mean": 1.1, "correlation_length": 1.0})
+    config["data"]["flux_sources"] = ["biosphere", "fossil"]
+    config["data"]["acquisition"]["surface_transport"] = {"biosphere": "integrated", "fossil": "integrated"}
     resolved = Co2PreparationConfig.from_params(load_co2_params(params=config), require_source=True)
     prepared = handoffs.load_preparation(
         handoffs.prepare(**resolved.preparation_arguments(), merged_data=pilot, output_dir=tmp_path / "p")
@@ -514,7 +516,12 @@ def test_single_field_route_is_bit_identical_to_the_direct_reduction(tmp_path: P
         build_sensitivities(filtered, basis, flux_sources=("biosphere", "fossil"), multisector=False),
         basis, site_options=site_options, domain="TOY", start_date=WINDOW["start_date"], use_bc=True,
     )
-    sensitivity = _native_sensitivity(filtered, canonical)
+    sensitivity = (
+        filtered["TOY"].fp_x_flux.reset_coords(drop=True).rename(time="observation")
+        .drop_vars("observation").assign_coords(
+            xr.Coordinates.from_pandas_multiindex(canonical.inv_inputs.indexes["nmeasure"], "observation")
+        ).assign_attrs(units=canonical.inv_inputs.mf.attrs["units"])
+    )
     mean = xr.full_like(sensitivity.isel(observation=0, drop=True), 1.1).assign_attrs(units="1")
     reduction = reduce_native_gaussian(
         covariance=SeparableExponentialCovariance(sensitivity.lat, sensitivity.lon, sigma=0.2, correlation_length=1.0),
@@ -526,7 +533,7 @@ def test_single_field_route_is_bit_identical_to_the_direct_reduction(tmp_path: P
                  "aggregation_error_covariance", "mf", "mf_error", "H_bc"):
         np.testing.assert_array_equal(prepared.inv_inputs[name].values, direct.inv_inputs[name].values)
     assert prepared.provenance["native_preparation"]["native_prior"] == {
-        "sigma": 0.2, "mean": 1.1, "correlation_length": 1.0,
+        "stdev": 0.2, "mean": 1.1, "correlation_length": 1.0,
         "latitude_correlation_length": None, "longitude_correlation_length": None,
     }
 
@@ -620,7 +627,7 @@ def test_shared_partition_is_repeated_per_source(
     path = tmp_path / "shared.nc"
     shared.to_dataset().to_netcdf(path)
     config = _request(files, _native_prior(files, restriction))
-    config["prepared_inputs"]["basis"] = {"partition_path": str(path)}
+    config["data"]["preparation"]["basis"] = {"partition_path": str(path)}
     prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, "shared")).prepared
     inputs = prepared.inv_inputs
     assert list(inputs.indexes["region"]) == [(s, r) for s in SOURCES for r in range(3)]
@@ -634,7 +641,7 @@ def test_generated_basis_is_repeated_per_source(tmp_path: Path, merged: MergedDa
     from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR
 
     config = _request(files, _native_prior(files))
-    config["prepared_inputs"]["basis"] = {"algorithm": "quadtree", "nbasis": 4}
+    config["data"]["preparation"]["basis"] = {"algorithm": "quadtree", "nbasis": 4}
     prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, "generated")).prepared
     operator = prepared.basis_functions.operator
     assert operator.source_labels == SOURCES
@@ -646,6 +653,6 @@ def test_generated_basis_is_repeated_per_source(tmp_path: Path, merged: MergedDa
     expected = _dense_reference(merged, prepared, "bucket", partition=operator.basis_flat[SOURCES[0]])
     np.testing.assert_allclose(prepared.inv_inputs.H.values, expected["H"], rtol=1e-8, atol=1e-10)
 
-    config["prepared_inputs"]["basis"]["fix_outer_regions"] = True
+    config["data"]["preparation"]["basis"]["fix_outer_regions"] = True
     with pytest.raises(ValueError, match="fix_outer_regions cannot serve per-source native priors"):
         Co2PreparationConfig.from_params(config, require_source=True)

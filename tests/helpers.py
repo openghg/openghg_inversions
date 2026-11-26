@@ -229,7 +229,7 @@ def prepare_inputs(**params):
     data = DataConfig.from_params(group_params(params)["data"],
                                   multisector=params.get("split_by_sectors", False))
     basis_inputs = preparation.resolve_basis_inputs(data)
-    bc_basis = preparation.resolve_bc_basis(data)
+    bc_basis = preparation.resolve_bc_basis(data.bc_basis, use_bc=data.use_bc)
     merged = preparation.acquire_merged_data(data)
     filtered, site_options = preparation.filter_observations(
         merged.site_data, merged.site_options, filters=data.filters, filter_options=data.filter_options,

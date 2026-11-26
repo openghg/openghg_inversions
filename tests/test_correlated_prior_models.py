@@ -114,13 +114,14 @@ def test_full_and_enhancement_ordinary_cached_prediction_and_density(full):
     np.testing.assert_allclose(x, physical_state(prior, point["flux_scaling_latent"]), rtol=1e-14)
 
 
-def test_linked_species_share_one_state_and_density():
+@pytest.mark.parametrize("wrap_prior", [False, True], ids=["lognormal", "wrapped"])
+def test_linked_species_share_one_state_and_density(wrap_prior):
     prepared = _prepared()
-    kwargs = _kwargs(prepared)
-    prior = CorrelatedPrior.from_lognormal(prepared.retained_prior)
+    prior = CorrelatedPrior.from_lognormal(prepared.retained_prior) if wrap_prior else prepared.retained_prior
+    kwargs = {**_kwargs(prepared), "retained_prior": prior}
     likelihood = dict(tau_hours=5, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75})
-    ordinary = build_co2_o2_model(**{**kwargs, "retained_prior": prior}, **likelihood)
-    cached = build_co2_o2_cached_sigma_model(**{**kwargs, "retained_prior": prior}, **likelihood)
+    ordinary = build_co2_o2_model(**kwargs, **likelihood)
+    cached = build_co2_o2_cached_sigma_model(**kwargs, **likelihood)
     point = ordinary.initial_point()
     point["flux_scaling_latent"] = np.array([0.1, -0.3, 0.2, -0.1, 0.4])
     x, mean = state_and_mean(ordinary, point)

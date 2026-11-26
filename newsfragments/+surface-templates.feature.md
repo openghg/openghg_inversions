@@ -1,1 +1,0 @@
-Add a Python adapter from independently prepared CO2/O2 surface templates to explicitly mapped retained coefficients, preserving native rows, signed responses, joint covariance and input provenance, with an offline example that fits the linked outer-flux option.

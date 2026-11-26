@@ -11,10 +11,12 @@ from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from functools import partial
 import json
+import warnings
 from typing import Literal, Protocol, cast
 
 from openghg.dataobjects import BoundaryConditionsData, FluxData, FootprintData, ObsData
 
+import numpy as np
 import pandas as pd
 import xarray as xr
 
@@ -24,11 +26,6 @@ from ._units import mole_fraction_unit_scale
 from ._site_options import is_surface_platform
 from ._surface_schema import validate_surface_inputs
 from ._boundary import baseline_reference_sensitivities as _reference_sensitivities
-
-
-#: Revision of the source-wise surface policy recorded on prepared site data;
-#: linked surface templates reject data prepared under another revision.
-SURFACE_POLICY_REVISION = "957-source-wise-v1"
 
 
 TransportMode = Literal["integrated", "time_resolved"]
@@ -224,6 +221,7 @@ def prepare_surface_site(
     transport: Mapping[str, TransportMode],
     site_footprint_data: FootprintInput | None = None,
     boundary_data: xr.Dataset | BoundaryConditionsData | None = None,
+    boundary_representation: Literal["ordinary", "centered"] = "ordinary",
     boundary_reference: float | None = None,
     boundary_reference_units: str | None = None,
     boundary_mass_tolerance: float | None = None,
@@ -258,12 +256,14 @@ def prepare_surface_site(
             (north/south) or ``lat`` (east/west), interval-start ``time``, with
             ``time_period`` metadata and mole-fraction units. Requires matching
             ``particle_locations_n/e/s/w`` in site transport.
-        boundary_reference: Finite scalar arithmetic reference, required with
-            ``boundary_data``. It sets where anomalies are formed and does not
-            change the absolute boundary contribution.
-        boundary_reference_units: Reference mole-fraction units, required with
-            ``boundary_data``; converted before subtraction.
-        boundary_mass_tolerance: Required with ``boundary_data``; allowed absolute
+        boundary_representation: Ordinary absolute contributions by default.
+            Explicit ``centered`` retains anomaly/mass/reference operands for
+            centered inference; supplying a reference alone does not select it.
+        boundary_reference: Scalar reference required only for centered output.
+            Applied only to centered output.
+        boundary_reference_units: Reference mole-fraction units, required when
+            a reference is supplied; converted before subtraction.
+        boundary_mass_tolerance: Required with centered boundary data; allowed absolute
             deviation of total nonnegative curtain mass from one before joint
             normalization.
         output_units: Concentration output units; defaults to observation units.
@@ -275,12 +275,11 @@ def prepare_surface_site(
         Dataset with aligned ``mf``, available errors/filter fields,
         ``fp_x_flux_sectoral`` with dimensions ``source``, ``lat``, ``lon``,
         ``time`` and source sum ``fp_x_flux``; spatial sums ``mf_mod_sectoral(source, time)`` and
-        ``mf_mod(time)``; transport/provenance attributes. With boundaries, the
-        output contains ``bc_anomaly_n/e/s/w`` on native curtain axes,
-        dimensionless ``bc_mass_n/e/s/w`` and scalar ``bc_reference``, and
-        ``bc_mod(time)``, the absolute unit-factor contribution. These centered
-        operands serve either prepared representation; see
-        :func:`select_boundary_representation`. Concentrations use output
+        ``mf_mod(time)``; transport/provenance attributes. With boundaries,
+        ordinary output contains ``bc_n/e/s/w`` on native curtain axes.
+        Explicit centered output instead contains ``bc_anomaly_n/e/s/w``,
+        dimensionless ``bc_mass_n/e/s/w`` and scalar ``bc_reference``.
+        ``bc_mod(time)`` is the absolute unit-factor contribution in both cases. Concentrations use output
         units. Non-time spatial axis order follows labelled inputs; ``time`` is
         last. Payloads stay lazy where supported; inputs are never mutated.
 
@@ -297,6 +296,10 @@ def prepare_surface_site(
     """
     if species.lower() not in {"co2", "o2"}:
         raise ValueError("Surface preparation currently supports only CO2 and O2.")
+    if boundary_representation not in {"ordinary", "centered"}:
+        raise ValueError("boundary_representation must be 'ordinary' or 'centered'.")
+    if boundary_representation == "centered" and boundary_data is None:
+        raise ValueError("Centered preparation requires boundary_data.")
     _validate_platform(obs_data)
     if not flux_data or set(flux_data) != set(transport):
         raise ValueError("transport must specify exactly one mode per flux source.")
@@ -352,8 +355,8 @@ def prepare_surface_site(
     site = _surface_site_responses(
         aligned_obs, site_fp, native_site_fp, native_footprints, flux_views,
         species=species, transport=transport, boundary_view=boundary_view,
-        boundary_reference=boundary_reference, boundary_reference_units=boundary_reference_units,
-        boundary_mass_tolerance=boundary_mass_tolerance,
+        boundary_representation=boundary_representation, boundary_reference=boundary_reference,
+        boundary_reference_units=boundary_reference_units, boundary_mass_tolerance=boundary_mass_tolerance,
     )
     return _attach_surface_provenance(
         site, site_footprint=site_footprint, source_footprints=source_footprints,
@@ -362,12 +365,73 @@ def prepare_surface_site(
     )
 
 
+def _default_curtain_height_units(
+    footprint: xr.Dataset, boundary: xr.Dataset,
+) -> tuple[xr.Dataset, str | None]:
+    """Use metres for unitless footprint height on an identical metre curtain grid.
+
+    This supports legacy stores until footprint standardisation supplies height
+    units. Compare any declared vertical coordinate conventions as well as the
+    indexed levels. The returned dataset borrows the input payloads.
+
+    Args:
+        footprint: Native footprint dataset used for boundary transport.
+        boundary: Boundary concentration curtain dataset.
+
+    Returns:
+        Footprint to use and the assumed unit, if one was assigned.
+
+    Raises:
+        ValueError: If the metre curtain cannot identify the unitless grid.
+    """
+    if "height" not in footprint.coords or "height" not in boundary.coords:
+        return footprint, None
+    height = footprint["height"]
+    boundary_height = boundary["height"]
+    if height.attrs.get("units") or not boundary_height.attrs.get("units"):
+        return footprint, None
+
+    from openghg.util._units import cf_ureg
+    from pint.errors import PintError
+
+    try:
+        scale = cf_ureg.Quantity(1, boundary_height.attrs["units"]).to("m").magnitude
+    except (PintError, TypeError, ValueError):
+        return footprint, None
+    if scale != 1:
+        return footprint, None
+
+    footprint_levels = footprint.indexes.get("height")
+    boundary_levels = boundary.indexes.get("height")
+    if (
+        footprint_levels is None
+        or boundary_levels is None
+        or not footprint_levels.equals(boundary_levels)
+        or not np.issubdtype(height.dtype, np.number)
+        or not np.isfinite(height.values).all()
+    ):
+        raise ValueError("Unitless footprint heights must match the metre boundary grid or declare their units.")
+    for name in ("standard_name", "positive"):
+        if (
+            name in height.attrs
+            and name in boundary_height.attrs
+            and height.attrs[name] != boundary_height.attrs[name]
+        ):
+            raise ValueError(f"Footprint and boundary heights declare different {name!r} values.")
+
+    warnings.warn(
+        "Footprint 'height' has no units; assuming metres to match the boundary curtains.",
+        UserWarning, stacklevel=3,
+    )
+    return footprint.assign_coords(height=height.assign_attrs(units="m")), "m"
+
+
 def _surface_site_responses(
     aligned_obs: xr.Dataset, site_fp: xr.Dataset, native_site_fp: xr.Dataset,
     native_footprints: Mapping[str, xr.Dataset], flux_views: Mapping[str, xr.Dataset],
     *, species: str, transport: Mapping[str, TransportMode], boundary_view: xr.Dataset | None,
-    boundary_reference: float | None, boundary_reference_units: str | None,
-    boundary_mass_tolerance: float | None,
+    boundary_representation: Literal["ordinary", "centered"], boundary_reference: float | None,
+    boundary_reference_units: str | None, boundary_mass_tolerance: float | None,
 ) -> xr.Dataset:
     """Form native source products and boundary operands before observation averaging."""
     align, integrated, resolved = _surface_operations()
@@ -422,34 +486,50 @@ def _surface_site_responses(
     site["mf_mod"] = site.fp_x_flux.sum(["lat", "lon"], skipna=False, keep_attrs=True)
     if boundary_view is not None:
         # Boundary operands use the same retained native releases as source products.
-        # Keep the centered operands; preparation selects the representation.
-        if boundary_mass_tolerance is None:
-            raise ValueError("Surface boundaries require boundary_mass_tolerance.")
-        if boundary_reference is None or boundary_reference_units is None:
-            raise ValueError("Surface boundaries require boundary_reference and boundary_reference_units.")
-        site.attrs["boundary_mass_tolerance"] = boundary_mass_tolerance
-        site.attrs["boundary_normalization_policy"] = "joint-curtain-unit-mass-v1"
-        site.attrs["boundary_provider_policy_revision"] = "957-reference-sensitivities-v1"
-        site.attrs["boundary_operator_owner"] = "openghg_inversions"
-        operands = _reference_sensitivities(
-            boundary_view, native_site_fp, species=species,
-            reference=boundary_reference, reference_units=boundary_reference_units,
-            mass_tolerance=boundary_mass_tolerance,
-        )
-        reference = operands.bc_reference
-        operands = observation_means(operands.drop_vars("bc_reference")).assign(bc_reference=reference)
-        operands = xr.Dataset({
-            name: value if str(name).startswith("bc_mass_") else _convert(value, units)
-            for name, value in operands.data_vars.items()
-        })
-        absolute = {
-            f"bc_{direction}": (
-                operands[f"bc_anomaly_{direction}"] + operands.bc_reference * operands[f"bc_mass_{direction}"]
-            ).assign_attrs(units=units)
-            for direction in "nesw"
-        }
-        site.attrs["boundary_representation"] = "centered-v1"
-        site = site.assign(operands)
+        boundary_fp, assumed = _default_curtain_height_units(native_site_fp, boundary_view)
+        if assumed is not None:
+            site.attrs["boundary_footprint_height_units_assumed"] = assumed
+
+        if boundary_representation == "ordinary":
+            from openghg.analyse._modelled_baseline import baseline_sensitivities
+
+            absolute_operands = baseline_sensitivities(
+                boundary_view, boundary_fp, species=species, allow_climatology=False
+            )
+            absolute = {
+                str(name): value for name, value in observation_means(
+                    xr.Dataset({name: _convert(value, units) for name, value in absolute_operands.data_vars.items()})
+                ).data_vars.items()
+            }
+            site = site.assign(absolute)
+        else:
+            if boundary_mass_tolerance is None:
+                raise ValueError("Centered surface boundaries require mass_tolerance.")
+            if boundary_reference is None or boundary_reference_units is None:
+                raise ValueError("Centered surface boundaries require reference and reference_units.")
+            site.attrs["boundary_mass_tolerance"] = boundary_mass_tolerance
+            site.attrs["boundary_normalization_policy"] = "joint-curtain-unit-mass-v1"
+            site.attrs["boundary_provider_policy_revision"] = "957-reference-sensitivities-v1"
+            site.attrs["boundary_operator_owner"] = "openghg_inversions"
+            operands = _reference_sensitivities(
+                boundary_view, boundary_fp, species=species,
+                reference=boundary_reference, reference_units=boundary_reference_units,
+                mass_tolerance=boundary_mass_tolerance,
+            )
+            reference = operands.bc_reference
+            operands = observation_means(operands.drop_vars("bc_reference")).assign(bc_reference=reference)
+            operands = xr.Dataset({
+                name: value if str(name).startswith("bc_mass_") else _convert(value, units)
+                for name, value in operands.data_vars.items()
+            })
+            absolute = {
+                f"bc_{direction}": (
+                    operands[f"bc_anomaly_{direction}"] + operands.bc_reference * operands[f"bc_mass_{direction}"]
+                ).assign_attrs(units=units)
+                for direction in "nesw"
+            }
+            site.attrs["boundary_representation"] = "centered-v1"
+            site = site.assign(operands)
         directional_totals = [
             value.sum([dim for dim in value.dims if dim != "time"], skipna=False)
             for value in absolute.values()
@@ -472,7 +552,7 @@ def _attach_surface_provenance(
     site.attrs["surface_transport"] = json.dumps(dict(transport), sort_keys=True)
     # Scientific policy: independent source products on native releases, then observation means.
     # This provenance marker is separate from persisted artifact/manifest format versions.
-    site.attrs["surface_policy_revision"] = SURFACE_POLICY_REVISION
+    site.attrs["surface_policy_revision"] = "957-source-wise-v1"
     site.attrs["surface_provider_version"] = str(getattr(openghg, "__version__", None) or "unknown")
     site.attrs["surface_provider_revision"] = str(getattr(openghg, "__revisionid__", None) or "unknown")
     site.attrs["surface_transport_provenance"] = json.dumps(

@@ -9,7 +9,7 @@ boundaries.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from numbers import Integral
 import json
 from pathlib import Path
@@ -23,28 +23,64 @@ from openghg.util import (  # pyright: ignore[reportPrivateImportUsage, reportAt
     cf_ureg,
 )
 
+from openghg_inversions._labelled_matrices import coordinates_on_dims, square_matrix
 from openghg_inversions._serialization_codecs import _copy_json_mapping, _decode_json_mapping
-from openghg_inversions.array_ops import require_unique_index, same_index, validate_covariance_coordinates
-from openghg_inversions.coherent_reduction import CoherentGaussianReduction
+from openghg_inversions.array_ops import (
+    materialize_together,
+    require_unique_index,
+    same_index,
+    validate_covariance_coordinates,
+)
+from openghg_inversions.coherent_reduction import (
+    CoherentGaussianReduction,
+    NativeFunctionalProducts,
+    reduction_identity,
+)
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 from openghg_inversions.models.boundary import Choice, boundary_preparation
+from openghg_inversions.models.boundary.contracts import validate_centering_weight_labels
+from openghg_inversions.postprocessing.co2_flux_outputs import COUNTRY_FUNCTIONAL_DIM
+from openghg_inversions.postprocessing.unresolved_functionals import _functional_covariance_scale
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
     AGGREGATION_ERROR_SD,
     DIAGONAL_RESIDUAL_VARIANCE,
     LOW_RANK_FACTOR,
+    WhitenedRankRule,
+    _prepare_whitened_low_rank_aggregation_error,
     prepare_low_rank_aggregation_error,
     resolve_aggregation_error,
 )
-from openghg_inversions.serialization import open_datatree_loaded, save_datatree
+from openghg_inversions.serialization import (
+    decode_cf_multiindexes,
+    encode_cf_multiindexes,
+    open_datatree_loaded,
+    save_datatree,
+)
 
 from .co2_o2_preparation import Co2O2PreparedInputs
+from .rank_reference import (
+    require_reference_labels,
+    squared_mole_fraction_scale,
+)
 
 
 CO2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_prepared_inputs"
-CO2_PREPARED_INPUTS_SCHEMA_VERSION = 3
+CO2_PREPARED_INPUTS_SCHEMA_VERSION = 4
+COUNTRY_FUNCTIONALS_NODE = "country_functionals"
+REDUCTION_IDENTITY = "reduction_identity"
+NATIVE_REDUCTION_IDENTITY = "native_reduction_identity"
+# Relative tolerances for the persisted unresolved functional covariance.
+_SYMMETRY_TOLERANCE = 1e-10
+_PSD_TOLERANCE = 1e-8
+_COUNTRY_FUNCTIONAL_PAYLOAD = (
+    "functional_mean",
+    "retained_response",
+    "unresolved_observation_covariance",
+    "unresolved_covariance",
+)
 Co2AggregationErrorMode = Literal["dense", "low_rank"]
 _AGGREGATION_PAYLOAD_NAMES = (
     AGGREGATION_ERROR_COVARIANCE,
@@ -278,11 +314,36 @@ class Co2PreparedInputs:
             stored in :attr:`inv_inputs` and consumed by both CO2 runners.
         provenance: Top-level read-only JSON-safe preparation record. Low-rank
             artifacts include approximation diagnostics.
+        country_functionals: Optional full-restriction products of the
+            native country functionals ``Q`` on the ``"country_functional"``
+            axis, from the same coherent reduction. They let staged outputs
+            report complete native country totals instead of retained-only
+            ones. Their observation and state axes are this artifact's
+            ``nmeasure`` and retained-state axes. Their
+            ``reduction_identity`` must equal this artifact's
+            :attr:`reduction_identity`, which construction checks before
+            rebinding the products' ``C_alpha`` and ``H_alpha`` to the
+            artifact's arrays. Products require the exact dense
+            aggregation-error covariance (``aggregation_error_mode``
+            ``"dense"``), because they use the exact unresolved covariance.
+        native_reduction_identity: The reduction's
+            :func:`~openghg_inversions.coherent_reduction.native_reduction_identity`,
+            recorded by :func:`prepare_co2_inputs`. The reduced arrays alone
+            cannot identify the native problem; with this, the artifact can
+            recompute its :attr:`reduction_identity`. Required with
+            ``country_functionals``.
+
+    Invariant: ``alpha_prior_covariance`` and ``H`` are the full-restriction
+    ``C_alpha`` and ``H_alpha`` of the coherent reduction. Marginalising
+    country functional products relies on that; an artifact that stores
+    kept-state versions must use other variable names.
     """
 
     rhime_inputs: PreparedInputs
     aggregation_error_mode: Co2AggregationErrorMode
     provenance: Mapping[str, Any] = field(default_factory=dict)
+    country_functionals: NativeFunctionalProducts | None = None
+    native_reduction_identity: str | None = None
 
     def __post_init__(self) -> None:
         if self.aggregation_error_mode not in ("dense", "low_rank"):
@@ -317,11 +378,54 @@ class Co2PreparedInputs:
             if diagonal.dims != ("nmeasure",):
                 raise ValueError("CO2 diagonal_residual_variance must have dimensions ('nmeasure',).")
         object.__setattr__(self, "provenance", _json_mapping(self.provenance))
+        if self.country_functionals is not None:
+            if self.aggregation_error_mode != "dense":
+                raise ValueError(
+                    "CO2 country_functionals require the exact dense aggregation-error covariance; "
+                    "prepare with aggregation_error_rank=None."
+                )
+            if self.native_reduction_identity is None:
+                raise ValueError(
+                    "CO2 country_functionals require the reduction's native_reduction_identity; "
+                    "prepare with prepare_co2_inputs."
+                )
+            object.__setattr__(
+                self,
+                "country_functionals",
+                _bound_country_functionals(self.country_functionals, inputs, self.native_reduction_identity),
+            )
+        if self.native_reduction_identity is not None and not self.native_reduction_identity.startswith("sha256:"):
+            raise ValueError("CO2 native_reduction_identity must be a native_reduction_identity digest.")
 
     @property
     def inv_inputs(self) -> xr.Dataset:
         """Return the labelled dataset consumed by CO2 runners."""
         return self.rhime_inputs.inv_inputs
+
+    @property
+    def reduction_identity(self) -> str:
+        """Return the identity of the coherent reduction this artifact stores.
+
+        It is :func:`~openghg_inversions.coherent_reduction.reduction_identity`
+        of the recorded :attr:`native_reduction_identity` and of
+        ``alpha_prior_covariance``, ``H`` and the dense aggregation-error
+        covariance, which are the reduction's ``C_alpha``, ``H_alpha`` and
+        exact ``A``. It is recomputed from the stored arrays, so it changes
+        if any of them is changed after preparation. Fits prepared from this
+        artifact share it.
+
+        Raises:
+            ValueError: If the artifact stores a low-rank ``A``, which does
+                not identify the exact reduction, or records no native
+                identity.
+        """
+        if self.aggregation_error_mode != "dense":
+            raise ValueError(
+                "A low-rank CO2 artifact does not store the exact A that identifies its coherent reduction."
+            )
+        if self.native_reduction_identity is None:
+            raise ValueError("This CO2 artifact records no native_reduction_identity; prepare again.")
+        return _artifact_reduction_identity(self.inv_inputs, self.native_reduction_identity)
 
     @property
     def basis_functions(self) -> Any:
@@ -360,7 +464,12 @@ class Co2PreparedInputs:
         this serialization boundary. This method performs no file I/O.
 
         Returns:
-            A versioned DataTree containing the CO2 artifact.
+            A versioned DataTree containing the CO2 artifact, with an optional
+            ``country_functionals`` node. That node stores only the
+            functional labels; its observation, state and covariance-column
+            labels are restored from ``rhime_inputs`` on load. Its
+            ``reduction_identity`` attribute is the products' identity, which
+            the restored artifact must reproduce.
 
         Raises:
             ValueError: If the aggregation-error representation is invalid or
@@ -390,13 +499,20 @@ class Co2PreparedInputs:
             basis_functions=self.basis_functions,
             site_metadata=self.site_metadata,
         )
-        tree = xr.DataTree.from_dict({"rhime_inputs": serializable.to_datatree()})
+        nodes = {"rhime_inputs": serializable.to_datatree()}
+        if self.country_functionals is not None:
+            payload = _country_functionals_dataset(self.country_functionals)
+            payload.attrs[REDUCTION_IDENTITY] = self.country_functionals.reduction_identity
+            nodes[COUNTRY_FUNCTIONALS_NODE] = xr.DataTree(payload)
+        tree = xr.DataTree.from_dict(nodes)
         tree.attrs = {
             "schema": CO2_PREPARED_INPUTS_SCHEMA,
             "schema_version": CO2_PREPARED_INPUTS_SCHEMA_VERSION,
             "aggregation_error_mode": self.aggregation_error_mode,
             "provenance_json": json.dumps(dict(self.provenance), sort_keys=True, allow_nan=False),
         }
+        if self.native_reduction_identity is not None:
+            tree.attrs[NATIVE_REDUCTION_IDENTITY] = self.native_reduction_identity
         return tree
 
     @classmethod
@@ -433,10 +549,18 @@ class Co2PreparedInputs:
         provenance = _decode_json_mapping(
             tree.attrs.get("provenance_json", "{}"), "Serialized CO2 provenance"
         )
+        rhime_inputs = PreparedInputs.from_datatree(cast(xr.DataTree, tree["rhime_inputs"]))
+        country_functionals = None
+        if COUNTRY_FUNCTIONALS_NODE in tree.children:
+            # Construction compares the stored identity with the restored artifact's.
+            payload = cast(xr.DataTree, tree[COUNTRY_FUNCTIONALS_NODE]).to_dataset()
+            country_functionals = _country_functionals_from_dataset(payload, rhime_inputs.inv_inputs)
         prepared = cls(
-            PreparedInputs.from_datatree(cast(xr.DataTree, tree["rhime_inputs"])),
+            rhime_inputs,
             aggregation_error_mode=cast(Co2AggregationErrorMode, mode),
             provenance=provenance,
+            country_functionals=country_functionals,
+            native_reduction_identity=cast(str | None, tree.attrs.get(NATIVE_REDUCTION_IDENTITY)),
         )
         resolve_aggregation_error(prepared.inv_inputs, prepared.aggregation_error_mode)
         return prepared
@@ -473,6 +597,221 @@ class Co2PreparedInputs:
             ValueError: If schema metadata or scientific contents are invalid.
         """
         return cls.from_datatree(open_datatree_loaded(file_path))
+
+
+def _bound_country_functionals(
+    products: NativeFunctionalProducts,
+    inputs: xr.Dataset,
+    native_identity: str,
+) -> NativeFunctionalProducts:
+    """Validate country functional products against the artifact and rebind ``C_alpha`` and ``H_alpha``.
+
+    The products must come from the artifact's own reduction: their
+    ``reduction_identity`` must equal the identity of
+    ``alpha_prior_covariance``, ``H`` and the dense ``A``. That identity
+    depends on the native observation operator, which neither ``Q m`` nor
+    ``D`` does. Only then are the artifact's arrays reused instead of second
+    copies. The unresolved covariance must be symmetric positive
+    semidefinite, and units must be consistent with one functional unit and
+    the observation units.
+    """
+    if not isinstance(products, NativeFunctionalProducts):
+        raise TypeError("CO2 country_functionals must be NativeFunctionalProducts.")
+    if products.marginalised is not None:
+        raise ValueError(
+            "CO2 country_functionals must be full-restriction products; outputs marginalise them when the "
+            "fit declares marginalised states."
+        )
+    if products.functional_dim != COUNTRY_FUNCTIONAL_DIM:
+        raise ValueError(f"CO2 country_functionals must use the {COUNTRY_FUNCTIONAL_DIM!r} dimension.")
+    functional_index = require_unique_index(
+        products.functional_mean, COUNTRY_FUNCTIONAL_DIM, name="CO2 country functional_mean"
+    )
+    state_dim = str(inputs["alpha_prior_mean"].dims[0])
+    state_index = inputs.indexes[state_dim]
+    observation_index = inputs.indexes["nmeasure"]
+    response = products.retained_response
+    cross = products.unresolved_observation_covariance
+    covariance = products.unresolved_covariance
+    if products.functional_mean.dims != (COUNTRY_FUNCTIONAL_DIM,):
+        raise ValueError("CO2 country functional_mean must have dimensions ('country_functional',).")
+    if response.dims != (COUNTRY_FUNCTIONAL_DIM, state_dim):
+        raise ValueError(f"CO2 country retained_response must have dimensions ('country_functional', {state_dim!r}).")
+    if cross.dims != (COUNTRY_FUNCTIONAL_DIM, "nmeasure"):
+        raise ValueError(
+            "CO2 country unresolved_observation_covariance must have dimensions ('country_functional', 'nmeasure')."
+        )
+    if covariance.ndim != 2 or covariance.dims[0] != COUNTRY_FUNCTIONAL_DIM:
+        raise ValueError("CO2 country unresolved_covariance must be functional-by-functional.")
+    if covariance.shape != (functional_index.size, functional_index.size):
+        raise ValueError("CO2 country unresolved_covariance must be square on the functional axis.")
+    validate_covariance_coordinates(
+        covariance, dim=COUNTRY_FUNCTIONAL_DIM, covariance_dim=str(covariance.dims[1])
+    )
+    for name, array in (("retained_response", response), ("unresolved_observation_covariance", cross)):
+        if not same_index(array.indexes[COUNTRY_FUNCTIONAL_DIM], functional_index):
+            raise ValueError(f"CO2 country {name} functional labels differ from functional_mean.")
+    if not same_index(covariance.indexes[COUNTRY_FUNCTIONAL_DIM], functional_index):
+        raise ValueError("CO2 country unresolved_covariance functional labels differ from functional_mean.")
+    if not same_index(response.indexes[state_dim], state_index):
+        raise ValueError("CO2 country retained_response state labels differ from the prepared retained states.")
+    if not same_index(cross.indexes["nmeasure"], observation_index):
+        raise ValueError(
+            "CO2 country unresolved_observation_covariance observation labels differ from the prepared observations."
+        )
+    for name in _COUNTRY_FUNCTIONAL_PAYLOAD:
+        if not np.isfinite(np.asarray(getattr(products, name).values)).all():
+            raise ValueError(f"CO2 country {name} must be finite.")
+    if products.reduction_identity != _artifact_reduction_identity(inputs, native_identity):
+        raise ValueError(
+            "CO2 country functional products were computed for a different coherent reduction "
+            "(native observation operator, covariance or restriction); prepare again."
+        )
+    _require_functional_units(products, str(inputs["mf"].attrs["units"]))
+    bound = replace(
+        products,
+        retained_covariance=inputs["alpha_prior_covariance"],
+        effective_observation_operator=inputs["H"],
+    )
+    _require_psd(bound)
+    return bound
+
+
+def _require_psd(products: NativeFunctionalProducts) -> None:
+    """Require a symmetric positive-semidefinite matrix up to relative roundoff."""
+    covariance = np.asarray(products.unresolved_covariance.values, dtype=np.float64)
+    scale = _functional_covariance_scale(products, covariance)
+    if np.max(np.abs(covariance - covariance.T), initial=0.0) > _SYMMETRY_TOLERANCE * scale:
+        raise ValueError("CO2 country unresolved_covariance must be symmetric.")
+    if covariance.size and np.linalg.eigvalsh((covariance + covariance.T) * 0.5).min() < -_PSD_TOLERANCE * scale:
+        raise ValueError("CO2 country unresolved_covariance must be positive semidefinite.")
+
+
+def _require_functional_units(products: NativeFunctionalProducts, observation_units: str) -> None:
+    """Require one functional unit across the products, consistent with the observation units."""
+    units = products.functional_mean.attrs.get("units")
+    if not isinstance(units, str) or not units.strip():
+        raise ValueError("CO2 country functional_mean requires units.")
+    for name, array, expected in (
+        ("retained_response", products.retained_response, units),
+        ("unresolved_covariance", products.unresolved_covariance, f"({units})**2"),
+        ("unresolved_observation_covariance", products.unresolved_observation_covariance,
+         f"({units}) * ({observation_units})"),
+    ):
+        _require_equivalent_units(array.attrs.get("units"), expected, name=f"CO2 country {name}")
+
+
+def _artifact_reduction_identity(inputs: xr.Dataset, native_identity: str) -> str:
+    """Return the reduction identity of a dense CO2 artifact's ``C_alpha``, ``H_alpha`` and ``A``."""
+    state_dim = str(inputs["alpha_prior_mean"].dims[0])
+    return reduction_identity(
+        native_identity=native_identity,
+        retained_covariance=inputs["alpha_prior_covariance"],
+        effective_observation_operator=inputs["H"].transpose("nmeasure", state_dim),
+        unresolved_observation_covariance=inputs[AGGREGATION_ERROR_COVARIANCE],
+    )
+
+
+def _country_functionals_dataset(products: NativeFunctionalProducts) -> xr.Dataset:
+    """Return the serializable country-functional payload with functional labels only.
+
+    Observation, state and covariance-column coordinates are dropped: they
+    duplicate the artifact's own axes and are restored from them on load.
+    """
+    variables = {}
+    for name in _COUNTRY_FUNCTIONAL_PAYLOAD:
+        array = getattr(products, name)
+        variables[name] = xr.DataArray(
+            np.asarray(array.values, dtype=np.float64),
+            dims=array.dims,
+            coords=coordinates_on_dims(products.functional_mean, {COUNTRY_FUNCTIONAL_DIM}),
+            attrs=dict(array.attrs),
+        )
+    covariance = variables["unresolved_covariance"]
+    variables["unresolved_covariance"] = covariance.rename({covariance.dims[1]: "country_functional_cov"})
+    dataset = xr.Dataset(variables)
+    if isinstance(dataset.indexes[COUNTRY_FUNCTIONAL_DIM], pd.MultiIndex):
+        dataset = encode_cf_multiindexes(dataset, (COUNTRY_FUNCTIONAL_DIM,))
+    return dataset
+
+
+def _country_functionals_from_dataset(dataset: xr.Dataset, inputs: xr.Dataset) -> NativeFunctionalProducts:
+    """Restore country-functional products on the artifact's observation and state labels."""
+    missing = [name for name in _COUNTRY_FUNCTIONAL_PAYLOAD if name not in dataset]
+    if missing:
+        raise ValueError(f"Serialized CO2 country_functionals are missing {missing!r}; prepare again.")
+    if not str(dataset.attrs.get(REDUCTION_IDENTITY, "")).startswith("sha256:"):
+        raise ValueError("Serialized CO2 country_functionals carry no reduction_identity; prepare again.")
+    if COUNTRY_FUNCTIONAL_DIM in dataset.coords and "compress" in dataset[COUNTRY_FUNCTIONAL_DIM].attrs:
+        dataset = decode_cf_multiindexes(dataset, (COUNTRY_FUNCTIONAL_DIM,))
+    state_dim = str(inputs["alpha_prior_mean"].dims[0])
+    expected = {
+        "functional_mean": (COUNTRY_FUNCTIONAL_DIM,),
+        "retained_response": (COUNTRY_FUNCTIONAL_DIM, state_dim),
+        "unresolved_observation_covariance": (COUNTRY_FUNCTIONAL_DIM, "nmeasure"),
+        "unresolved_covariance": (COUNTRY_FUNCTIONAL_DIM, "country_functional_cov"),
+    }
+    for name, dims in expected.items():
+        if dataset[name].dims != dims:
+            raise ValueError(f"Serialized CO2 country {name} must have dimensions {dims!r}; prepare again.")
+    functional_coords = coordinates_on_dims(dataset["functional_mean"], {COUNTRY_FUNCTIONAL_DIM})
+    state_coords = coordinates_on_dims(inputs["alpha_prior_mean"], {state_dim})
+    observation_coords = coordinates_on_dims(inputs["mf"], {"nmeasure"})
+
+    def restored(name: str, coords: Mapping[str, Any]) -> xr.DataArray:
+        array = dataset[name]
+        return xr.DataArray(array.values, dims=array.dims, coords=coords, name=name, attrs=dict(array.attrs))
+
+    functional_mean = restored("functional_mean", functional_coords)
+    covariance = dataset["unresolved_covariance"]
+    return NativeFunctionalProducts(
+        functional_mean=functional_mean,
+        retained_response=restored("retained_response", {**functional_coords, **state_coords}),
+        unresolved_observation_covariance=restored(
+            "unresolved_observation_covariance", {**functional_coords, **observation_coords}
+        ),
+        unresolved_covariance=square_matrix(
+            np.asarray(covariance.values),
+            functional_mean,
+            row_dim=COUNTRY_FUNCTIONAL_DIM,
+            column_dim="country_functional_cov",
+            name="unresolved_covariance",
+            attrs=dict(covariance.attrs),
+        ),
+        retained_covariance=inputs["alpha_prior_covariance"],
+        effective_observation_operator=inputs["H"],
+        reduction_identity=str(dataset.attrs.get(REDUCTION_IDENTITY, "")),
+    )
+
+
+def _prepared_country_functionals(
+    products: NativeFunctionalProducts,
+    reduction: CoherentGaussianReduction,
+    *,
+    state_dim: str,
+    reduced_state_dim: str,
+    observation_dim: str,
+) -> NativeFunctionalProducts:
+    """Relabel a reduction's country functional products onto the CO2 artifact's axes."""
+    if products.functional_dim != COUNTRY_FUNCTIONAL_DIM:
+        raise ValueError(
+            "CO2 preparation persists only country functional products on the "
+            f"{COUNTRY_FUNCTIONAL_DIM!r} axis; reduce with "
+            "functionals=co2_flux_country_functionals(...) and "
+            f"functional_dim={COUNTRY_FUNCTIONAL_DIM!r}."
+        )
+    if products.state_dim != reduced_state_dim or products.observation_dim != observation_dim:
+        raise ValueError("Country functional products use different axes from the coherent reduction.")
+    # C_alpha and H_alpha are rebound to the artifact's arrays at
+    # construction, after its reduction identity is checked against the
+    # products'.
+    return replace(
+        products,
+        retained_response=products.retained_response.rename({reduced_state_dim: state_dim}),
+        unresolved_observation_covariance=products.unresolved_observation_covariance.rename(
+            {observation_dim: "nmeasure"}
+        ),
+    )
 
 
 def requested_co2_facts(
@@ -518,22 +857,77 @@ def requested_co2_facts(
     return facts
 
 
+_PREPARATION_AGGREGATION_KEYS = ("aggregation_error", "aggregation_error_rank_selection")
+
+
+def _rank_reference(
+    reference_covariance: xr.DataArray,
+    *,
+    unresolved: xr.DataArray,
+    observation_index: Any,
+    observation_dim: str,
+    observation_units: str,
+) -> tuple[xr.DataArray, np.ndarray, dict[str, Any]]:
+    """Resolve the rank reference to dense values through the labelled-covariance contract.
+
+    Check both axes and resolve squared mole-fraction units while the
+    reference is labelled, then materialize it with the unresolved covariance.
+
+    Returns:
+        The materialized unresolved covariance, the reference values in
+        observation units squared, and the JSON-safe reference description.
+    """
+    require_reference_labels(
+        reference_covariance,
+        observation_index=observation_index,
+        row_dims=("nmeasure", observation_dim),
+    )
+    reference_units = reference_covariance.attrs.get("units")
+    unit_scale = squared_mole_fraction_scale(reference_units, observation_units, name="reference_covariance")
+    unresolved, reference = materialize_together(
+        unresolved, reference_covariance, purpose="aggregation-error and reference covariances for the rank rule"
+    )
+    supplied = reference.attrs.get("description")
+    try:
+        supplied_description = json.loads(supplied) if isinstance(supplied, str) else supplied
+    except ValueError:
+        supplied_description = supplied
+    description = {
+        "description": supplied_description,
+        "name": None if reference.name is None else str(reference.name),
+        "units": str(reference_units),
+        "observation_units": observation_units,
+        "unit_scale_to_observation_units_squared": unit_scale,
+        "representation": "dense",
+    }
+    values = np.asarray(reference.values, dtype=float)
+    if unit_scale != 1.0:
+        values = values * unit_scale
+    return unresolved, values, description
+
+
 def prepare_co2_inputs(
     canonical_inputs: PreparedInputs,
     reduction: CoherentGaussianReduction,
     *,
-    aggregation_error_rank: int | None = 512,
+    aggregation_error_rank: int | WhitenedRankRule | None = WhitenedRankRule(),
+    reference_covariance: xr.DataArray | None = None,
     bc_centering_weights: xr.DataArray | None = None,
     provenance: Mapping[str, Any] | None = None,
 ) -> Co2PreparedInputs:
     """Map one coherent Gaussian reduction into the CO2 replay contract.
 
-    The reduction replaces the canonical sensitivity with its effective
-    operator and supplies the linked retained prior, affine intercept, and
-    unresolved covariance. By default, the handoff retains at most 512 LRPD
-    modes. ``None`` stores the unresolved covariance exactly; requested ranks
-    larger than the observation count are capped at that count, and the actual
-    factor width may be smaller when the covariance has lower numerical rank.
+    The reduction supplies the effective sensitivity, retained prior, affine
+    intercept, and unresolved covariance. Its sensitivity replaces any
+    canonical ``H``. By default, the LRPD rank comes from the unresolved
+    covariance's spectrum whitened by a reference mismatch covariance (see
+    :class:`~openghg_inversions.observation_error.WhitenedRankRule`), keeping
+    every mode with whitened eigenvalue above 0.1. The rule needs a
+    ``reference_covariance`` chosen by the caller; there is no universal
+    default. ``None`` stores the
+    unresolved covariance exactly; ranks larger than the observation count are
+    capped at that count, and the actual factor width may be smaller when the
+    covariance has lower numerical rank.
 
     Inputs are borrowed and are not mutated. The returned artifact retains the
     canonical observations, observation error, optional boundary data, state
@@ -543,19 +937,42 @@ def prepare_co2_inputs(
     values are not converted.
 
     Selecting LRPD storage eagerly materializes the complete unresolved
-    covariance and computes its full dense eigendecomposition. The retained
-    rank reduces the saved payload and downstream structured-likelihood cost,
-    not this preparation cost.
+    covariance and computes its full dense eigendecomposition, plus, for the
+    rank rule, a dense reference covariance, its Cholesky factorization and
+    one dense whitened eigenvalue decomposition. The retained rank
+    reduces the saved payload and downstream structured-likelihood cost, not
+    this preparation cost.
 
     Args:
         canonical_inputs: Canonical RHIME observations and metadata whose
-            observation and retained-state labels match ``reduction``.
+            observation and retained-state labels match ``reduction``. State
+            labels come from the basis when no projected ``H`` is supplied.
         reduction: One coherent Gaussian reduction containing all linked
             retained-prior and observation products.
-        aggregation_error_rank: Positive LRPD rank, defaulting to 512. Values
+        aggregation_error_rank: Whitened-spectrum rank rule (threshold, KL
+            budget and optional explicit rank), defaulting to
+            ``WhitenedRankRule()``. A positive integer is an explicit rank for
+            benchmarking. With a ``reference_covariance`` it is equivalent to
+            ``WhitenedRankRule(rank=...)``: the spectrum is still computed and
+            recorded, with a ``UserWarning`` when the rank is below the rule
+            rank. Without one, the rank is used as given and no rank
+            selection is recorded. Values
             larger than the observation count are capped at that count; the
-            actual factor width is further limited by numerical positive rank.
-            Pass ``None`` to store the exact dense covariance.
+            actual factor width is further limited by numerical positive
+            rank. Pass ``None`` to store the exact dense covariance.
+            Provenance ``aggregation_error_rank`` records the request (the
+            integer, ``"whitened_spectrum"`` or ``None``), and
+            ``aggregation_error_rank_selection`` records the reference
+            description, the count above the threshold, the chosen rank and
+            the dropped-mode KL.
+        reference_covariance: Reference mismatch covariance :math:`R_0` for
+            the rank rule, required with a ``WhitenedRankRule``. Supply a
+            labelled positive-definite covariance in canonical observation
+            order on both axes, with squared mole-fraction units and an
+            optional ``description`` attribute recorded in provenance. For
+            example, evaluate a mismatch covariance at fixed parameters with
+            :func:`~openghg_inversions.models.fixed_ou.fixed_ou_mismatch_covariance`.
+            Only valid with low-rank storage.
         bc_centering_weights: Positive dimensionless averaging weights on
             ``(bc_curtain, bc_period)``, with interval start times as period
             labels. Raw transport stays spatial and reusable; binding stacks
@@ -564,6 +981,19 @@ def prepare_co2_inputs(
         provenance: Optional JSON-serializable project or preparation
             provenance. The reduction strategy and LRPD diagnostics are added
             by this boundary.
+
+    When ``reduction.functional_products`` is present, it is persisted as the
+    artifact's :attr:`Co2PreparedInputs.country_functionals` so staged outputs
+    can report complete native country totals; its row count, units and
+    labels are summarized under ``provenance["country_functionals"]``. To
+    request it, pass
+    ``functionals=co2_flux_country_functionals(flux, countries)`` and
+    ``functional_dim="country_functional"`` to
+    :func:`~openghg_inversions.coherent_reduction.reduce_native_gaussian`,
+    using the signed reference flux the affine reconstruction will carry.
+    The products must be full-restriction products of ``reduction``, and
+    ``aggregation_error_rank`` must be ``None``: they use the exact
+    unresolved covariance, so the artifact must store the exact ``A`` too.
 
     Returns:
         A structurally validated, serializable artifact accepted by both CO2
@@ -575,19 +1005,24 @@ def prepare_co2_inputs(
     """
     canonical = canonical_inputs.validated()
     inputs = canonical.inv_inputs
-    if "H" not in inputs or "mf" not in inputs:
-        raise ValueError("Canonical CO2 inputs require 'H' and 'mf'.")
+    if "mf" not in inputs:
+        raise ValueError("Canonical CO2 inputs require 'mf'.")
     observations = inputs["mf"]
     if observations.dims != ("nmeasure",):
         raise ValueError("Canonical CO2 observations must have dimensions ('nmeasure',).")
     observation_index = _require_axis(observations, "nmeasure", name="Canonical observations")
 
-    canonical_sensitivity = inputs["H"]
-    state_dims = [str(dim) for dim in canonical_sensitivity.dims if dim != "nmeasure"]
-    if canonical_sensitivity.ndim != 2 or len(state_dims) != 1:
-        raise ValueError("Canonical CO2 H must have one observation and one retained-state dimension.")
-    state_dim = state_dims[0]
-    state_index = _require_axis(canonical_sensitivity, state_dim, name="Canonical sensitivity")
+    if "H" in inputs:
+        canonical_sensitivity = inputs["H"]
+        state_dims = [str(dim) for dim in canonical_sensitivity.dims if dim != "nmeasure"]
+        if canonical_sensitivity.ndim != 2 or len(state_dims) != 1:
+            raise ValueError("Canonical CO2 H must have one observation and one retained-state dimension.")
+        state_dim = state_dims[0]
+        state_index = _require_axis(canonical_sensitivity, state_dim, name="Canonical sensitivity")
+    else:
+        operator = canonical.basis_functions.operator
+        state_dim = operator.meta.state_dim
+        state_index = _require_axis(operator.basis_matrix, state_dim, name="Canonical basis")
 
     reduced_mean = reduction.retained_mean
     if reduced_mean.ndim != 1:
@@ -654,17 +1089,36 @@ def prepare_co2_inputs(
         f"({observation_units})**2",
         name="Coherent unresolved_observation_covariance",
     )
-    if (
-        aggregation_error_rank is not None
-        and (
-            isinstance(aggregation_error_rank, bool)
-            or not isinstance(aggregation_error_rank, int)
-            or aggregation_error_rank < 1
-        )
+    rank_rule: WhitenedRankRule | None
+    if aggregation_error_rank is None or isinstance(aggregation_error_rank, WhitenedRankRule):
+        rank_rule = aggregation_error_rank
+    elif (
+        isinstance(aggregation_error_rank, bool)
+        or not isinstance(aggregation_error_rank, int)
+        or aggregation_error_rank < 1
     ):
-        raise ValueError("aggregation_error_rank must be a positive integer or None.")
+        raise ValueError("aggregation_error_rank must be a positive integer, a WhitenedRankRule or None.")
+    else:
+        rank_rule = WhitenedRankRule(rank=aggregation_error_rank)
+    if reference_covariance is not None:
+        if not isinstance(reference_covariance, xr.DataArray):
+            raise TypeError("reference_covariance must be a labelled DataArray or None.")
+        if rank_rule is None:
+            raise ValueError("reference_covariance applies only to low-rank storage, not aggregation_error_rank=None.")
+    elif isinstance(aggregation_error_rank, WhitenedRankRule):
+        raise ValueError(
+            "The whitened rank rule needs reference_covariance; there is no universal reference mismatch "
+            "covariance. Pass a labelled covariance, for example from fixed_ou_mismatch_covariance "
+            "evaluated at representative amplitudes and time scales. Alternatively pass an "
+            "explicit integer aggregation_error_rank, or None to store the covariance exactly."
+        )
 
-    target_representation_dim = "nmeasure_cov" if aggregation_error_rank is None else "agg_rank"
+    if reduction.functional_products is not None and aggregation_error_rank is not None:
+        raise ValueError(
+            "Country functional products use the exact unresolved covariance, so complete country outputs "
+            "require the exact dense A: prepare with aggregation_error_rank=None."
+        )
+    target_representation_dim = "nmeasure_cov" if rank_rule is None else "agg_rank"
     mapped = _without_aggregation_payload(
         inputs,
         target_dim=target_representation_dim,
@@ -715,7 +1169,8 @@ def prepare_co2_inputs(
         mapped = RawCenteredSensitivity.with_centering_weights(cast(RawCenteredSensitivity, mapped), weights)
 
     approximation = None
-    if aggregation_error_rank is None:
+    rank_selection: dict[str, Any] = {}
+    if rank_rule is None:
         mode: Co2AggregationErrorMode = "dense"
         mapped[AGGREGATION_ERROR_COVARIANCE] = _borrow_without_axis_coordinates(
             _renamed(
@@ -725,13 +1180,32 @@ def prepare_co2_inputs(
             ),
             "nmeasure",
         )
-    else:
+    elif reference_covariance is None:
+        # An explicit integer rank without a reference is a plain LRPD request with nothing to screen against.
+        assert isinstance(aggregation_error_rank, int)
         approximation = prepare_low_rank_aggregation_error(
             unresolved,
             rank=min(aggregation_error_rank, unresolved.sizes[observation_dim]),
             output_dim=observation_dim,
             covariance_dim=observation_covariance_dim,
         )
+    else:
+        unresolved, reference, reference_description = _rank_reference(
+            reference_covariance,
+            unresolved=unresolved,
+            observation_index=observation_index,
+            observation_dim=observation_dim,
+            observation_units=str(observation_units),
+        )
+        approximation, rank_selection = _prepare_whitened_low_rank_aggregation_error(
+            unresolved,
+            reference,
+            rank_rule,
+            reference_description=reference_description,
+            output_dim=observation_dim,
+            covariance_dim=observation_covariance_dim,
+        )
+    if approximation is not None:
         selected = approximation.aggregation_error
         assert selected.factor is not None and selected.diagonal_variance is not None
         factor_dim = str(selected.factor.dims[0])
@@ -760,13 +1234,39 @@ def prepare_co2_inputs(
         mode = "low_rank"
 
     metadata = dict(provenance or {})
+    # These keys describe this preparation's aggregation-error representation; never inherit them.
+    for key in _PREPARATION_AGGREGATION_KEYS:
+        metadata.pop(key, None)
     declared_strategy = metadata.get("projection_strategy")
     if declared_strategy is not None and declared_strategy != reduction.projection_strategy:
         raise ValueError("CO2 provenance projection_strategy conflicts with the coherent reduction.")
     metadata["projection_strategy"] = reduction.projection_strategy
-    metadata["aggregation_error_rank"] = aggregation_error_rank
+    metadata["aggregation_error_rank"] = (
+        "whitened_spectrum" if isinstance(aggregation_error_rank, WhitenedRankRule) else aggregation_error_rank
+    )
     if approximation is not None:
         metadata["aggregation_error"] = dict(approximation.diagnostics)
+        if rank_selection:
+            metadata["aggregation_error_rank_selection"] = rank_selection
+    country_functionals = None
+    if reduction.functional_products is not None:
+        country_functionals = _prepared_country_functionals(
+            reduction.functional_products,
+            reduction,
+            state_dim=state_dim,
+            reduced_state_dim=reduced_state_dim,
+            observation_dim=observation_dim,
+        )
+        functional_index = country_functionals.functional_mean.indexes[COUNTRY_FUNCTIONAL_DIM]
+        metadata["country_functionals"] = {
+            "functional_dim": COUNTRY_FUNCTIONAL_DIM,
+            "count": int(functional_index.size),
+            "levels": [str(name) for name in functional_index.names],
+            "units": country_functionals.functional_mean.attrs.get("units"),
+            "scope": "full-restriction products of the coherent reduction",
+        }
+    elif "country_functionals" in metadata:
+        raise ValueError("CO2 provenance country_functionals is reserved for persisted functional products.")
     return Co2PreparedInputs(
         PreparedInputs(
             inv_inputs=mapped,
@@ -775,6 +1275,8 @@ def prepare_co2_inputs(
         ),
         aggregation_error_mode=mode,
         provenance=metadata,
+        country_functionals=country_functionals,
+        native_reduction_identity=reduction.native_identity,
     )
 
 
@@ -783,9 +1285,11 @@ def check_prepared_boundary(
 ) -> None:
     """Reject prepared inputs whose boundary data cannot serve the configured choice.
 
-    Reads only attributes and variable names. A saved preparation can serve
-    several model configurations, so an omitted ``representation`` accepts any
-    representation the choice can bind; an explicit one must match exactly.
+    A saved preparation can serve several model configurations, so an omitted
+    ``representation`` accepts any representation the choice can bind; an
+    explicit one must match exactly. Weighted additive choices also check the
+    stored weight labels against the selected observation calendar without
+    materializing numerical payloads.
 
     Args:
         inputs: Prepared ``inv_inputs``.
@@ -794,7 +1298,8 @@ def check_prepared_boundary(
 
     Raises:
         ValueError: If the boundary data are missing, in another representation,
-            or lack the centering weights the choice needs.
+            or lack centering weights that match the choice's curtain and period
+            labels.
     """
     needs = boundary_preparation(boundary, representation)
     if inputs.attrs.get("boundary_representation") == "centered-v1":
@@ -812,8 +1317,13 @@ def check_prepared_boundary(
             f"The prepared inputs have {actual} boundary sensitivity, but {required} is required; "
             f"prepare again with boundary_representation={required!r}."
         )
-    if needs.centering_weights and "bc_centering_weights" not in inputs:
-        raise ValueError("The weighted additive boundary requires prepared bc_centering_weights.")
+    if needs.centering_weights and boundary is not None:
+        if "bc_centering_weights" not in inputs:
+            raise ValueError("The weighted additive boundary requires prepared bc_centering_weights.")
+        validate_centering_weight_labels(
+            inputs.bc_centering_weights, inputs.mf, inputs.indexes["bc_region"],
+            frequency=boundary.frequency, anchor_time=boundary.anchor_time,
+        )
 
 
 __all__ = [

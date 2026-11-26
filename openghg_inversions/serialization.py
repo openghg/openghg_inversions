@@ -20,12 +20,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from collections.abc import Iterable
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from cf_xarray.coding import decode_compress_to_multi_index, encode_multi_index_as_compress
 import numpy as np
 import pandas as pd
 import xarray as xr
+from xarray.coders import CFTimedeltaCoder
 
 from openghg_inversions._serialization_codecs import (
     _TAGGED_JSON_VALUE_ENCODING,
@@ -314,6 +315,34 @@ def decode_cf_multiindexes(ds: xr.Dataset, index_names: str | Iterable[str]) -> 
     return decoded
 
 
+def _netcdf_compatible_strings(dataset: xr.Dataset) -> xr.Dataset:
+    """Return ``dataset`` with NumPy ``StringDType`` strings written as object strings.
+
+    A Zarr reload can carry NumPy variable-width strings, in a variable's data
+    or in its ``encoding["dtype"]`` after the data became objects; the netCDF
+    backends cannot encode either. Affected variables become object arrays
+    without that encoding entry, which netCDF writes as ordinary strings.
+    Other variables are returned unchanged.
+    """
+
+    def is_string_dtype(dtype: Any) -> bool:
+        """Whether ``dtype`` is NumPy's variable-width ``StringDType``."""
+        return isinstance(dtype, np.dtype) and dtype.kind == "T"
+
+    strings = {}
+    for name, variable in dataset.variables.items():
+        if is_string_dtype(variable.dtype) or is_string_dtype(variable.encoding.get("dtype")):
+            converted = variable.astype(object)
+            converted.attrs = dict(variable.attrs)
+            converted.encoding = {key: value for key, value in variable.encoding.items() if key != "dtype"}
+            strings[name] = converted
+    if not strings:
+        return dataset
+    coords = {name: variable for name, variable in strings.items() if name in dataset.coords}
+    data = {name: variable for name, variable in strings.items() if name not in dataset.coords}
+    return dataset.assign_coords(coords).assign(data)
+
+
 def save_datatree(
     dt: xr.DataTree,
     output_file: str | Path,
@@ -326,7 +355,9 @@ def save_datatree(
     do not switch HDF5 bindings at the serialization boundary. Zarr artifacts
     use format 2 with either Zarr 2 or Zarr 3 packages. Zarr writes
     lazily rechunk arrays to their encoded storage chunks, or regular chunks
-    sized to the largest existing chunk on each axis. Inputs are not mutated.
+    sized to the largest existing chunk on each axis. NetCDF writes cast NumPy
+    ``StringDType`` variables, as a Zarr reload can produce, to object strings.
+    Inputs are not mutated.
 
     Args:
         dt: DataTree to persist.
@@ -353,7 +384,7 @@ def save_datatree(
     if output_format == "netcdf":
         if output_path.suffix.lower() != ".nc":
             output_path = output_path.with_suffix(".nc")
-        dt.to_netcdf(output_path)
+        dt.map_over_datasets(_netcdf_compatible_strings).to_netcdf(output_path)
     elif output_format == "zarr":
         if output_path.suffix.lower() != ".zarr":
             output_path = output_path.with_suffix(".zarr")
@@ -381,6 +412,10 @@ def save_datatree(
         raise ValueError(f"Unsupported output_format: {output_format!r}")
 
 
+# Decode timedeltas only from xarray's own ``dtype`` marker, not from time units.
+_DECODE_SAVED_TIMEDELTAS = CFTimedeltaCoder(decode_via_units=False, decode_via_dtype=True)
+
+
 def open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
     """Open and eagerly load a DataTree artifact.
 
@@ -388,6 +423,13 @@ def open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
     rest of the default data-loading path. Loading happens while the file
     context is open, so the returned tree owns its data and does not retain
     references to closed file handles.
+
+    Only variables that xarray wrote as timedeltas (a ``dtype`` attribute of
+    ``timedelta64[...]``) are decoded to ``timedelta64``. A numeric variable
+    that merely carries a time unit, such as ``units="hours"`` on a fixed-OU
+    time scale, keeps its saved numeric values. This is xarray's announced
+    future default; without it, a float ``4.0`` in hours would be decoded to a
+    timedelta whose integer nanosecond count is easily misread as hours.
 
     Args:
         file_path: NetCDF or Zarr DataTree artifact to load.
@@ -401,7 +443,7 @@ def open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
         ValueError: If no backend can interpret the artifact.
     """
     engine = "zarr" if Path(file_path).suffix.lower() == ".zarr" else None
-    with xr.open_datatree(file_path, engine=engine) as dt:
+    with xr.open_datatree(file_path, engine=engine, decode_timedelta=_DECODE_SAVED_TIMEDELTAS) as dt:
         return dt.load()
 
 

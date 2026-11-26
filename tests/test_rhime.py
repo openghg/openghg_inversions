@@ -877,6 +877,7 @@ def test_build_rhime_model_contains_expected_variables(
     assert set(model.named_vars) == {
         "Y",
         "bc",
+        "bc_is_active",
         "epsilon",
         "error",
         "hbc",
@@ -888,11 +889,13 @@ def test_build_rhime_model_contains_expected_variables(
         "sigma_period_index",
         "sigma_site_index",
         "x",
+        "x_is_active",
         "y",
     }
     assert model.named_vars_to_dims == {
         "Y": ("nmeasure",),
         "bc": ("bc_region",),
+        "bc_is_active": ("bc_region",),
         "epsilon": ("nmeasure",),
         "error": ("nmeasure",),
         "hbc": ("nmeasure", "bc_region"),
@@ -904,6 +907,7 @@ def test_build_rhime_model_contains_expected_variables(
         "sigma_period_index": ("nmeasure",),
         "sigma_site_index": ("nmeasure",),
         "x": ("region",),
+        "x_is_active": ("region",),
         "y": ("nmeasure",),
     }
 
@@ -3328,7 +3332,7 @@ def test_modern_additive_mismatch_uses_model_spec_without_minimum_error(
     monkeypatch.setattr(
         RhimeSampler,
         "sample",
-        lambda self, model, *, variable_roles, recompute_deterministics=False: _minimal_output_idata(),
+        lambda self, model, *, variable_roles: _minimal_output_idata(),
     )
 
     result = _run_prepared(
@@ -3398,7 +3402,7 @@ def test_custom_likelihood_prepared_run_does_not_require_minimum_error(
     monkeypatch.setattr(
         RhimeSampler,
         "sample",
-        lambda self, model, *, variable_roles, recompute_deterministics=False: _minimal_output_idata(),
+        lambda self, model, *, variable_roles: _minimal_output_idata(),
     )
 
     result = _run_prepared(
@@ -3535,7 +3539,6 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
-        recompute_deterministics: bool = False,
     ) -> xr.DataTree:
         assert model["offset_latent"].ndim == 0
         assert variable_roles["concentration"] == "y"
@@ -3722,7 +3725,6 @@ def test_prepared_standard_defaults_sampler_and_skips_none_output_writes(
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
-        recompute_deterministics: bool = False,
     ) -> xr.DataTree:
         sampled_with.append(self)
         assert "y" in model.named_vars
@@ -3885,7 +3887,7 @@ def test_rhime_configuration_builds_specs_before_preparation(tmp_path: Path) -> 
     assert setup.data.site_options.time_resolved == (True,)
     assert setup.data.basis_algorithm == "weighted"
     assert setup.data.nbasis == 100
-    assert setup.data.bc_basis_paths is None
+    assert setup.data.bc_basis.paths is None
     assert setup.model.likelihood.min_error_options == {"by_site": False}
     for selector in ("inlet", "instrument", "platform", "fp_height"):
         assert getattr(setup.data.site_options, selector) == (None,)
@@ -8258,10 +8260,8 @@ def test_run_rhime_api_smoke(
         model: pm.Model,
         *,
         variable_roles: dict[str, str] | None = None,
-        recompute_deterministics: bool = False,
     ) -> xr.DataTree:
         """Return deterministic posteriors after checking predictive role selection."""
-        assert recompute_deterministics is False
         assert self.draws == 1
         assert variable_roles is not None
         assert variable_roles["concentration"] == "y"
@@ -8400,10 +8400,8 @@ def test_run_multisector_api_smoke(
         model: pm.Model,
         *,
         variable_roles: dict[str, str] | None = None,
-        recompute_deterministics: bool = False,
     ) -> xr.DataTree:
         """Return deterministic scale factors after checking declared roles."""
-        assert recompute_deterministics is False
         assert self.draws == 1
         assert variable_roles is not None
         assert variable_roles["concentration"] == "y"

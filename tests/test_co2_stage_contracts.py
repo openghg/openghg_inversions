@@ -48,7 +48,7 @@ def test_invalid_inferred_ou_site_mapping_has_no_sample_destination(tmp_path):
     prep = handoffs.prepare(prepared_path=source, output_dir=tmp_path / "prepare", **FACTS)
     model = {"likelihood": {"kind": "fixed_ou", "tau_hours": {"wrong": 24.0},
                             "site_amplitude_prior": {"pdf": "gamma", "alpha": 2.0, "beta": 3.0}}}
-    with pytest.raises(ValueError, match="every coordinate label"):
+    with pytest.raises(ValueError, match=r"tau_hours site mapping is missing observed site\(s\)"):
         handoffs.sample(prep, model=model, output_dir=tmp_path / "unopened")
     assert not (tmp_path / "unopened").exists()
 
@@ -79,7 +79,7 @@ def test_full_co2_validates_reporting_inputs_before_inference(tmp_path, monkeypa
     monkeypatch.setattr(execution, "sample_co2_inference", forbidden)
     with pytest.raises(ValueError, match=message):
         run_co2(prepared=prepared, affine_artifact=affine, params={
-            "prepared_inputs": FACTS, "likelihood": {"kind": "additive_sigma", "no_model_error": True},
+            "data": FACTS, "likelihood": {"kind": "additive_sigma", "no_model_error": True},
             "sampling": {"sample_prior_predictive": 4}, "outputs": outputs,
         }, output_path=tmp_path / "unopened")
     assert not (tmp_path / "unopened").exists()
@@ -132,7 +132,7 @@ def test_co2_preparation_allows_unknown_revision(tmp_path, monkeypatch):
         lambda name: SimpleNamespace(version="0.7.3", read_text=lambda name: None))
     canonical = _canonical_inputs()
     manifest = handoffs.prepare(canonical_inputs=canonical, reduction=_reduction(canonical),
-        output_dir=tmp_path / "prepare", **FACTS)
+        aggregation_error_rank=None, output_dir=tmp_path / "prepare", **FACTS)
     record = json.loads(manifest.read_text())
     assert record["provenance"] == {"version": "0.7.3", "revision": None, "dirty": None}
 
@@ -178,7 +178,7 @@ def test_full_run_protects_consumed_files(full_run_files, tmp_path, monkeypatch,
     monkeypatch.setattr(execution, "sample_co2_inference", lambda *a, **kw: pytest.fail("sampling reached"))
     with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         run_co2(params={
-            "prepared_inputs": {**FACTS, "path": str(source), "reconstruction_path": str(reconstruction)},
+            "data": {**FACTS, "path": str(source), "reconstruction_path": str(reconstruction)},
             "likelihood": {"kind": "additive_sigma"},
             "sampling": {"sample_prior_predictive": 2},
             "outputs": {"output_format": "basic", "output_path": str(tmp_path),
@@ -221,7 +221,7 @@ def test_full_run_protects_consumed_directories(full_run_files, tmp_path, monkey
     monkeypatch.setattr(execution, "sample_co2_inference", lambda *a, **kw: pytest.fail("sampling reached"))
     with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         run_co2(params={
-            "prepared_inputs": {**FACTS, "path": str(source), "reconstruction_path": str(reconstruction)},
+            "data": {**FACTS, "path": str(source), "reconstruction_path": str(reconstruction)},
             "likelihood": {"kind": "additive_sigma"},
             "sampling": {"sample_prior_predictive": 2}, "outputs": {"save_trace": str(trace)},
         })
@@ -233,7 +233,7 @@ def test_full_run_guards_only_consumed_files_and_written_targets(full_run_files,
     from openghg_inversions.rhime.co2 import execution
 
     prepared, source, _, _ = full_run_files
-    request = {"prepared_inputs": {**FACTS, "path": str(source)},
+    request = {"data": {**FACTS, "path": str(source)},
                "likelihood": {"kind": "additive_sigma"},
                "outputs": {"save_trace": str(source), "output_format": "none" if route == "no_output" else "basic"}}
     kwargs = {}
@@ -241,7 +241,7 @@ def test_full_run_guards_only_consumed_files_and_written_targets(full_run_files,
         kwargs["prepared"] = prepared
     elif route == "canonical":
         canonical = _canonical_inputs()
-        kwargs.update(canonical_inputs=canonical, reduction=_reduction(canonical))
+        kwargs.update(canonical_inputs=canonical, reduction=_reduction(canonical), aggregation_error_rank=None)
     before = source.read_bytes()
     def reached(*args, **kwargs):
         raise RuntimeError("sampling reached with valid unused path")
@@ -288,6 +288,34 @@ def test_staged_product_writer_preserves_consumed_inputs(tmp_path, kind, output_
         assert alias.read_bytes() == before[paths[kind]]
 
 
+def test_staged_replay_protects_posterior_after_alias_changes(tmp_path, monkeypatch):
+    """Protect the resolved input even if its manifest alias changes after the read."""
+    prepared, trace = _components_fixture()
+    prep = handoffs.save_preparation(prepared, output_dir=tmp_path / "prepare", **FACTS)
+    samples = handoffs.save_samples(prep, trace, actual_inference={},
+        preparation_generation=handoffs.load_preparation(prep).generation, output_dir=tmp_path / "sample")
+    posterior = samples.parent / "posterior.nc"
+    original = posterior.read_bytes()
+    alias = samples.parent / "trace-alias.nc"
+    alias.symlink_to(posterior)
+    record = json.loads(samples.read_text())
+    record["posterior"] = alias.name
+    samples.write_text(json.dumps(record))
+    load_trace = handoffs.load_trace
+
+    def retarget_alias(path):
+        """Change the alias once the original trace has been loaded."""
+        loaded = load_trace(path)
+        alias.unlink()
+        alias.symlink_to(samples.parent / "replacement.nc")
+        return loaded
+
+    monkeypatch.setattr(handoffs, "load_trace", retarget_alias)
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+        handoffs.postprocess(samples, output=Co2OutputOptions(output_format="basic", save_trace=posterior))
+    assert posterior.read_bytes() == original
+
+
 @pytest.mark.parametrize("stage", ["full", "sample", "prior"])
 def test_consumed_eigenbasis_is_protected_before_construction(full_run_files, tmp_path, monkeypatch, stage):
     from openghg_inversions.rhime.co2 import execution
@@ -305,7 +333,7 @@ def test_consumed_eigenbasis_is_protected_before_construction(full_run_files, tm
     before = eigenbasis.read_bytes()
     with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         if stage == "full":
-            execution.run_co2(params={**model, "prepared_inputs": {**FACTS, "path": str(source),
+            execution.run_co2(params={**model, "data": {**FACTS, "path": str(source),
                 "reconstruction_path": str(reconstruction)}, "sampling": {"sample_prior_predictive": 2},
                 "outputs": {"save_trace": str(eigenbasis)}})
         else:
@@ -330,7 +358,7 @@ def test_full_run_protects_active_country_file(tmp_path, monkeypatch):
     monkeypatch.setattr(execution, "sample_co2_inference", lambda *a, **kw: pytest.fail("sampling reached"))
     with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         execution.run_co2(prepared=prepared, affine_artifact=affine, params={
-            "prepared_inputs": FACTS, "likelihood": {"kind": "additive_sigma"},
+            "data": FACTS, "likelihood": {"kind": "additive_sigma"},
             "sampling": {"sample_prior_predictive": 2},
             "outputs": {"output_format": "basic", "country_file": str(country), "save_trace": str(country)},
         })
@@ -364,7 +392,7 @@ def test_full_run_ignores_unused_source_and_inactive_country(full_run_files, mon
     monkeypatch.setattr(execution, "sample_co2_inference", reached)
     with pytest.raises(RuntimeError, match="sampling reached with unused paths"):
         execution.run_co2(prepared=prepared, params={
-            "prepared_inputs": {**FACTS, "path": str(source)},
+            "data": {**FACTS, "path": str(source)},
             "likelihood": {"kind": "additive_sigma"},
             "outputs": {"output_format": "none", "save_trace": str(reconstruction), "country_file": str(reconstruction)},
         })
@@ -399,7 +427,7 @@ def test_staged_prepare_protects_its_request_file(full_run_files, tmp_path, mode
 
     if model == "co2":
         _, source, _, _ = full_run_files
-        params = {"prepared_inputs": {**FACTS, "path": str(source)}}
+        params = {"data": {**FACTS, "path": str(source)}}
     else:
         source = tmp_path / "linked.nc"
         synthetic_inputs().save(source)

@@ -156,6 +156,30 @@ def test_builtin_basis_algorithms_resolve(algorithm):
     assert config.data.basis_algorithm == algorithm
 
 
+def test_basis_seed_resolves_for_generated_quadtree_and_is_inactive_for_saved_bases():
+    generated = rhime_params.RhimeConfig.from_params(
+        _request(basis_algorithm="quadtree", basis_seed=42), multisector=False
+    )
+    saved = rhime_params.RhimeConfig.from_params(
+        _request(basis_path="saved.nc", basis_algorithm="weighted", basis_seed=42), multisector=False
+    )
+    assert generated.data.basis_seed == saved.data.basis_seed == 42
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"basis_algorithm": "quadtree", "basis_seed": -1}, "integer in"),
+        ({"basis_algorithm": "quadtree", "basis_seed": True}, "integer in"),
+        ({"basis_algorithm": "quadtree", "basis_seed": 1.5}, "integer in"),
+        ({"basis_algorithm": "weighted", "basis_seed": 1}, "applies only to"),
+    ],
+)
+def test_invalid_basis_seed_is_rejected(overrides, message):
+    with pytest.raises(ValueError, match=f"basis_seed.*{message}"):
+        rhime_params.RhimeConfig.from_params(_request(**overrides), multisector=False)
+
+
 def test_unknown_basis_algorithm_is_rejected():
     with pytest.raises(ValueError, match="basis_algorithm.*project_algorithm"):
         rhime_params.RhimeConfig.from_params(_request(basis_algorithm="project_algorithm"), multisector=False)
@@ -580,7 +604,7 @@ def test_resource_paths_follow_annotations_and_invocation_directory(tmp_path, mo
     config = rhime_params.RhimeConfig.from_params(options, multisector=False)
     assert config.data.basis_path == invocation / "override.nc"
     assert config.output.country_file == invocation / "country.nc"
-    assert config.data.bc_basis_paths == (invocation / "bc.nc",)
+    assert config.data.bc_basis.paths == (invocation / "bc.nc",)
     assert config.data.domain == "EUROPE"
     assert config.output.save_trace is True
     assert not {"fp_basis_case", "basis_directory", "bc_basis_case", "bc_basis_directory", "country_directory"} & {
@@ -596,11 +620,11 @@ def test_canonical_path_construction_does_not_load_resources(tmp_path, monkeypat
     monkeypatch.setattr(xr, "open_datatree", unexpected_read)
     monkeypatch.chdir(tmp_path)
     config = rhime_params.RhimeConfig.from_params(
-        _request(basis_path="missing.nc", bc_basis_paths=["missing-bc.nc"], country_file="missing-country.nc"),
+        _request(basis_path="missing.nc", bc_basis={"paths": ["missing-bc.nc"]}, country_file="missing-country.nc"),
         multisector=False,
     )
     assert config.data.basis_path == tmp_path / "missing.nc"
-    assert config.data.bc_basis_paths == (tmp_path / "missing-bc.nc",)
+    assert config.data.bc_basis.paths == (tmp_path / "missing-bc.nc",)
     assert config.output.country_file == tmp_path / "missing-country.nc"
 
 
@@ -630,20 +654,19 @@ def test_canonical_paths_are_forwarded_without_conversion(tmp_path, monkeypatch)
         patch.setattr(Path, "resolve", unexpected_normalization)
         patch.setattr(Path, "expanduser", unexpected_normalization)
         config = rhime_params.RhimeConfig.from_params(
-            _request(basis_path=path, bc_basis_paths=paths, country_file=path), multisector=False,
+            _request(basis_path=path, bc_basis={"paths": paths}, country_file=path), multisector=False,
         )
     assert config.data.basis_path is path
-    assert config.data.bc_basis_paths is paths
+    assert config.data.bc_basis.paths is paths
     assert config.output.country_file is path
 
 
-@pytest.mark.parametrize("name,collection", [("bc_basis_paths", False), ("basis_path", True)])
-def test_declared_path_shape_is_validated_for_absolute_paths(tmp_path, name, collection):
+@pytest.mark.parametrize("nested", [True, False])
+def test_declared_path_shape_is_validated_for_absolute_paths(tmp_path, nested):
     path = tmp_path / "basis.nc"
+    request = _request(bc_basis={"paths": path}) if nested else _request(basis_path=(path,))
     with pytest.raises(ValueError, match="filesystem path"):
-        rhime_params.RhimeConfig.from_params(
-            _request(**{name: (path,) if collection else path}), multisector=False,
-        )
+        rhime_params.RhimeConfig.from_params(request, multisector=False)
 
 
 def test_output_factory_inspects_only_its_own_fields(tmp_path, monkeypatch):
@@ -665,7 +688,7 @@ def test_modern_templates_construct_without_legacy_translation(template):
     path = Path(__file__).resolve().parents[1] / "openghg_inversions/config/templates" / template
     decoded = read_rhime_ini(path)
     config = rhime_params.RhimeConfig.from_params({**decoded, **_request(sites=["TAC"])}, multisector=False)
-    assert config.data.bc_basis_paths is None
+    assert config.data.bc_basis.paths is None
 
 
 @pytest.mark.parametrize("runner", [rhime.run_standard, rhime.run_multisector])

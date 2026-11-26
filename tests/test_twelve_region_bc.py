@@ -80,8 +80,8 @@ def test_real_shaped_partition_does_not_read_payloads():
 def test_projection_is_lazy_preserves_reference_and_collapses_to_nesw(centered):
     site = _curtains(centered=centered)
     original = site.copy(deep=True)
-    config = RhimeConfig.from_params(_params(use_bc=True, bc_basis_algorithm="twelve-region"), multisector=False)
-    builder = resolve_bc_basis(config.data)
+    config = RhimeConfig.from_params(_params(use_bc=True, bc_basis={"algorithm": "twelve-region"}), multisector=False)
+    builder = resolve_bc_basis(config.data.bc_basis, use_bc=config.data.use_bc)
     with Callback(pretask=lambda *args: pytest.fail("computed borrowed curtains")):
         projected = bc_sensitivity({"AAA": site}, builder)["AAA"]
         nesw = bc_sensitivity({"AAA": site})["AAA"]
@@ -115,9 +115,8 @@ def test_basis_netcdf_roundtrip_preserves_geometry_and_provenance(tmp_path):
 
 @pytest.mark.parametrize("split", [None, True, "3000", 3000 + 1j, np.inf, np.nan])
 def test_bad_split_is_rejected_at_configuration_boundary(split):
-    with pytest.raises(ValueError, match="bc_basis_split_height"):
-        RhimeConfig.from_params(_params(use_bc=True, bc_basis_algorithm="twelve-region",
-                                       bc_basis_split_height=split), multisector=False)
+    with pytest.raises(ValueError, match=r"bc_basis\.split_height"):
+        RhimeConfig.from_params(_params(use_bc=True, bc_basis={"algorithm": "twelve-region", "split_height": split}), multisector=False)
 
 
 @pytest.mark.parametrize("axis", ["height", "lat", "lon"])
