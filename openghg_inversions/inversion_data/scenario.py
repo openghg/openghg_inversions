@@ -9,7 +9,6 @@ import logging
 import numpy as np
 import pandas as pd
 import xarray as xr
-from openghg.analyse import ModelScenario
 from openghg.dataobjects import BoundaryConditionsData, FluxData, FootprintData, ObsData
 
 from openghg_inversions.inversion_data._site_options import is_column_platform
@@ -95,6 +94,9 @@ def merged_scenario_data(
     Returns:
         The merged OpenGHG scenario dataset.
     """
+    # openghg.analyse eagerly imports plotting and calibration-scale stacks.
+    from openghg.analyse import ModelScenario
+
     # Create ModelScenario object for all emissions_sectors
     # and combine into one object
     if is_column_platform(platform):

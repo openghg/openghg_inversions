@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import inspect
 import json
 import subprocess
@@ -876,6 +877,7 @@ def test_build_rhime_model_contains_expected_variables(
     assert set(model.named_vars) == {
         "Y",
         "bc",
+        "bc_is_active",
         "epsilon",
         "error",
         "hbc",
@@ -887,11 +889,13 @@ def test_build_rhime_model_contains_expected_variables(
         "sigma_period_index",
         "sigma_site_index",
         "x",
+        "x_is_active",
         "y",
     }
     assert model.named_vars_to_dims == {
         "Y": ("nmeasure",),
         "bc": ("bc_region",),
+        "bc_is_active": ("bc_region",),
         "epsilon": ("nmeasure",),
         "error": ("nmeasure",),
         "hbc": ("nmeasure", "bc_region"),
@@ -903,6 +907,7 @@ def test_build_rhime_model_contains_expected_variables(
         "sigma_period_index": ("nmeasure",),
         "sigma_site_index": ("nmeasure",),
         "x": ("region",),
+        "x_is_active": ("region",),
         "y": ("nmeasure",),
     }
 
@@ -2576,6 +2581,7 @@ def test_concrete_rhime_builders_are_owned_by_recipe_modules() -> None:
         "openghg_inversions.rhime.multisector",
     ],
 )
+@pytest.mark.fresh_process
 def test_rhime_modules_import_independently_in_fresh_process(module_name: str) -> None:
     """Recipe imports do not rely on a preloaded models-to-RHIME facade."""
     completed = subprocess.run(
@@ -2584,6 +2590,29 @@ def test_rhime_modules_import_independently_in_fresh_process(module_name: str) -
         capture_output=True,
         text=True,
     )
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_rhime_lazy_exports_resolve_and_match_stub() -> None:
+    """Every lazily exported RHIME name resolves and is declared in the stub."""
+    for name in rhime_public.__all__:
+        assert getattr(rhime_public, name) is not None, name
+
+    stub = Path(rhime_public.__file__).with_suffix(".pyi").read_text()
+    stub_all = ast.literal_eval(stub.split("__all__ = ", 1)[1])
+    assert stub_all == rhime_public.__all__
+
+
+@pytest.mark.fresh_process
+def test_rhime_package_import_defers_model_families() -> None:
+    """Importing the package configures PyTensor without loading PyMC or OpenGHG analysis."""
+    probe = (
+        "import sys, openghg_inversions.rhime; "
+        "loaded = [m for m in ('pymc', 'openghg.analyse', 'openghg_inversions.rhime.co2') if m in sys.modules]; "
+        "assert not loaded, loaded"
+    )
+    completed = subprocess.run([sys.executable, "-c", probe], check=False, capture_output=True, text=True)
 
     assert completed.returncode == 0, completed.stderr
 
@@ -3858,7 +3887,7 @@ def test_rhime_configuration_builds_specs_before_preparation(tmp_path: Path) -> 
     assert setup.data.site_options.time_resolved == (True,)
     assert setup.data.basis_algorithm == "weighted"
     assert setup.data.nbasis == 100
-    assert setup.data.bc_basis_paths is None
+    assert setup.data.bc_basis.paths is None
     assert setup.model.likelihood.min_error_options == {"by_site": False}
     for selector in ("inlet", "instrument", "platform", "fp_height"):
         assert getattr(setup.data.site_options, selector) == (None,)

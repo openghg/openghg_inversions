@@ -156,6 +156,30 @@ def test_builtin_basis_algorithms_resolve(algorithm):
     assert config.data.basis_algorithm == algorithm
 
 
+def test_basis_seed_resolves_for_generated_quadtree_and_is_inactive_for_saved_bases():
+    generated = rhime_params.RhimeConfig.from_params(
+        _request(basis_algorithm="quadtree", basis_seed=42), multisector=False
+    )
+    saved = rhime_params.RhimeConfig.from_params(
+        _request(basis_path="saved.nc", basis_algorithm="weighted", basis_seed=42), multisector=False
+    )
+    assert generated.data.basis_seed == saved.data.basis_seed == 42
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"basis_algorithm": "quadtree", "basis_seed": -1}, "integer in"),
+        ({"basis_algorithm": "quadtree", "basis_seed": True}, "integer in"),
+        ({"basis_algorithm": "quadtree", "basis_seed": 1.5}, "integer in"),
+        ({"basis_algorithm": "weighted", "basis_seed": 1}, "applies only to"),
+    ],
+)
+def test_invalid_basis_seed_is_rejected(overrides, message):
+    with pytest.raises(ValueError, match=f"basis_seed.*{message}"):
+        rhime_params.RhimeConfig.from_params(_request(**overrides), multisector=False)
+
+
 def test_unknown_basis_algorithm_is_rejected():
     with pytest.raises(ValueError, match="basis_algorithm.*project_algorithm"):
         rhime_params.RhimeConfig.from_params(_request(basis_algorithm="project_algorithm"), multisector=False)
@@ -268,7 +292,6 @@ def test_resolved_choices_are_available_without_a_preparation_record():
     assert config.data.basis_algorithm == "weighted"
     assert not hasattr(config, "site_options")
     assert not hasattr(config, "as_data_args")
-    assert not hasattr(config, "use_tracer")
 
 
 def test_canonical_configuration_exposes_active_prior_defaults():
@@ -469,13 +492,6 @@ def test_runner_flux_selectors_export_canonical_configuration(new, value):
     assert new in config.supported_option_names()
 
 
-@pytest.mark.parametrize(("old", "new"), [("emissions_store", "flux_store"), ("emissions_domain", "flux_domain")])
-@pytest.mark.parametrize("value", [None, "same"])
-def test_runner_rejects_retired_flux_selectors_even_with_canonical_values(old, new, value):
-    with pytest.raises(ValueError, match=f"Unsupported RHIME parameter.*{old}"):
-        load_params(overrides=_request(**{old: value, new: value}))
-
-
 def test_canonical_flux_defaults_and_explicit_source_domain():
     default = rhime_params.RhimeConfig.from_params(_request(), multisector=False)
     assert default.data.flux_store == "user"
@@ -588,24 +604,12 @@ def test_resource_paths_follow_annotations_and_invocation_directory(tmp_path, mo
     config = rhime_params.RhimeConfig.from_params(options, multisector=False)
     assert config.data.basis_path == invocation / "override.nc"
     assert config.output.country_file == invocation / "country.nc"
-    assert config.data.bc_basis_paths == (invocation / "bc.nc",)
+    assert config.data.bc_basis.paths == (invocation / "bc.nc",)
     assert config.data.domain == "EUROPE"
     assert config.output.save_trace is True
     assert not {"fp_basis_case", "basis_directory", "bc_basis_case", "bc_basis_directory", "country_directory"} & {
         field.name for field in fields(config)
     }
-
-
-
-
-
-
-
-
-@pytest.mark.parametrize("value", [None, "old-country-dir"])
-def test_removed_country_directory_rejects_before_config_or_discovery(value):
-    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*country_directory.*fp_basis_case"):
-        load_params(overrides=_request(country_directory=value, fp_basis_case="missing"))
 
 
 def test_canonical_path_construction_does_not_load_resources(tmp_path, monkeypatch):
@@ -616,15 +620,12 @@ def test_canonical_path_construction_does_not_load_resources(tmp_path, monkeypat
     monkeypatch.setattr(xr, "open_datatree", unexpected_read)
     monkeypatch.chdir(tmp_path)
     config = rhime_params.RhimeConfig.from_params(
-        _request(basis_path="missing.nc", bc_basis_paths=["missing-bc.nc"], country_file="missing-country.nc"),
+        _request(basis_path="missing.nc", bc_basis={"paths": ["missing-bc.nc"]}, country_file="missing-country.nc"),
         multisector=False,
     )
     assert config.data.basis_path == tmp_path / "missing.nc"
-    assert config.data.bc_basis_paths == (tmp_path / "missing-bc.nc",)
+    assert config.data.bc_basis.paths == (tmp_path / "missing-bc.nc",)
     assert config.output.country_file == tmp_path / "missing-country.nc"
-
-
-
 
 
 @pytest.mark.parametrize("factory", [rhime_specs.make_output_spec, rhime_specs.RhimeOutputSpec.from_params])
@@ -653,26 +654,19 @@ def test_canonical_paths_are_forwarded_without_conversion(tmp_path, monkeypatch)
         patch.setattr(Path, "resolve", unexpected_normalization)
         patch.setattr(Path, "expanduser", unexpected_normalization)
         config = rhime_params.RhimeConfig.from_params(
-            _request(basis_path=path, bc_basis_paths=paths, country_file=path), multisector=False,
+            _request(basis_path=path, bc_basis={"paths": paths}, country_file=path), multisector=False,
         )
     assert config.data.basis_path is path
-    assert config.data.bc_basis_paths is paths
+    assert config.data.bc_basis.paths is paths
     assert config.output.country_file is path
 
 
-@pytest.mark.parametrize("name,collection", [("bc_basis_paths", False), ("basis_path", True)])
-def test_declared_path_shape_is_validated_for_absolute_paths(tmp_path, name, collection):
+@pytest.mark.parametrize("nested", [True, False])
+def test_declared_path_shape_is_validated_for_absolute_paths(tmp_path, nested):
     path = tmp_path / "basis.nc"
+    request = _request(bc_basis={"paths": path}) if nested else _request(basis_path=(path,))
     with pytest.raises(ValueError, match="filesystem path"):
-        rhime_params.RhimeConfig.from_params(
-            _request(**{name: (path,) if collection else path}), multisector=False,
-        )
-
-
-@pytest.mark.parametrize("name", ["fp_basis_case", "basis_directory", "bc_basis_case", "bc_basis_directory"])
-def test_modern_configuration_rejects_historical_resource_selectors(name):
-    with pytest.raises(ValueError, match="Unsupported RHIME parameter"):
-        rhime_params.RhimeConfig.from_params(_request(**{name: "old"}), multisector=False)
+        rhime_params.RhimeConfig.from_params(request, multisector=False)
 
 
 def test_output_factory_inspects_only_its_own_fields(tmp_path, monkeypatch):
@@ -694,28 +688,23 @@ def test_modern_templates_construct_without_legacy_translation(template):
     path = Path(__file__).resolve().parents[1] / "openghg_inversions/config/templates" / template
     decoded = read_rhime_ini(path)
     config = rhime_params.RhimeConfig.from_params({**decoded, **_request(sites=["TAC"])}, multisector=False)
-    assert config.data.bc_basis_paths is None
-
-
-@pytest.mark.parametrize("name", ["xprior", "outputpath", "emissions_name", "emissions_store", "emissions_domain", "country_directory", "use_tracer"])
-def test_canonical_configuration_rejects_aliases_without_warnings(name):
-    import warnings
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", DeprecationWarning)
-        with pytest.raises(ValueError, match="Unsupported RHIME parameter"):
-            rhime_params.RhimeConfig.from_params(_request(**{name: "old"}), multisector=False)
+    assert config.data.bc_basis.paths is None
 
 
 @pytest.mark.parametrize("runner", [rhime.run_standard, rhime.run_multisector])
 @pytest.mark.parametrize("grouped", [False, True])
-def test_runner_rejects_retired_options_before_canonical_configuration(monkeypatch, runner, grouped):
+def test_runner_rejects_unknown_options_before_canonical_configuration(monkeypatch, runner, grouped):
     monkeypatch.setattr(rhime_params.RhimeConfig, "from_params", lambda *a, **kw: pytest.fail("must validate first"))
-    params = {"data": {"emissions_store": "archive"}, "model": {"xprior": {}}, "output": {"outputname": "old"}} if grouped else {"emissions_store": "archive", "xprior": {}, "outputname": "old"}
+    names = ("unknown_data", "unknown_model", "unknown_output")
+    values = ("archive", {}, "old")
+    params = (
+        {group: {name: value} for group, name, value in zip(("data", "model", "output"), names, values, strict=True)}
+        if grouped else dict(zip(names, values, strict=True))
+    )
     before = deepcopy(params)
     with pytest.raises(ValueError, match="Unsupported RHIME parameter") as error:
         runner(**params)
-    assert all(name in str(error.value) for name in ("emissions_store", "xprior", "outputname"))
+    assert all(name in str(error.value) for name in names)
     assert params == before
 
 
@@ -753,24 +742,3 @@ def test_grouped_unknown_names_are_reported_together():
         rhime_params.group_params({"data": {"unknown_data": 1}, "model": {"unknown_model": 2}})
     assert "unknown_data" in str(raised.value)
     assert "unknown_model" in str(raised.value)
-
-
-def test_data_resolver_rejects_alias_without_translation():
-    import warnings
-
-    options = rhime_params.group_params(_request())["data"]
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", DeprecationWarning)
-        with pytest.raises(ValueError, match="emissions_name"):
-            rhime_params.DataConfig.from_params({**options, "emissions_name": ["old"]})
-
-
-def test_canonical_grouped_configuration_rejects_aliases_without_warnings():
-    import warnings
-
-    params = rhime_params.group_params(_request())
-    params["model"]["xprior"] = {"pdf": "normal", "mu": 1, "sigma": 1}
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", DeprecationWarning)
-        with pytest.raises(ValueError, match="model.xprior"):
-            rhime_params.RhimeConfig.from_params(params, multisector=False)

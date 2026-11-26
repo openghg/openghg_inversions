@@ -14,7 +14,10 @@ from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.operators import BucketBasisOperator
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
+from openghg_inversions.inversion_data.o2n2 import DELTA_O2_N2, MOLE_FRACTION, DeltaO2N2Declaration
+from openghg_inversions.rhime.co2.co2_o2_configuration import validate_co2_o2_channel_units
 from openghg_inversions.rhime.co2.co2_o2_model import _gather_co2_o2_sensitivity
+from openghg_inversions.postprocessing.boundary_outputs import decode_saved_boundaries, reconstruct_boundary
 from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
@@ -41,6 +44,8 @@ def _role(trace: xr.DataTree, role: str, group: str) -> xr.DataArray:
     roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
     name = roles.get(role)
     dataset = trace_group(trace, group) if group in trace.children else xr.Dataset()
+    if name not in dataset and "constant_data" in trace.children and name in trace.constant_data:
+        dataset = trace.constant_data.to_dataset()
     if name not in dataset:
         raise ValueError(f"Linked output requires scientific role {role!r} in {group}.")
     value = dataset[name]
@@ -69,17 +74,29 @@ def reconstruct_co2_o2_concentrations(
     Returns:
         CO2 and O2 datasets with observations, posterior model means, residuals
         (observed minus modelled), affine, boundary, offset, and per-source
-        contributions in channel units. Chain/draw labels remain shared. Prior
+        contributions in channel units. Each dataset's ``units`` and
+        ``observable`` attributes label its channel; a declared delta(O2/N2)
+        O2 channel also records ``o2_n2_reference_ratio`` and
+        ``o2_observable_declaration``. Chain/draw labels remain shared. Prior
         draws, when present, preserve fixed-state activity. Their sample
         dimensions are named ``prior_chain`` and ``prior_draw``.
+        Boundary mean-shift and anomaly coefficients retain their own labelled
+        dimensions and declared units as ``boundary_*_coefficient_*`` variables.
         Inputs remain borrowed; computation is deferred to product creation.
 
     Raises:
-        ValueError: If roles/prior baseline draws are missing or independently
-            supplied posterior and preparation labels differ.
+        ValueError: If roles/prior baseline draws are missing, independently
+            supplied posterior and preparation labels differ, or the channel
+            units do not match the declared O2 observable (see
+            :func:`~openghg_inversions.rhime.co2.co2_o2_configuration.validate_co2_o2_channel_units`).
     """
     if trace.attrs.get("rhime_recipe") not in {"co2_o2", "co2_o2_cached_sigma_fixed_ou"}:
         raise ValueError("Linked PARIS outputs require one joint co2_o2 posterior.")
+    # Same per-channel unit/observable check as the configured and handoff paths,
+    # so a declaration cannot relabel mole-fraction rows (or vice versa). Each
+    # mole-fraction channel is reported with its own scale, so ppm CO2 with
+    # ppb O2 stays valid here.
+    channel_units = validate_co2_o2_channel_units(prepared, identical_mole_fraction_units=False)
     roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
     sensitivity = _gather_co2_o2_sensitivity(prepared.co2_sensitivity, prepared.o2_sensitivity)
     state_dim = prepared.retained_prior.state_dim
@@ -96,7 +113,14 @@ def reconstruct_co2_o2_concentrations(
         prior_scale = _role(trace, "flux_scale", "prior")
         sensitivity, prior_scale = xr.align(sensitivity, prior_scale, join="exact", copy=False)
         scales_by_group["prior"] = prior_scale
+    boundary_facts = decode_saved_boundaries(trace, roles=roles, channels=("co2", "o2"))
+    boundary_by_group = {
+        group: {channel: reconstruct_boundary(facts, trace_group(trace, group))
+                for channel, facts in boundary_facts.items()}
+        for group in scales_by_group
+    }
     result = {}
+    declaration = DeltaO2N2Declaration.from_provenance(prepared.provenance)
     for species in ("co2", "o2"):
         rows = np.flatnonzero(observations["species"].values == species)
         observed = observations.isel(observation=rows)
@@ -114,6 +138,18 @@ def reconstruct_co2_o2_concentrations(
                 )
                 data[f"{component}_{when}"] = value
                 total = total + value
+            quantities = boundary_by_group[when].get(species, {})
+            for quantity, component in (("reference", "reference"), ("mean_contribution", "mean_shift"),
+                                        ("anomaly_contribution", "anomaly"),
+                                        ("mean_shift", "mean_shift_coefficient"),
+                                        ("anomaly", "anomaly_coefficient")):
+                if quantity in quantities:
+                    value = quantities[quantity]
+                    if "observation" in value.dims:
+                        value = value.isel(observation=rows)
+                    if when == "prior":
+                        value = value.rename({dim: f"prior_{dim}" for dim in ("chain", "draw") if dim in value.dims})
+                    data[f"boundary_{component}_{when}"] = value
             selected = prepared.retained_prior.mean.tracer_scope.str.lower().isin(["shared", species])
             for source in np.unique(prepared.retained_prior.mean.source.values[selected.values]):
                 states = np.flatnonzero((selected & (prepared.retained_prior.mean.source == source)).values)
@@ -143,8 +179,14 @@ def reconstruct_co2_o2_concentrations(
             species=species,
             has_offset=int(f"{species}_offset_concentration" in roles),
             source_components=json.dumps(sources),
-            units=str(observed.observation_units.values[0]),
+            units=channel_units[species],
+            observable=DELTA_O2_N2 if species == "o2" and declaration is not None else MOLE_FRACTION,
         )
+        if species == "o2" and declaration is not None:
+            dataset.attrs.update(
+                o2_n2_reference_ratio=declaration.reference_ratio,
+                o2_observable_declaration=json.dumps(declaration.to_provenance(), sort_keys=True),
+            )
         result[species] = dataset
     return result
 
@@ -158,12 +200,8 @@ def _concentration_product(
     """Apply existing v04 names, units, time conventions, and dtypes."""
     species = components.attrs["species"]
     raw_units = components.attrs["units"]
-    # A per-meg ratio anomaly is dimensionless but not a dry-air mole fraction.
-    if "meg" in raw_units.lower() or "delta" in raw_units.lower():
-        raise ValueError(
-            f"PARIS {species} concentration cannot represent {raw_units!r} as dry-air mole fraction."
-        )
-    scale = mole_fraction_unit_scale(raw_units, context=f"linked PARIS {species}")
+    # The shared parser rejects ratio anomalies such as per meg: v04 holds dry-air mole fractions.
+    scale = mole_fraction_unit_scale(raw_units, context=f"linked PARIS {species} concentration")
     if "time" not in components.coords or "site" not in components.coords:
         raise ValueError("Linked PARIS concentration requires observation-aligned site and time coordinates.")
     if not np.issubdtype(components.time.dtype, np.datetime64):
@@ -256,7 +294,11 @@ def make_co2_o2_paris_outputs(
         domain: Domain label for both products.
         obs_avg_period: Averaging interval; observation timestamps mark starts.
         template_version: Only ``latest`` (concentration v04, flux v03).
-            Delta O2/N2 per-meg concentrations are unsupported.
+            The v04 concentration template holds dry-air mole fractions, so a
+            declared delta(O2/N2) O2 channel gets no PARIS concentration
+            product; its per-meg values stay in the linked basic products.
+            Undeclared per-meg O2, and a declaration whose units do not
+            match the O2 rows, are rejected before any product is chosen.
         native_flux_bases: Optional species-to-basis mapping for total native
             flux. Each single-source bucket basis uses the full retained state labels
             and zero flux response for the other tracer's private states.
@@ -272,8 +314,9 @@ def make_co2_o2_paris_outputs(
         output_path: Optional directory for separate species/product NetCDFs.
 
     Returns:
-        Mapping keyed by ``co2`` and ``o2``, containing ``concentration`` and,
-        when requested, ``flux`` datasets. Products are eager marginals of one
+        Mapping keyed by ``co2`` and ``o2``, containing ``concentration`` (except
+        for declared delta(O2/N2) O2) and, when requested, ``flux`` datasets.
+        Products are eager marginals of one
         joint posterior. Cross-channel covariance and joint likelihood remain
         in the linked artifact. Serialization does not change input objects.
 
@@ -300,6 +343,9 @@ def make_co2_o2_paris_outputs(
         ),
         "linked_posterior": "Marginals of one joint CO2/O2 posterior; cross-channel covariance remains in the linked trace.",
     }
+    declaration = DeltaO2N2Declaration.from_provenance(prepared.provenance)
+    if declaration is not None:
+        provenance["linked_o2_observable"] = json.dumps(declaration.to_provenance(), sort_keys=True)
     components = reconstruct_co2_o2_concentrations(trace, prepared)
     # Materialize both channels together at the eager PARIS product boundary.
     components = dict(
@@ -313,13 +359,13 @@ def make_co2_o2_paris_outputs(
         value.attrs["units"] = str(value.observation_units.values[0])
     products = {}
     for species, values in components.items():
-        products[species] = {
-            "concentration": _concentration_product(
+        products[species] = {}
+        if values.attrs["observable"] == MOLE_FRACTION:
+            products[species]["concentration"] = _concentration_product(
                 values,
                 domain=domain,
                 obs_avg_period=obs_avg_period,
             )
-        }
         if species in native_flux_bases:
             basis = native_flux_bases[species]
             if basis.source_labels is not None or not isinstance(basis.operator, BucketBasisOperator):

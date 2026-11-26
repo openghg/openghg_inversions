@@ -45,6 +45,7 @@ def test_output_contract_rejects_malformed_persisted_metadata(change: dict) -> N
         OutputContract.from_dict(payload)
 
 
+@pytest.mark.fresh_process
 def test_reconstruction_imports_no_backend_or_recipe_in_fresh_process() -> None:
     subprocess.run(
         [

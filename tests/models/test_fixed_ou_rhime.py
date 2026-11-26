@@ -11,7 +11,7 @@ import xarray as xr
 from scipy.stats import multivariate_normal
 
 from openghg_inversions.models.coords import get_coord_registry, registered_model
-from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood, fixed_ou_mismatch_covariance
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.multisector import build_multisector_model
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
@@ -141,6 +141,26 @@ def test_fixed_zero_amplitude_has_a_clear_builder_error() -> None:
         _build_fixed_ou_model(data, fixed_site_amplitudes=0.0)
 
 
+@pytest.mark.parametrize("low_rank", [False, True])
+def test_fixed_mismatch_covariance_matches_pymc_likelihood(low_rank: bool) -> None:
+    """The labelled covariance and the likelihood agree before and after adding aggregation error."""
+    data = _ou_inputs(low_rank=low_rank)
+    amplitudes = {"TAC": 0.7, "MHD": 0.5}
+    model = _build_fixed_ou_model(data, fixed_site_amplitudes=amplitudes)
+    covariance = fixed_ou_mismatch_covariance(
+        data["mf"],
+        data["mf_error"].assign_attrs(units="ppm"),
+        fixed_site_amplitudes=amplitudes,
+        tau_hours={"TAC": 7.0, "MHD": 5.0},
+    ).values
+    if low_rank:
+        factor = data["low_rank_factor"].values
+        covariance = covariance + factor @ factor.T + np.diag(data["diagonal_residual_variance"].values)
+
+    expected = multivariate_normal.logpdf(data["mf"].values, mean=np.ones(data.sizes["nmeasure"]), cov=covariance)
+    assert model.compile_logp()(model.initial_point()) == pytest.approx(expected, rel=1e-6)
+
+
 def test_positive_fixed_ou_amplitude_rescues_a_zero_base_covariance() -> None:
     """Positive OU covariance can make a zero fixed base positive definite."""
     data = _ou_inputs(low_rank=False, zero_base=True)
@@ -196,7 +216,7 @@ def test_fixed_ou_builder_samples_state_and_site_amplitudes_together() -> None:
     assert np.isfinite(trace.posterior["ou_site_amplitude"]).all()
 
 
-@pytest.mark.parametrize("mode", ["none", "diagonal", "low_rank", "dense"])
+@pytest.mark.parametrize("mode", ["none", "low_rank", "dense"])
 def test_builder_logp_matches_dense_covariance_for_every_aggregation_mode(
     mode: str,
 ) -> None:
@@ -205,12 +225,6 @@ def test_builder_logp_matches_dense_covariance_for_every_aggregation_mode(
     residual_variance = np.array([0.03, 0.04, 0.05, 0.06])
     if mode == "none":
         aggregation = np.zeros((4, 4))
-    elif mode == "diagonal":
-        aggregation = np.diag(residual_variance)
-        data["aggregation_error_sd"] = (
-            "nmeasure",
-            np.sqrt(residual_variance),
-        )
     else:
         aggregation = factor @ factor.T + np.diag(residual_variance)
         if mode == "low_rank":

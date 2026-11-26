@@ -3,7 +3,6 @@
 from collections.abc import Mapping
 
 import xarray as xr
-from openghg.analyse._utils import match_dataset_dims, stack_datasets
 
 from openghg_inversions.array_ops import force_align
 from openghg_inversions.flux_sanitization import sanitize_flux_nonfinite
@@ -96,6 +95,9 @@ def _combine_flux_sources_like_modelscenario(flux_arrays: dict[str, xr.DataArray
 
     if len(flux_datasets) == 1:
         return flux_datasets[0]["flux"]
+
+    # openghg.analyse eagerly imports plotting and calibration-scale stacks.
+    from openghg.analyse._utils import match_dataset_dims, stack_datasets
 
     dims = [dim for dim in flux_datasets[0].dims if dim != "time"]
     flux_datasets = match_dataset_dims(flux_datasets, dims=dims)

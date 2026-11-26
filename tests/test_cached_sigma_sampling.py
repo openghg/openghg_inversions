@@ -177,8 +177,9 @@ def test_supplied_state_function_matches_public_density_without_covariance_work(
     sigma_step, state_step = compound.methods
     exact = model.compile_logp()
     gradient = model.compile_dlogp(vars=arguments["states"])
-    # Cached float32 algebra and the public Gaussian gradient round in different orders.
-    gradient_rtol = max(1e-7, 2 * np.finfo(point["state"].dtype).eps)
+    # The cache evaluates in float64 before the gradient is rounded to the state dtype.
+    # The public Gaussian rounds earlier in the state projection and its derivative.
+    gradient_rtol = max(1e-7, 4 * np.finfo(point["state"].dtype).eps)
     for state, amplitudes in ((-0.3, [0.2, 0.7]), (0.4, [0.6, 1.2])):
         point["state"] = np.asarray([state], dtype=point["state"].dtype)
         point["sigma_site_log__"] = np.asarray(np.log(amplitudes), dtype=point["sigma_site_log__"].dtype)
@@ -218,6 +219,7 @@ def _sample_observed_spawn_chains(*, observed=True):
 
 
 @pytest.mark.compiled_backend
+@pytest.mark.fresh_process
 def test_observed_spawn_chains_preserve_shared_cache_and_generic_joint_density():
     target, shared, model, point, first = _sample_observed_spawn_chains()
     *_, second = _sample_observed_spawn_chains()
@@ -407,23 +409,24 @@ def test_sigma_step_refreshes_once_only_when_the_returned_value_changes(
 
 @pytest.mark.parametrize("dtype", ["float32", "float64"])
 @pytest.mark.compiled_backend
-def test_shared_quadratic_uses_active_pytensor_dtype(dtype: str) -> None:
+def test_shared_quadratic_stays_float64_under_either_model_dtype(dtype: str) -> None:
+    """Keep cache terms and their evaluation separate from the model's dtype."""
     target = _target()
     cache = target.refresh(np.array([0.4, 0.4]))
+    state_value = np.array([0.3], dtype=dtype)
 
     with pytensor.config.change_flags(floatX=dtype):
         shared = PytensorMarginalQuadraticCache(cache)
         state = pt.vector("state", dtype=dtype)
         evaluate = pytensor.function([state], shared.log_likelihood(state))
-        value = evaluate(np.array([0.3], dtype=dtype))
+        value = evaluate(state_value)
 
-    assert shared.constant.dtype == dtype
-    assert shared.linear.dtype == dtype
-    assert shared.precision.dtype == dtype
-    assert np.asarray(value).dtype == np.dtype(dtype)
+    assert shared.constant.dtype == "float64"
+    assert shared.linear.dtype == "float64"
+    assert shared.precision.dtype == "float64"
+    assert np.asarray(value).dtype == np.dtype("float64")
     assert float(value) == pytest.approx(
-        cache.log_likelihood(np.array([0.3])),
-        rel=2e-6 if dtype == "float32" else 1e-12,
+        cache.log_likelihood(state_value.astype(np.float64)), rel=1e-12,
     )
 
 
@@ -538,6 +541,7 @@ def _sample_two_spawn_chains(seed: int):
         )
 
 
+@pytest.mark.fresh_process
 def test_two_spawn_chains_are_reproducible_and_emit_cached_diagnostics() -> None:
     first = _sample_two_spawn_chains(20260913)
     second = _sample_two_spawn_chains(20260913)
@@ -563,9 +567,22 @@ def test_two_spawn_chains_are_reproducible_and_emit_cached_diagnostics() -> None
     assert np.isfinite(first.posterior["sigma_site"]).all()
 
 
-@pytest.mark.parametrize("family", ["halfnormal", "gamma", "uniform"])
+@pytest.mark.parametrize(
+    "family",
+    [
+        "halfnormal",
+        # Each family's density and gradient are checked without sampling below;
+        # the extra posterior-moment runs only repeat the shared compound step.
+        pytest.param("gamma", marks=pytest.mark.slow),
+        pytest.param("uniform", marks=pytest.mark.slow),
+    ],
+)
 def test_compound_sampler_matches_independent_dense_posterior_moments(family) -> None:
-    """The composed amplitude/state transition targets the intended posterior."""
+    """The composed amplitude/state transition targets the intended posterior.
+
+    Each case draws 3,200 samples on two chains (about 8-17 s), so only one
+    prior family runs by default; ``-m slow`` checks the others.
+    """
     import arviz as az
     from scipy.integrate import trapezoid
     from scipy import stats
@@ -654,7 +671,8 @@ def test_compound_sampler_matches_independent_dense_posterior_moments(family) ->
             shared_cache=shared,
             initial_cache=initial_cache,
             sigma_target_accept=0.9,
-            state_target_accept=0.9,
+            # Use finer state steps for the posterior quadrature comparison.
+            state_target_accept=0.95,
             rng=np.random.default_rng(710),
         )
         idata = pm.sample(

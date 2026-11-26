@@ -12,6 +12,7 @@ from openghg_inversions.models.boundary import (
     RawCenteredSensitivity,
     normalize_centering_weights,
 )
+from openghg_inversions.rhime.co2.co2_o2_preparation import _raw_centered_channels
 from test_boundary_contracts import _forbid_compute, _observations, _raw_on_nmeasure, bound_example
 
 
@@ -59,7 +60,7 @@ def test_weight_preparation_is_structural_and_normalization_owns_values():
     invalid = xr.full_like(raw.bc_centering_weights, -1.0)
     for weights in (invalid, invalid.chunk()):
         with dask.config.set(scheduler=_forbid_compute):
-            RawCenteredSensitivity.with_centering_weights(raw, weights)
+            _raw_centered_channels({"co2": raw}, {"co2": weights})
     with pytest.raises(ValueError, match="finite and strictly positive"):
         normalize_centering_weights(invalid)
 
@@ -93,3 +94,29 @@ def test_numerical_results_keep_units_and_stable_weight_normalization():
     normalized = normalize_centering_weights(weights)
     np.testing.assert_allclose(normalized, [2 / 3, 1 / 3])
     assert normalized.attrs["units"] == "1"
+
+
+def test_linked_runner_does_not_hide_a_supplied_weight_calendar_mismatch():
+    """The normal linked handoff rejects extra periods even with embedded weights."""
+    from dataclasses import replace
+
+    from test_co2_o2_additive_boundary import _additive_inputs, _linked_choices
+    from test_co2_o2_fixed_ou import _prepared
+    from openghg_inversions.rhime.co2.co2_o2_runner import _bind_co2_o2_boundaries
+
+    prepared = _prepared()
+    with pytensor.config.change_flags(floatX="float64"):
+        arguments = _additive_inputs(prepared)
+        original_weights = arguments["bc_centering_weights"]["co2"]
+        extra = original_weights.assign_coords(bc_period=original_weights.bc_period + np.timedelta64(1, "D"))
+        replacement = xr.concat([original_weights, extra], dim="bc_period")
+        raw = {
+            channel: RawCenteredSensitivity.validate(data)
+            for channel, data in arguments["boundary_operands"].items()
+        }
+        raw["co2"] = RawCenteredSensitivity.with_centering_weights(raw["co2"], original_weights)
+        raw = _raw_centered_channels(raw, {**arguments["bc_centering_weights"], "co2": replacement})
+        xr.testing.assert_identical(raw["co2"].bc_centering_weights, replacement.rename("bc_centering_weights"))
+        prepared = replace(prepared, boundary_operands=raw)
+        with pytest.raises(ValueError, match="align"):
+            _bind_co2_o2_boundaries(prepared, _linked_choices(arguments))

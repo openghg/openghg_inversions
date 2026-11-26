@@ -20,3 +20,27 @@ tune = 1000
 chains = 4
 target_accept = 0.95
 random_seed = 12345
+
+# Optional centred additive boundary corrections (observation concentration units).
+# Requires native centered operands and bc_centering_weights stored at preparation:
+# pass bc_centering_weights to prepare_co2_inputs, handoffs.prepare or run_co2.
+# Replaces BC scaling.
+# [model.boundary]
+# type = "additive"
+# anomaly_scale = 0.5
+# mean_shift_prior = { pdf = "normal", mu = 0.0, sigma = 0.5 }
+
+# Other centred correction structures (see docs/usage/boundary_correction_structures.rst):
+#   anomalies = "period_contrasts" or "independent" (mean_shift_prior then optional),
+#   mean_by_period = true (requires frequency), or type = "anomaly_scaling" with
+#   scale_sd = 0.8 and reference = "whole_window_transport_mean".
+
+# Hold outer-region flux states at their prior mean with zero uncertainty, a
+# what-if for a known outer prior (see docs/usage/atmospheric_baseline.rst).
+# Needs basis_group labels on the prepared retained states, which come from the
+# coherent reduction's restriction; configured CO2 preparation does not add
+# them yet (issue #1094). fixed_sources holds only outer states with those
+# source labels.
+# [model.outer_flux]
+# mode = "fixed"
+# outer_groups = ["outer"]

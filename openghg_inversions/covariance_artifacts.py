@@ -9,7 +9,10 @@ Two artifacts share one layout and one identity convention:
 * a **coherent artifact** persists
   :class:`~openghg_inversions.coherent_reduction.CoherentGaussianReduction`.
   It omits ``U_*``, ``H B Pi.T`` and ``H B H.T``, which its stored blocks
-  already determine.
+  already determine. It records the reduction's ``native_identity``, so
+  ``reduction.identity`` survives a round trip. Schema version 1 does not
+  persist ``functional_products``; saving a reduction that has them fails
+  instead of dropping them.
 
 Layout
 ------
@@ -215,6 +218,7 @@ _COHERENT_ROOT_ATTRS = {
     "strategy",
     "native_family",
     "reduction",
+    "native_identity",
 }
 NATIVE_FAMILY = "gaussian"
 REDUCTION_KIND = "exact_gaussian_conditional"
@@ -498,6 +502,7 @@ def coherent_from_datatree(tree: xr.DataTree) -> CoherentReductionArtifact:
         observation_intercept=arrays["observation_intercept"],
         unresolved_observation_covariance=arrays["unresolved_observation_covariance"],
         projection_strategy=_nonempty_string(tree.attrs["strategy"], "strategy"),
+        native_identity=_native_identity(tree.attrs["native_identity"]),
     )
     artifact = CoherentReductionArtifact(
         reduction=reduction,
@@ -651,6 +656,11 @@ def _encode_products(
 def _encode_coherent(artifact: CoherentReductionArtifact) -> xr.DataTree:
     """Build the coherent-reduction tree without ``content_id``."""
     reduction = artifact.reduction
+    if reduction.functional_products is not None:
+        raise ValueError(
+            "Coherent artifact schema version 1 does not persist functional_products; "
+            "save the reduction without functionals"
+        )
     arrays = {name: getattr(reduction, name) for name in _COHERENT_AXES}
     axes_node = _encode_axes_node(arrays, _COHERENT_AXES)
     return _assemble(
@@ -662,6 +672,7 @@ def _encode_coherent(artifact: CoherentReductionArtifact) -> xr.DataTree:
             "strategy": reduction.projection_strategy,
             "native_family": NATIVE_FAMILY,
             "reduction": REDUCTION_KIND,
+            "native_identity": _native_identity(reduction.native_identity),
         },
     )
 
@@ -1200,6 +1211,13 @@ def _check_binding_fields(covariance: object, inputs_id: object) -> None:
             "whose configuration can be embedded"
         )
     _nonempty_string(inputs_id, "inputs_id")
+
+
+def _native_identity(value: object) -> str:
+    """Return a :func:`~openghg_inversions.coherent_reduction.native_reduction_identity` digest."""
+    if not isinstance(value, str) or not value.startswith("sha256:"):
+        raise ValueError("native_identity must be a 'sha256:' native_reduction_identity digest")
+    return value
 
 
 def _nonempty_string(value: object, name: str) -> str:

@@ -19,7 +19,7 @@ from dataclasses import dataclass, field, replace
 import json
 from numbers import Integral
 from pathlib import Path
-from typing import Any, Literal, Self, cast
+from typing import TYPE_CHECKING, Any, Literal, Self, cast
 
 from dask import compute as dask_compute
 from dask.array import Array as DaskArray
@@ -30,11 +30,18 @@ import xarray as xr
 from openghg_inversions._serialization_codecs import _copy_json_mapping, _decode_json_mapping
 from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array, to_dense
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.inversion_data.o2n2 import (
+    MOLE_FRACTION, O2_OBSERVABLE_ATTR, O2_OBSERVABLE_PROVENANCE_KEY, DeltaO2N2Declaration,
+)
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
     AggregationError,
     resolve_aggregation_error,
 )
+
+if TYPE_CHECKING:
+    from openghg_inversions.models.boundary.contracts import RawCenteredSensitivity
+
 from openghg_inversions.serialization import (
     decode_cf_multiindexes,
     encode_cf_multiindexes,
@@ -44,7 +51,7 @@ from openghg_inversions.serialization import (
 
 
 CO2_O2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_o2_prepared_inputs"
-CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 2
+CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 5
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -89,9 +96,11 @@ class Co2O2PreparedInputs:
         provenance: JSON-serializable preparation and data provenance.
         boundary_sensitivity: Optional mapping keyed by co2 and o2, containing
             native-channel H_bc arrays (observation, boundary state).
-        boundary_operands: Raw centered-v1 H_bc_anomaly/H_bc_mass and scalar
-            bc_reference, retained until model binding. Mutually exclusive with
-            absolute boundary_sensitivity for the same channel.
+        boundary_operands: Raw centered transport per channel
+            (:class:`~openghg_inversions.models.boundary.contracts.RawCenteredSensitivity`),
+            including any ``bc_centering_weights``, retained until model
+            binding. Mutually exclusive with absolute boundary_sensitivity for
+            the same channel.
         independent_error_sd: Optional positive independent-error standard
             deviations on the joint observation axis, with matching row units.
             The borrowed payload may remain lazy.
@@ -108,7 +117,7 @@ class Co2O2PreparedInputs:
     provenance: Mapping[str, Any] = field(default_factory=dict)
     boundary_sensitivity: Mapping[str, xr.DataArray] = field(default_factory=dict)
     independent_error_sd: xr.DataArray | None = None
-    boundary_operands: Mapping[str, xr.Dataset] = field(default_factory=dict)
+    boundary_operands: Mapping[str, RawCenteredSensitivity] = field(default_factory=dict)
 
     def to_datatree(self) -> xr.DataTree:
         """Build a versioned tree without writing or materializing payloads.
@@ -128,12 +137,10 @@ class Co2O2PreparedInputs:
             raise ValueError("CO2/O2 prepared inputs require dense aggregation error.")
         if set(self.boundary_operands) - {"co2", "o2"} or set(self.boundary_operands) & set(self.boundary_sensitivity):
             raise ValueError("boundary_operands requires distinct co2/o2 channels from boundary_sensitivity.")
-        from openghg_inversions.boundary_sensitivity import validate_boundary_operands
-        for operands in self.boundary_operands.values():
-            if not validate_boundary_operands(operands):
-                raise ValueError("Expected centered boundary operands.")
         if set(self.boundary_sensitivity) - {"co2", "o2"}:
             raise ValueError("boundary_sensitivity must be keyed only by co2 and o2.")
+        # Structural only: directly constructed inputs meet the same raw contract as prepared ones.
+        _raw_centered_channels(self.boundary_operands)
         arrays = {
             "joint": {
                 "observed_concentration": self.observations,
@@ -175,7 +182,7 @@ class Co2O2PreparedInputs:
         tree = xr.DataTree.from_dict(datasets)
         tree.attrs = {
             "schema": CO2_O2_PREPARED_INPUTS_SCHEMA,
-            "schema_version": CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION if self.boundary_operands else 1,
+            "schema_version": CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION,
             "provenance_json": json.dumps(dict(self.provenance), sort_keys=True, allow_nan=False),
             "o2_co2_flux_ratio_unavailable_reason": self.o2_co2_flux_ratio_unavailable_reason or "",
         }
@@ -183,12 +190,11 @@ class Co2O2PreparedInputs:
 
     @classmethod
     def from_datatree(cls, tree: xr.DataTree) -> Self:
-        """Restore version-1 or version-2 inputs and their saved intercept.
+        """Restore versioned inputs and their saved intercept.
 
         Args:
             tree: Tree using the dedicated CO2/O2 prepared-input schema.
-                Version 1 supports absolute boundaries; version 2 additionally
-                supports centered boundary operands.
+                Only the current format is accepted; prepare older inputs again.
 
         Returns:
             Validated scientific inputs. Observations, fixed intercept, dense
@@ -203,10 +209,11 @@ class Co2O2PreparedInputs:
         if tree.attrs.get("schema") != CO2_O2_PREPARED_INPUTS_SCHEMA:
             raise ValueError(f"Expected Co2O2PreparedInputs schema {CO2_O2_PREPARED_INPUTS_SCHEMA!r}.")
         version = tree.attrs.get("schema_version")
-        if isinstance(version, bool) or not isinstance(version, Integral) or version not in (1, 2):
-            raise ValueError(f"Expected Co2O2PreparedInputs schema_version 1 or 2; got {version!r}.")
-        if version == 1 and any(name.endswith("_boundary_operands") for name in tree.children):
-            raise ValueError("Centered boundary operands require CO2/O2 prepared schema version 2.")
+        if isinstance(version, bool) or not isinstance(version, Integral) or version != CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION:
+            raise ValueError(
+                f"Expected Co2O2PreparedInputs schema_version {CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION}; "
+                f"got {version!r}; prepare again."
+            )
         unexpected_boundaries = {
             name
             for name in tree.children
@@ -271,10 +278,10 @@ class Co2O2PreparedInputs:
                 for channel in ("co2", "o2")
                 if f"{channel}_boundary" in datasets
             },
-            boundary_operands={
+            boundary_operands=_raw_centered_channels({
                 channel: datasets[f"{channel}_boundary_operands"]
                 for channel in ("co2", "o2") if f"{channel}_boundary_operands" in datasets
-            },
+            }),
             independent_error_sd=(
                 _stored_array(datasets["independent_error"], "independent_error_sd")
                 if "independent_error" in datasets
@@ -777,6 +784,53 @@ def _joint_covariance(
     )
 
 
+def _resolve_o2_observable(
+    provenance: Mapping[str, Any], attrs: Mapping[str, Any], o2_units: str,
+) -> Literal["mole_fraction"] | DeltaO2N2Declaration | None:
+    """Resolve the O2 observable from observation attributes and provenance.
+
+    When both sources specify an observable, they must agree. For delta(O2/N2),
+    their reference ratio and other declaration fields must also agree.
+
+    Args:
+        provenance: Preparation provenance, which may contain an
+            ``o2_observable`` record.
+        attrs: Attributes on the O2 observation array.
+        o2_units: Unit label used to read a delta(O2/N2) declaration from the
+            observation attributes.
+
+    Returns:
+        ``"mole_fraction"`` if either source explicitly identifies O2 mole
+        fractions, a ``DeltaO2N2Declaration`` if either source identifies
+        delta(O2/N2), or ``None`` if neither source specifies an observable.
+
+    Raises:
+        ValueError: If either source contains invalid observable metadata or
+            the two sources disagree.
+    """
+    provenance_observable: Literal["mole_fraction"] | DeltaO2N2Declaration | None = (
+        DeltaO2N2Declaration.from_provenance(provenance)
+    )
+    attribute_observable: Literal["mole_fraction"] | DeltaO2N2Declaration | None = (
+        DeltaO2N2Declaration.from_attrs(attrs, units=o2_units)
+    )
+    record = provenance.get(O2_OBSERVABLE_PROVENANCE_KEY)
+    if isinstance(record, Mapping) and record.get("kind") == MOLE_FRACTION:
+        provenance_observable = "mole_fraction"
+    if attrs.get(O2_OBSERVABLE_ATTR) == MOLE_FRACTION:
+        attribute_observable = "mole_fraction"
+    if (
+        provenance_observable is not None
+        and attribute_observable is not None
+        and provenance_observable != attribute_observable
+    ):
+        raise ValueError(
+            "The O2 observable in the observation attributes and the one in "
+            f"provenance[{O2_OBSERVABLE_PROVENANCE_KEY!r}] disagree."
+        )
+    return attribute_observable if attribute_observable is not None else provenance_observable
+
+
 def prepare_co2_o2_inputs(
     *,
     co2_observations: xr.DataArray,
@@ -796,6 +850,7 @@ def prepare_co2_o2_inputs(
     provenance: Mapping[str, Any] | None = None,
     boundary_sensitivity: Mapping[str, xr.DataArray] | None = None,
     boundary_operands: Mapping[str, xr.Dataset] | None = None,
+    bc_centering_weights: Mapping[str, xr.DataArray] | None = None,
     independent_error_sd: xr.DataArray | None = None,
 ) -> Co2O2PreparedInputs:
     """Validate coherent-reduction channel products and form one joint likelihood.
@@ -846,13 +901,24 @@ def prepare_co2_o2_inputs(
             one consistent spelling, including case.
         co2_units: Non-empty units label for CO2 observations and sensitivity rows.
         o2_units: Non-empty units label for O2 observations and sensitivity rows.
-        provenance: Optional JSON-serializable preparation provenance.
+        provenance: Optional JSON-serializable preparation provenance. A
+            delta(O2/N2) declaration under ``o2_observable``, or the same
+            fields as ``o2_observations`` attributes (see
+            :meth:`~openghg_inversions.inversion_data.o2n2.DeltaO2N2Declaration.from_attrs`),
+            is validated here, must name ``o2_units`` and is stored in the
+            returned provenance. An explicit ``mole_fraction`` observable is
+            also stored in provenance. When both sources specify an
+            observable, they must agree.
         boundary_sensitivity: Optional co2/o2 mapping of labelled H_bc arrays
             on native observation rows and one unique boundary-state axis.
             Channels must currently have identical units. Payloads remain borrowed.
         boundary_operands: Optional co2/o2 mapping of raw centered-v1 operands
             on independent native channel labels. The spatial BC states remain
             unexpanded until model binding; channels require identical units.
+        bc_centering_weights: Optional co2/o2 mapping of dimensionless
+            scientific averaging weights on resolved BC states, stored in the
+            matching channel's operands. Binding checks their labels and model
+            construction checks their values; lazy payloads stay borrowed.
         independent_error_sd: Optional finite positive independent-error standard
             deviations on the gathered observation axis, with matching labels
             and observation_units. Eager values are checked here; lazy payloads
@@ -877,10 +943,20 @@ def prepare_co2_o2_inputs(
     if not co2_units.strip() or not o2_units.strip():
         raise ValueError("CO2 and O2 channel units must be non-empty.")
     prepared_provenance = _copy_json_mapping(provenance or {}, "CO2/O2 provenance")
+    observable = _resolve_o2_observable(prepared_provenance, o2_observations.attrs, o2_units)
+    if isinstance(observable, DeltaO2N2Declaration):
+        if o2_units != observable.units:
+            raise ValueError(
+                f"Linked O2 observation_units {o2_units!r} do not match the declared "
+                f"delta(O2/N2) units {observable.units!r}."
+            )
+        prepared_provenance[O2_OBSERVABLE_PROVENANCE_KEY] = observable.to_provenance()
+    elif observable == MOLE_FRACTION:
+        prepared_provenance[O2_OBSERVABLE_PROVENANCE_KEY] = {"kind": MOLE_FRACTION}
 
     boundary_sensitivity = dict(boundary_sensitivity or {})
-    boundary_operands = dict(boundary_operands or {})
-    _validate_centered_channels(boundary_operands, boundary_sensitivity, co2_observations, o2_observations, co2_units, o2_units)
+    raw_operands = _raw_centered_channels(boundary_operands or {}, bc_centering_weights or {})
+    _validate_centered_channels(raw_operands, boundary_sensitivity, co2_observations, o2_observations, co2_units, o2_units)
     if set(boundary_sensitivity) - {"co2", "o2"}:
         raise ValueError("boundary_sensitivity must be keyed only by co2 and o2.")
     if boundary_sensitivity and co2_units != o2_units:
@@ -894,17 +970,12 @@ def prepare_co2_o2_inputs(
                 )
             boundary, _ = xr.align(boundary, observations, join="exact", copy=False)
             declared_units = boundary.attrs.get("units")
-            if declared_units is not None and declared_units not in (
-                co2_units,
-                f"{co2_units} per dimensionless boundary scale",
-            ):
+            if declared_units is not None and declared_units != co2_units:
                 raise ValueError(f"{channel} boundary sensitivity units must match its channel units.")
             state_dim = boundary.dims[1]
             if state_dim not in boundary.indexes or not boundary.indexes[state_dim].is_unique:
                 raise ValueError(f"{channel} boundary states require unique labels.")
-            boundary_sensitivity[channel] = boundary.assign_attrs(
-                units=f"{co2_units} per dimensionless boundary scale"
-            )
+            boundary_sensitivity[channel] = boundary.assign_attrs(units=co2_units)
 
     co2_dim = _axis(co2_observations, "CO2 observations")
     o2_dim = _axis(o2_observations, "O2 observations")
@@ -1040,31 +1111,46 @@ def prepare_co2_o2_inputs(
         retained_prior=retained_prior,
         provenance=prepared_provenance,
         boundary_sensitivity=boundary_sensitivity,
-        boundary_operands=boundary_operands,
+        boundary_operands=raw_operands,
         independent_error_sd=independent_error_sd,
     )
 
 
+def _raw_centered_channels(
+    operands: Mapping[str, xr.Dataset], weights: Mapping[str, xr.DataArray] | None = None,
+) -> dict[str, RawCenteredSensitivity]:
+    """Establish raw centered sensitivity per channel, storing any supplied weights in it."""
+    from openghg_inversions.models.boundary.contracts import RawCenteredSensitivity, validate_centering_weights
+
+    weights = weights or {}
+    if set(operands) - {"co2", "o2"}:
+        raise ValueError("boundary_operands must be keyed only by co2 and o2.")
+    if set(weights) - set(operands):
+        raise ValueError("Boundary centering weights require matching co2/o2 centered operands.")
+    channels = {}
+    for channel, values in operands.items():
+        sensitivity = RawCenteredSensitivity.validate(values, label=f"{channel} centered boundaries")
+        if channel in weights:
+            validate_centering_weights(weights[channel], label=f"{channel} bc_centering_weights")
+            sensitivity = RawCenteredSensitivity.with_centering_weights(sensitivity, weights[channel])
+        channels[channel] = sensitivity
+    return channels
+
+
 def _validate_centered_channels(
-    operands: Mapping[str, xr.Dataset],
+    operands: Mapping[str, RawCenteredSensitivity],
     absolute: Mapping[str, xr.DataArray],
     co2: xr.DataArray,
     o2: xr.DataArray,
     co2_units: str,
     o2_units: str,
 ) -> None:
-    """Validate raw channel operands without expanding their reusable spatial states."""
-    from openghg_inversions.boundary_sensitivity import validate_boundary_operands
-
-    if set(operands) - {"co2", "o2"}:
-        raise ValueError("boundary_operands must be keyed only by co2 and o2.")
+    """Check raw channel transport against the native channels it will be bound to."""
     if set(operands) & set(absolute):
         raise ValueError("Supply boundary_operands or boundary_sensitivity per channel, not both.")
     if operands and co2_units != o2_units:
         raise ValueError("Linked centered boundaries currently require identical channel units.")
     for channel, values in operands.items():
-        if not validate_boundary_operands(values):
-            raise ValueError("Expected centered boundary operands.")
         native = co2 if channel == "co2" else o2
         raw_dim = "time" if "time" in values.H_bc_anomaly.dims else "nmeasure"
         if not values.indexes[raw_dim].equals(native.indexes[native.dims[0]]):

@@ -181,7 +181,8 @@ Without an export destination, the validated preparations are reused directly.
 ``landsea_path`` and ``inner_landsea_path`` select each grid's class map when
 weighted generation needs one; support-map selection fails for missing files
 or unsupported domains before acquisition. If no inner basis file or algorithm
-is specified, the inner grid uses the quadtree algorithm.
+is specified, the inner grid uses the quadtree algorithm. ``basis_seed`` seeds
+both generated grids, so a generated inner basis must then use quadtree.
 
 The returned ``NestedOutput`` exposes an outer and an inner ``InversionOutput``
 view. They borrow one sampled trace and retain their separate native bases:

@@ -7,13 +7,14 @@ import json
 import numpy as np
 import pytest
 
+from openghg_inversions.models.boundary import AdditiveChoice
 from openghg_inversions.rhime.co2.co2_o2_configuration import (
     load_co2_o2_params,
     Co2O2ModelConfig,
     Co2O2PreparationConfig,
     resolve_co2_o2_prior_seed,
     resolve_co2_o2_sampler,
-    validate_co2_o2_units,
+    validate_co2_o2_channel_units,
 )
 from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2
 
@@ -131,12 +132,13 @@ def test_new_configured_path_rejects_inferred_ou_explicitly(likelihood):
     ["bananas"] * 5,
     ["permeg"] * 5,
     ["ppm", "ppm", None, None, None],
+    ["ppm", "ppm", "ppb", "ppb", "ppb"],
 ])
 def test_actual_artifact_units_are_validated_without_model_settings(units):
     prepared = _prepared()
     prepared = replace(prepared, observations=prepared.observations.assign_coords(observation_units=("observation", units)))
-    with pytest.raises(ValueError, match="identical|mol/mol|OPE-86"):
-        validate_co2_o2_units(prepared)
+    with pytest.raises(ValueError, match="identical|mol/mol|declaration|mole fraction"):
+        validate_co2_o2_channel_units(prepared)
 
 
 def test_model_binds_variable_width_species_and_unit_strings():
@@ -151,7 +153,7 @@ def test_model_binds_variable_width_species_and_unit_strings():
     arguments = Co2O2ModelConfig.from_params(_config()).bind(prepared)
 
     np.testing.assert_allclose(arguments["independent_error_sd"], [0.2, 0.2, 0.3, 0.3, 0.3])
-    assert validate_co2_o2_units(prepared) == "ppm"
+    assert validate_co2_o2_channel_units(prepared) == {"co2": "ppm", "o2": "ppm"}
 
 
 def test_model_rejects_configured_units_that_differ_from_artifact():
@@ -164,5 +166,59 @@ def test_model_rejects_configured_units_that_differ_from_artifact():
 
 def test_direct_owner_binding_checks_both_configured_channel_units():
     model = Co2O2ModelConfig.from_params(_config())
+    with pytest.raises(ValueError, match="CO2 channel units"):
+        replace(model, o2_units="ppb")
     with pytest.raises(ValueError, match="do not match prepared"):
-        replace(model, o2_units="ppb").bind(_prepared())
+        replace(model, co2_units="ppb", o2_units="ppb").bind(_prepared())
+
+
+@pytest.mark.parametrize("co2_anomaly_scale,o2_anomaly_scale", [(0.25, 1.0), (0.0, 1.0), (0.25, 0.0), (0.0, 0.0)])
+def test_channel_additive_prior_scales_are_independent_and_replayable(tmp_path, co2_anomaly_scale, o2_anomaly_scale):
+    config = _config()
+    for channel, scale, anomaly_scale in (("co2", 0.5, co2_anomaly_scale), ("o2", 2.0, o2_anomaly_scale)):
+        config["channels"][channel]["boundary"] = {
+            "type": "additive",
+            "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": scale},
+            "anomaly_scale": anomaly_scale,
+        }
+    path = tmp_path / "additive.json"
+    path.write_text(json.dumps(config))
+    choices = Co2O2ModelConfig.from_params(load_co2_o2_params(params_file=path)).bind(_prepared())
+    boundary = choices["boundary"]
+    assert set(boundary) == {"co2", "o2"}
+    assert all(isinstance(choice, AdditiveChoice) for choice in boundary.values())
+    assert boundary["co2"].mean_prior["sigma"] == 0.5
+    assert boundary["o2"].mean_prior["sigma"] == 2.0
+    assert boundary["co2"].anomaly_scale == co2_anomaly_scale
+    assert boundary["o2"].anomaly_scale == o2_anomaly_scale
+    config["channels"]["o2"]["boundary"]["anomaly_scale"] = -0.1
+    with pytest.raises(ValueError, match="non-negative"):
+        Co2O2ModelConfig.from_params(config)
+
+
+def test_direct_linked_config_requires_one_boundary_calendar():
+    """Direct construction applies the same one-calendar rule as configured TOML."""
+    from openghg_inversions.models.boundary import MultiplicativeChoice
+
+    prior = {"pdf": "normal", "mu": 1.0, "sigma": 0.1}
+    common = dict(co2_units="ppm", o2_units="ppm", independent_error_sd={"co2": 0.1, "o2": 0.1})
+    with pytest.raises(ValueError, match="must agree across channels"):
+        Co2O2ModelConfig(**common, boundary={
+            "co2": MultiplicativeChoice(prior, frequency="monthly"), "o2": MultiplicativeChoice(prior, frequency="7D"),
+        })
+    same = Co2O2ModelConfig(**common, boundary={
+        "co2": MultiplicativeChoice(prior, frequency="7D", anchor_time="2020-01-01"),
+        "o2": MultiplicativeChoice(prior, frequency="7D", anchor_time="2020-01-01T00:00"),
+    })
+    assert same.boundary["o2"].frequency == "7D"
+
+
+def test_channel_boundary_errors_name_the_channel_table():
+    config = _config()
+    config["channels"]["o2"]["boundary"] = {"type": "bogus"}
+    with pytest.raises(ValueError, match=r"channels\.o2\.boundary\.type must be one of"):
+        Co2O2ModelConfig.from_params(config)
+    config["channels"]["o2"]["boundary"] = {"type": "additive", "prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+                                            "anomaly_scale": 0.5, "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 1.0}}
+    with pytest.raises(ValueError, match=r"channels\.o2\.boundary\.prior"):
+        Co2O2ModelConfig.from_params(config)

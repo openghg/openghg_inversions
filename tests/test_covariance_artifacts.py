@@ -17,7 +17,7 @@ from openghg_inversions.basis.covariance_products import (
     covariance_natural_prolongation,
     project_native_covariance,
 )
-from openghg_inversions.coherent_reduction import reduce_native_gaussian
+from openghg_inversions.coherent_reduction import project_native_functionals, reduce_native_gaussian
 from openghg_inversions.covariance_artifacts import (
     ATTRS_ATTR,
     AXES_ATTR,
@@ -428,6 +428,67 @@ def test_coherent_reduction_round_trips_bound_to_one_root_identity(problem: str,
         assert tree.attrs["content_id"] == content_id(artifact)
         assert set(tree["reduction"].children) == set(REDUCTION_NAMES)
         assert tree.attrs["native_family"] == "gaussian"
+
+
+def test_native_identity_round_trips_and_keeps_reduction_identity(tmp_path: Path) -> None:
+    """The stored native identity lets the loaded reduction recompute its identity."""
+    artifact = _coherent_artifact("datetime-multiindex")
+    save_coherent_reduction(artifact, tmp_path / "coherent.nc")
+    loaded = load_coherent_reduction(tmp_path / "coherent.nc").reduction
+
+    assert loaded.native_identity == artifact.reduction.native_identity
+    assert loaded.identity == artifact.reduction.identity
+
+    tree = coherent_to_datatree(artifact)
+    with pytest.raises(ValueError, match="native_identity must be"):
+        coherent_from_datatree(_edit(tree, "/", _with_attrs(native_identity="not-a-digest")))
+
+
+def test_reduction_with_functional_products_is_refused_not_dropped() -> None:
+    """Schema version 1 refuses functional products instead of silently losing them."""
+    covariance, strategy, sensitivity, mean = _single_source_problem()
+    functionals = xr.DataArray(
+        np.ones((1, LATITUDE.size, LONGITUDE.size)),
+        dims=("functional", "lat", "lon"),
+        coords={"functional": ["total"], "lat": LATITUDE, "lon": LONGITUDE},
+    )
+    reduction = reduce_native_gaussian(
+        covariance=covariance,
+        strategy=strategy,
+        state_dim="state",
+        native_mean=mean,
+        native_sensitivity=sensitivity,
+        observation_dim="observation",
+        functionals=functionals,
+    )
+    assert reduction.functional_products is not None
+    artifact = CoherentReductionArtifact(reduction, covariance, inputs_id="inputs")
+    with pytest.raises(ValueError, match="does not persist functional_products"):
+        coherent_to_datatree(artifact)
+
+
+def test_products_without_prolongation_fail_clearly_where_u_star_is_needed() -> None:
+    """Functional projection asks for U_* to be rebuilt instead of failing obscurely."""
+    covariance, _, sensitivity, mean = _single_source_problem()
+    artifact, _, _ = _products_artifact("single-source")
+    loaded = products_from_datatree(products_to_datatree(artifact, include_prolongation=False))
+    functionals = xr.DataArray(
+        np.ones((1, LATITUDE.size, LONGITUDE.size)),
+        dims=("functional", "lat", "lon"),
+        coords={"functional": ["total"], "lat": LATITUDE, "lon": LONGITUDE},
+    )
+    options = dict(
+        covariance=covariance,
+        functionals=functionals,
+        functional_dim="functional",
+        native_mean=mean,
+        native_sensitivity=sensitivity,
+        observation_dim="observation",
+    )
+    with pytest.raises(ValueError, match="have no U_\\*; rebuild it"):
+        project_native_functionals(products=loaded.products, **options)
+    rebuilt = with_prolongation(loaded).products
+    assert project_native_functionals(products=rebuilt, **options).retained_response.sizes["functional"] == 1
 
 
 def test_shared_axes_are_stored_once_with_a_declared_mirror_convention() -> None:

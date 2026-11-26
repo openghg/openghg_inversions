@@ -9,22 +9,117 @@ where ``H_alpha = H B Pi.T C_alpha^-1`` and
 ``A = H B H.T - H_alpha C_alpha H_alpha.T``. The public function constructs
 all linked covariance products from the same ``B/H/Pi`` inputs before applying
 these equations.
+
+The same reduction splits a native state as
+``x = m + U_* (alpha - Pi m) + x_perp``, with ``U_* = B Pi.T C_alpha^-1`` and
+``x_perp`` independent of ``alpha`` with covariance
+``B_perp = B - U_* C_alpha U_*.T``. For a labelled native linear functional
+``Q``, such as a country total, :func:`project_native_functionals` returns the
+products needed to condition ``Q x_perp`` on the data as well as on
+``alpha``. Without them a functional reports only ``Q m + D (alpha - Pi m)``.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from hashlib import sha256
+import json
+from uuid import uuid4
 
+from dask.base import compute
 import numpy as np
+from sparse import COO, SparseArray  # type: ignore[import-untyped]
 import xarray as xr
 
-from openghg_inversions.array_ops import materialize_together
+from openghg_inversions._labelled_matrices import (
+    coordinates_on_dims,
+    matrix_column_dim,
+    square_matrix,
+    to_column_axis,
+)
+from openghg_inversions.array_ops import (
+    materialize_together,
+    require_unique_index,
+    same_index,
+    sparse_xr_dot,
+    to_dense,
+)
 from openghg_inversions.basis.covariance_products import (
     NativeCovarianceProducts,
     RetainedProjectionStrategy,
     project_native_covariance,
 )
-from openghg_inversions.native_covariance import InvertibleNativeCovarianceAction
+from openghg_inversions.native_covariance import InvertibleNativeCovarianceAction, SeparableExponentialCovariance
+from openghg_inversions.source_covariance import IndependentSourceCovariance
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class NativeFunctionalProducts:
+    """Reduction-side products for labelled native linear functionals ``Q``.
+
+    With ``x = m + U_* (alpha - Pi m) + x_perp``, a functional splits as
+    ``Q x = Q m + D (alpha - Pi m) + Q x_perp`` with ``D = Q U_*``. Given
+    ``alpha``, any other model parameters ``beta`` and the data ``y``,
+    ``Q x_perp`` is Gaussian with
+
+    - mean ``Q B_perp H.T (A + R)^-1 r``, where
+      ``r = y - y_0 - H_alpha (alpha - Pi m) - G beta`` is the draw's residual;
+    - covariance ``Q B_perp Q.T - Q B_perp H.T (A + R)^-1 H B_perp Q.T``.
+
+    Under the prior, ``Q x_perp`` is independent of ``alpha`` with covariance
+    ``Q B_perp Q.T``. For a Gaussian retained state and the exact ``A``, the
+    resulting functional mean and covariance equal the native-grid Gaussian
+    posterior for any retained partition. With a LogNormal retained state the
+    conditioning on each draw is still exact under the reduced model, but the
+    reduced model itself is the moment-matched approximation described under
+    "Assumptions and limitations" in the coherent-reduction guide.
+
+    Attributes:
+        functional_mean: ``Q m`` on the functional axis, in the functional's
+            units.
+        retained_response: ``D = Q U_*`` on ``(functional_dim, state_dim)``.
+            A state marginalised into ``A`` has a zero column.
+        unresolved_observation_covariance: ``Q B_perp H.T`` on
+            ``(functional_dim, observation_dim)``.
+        unresolved_covariance: Positive-semidefinite ``Q B_perp Q.T`` on
+            distinct functional row and column axes.
+        retained_covariance: ``C_alpha`` of the full-restriction reduction the
+            products were computed for. It identifies that reduction and is
+            needed to marginalise states later.
+        effective_observation_operator: ``H_alpha`` of that reduction, with
+            the sensitivity units the residuals must use.
+        reduction_identity: :func:`reduction_identity` of that reduction. It
+            depends on the native observation operator ``H``, the covariance
+            ``B``, the restriction ``Pi`` and the native mean, which ``Q m``
+            and ``D`` alone do not identify.
+        marginalised: Boolean state mask of states already moved into the
+            unresolved part by :func:`marginalise_functional_states`, or
+            ``None`` for full-restriction products.
+    """
+
+    functional_mean: xr.DataArray
+    retained_response: xr.DataArray
+    unresolved_observation_covariance: xr.DataArray
+    unresolved_covariance: xr.DataArray
+    retained_covariance: xr.DataArray
+    effective_observation_operator: xr.DataArray
+    reduction_identity: str
+    marginalised: xr.DataArray | None = None
+
+    @property
+    def functional_dim(self) -> str:
+        """Return the functional row dimension."""
+        return str(self.functional_mean.dims[0])
+
+    @property
+    def state_dim(self) -> str:
+        """Return the retained-state dimension of ``D``."""
+        return str(self.retained_response.dims[1])
+
+    @property
+    def observation_dim(self) -> str:
+        """Return the observation dimension of ``Q B_perp H.T``."""
+        return str(self.unresolved_observation_covariance.dims[1])
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -47,6 +142,11 @@ class CoherentGaussianReduction:
             and column axes. It is a positive-semidefinite covariance up to
             floating-point roundoff.
         projection_strategy: Scientific strategy that selected ``Pi``.
+        native_identity: :func:`native_reduction_identity` of the native
+            inputs ``H``, ``B``, ``Pi`` and ``m`` this reduction was computed
+            from. The reduced arrays alone cannot identify them.
+        functional_products: Products for the requested native functionals,
+            or ``None`` when none were requested.
     """
 
     restriction: xr.DataArray
@@ -57,6 +157,160 @@ class CoherentGaussianReduction:
     observation_intercept: xr.DataArray
     unresolved_observation_covariance: xr.DataArray
     projection_strategy: str
+    native_identity: str
+    functional_products: NativeFunctionalProducts | None = None
+
+    @property
+    def identity(self) -> str:
+        """Return the :func:`reduction_identity` of this reduction."""
+        return reduction_identity(
+            native_identity=self.native_identity,
+            retained_covariance=self.retained_covariance,
+            effective_observation_operator=self.effective_observation_operator,
+            unresolved_observation_covariance=self.unresolved_observation_covariance,
+        )
+
+
+def reduction_identity(
+    *,
+    native_identity: str,
+    retained_covariance: xr.DataArray,
+    effective_observation_operator: xr.DataArray,
+    unresolved_observation_covariance: xr.DataArray,
+) -> str:
+    """Return the identity of one coherent reduction.
+
+    Different native problems can share ``C_alpha``, ``H_alpha`` and ``A``:
+    if one observation sees either of two exchangeable cells, swapping the
+    cells leaves all three unchanged but reverses the covariance between a
+    cell's functional and the observation. The identity therefore combines
+    the :func:`native_reduction_identity` of the native inputs with a hash
+    of the three reduced arrays. Anyone holding the native identity and the
+    stored arrays, such as a prepared artifact, can recompute it, so a
+    stored ``A`` or ``H_alpha`` that was changed after reduction no longer
+    matches.
+
+    Arrays are hashed as float64 values in their stored axis order together
+    with their index labels (not dimension names), so the identity survives
+    dimension renaming. It is an exact digest, not a tolerance-based
+    comparison.
+
+    Args:
+        native_identity: :func:`native_reduction_identity` of the native
+            inputs, as recorded by the reduction.
+        retained_covariance: ``C_alpha``.
+        effective_observation_operator: ``H_alpha``.
+        unresolved_observation_covariance: The exact dense ``A``.
+
+    Returns:
+        ``"sha256:<hex digest>"``.
+
+    Raises:
+        ValueError: If ``native_identity`` is not a native identity digest.
+    """
+    if not native_identity.startswith("sha256:"):
+        raise ValueError("native_identity must be a native_reduction_identity digest.")
+    digest = sha256()
+    digest.update(b"native\x1e" + native_identity.encode())
+    for name, array in (
+        ("C_alpha", retained_covariance),
+        ("H_alpha", effective_observation_operator),
+        ("A", unresolved_observation_covariance),
+    ):
+        _update_digest(digest, name, array)
+    return f"sha256:{digest.hexdigest()}"
+
+
+def native_reduction_identity(
+    *,
+    covariance: InvertibleNativeCovarianceAction,
+    products: NativeCovarianceProducts,
+    native_mean: xr.DataArray,
+    native_sensitivity: xr.DataArray,
+) -> str:
+    """Return the identity of the native inputs of one coherent reduction.
+
+    For the built-in separable covariance and independent combinations of
+    those covariances, this hashes the complete covariance description,
+    native sensitivity ``H``, restriction ``Pi``, native mean ``m``, and
+    prolongation ``U_*`` with their index labels. Sparse payloads stay sparse.
+    Other covariance actions receive a fresh identity on each call because
+    their unobserved covariance blocks cannot be inferred from the reduced
+    arrays. Keep the identity issued when the fit and its products are
+    reduced together.
+
+    Args:
+        covariance: The native covariance action ``B``.
+        products: Native covariance products for ``B``, ``H`` and ``Pi``.
+        native_mean: Native mean ``m`` on the covariance's native dims.
+        native_sensitivity: Native ``H``.
+
+    Returns:
+        ``"sha256:<hex digest>"``.
+
+    Raises:
+        ValueError: If ``products`` lack ``U_*``, as products loaded from an
+            artifact saved without it do.
+    """
+    if type(covariance) is SeparableExponentialCovariance or (
+        type(covariance) is IndependentSourceCovariance
+        and all(type(block) is SeparableExponentialCovariance for block in covariance.source_covariances.values())
+    ):
+        description = covariance.to_dataset()
+    else:
+        return f"sha256:{sha256(uuid4().bytes).hexdigest()}"
+
+    digest = sha256()
+    digest.update(f"{type(covariance).__module__}.{type(covariance).__qualname__}".encode())
+    digest.update(json.dumps(description.attrs, sort_keys=True, default=str).encode())
+    for name in sorted(map(str, description.variables)):
+        _update_digest(digest, f"B.{name}", description[name])
+    prolongation = _require_prolongation(products)
+    native_dims = tuple(covariance.native_dims)
+    observation_dim = next(str(dim) for dim in native_sensitivity.dims if dim not in native_dims)
+    for name, array in (
+        ("H", native_sensitivity.transpose(observation_dim, *native_dims)),
+        ("Pi", products.restriction),
+        ("m", native_mean.transpose(*native_dims)),
+        ("U_star", prolongation),
+    ):
+        _update_digest(digest, name, array)
+    return f"sha256:{digest.hexdigest()}"
+
+
+def _require_prolongation(products: NativeCovarianceProducts) -> xr.DataArray:
+    """Return ``U_*``, refusing products loaded from an artifact saved without it."""
+    if products.prolongation is None:
+        raise ValueError(
+            "These covariance products have no U_*; rebuild it with "
+            "covariance_artifacts.with_prolongation or basis.covariance_natural_prolongation"
+        )
+    return products.prolongation
+
+
+def _update_digest(digest, name: str, array: xr.DataArray) -> None:
+    """Add one labelled array to ``digest``: its name, index labels, shape and values."""
+    digest.update(name.encode() + b"\x1e")
+    for dim in array.dims:
+        labels = array.indexes[dim].tolist() if dim in array.indexes else list(range(array.sizes[dim]))
+        digest.update("\x1f".join(map(str, labels)).encode())
+        digest.update(b"\x1e")
+    data = array.data
+    if isinstance(data, SparseArray):
+        sparse = data if isinstance(data, COO) else data.tocoo()
+        digest.update(np.asarray(sparse.shape, dtype=np.int64).tobytes())
+        digest.update(np.ascontiguousarray(sparse.coords, dtype=np.int64).tobytes())
+        digest.update(np.ascontiguousarray(sparse.data, dtype=np.float64).tobytes())
+        digest.update(np.asarray(float(sparse.fill_value), dtype=np.float64).tobytes())
+        return
+    values = np.asarray(array.values)
+    if values.dtype.kind in "biuf":
+        values = values.astype(np.float64)
+        digest.update(np.asarray(values.shape, dtype=np.int64).tobytes())
+        digest.update(np.ascontiguousarray(values).tobytes())
+    else:
+        digest.update(np.asarray(values.shape, dtype=np.int64).tobytes())
+        digest.update("\x1f".join(map(str, values.ravel().tolist())).encode())
 
 
 def reduce_native_gaussian(
@@ -68,6 +322,8 @@ def reduce_native_gaussian(
     native_sensitivity: xr.DataArray,
     observation_dim: str,
     observation_batch_size: int = 64,
+    functionals: xr.DataArray | None = None,
+    functional_dim: str = "functional",
 ) -> CoherentGaussianReduction:
     """Prepare the exact centred Gaussian model for one ``B/H/Pi/m`` set.
 
@@ -93,10 +349,15 @@ def reduce_native_gaussian(
             units.
         observation_dim: Observation dimension in ``native_sensitivity``.
         observation_batch_size: Covariance right-hand-side batch size.
+        functionals: Optional native linear functionals ``Q`` on
+            ``(functional_dim, *native_dims)``, in the reporting units per
+            unit scaling. See :func:`project_native_functionals`.
+        functional_dim: Functional row dimension of ``functionals``.
 
     Returns:
         The retained prior, centred effective forward model, and unresolved
-        observation covariance.
+        observation covariance, plus the functional products when
+        ``functionals`` is given.
 
     Raises:
         ValueError: If xarray cannot transpose or exactly align the labelled
@@ -121,14 +382,299 @@ def reduce_native_gaussian(
         observation_covariance="dense",
         observation_batch_size=observation_batch_size,
     )
-    return _reduce_native_covariance_products(
+    reduction = _reduce_native_covariance_products(
         products=products,
         native_mean=mean,
         native_sensitivity=sensitivity,
         native_dims=native_dims,
         state_dim=state_dim,
         observation_dim=observation_dim,
+        native_identity=native_reduction_identity(
+            covariance=covariance, products=products, native_mean=mean, native_sensitivity=sensitivity
+        ),
     )
+    if functionals is None:
+        return reduction
+    functional_products = project_native_functionals(
+        covariance=covariance,
+        products=products,
+        functionals=functionals,
+        functional_dim=functional_dim,
+        native_mean=mean,
+        native_sensitivity=sensitivity,
+        observation_dim=observation_dim,
+        batch_size=observation_batch_size,
+        native_identity=reduction.native_identity,
+    )
+    return replace(reduction, functional_products=functional_products)
+
+
+def _unresolved_observation_values(products: NativeCovarianceProducts) -> np.ndarray:
+    """Return the exact symmetrized ``A = H B H.T - H_alpha C_alpha H_alpha.T`` values.
+
+    The reduction kernel and the functional products both use this, so their
+    identities are computed from bit-identical ``A``.
+    """
+    # Formed positionally in NumPy: H_alpha's state columns and both C_alpha
+    # axes follow Pi's state index, so their orders already agree.
+    effective = np.asarray(products.effective_observation_operator.values, dtype=np.float64)
+    values = (
+        np.asarray(products.native_observation_covariance.values, dtype=np.float64)
+        - effective @ np.asarray(products.state_covariance.values, dtype=np.float64) @ effective.T
+    )
+    # The two algebraically symmetric terms can differ at roundoff after the
+    # retained solve. Symmetrization defines the numerical covariance returned
+    # by this eager kernel; scientific PSD identities remain covered by tests.
+    return (values + values.T) * 0.5
+
+
+def project_native_functionals(
+    *,
+    covariance: InvertibleNativeCovarianceAction,
+    products: NativeCovarianceProducts,
+    functionals: xr.DataArray,
+    functional_dim: str,
+    native_mean: xr.DataArray,
+    native_sensitivity: xr.DataArray,
+    observation_dim: str,
+    batch_size: int = 64,
+    native_identity: str | None = None,
+) -> NativeFunctionalProducts:
+    """Compute the coherent-reduction products of native linear functionals.
+
+    This is a named eager numerical boundary. ``B`` is applied to bounded
+    blocks of functional rows, ``B Q.T``, and each block is contracted with
+    ``H`` and ``Q`` at once, so neither ``B`` nor the full ``B Q.T`` is held.
+    A sparse or Dask-backed ``Q`` is computed once and stays sparse; only one
+    row block at a time is densified. Inputs are borrowed.
+
+    A functional that should be reported jointly, such as one country total
+    per source, needs one row per term so that the joint covariance across
+    rows is available; sums of rows are then reconstructed per draw.
+
+    Args:
+        covariance: The native covariance action ``B`` used for ``products``.
+        products: Dense-view products from :func:`project_native_covariance`
+            for the same ``B``, ``H`` and ``Pi``.
+        functionals: Native functionals ``Q`` on
+            ``(functional_dim, *native_dims)`` with a unique functional index.
+            Optional ``units`` describe one functional per unit scaling.
+        functional_dim: Functional row dimension.
+        native_mean: Dimensionless native mean ``m``, exactly aligned with
+            the covariance grid.
+        native_sensitivity: The native sensitivity ``H`` used for
+            ``products``.
+        observation_dim: Observation dimension of ``H``.
+        batch_size: Positive number of functional rows per covariance block.
+        native_identity: :func:`native_reduction_identity` of these inputs
+            when the caller has already computed it, as
+            :func:`reduce_native_gaussian` does; otherwise it is computed
+            here.
+
+    Returns:
+        ``Q m``, ``D = Q U_*``, ``Q B_perp H.T`` and ``Q B_perp Q.T``.
+
+    Raises:
+        ValueError: If labels or dimensions do not match, the products are
+            not dense-view or lack ``U_*``, or ``Q`` holds non-finite values.
+    """
+    native_dims = tuple(covariance.native_dims)
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if products.observation_covariance_view != "dense":
+        raise ValueError("Functional products require dense-view native covariance products.")
+    if set(functionals.dims) != {functional_dim, *native_dims}:
+        raise ValueError(
+            f"Functionals must have dimensions ({functional_dim!r}, *{native_dims!r}); "
+            f"got {functionals.dims!r}."
+        )
+    require_unique_index(functionals, functional_dim, name="Functionals")
+    state_dim = str(products.restriction.dims[0])
+    functional = _materialize_functionals(functionals.transpose(functional_dim, *native_dims))
+    mean = native_mean.transpose(*native_dims)
+    sensitivity = native_sensitivity.transpose(observation_dim, *native_dims)
+    functional, mean, sensitivity = xr.align(functional, mean, sensitivity, join="exact", copy=False)
+    mean, sensitivity = materialize_together(mean, sensitivity, purpose="functional mean m and sensitivity H")
+
+    functional_mean = to_dense(sparse_xr_dot(functional, mean, dim=list(native_dims)))
+    functional_mean = functional_mean.transpose(functional_dim)
+    response = to_dense(sparse_xr_dot(functional, _require_prolongation(products), dim=list(native_dims)))
+    response = response.transpose(functional_dim, state_dim)
+
+    # Q B Q.T and H B Q.T, one block of B Q.T at a time.
+    occupied = {str(name) for array in (functional, sensitivity) for name in (*array.dims, *array.coords)}
+    column_dim = matrix_column_dim(functional_dim, occupied)
+    count = functional.sizes[functional_dim]
+    q_b_q = np.empty((count, count))
+    h_b_q = np.empty((sensitivity.sizes[observation_dim], count))
+    for start in range(0, count, batch_size):
+        stop = min(start + batch_size, count)
+        rhs = to_column_axis(
+            to_dense(functional.isel({functional_dim: slice(start, stop)})),
+            row_dim=functional_dim,
+            column_dim=column_dim,
+            leading_dims=native_dims,
+        )
+        b_q = covariance.apply(rhs)
+        q_b_q[:, start:stop] = to_dense(sparse_xr_dot(functional, b_q, dim=list(native_dims))).transpose(
+            functional_dim, column_dim
+        ).values
+        h_b_q[:, start:stop] = xr.dot(sensitivity, b_q, dim=list(native_dims)).transpose(
+            observation_dim, column_dim
+        ).values
+
+    # Remove the retained part, B_perp = B - U_* C_alpha U_*.T:
+    # Q B_perp H.T = Q B H.T - D C_alpha H_alpha.T and
+    # Q B_perp Q.T = Q B Q.T - D C_alpha D.T. D, C_alpha and H_alpha all
+    # follow the state order of Pi, so they are combined positionally.
+    d_values = np.asarray(response.values, dtype=np.float64)
+    d_c = d_values @ np.asarray(products.state_covariance.values, dtype=np.float64)
+    effective = products.effective_observation_operator.transpose(observation_dim, state_dim)
+    if not same_index(effective.indexes[state_dim], response.indexes[state_dim]):
+        raise ValueError("Functional response and effective operator state labels differ.")
+    cross_values = h_b_q.T - d_c @ np.asarray(effective.values, dtype=np.float64).T
+    covariance_values = q_b_q - d_c @ d_values.T
+    covariance_values = (covariance_values + covariance_values.T) * 0.5
+
+    q_units = functional.attrs.get("units")
+    h_units = sensitivity.attrs.get("units")
+    q_attrs = {"units": q_units} if q_units is not None else {}
+    cross_attrs = {"units": f"({q_units}) ({h_units})"} if q_units is not None and h_units is not None else {}
+    square_attrs = {"units": f"({q_units})^2"} if q_units is not None else {}
+    return NativeFunctionalProducts(
+        functional_mean=functional_mean.rename("functional_mean").assign_attrs(
+            mathematical_name="Q m", **q_attrs
+        ),
+        retained_response=response.rename("retained_response").assign_attrs(
+            mathematical_name="D", definition="Q U_*", **q_attrs
+        ),
+        unresolved_observation_covariance=xr.DataArray(
+            cross_values,
+            dims=(functional_dim, observation_dim),
+            coords={
+                **coordinates_on_dims(functional, {functional_dim}),
+                **coordinates_on_dims(sensitivity, {observation_dim}),
+            },
+            name="unresolved_observation_covariance",
+            attrs={
+                "mathematical_name": "Q B_perp H.T",
+                "definition": "Q B H.T - D C_alpha H_alpha.T",
+                **cross_attrs,
+            },
+        ),
+        unresolved_covariance=square_matrix(
+            covariance_values,
+            functional,
+            row_dim=functional_dim,
+            column_dim=column_dim,
+            name="unresolved_covariance",
+            attrs={
+                "mathematical_name": "Q B_perp Q.T",
+                "definition": "Q B Q.T - D C_alpha D.T",
+                **square_attrs,
+            },
+        ),
+        retained_covariance=products.state_covariance,
+        effective_observation_operator=effective,
+        reduction_identity=reduction_identity(
+            native_identity=native_identity
+            or native_reduction_identity(
+                covariance=covariance, products=products, native_mean=mean, native_sensitivity=sensitivity
+            ),
+            retained_covariance=products.state_covariance.rename("retained_covariance"),
+            effective_observation_operator=products.effective_observation_operator,
+            unresolved_observation_covariance=products.native_observation_covariance.copy(
+                data=_unresolved_observation_values(products)
+            ),
+        ),
+    )
+
+
+def marginalise_functional_states(
+    products: NativeFunctionalProducts,
+    marginalised: xr.DataArray,
+) -> NativeFunctionalProducts:
+    """Move marginalised retained states of functional products into ``x_perp``.
+
+    Integrating states ``M`` out of a full-restriction reduction gives the
+    coherent reduction with the kept rows ``K`` of ``Pi``. With
+    ``G = C_MK C_KK^-1`` and ``S = C_MM - G C_KM``, the products become
+    ``D'_K = D_K + D_M G``, ``D'_M = 0``,
+    ``Q B'_perp H.T = Q B_perp H.T + D_M S H_M.T`` and
+    ``Q B'_perp Q.T = Q B_perp Q.T + D_M S D_M.T``, where ``H_M`` are the
+    marginalised columns of ``H_alpha``. Marginalised states' functional
+    contribution then goes through the unresolved path, consistently with an
+    ``A`` that absorbed ``H_M S H_M.T``. A reduction that marginalises states
+    into ``A`` must apply this to its functional products as well. Inputs are
+    borrowed.
+
+    Args:
+        products: Full-restriction functional products, carrying that
+            reduction's ``C_alpha`` and ``H_alpha``.
+        marginalised: Boolean mask on the retained-state axis; ``True``
+            marks a state to integrate out.
+
+    Returns:
+        Products for the kept-state reduction on the full state axis, so a
+        marginalised state held at its prior mean contributes nothing through
+        ``D``, with ``marginalised`` recorded. Unchanged products when no
+        state is marginalised.
+
+    Raises:
+        ValueError: If the products were already marginalised, state labels
+            differ, or every state is marginalised.
+    """
+    if products.marginalised is not None:
+        raise ValueError(
+            "Functional products are already marginalised; start from full-restriction products."
+        )
+    state_dim = products.state_dim
+    state_index = products.retained_response.indexes[state_dim]
+    if marginalised.dims != (state_dim,) or not same_index(marginalised.indexes[state_dim], state_index):
+        raise ValueError("The marginalised mask must use the functional products' state labels.")
+    covariance = products.retained_covariance
+    effective = products.effective_observation_operator
+    mask = np.asarray(marginalised.values, dtype=bool)
+    if not mask.any():
+        return products
+    if mask.all():
+        raise ValueError("At least one retained state must be kept.")
+    kept = ~mask
+
+    c = np.asarray(covariance.values, dtype=np.float64)
+    gain = np.linalg.solve(c[np.ix_(kept, kept)], c[np.ix_(kept, mask)]).T
+    schur = c[np.ix_(mask, mask)] - gain @ c[np.ix_(kept, mask)]
+    d = np.asarray(products.retained_response.values, dtype=np.float64)
+    d_m = d[:, mask]
+    h_m = np.asarray(effective.values, dtype=np.float64)[:, mask]
+    response = np.zeros_like(d)
+    response[:, kept] = d[:, kept] + d_m @ gain
+    unresolved = products.unresolved_covariance.values + d_m @ schur @ d_m.T
+    return replace(
+        products,
+        retained_response=products.retained_response.copy(data=response),
+        unresolved_observation_covariance=products.unresolved_observation_covariance.copy(
+            data=products.unresolved_observation_covariance.values + d_m @ schur @ h_m.T
+        ),
+        unresolved_covariance=products.unresolved_covariance.copy(data=(unresolved + unresolved.T) * 0.5),
+        marginalised=marginalised.astype(bool),
+    )
+
+
+def _materialize_functionals(functionals: xr.DataArray) -> xr.DataArray:
+    """Compute ``Q`` once, keeping sparse storage sparse, and require finite real values."""
+    (data,) = compute(functionals.data)
+    if isinstance(data, SparseArray):
+        data = COO(data)
+        if data.fill_value != 0:
+            raise ValueError("Sparse functionals must use a zero fill value.")
+        stored = data.data
+    else:
+        data = np.asarray(data)
+        stored = data
+    if np.iscomplexobj(stored) or not np.all(np.isfinite(stored)):
+        raise ValueError("Functionals must contain finite real values.")
+    return functionals.copy(data=data)
 
 
 def _reduce_native_covariance_products(
@@ -139,6 +685,7 @@ def _reduce_native_covariance_products(
     native_dims: tuple[str, ...],
     state_dim: str,
     observation_dim: str,
+    native_identity: str,
 ) -> CoherentGaussianReduction:
     """Apply the reduction equations to products constructed immediately above."""
     restriction = products.restriction
@@ -171,19 +718,7 @@ def _reduce_native_covariance_products(
         **linear_units,
     )
 
-    # A = H B H.T - H_alpha C_alpha H_alpha.T, formed positionally in NumPy.
-    # H_alpha's state columns and both C_alpha axes follow Pi's state index,
-    # so their orders already agree.
-    unresolved_values = (
-        np.asarray(native_observation_covariance.values, dtype=np.float64)
-        - np.asarray(effective_operator.values, dtype=np.float64)
-        @ np.asarray(state_covariance.values, dtype=np.float64)
-        @ np.asarray(effective_operator.values, dtype=np.float64).T
-    )
-    # The two algebraically symmetric terms can differ at roundoff after the
-    # retained solve. Symmetrization defines the numerical covariance returned
-    # by this eager kernel; scientific PSD identities remain covered by tests.
-    unresolved_values = (unresolved_values + unresolved_values.T) * 0.5
+    unresolved_values = _unresolved_observation_values(products)
     unresolved_covariance = native_observation_covariance.copy(
         data=unresolved_values
     ).rename("unresolved_observation_covariance")
@@ -201,4 +736,5 @@ def _reduce_native_covariance_products(
         observation_intercept=observation_intercept,
         unresolved_observation_covariance=unresolved_covariance,
         projection_strategy=products.strategy,
+        native_identity=native_identity,
     )

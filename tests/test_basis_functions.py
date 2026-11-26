@@ -1217,8 +1217,8 @@ def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, 
     outer_regions.to_netcdf(outer_path)
     seen: dict[str, xr.DataArray] = {}
 
-    def fake_quadtree_basis(weights, start_date, domain, nbasis=100):
-        del domain, nbasis
+    def fake_quadtree_basis(weights, start_date, domain, nbasis=100, seed=None):
+        del domain, nbasis, seed
         expected_weights = basis_weights_from_data(
             sites, fluxes["total"].flux, mask=outer_regions["region"] == 1
         )

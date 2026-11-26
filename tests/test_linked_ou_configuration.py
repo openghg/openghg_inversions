@@ -3,7 +3,9 @@
 import numpy as np
 import pytest
 
+from openghg_inversions.models.boundary import MultiplicativeChoice
 from openghg_inversions.rhime.co2 import Co2O2ModelConfig
+from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.rhime.co2.co2_o2_configuration import resolve_co2_o2_sampler
 from test_co2_o2_fixed_ou import _prepared
 
@@ -25,7 +27,7 @@ def test_linked_ou_owner_preserves_groups_and_channel_baselines():
     model = Co2O2ModelConfig.from_params(config)
     arguments = model.bind(_prepared())
     np.testing.assert_allclose(arguments["independent_error_sd"], [0.2, 0.2, 0.3, 0.3, 0.3])
-    assert arguments["use_bc"] == {"co2": True}
+    assert arguments["boundary"] == {"co2": MultiplicativeChoice(dict(DEFAULT_BC_PRIOR))}
     assert arguments["offset_args"] == {"o2": {"per_site": False}}
     for name in ("tau_hours", "fixed_site_amplitudes"):
         assert arguments[name] == config["likelihood"][name]

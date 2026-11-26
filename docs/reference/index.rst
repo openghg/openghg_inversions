@@ -138,9 +138,6 @@ Import both values from
 :ref:`centered boundary contract <surface-centered-boundary-contract>` for
 operands and supported model routes.
 
-The :doc:`merged-input schema reference <merged_input_schemas>` is generated
-from the metadata validators used before standard and multisector preparation.
-
 .. autosummary::
    :nosignatures:
 
@@ -155,8 +152,6 @@ from the metadata validators used before standard and multisector preparation.
    openghg_inversions.inversion_data.acquire_surface_data
    openghg_inversions.inversion_data.MergedData.from_options
    openghg_inversions.inversion_data.MergedData.validate_for_preparation
-   openghg_inversions.inversion_data.MergedData.site_schema
-   openghg_inversions.inversion_data.MergedData.validate_scientific_inputs
    openghg_inversions.inversion_data.MergedData.with_site_data
    openghg_inversions.rhime.preparation.resolve_basis_inputs
    openghg_inversions.rhime.preparation.resolve_bc_basis
@@ -195,6 +190,7 @@ from the metadata validators used before standard and multisector preparation.
    openghg_inversions.rhime.co2.co2_o2_handoffs.prior_predictive
    openghg_inversions.rhime.co2.co2_o2_handoffs.postprocess
    openghg_inversions.rhime.co2.prepare_co2_inputs
+   openghg_inversions.models.fixed_ou.fixed_ou_mismatch_covariance
    openghg_inversions.rhime.co2.handoffs.prepare
    openghg_inversions.rhime.co2.handoffs.save_preparation
    openghg_inversions.rhime.co2.handoffs.load_preparation
@@ -280,6 +276,9 @@ mathematical contracts and eager-computation boundaries.
    openghg_inversions.basis.covariance_natural_prolongation
    openghg_inversions.coherent_reduction.CoherentGaussianReduction
    openghg_inversions.coherent_reduction.reduce_native_gaussian
+   openghg_inversions.coherent_reduction.NativeFunctionalProducts
+   openghg_inversions.coherent_reduction.project_native_functionals
+   openghg_inversions.coherent_reduction.marginalise_functional_states
    openghg_inversions.covariance_artifacts.NativeCovarianceProductsArtifact
    openghg_inversions.covariance_artifacts.CoherentReductionArtifact
    openghg_inversions.covariance_artifacts.save_products
@@ -290,6 +289,9 @@ mathematical contracts and eager-computation boundaries.
    openghg_inversions.observation_error.AggregationError
    openghg_inversions.observation_error.prepare_low_rank_aggregation_error
    openghg_inversions.observation_error.resolve_aggregation_error
+   openghg_inversions.observation_error.WhitenedRankRule
+   openghg_inversions.observation_error.select_whitened_rank
+   openghg_inversions.observation_error.whitened_eigenvalue_kl
 
 Compose a RHIME model
 ---------------------
@@ -306,11 +308,10 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.PreparedLinearSensitivity
    openghg_inversions.models.prepare_linear_sensitivity
    openghg_inversions.models.CorrelatedLognormalPrior
+   openghg_inversions.models.CorrelatedPrior
    openghg_inversions.models.parse_prior
    openghg_inversions.models.add_model_data
    openghg_inversions.models.add_linear_component
-   openghg_inversions.rhime.co2.centered_boundary.CenteredBoundaryResult
-   openghg_inversions.rhime.co2.centered_boundary.add_centered_boundary
    openghg_inversions.models.ConcentrationTerm
    openghg_inversions.models.likelihood_representation
    openghg_inversions.models.AffineBlock
@@ -339,8 +340,11 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.boundary.bind_prepared
    openghg_inversions.models.boundary.Outputs
    openghg_inversions.array_ops.to_dense_tree
+   openghg_inversions.models.outer_flux.OuterFluxChoice
+   openghg_inversions.models.outer_flux.OuterStates
    openghg_inversions.models.add_linked_linear_component
    openghg_inversions.models.add_correlated_lognormal_state
+   openghg_inversions.models.add_correlated_state_with_activity
    openghg_inversions.models.add_offset_component
    openghg_inversions.models.add_sigma_component
    openghg_inversions.models.add_site_sigma_gaussian_likelihood
@@ -367,6 +371,12 @@ and samples; it does not write products. See
    openghg_inversions.postprocessing.output_views.make_inversion_output
    openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs
    openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs
+   openghg_inversions.postprocessing.co2_flux_outputs.co2_country_functionals
+   openghg_inversions.postprocessing.unresolved_functionals.UnresolvedFunctionalConditioning
+   openghg_inversions.postprocessing.unresolved_functionals.ObservationCovarianceSolve
+   openghg_inversions.postprocessing.unresolved_functionals.complete_functional_draws
+   openghg_inversions.postprocessing.unresolved_functionals.dense_solve
+   openghg_inversions.postprocessing.unresolved_functionals.fixed_ou_solve
    openghg_inversions.rhime.co2.co2_outputs.make_co2_output
    openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request
    openghg_inversions.rhime.co2.co2_outputs.calculate_co2_products
@@ -421,4 +431,3 @@ module-level view.
    :maxdepth: 4
 
    openghg_inversions
-   merged_input_schemas

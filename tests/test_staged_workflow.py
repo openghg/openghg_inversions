@@ -127,7 +127,7 @@ def test_stage_config_paths_are_relative_to_the_invocation(
     params_path = tmp_path / "config" / "params.json"
     params_path.parent.mkdir()
     params_path.write_text(
-        json.dumps(_params(bc_basis_paths=["relative/bc.nc"], basis_partition_path="relative/partition.nc",
+        json.dumps(_params(bc_basis={"paths": ["relative/bc.nc"]}, basis_partition_path="relative/partition.nc",
                            country_file="relative/country.nc")),
         encoding="utf-8",
     )
@@ -135,7 +135,7 @@ def test_stage_config_paths_are_relative_to_the_invocation(
 
     loaded = load_params(params_file=params_path)
 
-    assert loaded["data"]["bc_basis_paths"] == (tmp_path.parent / "relative/bc.nc",)
+    assert loaded["data"]["bc_basis"] == {"paths": (tmp_path.parent / "relative/bc.nc",)}
     assert loaded["output"]["country_file"] == tmp_path.parent / "relative/country.nc"
     assert loaded["data"]["basis_partition_path"] == tmp_path.parent / "relative/partition.nc"
 
@@ -269,7 +269,7 @@ def test_diagnostics_accept_digest_free_sample_manifest(tmp_path: Path, model: s
     write_json(
         manifest_path,
         {
-            "schema_version": 1 if model == "co2" else 3,
+            "schema_version": 2 if model == "co2" else 3,
             "producer": "openghg_inversions",
             "stage": "sample",
             "schema": f"openghg_inversions.{model}.sample",
@@ -335,16 +335,16 @@ def test_co2_stage_override_paths_use_invocation_directory(tmp_path, monkeypatch
     assert overrides["prepared_inputs"]["path"] == "selected.nc"
 
 
-@pytest.mark.parametrize("model", ["standard", "multisector", "co2"])
+@pytest.mark.parametrize("model", ["standard", "multisector", "co2", "co2_o2"])
 def test_diagnosis_rejects_old_sample_manifest_before_numerical_io(tmp_path, monkeypatch, model):
     from openghg_inversions.rhime import _stage_checks
     manifest = tmp_path / "sample-manifest.json"
     manifest.write_text(json.dumps({
-        "schema": f"openghg_inversions.{model}.sample", "schema_version": 2,
+        "schema": f"openghg_inversions.{model}.sample", "schema_version": 1 if model in {"co2", "co2_o2"} else 2,
         "producer": "openghg_inversions", "stage": "sample",
         "model": {"aggregation_error_mode": "none"}, "posterior": "missing.nc",
     }))
     monkeypatch.setattr(_stage_checks, "load_trace", lambda *a, **k: pytest.fail("loaded obsolete numerical payload"))
-    with pytest.raises(ValueError, match="unsupported schema_version.*Use the software version that wrote it or prepare and sample again"):
+    with pytest.raises(ValueError, match="unsupported schema_version.*prepare.*again"):
         diagnose_rhime_stage(sample_manifest=manifest, output_dir=tmp_path / "diagnose")
     assert not (tmp_path / "diagnose").exists()
