@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import xarray as xr
@@ -14,6 +14,7 @@ from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact
 from openghg_inversions.basis.boundary import BoundaryBasis
 from openghg_inversions.basis.covariance_products import PreserveBucketProlongation
+from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 from openghg_inversions.coherent_reduction import reduce_native_gaussian
 from openghg_inversions.inversion_data import MergedData, select_boundary_representation
@@ -175,7 +176,8 @@ def prepare_co2_from_merged_data(
         )
         if not canonical.inv_inputs.sizes["nmeasure"]:
             raise ValueError("No usable observations remain for coherent CO2 reduction.")
-        sensitivity = _native_source_sensitivity(filtered, canonical, basis_functions.operator.source_labels)
+        operator = cast(MultiSourceBucketBasisOperator, basis_functions.operator)
+        sensitivity = _native_source_sensitivity(filtered, canonical, operator.source_labels)
         return prepare_multisource_native_co2_inputs(
             canonical, prior, native_sensitivity=sensitivity, resources=resources.multisource,
             aggregation_error_rank=config.aggregation_error_rank,
