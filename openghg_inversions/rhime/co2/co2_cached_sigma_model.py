@@ -80,6 +80,7 @@ class Co2CachedSigmaModel:
     quadratic for the whole run and the sampler has no amplitude step.
     ``boundary_outputs`` and ``outer_flux_outputs`` declare the bound
     boundary's and outer-flux option's roles, units and metadata.
+    ``prior_metadata`` describes the actual retained prior when available.
     """
 
     model: pm.Model
@@ -94,6 +95,7 @@ class Co2CachedSigmaModel:
     boundary_outputs: Outputs | None = None
     fixed_amplitudes: bool = False
     outer_flux_outputs: Outputs | None = None
+    prior_metadata: dict[str, Any] | None = None
 
 
 def _materialize_cached_linear_projection(
@@ -720,6 +722,7 @@ def _build_co2_cached_sigma_model(
             cached,
             boundary_outputs=None if boundary is None else boundary.outputs(),
             outer_flux_outputs=None if outer_flux is None else outer_flux.outputs(),
+            prior_metadata=retained_prior.metadata() if isinstance(retained_prior, CorrelatedPrior) else None,
         )
 
 
