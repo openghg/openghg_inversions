@@ -13,7 +13,7 @@ from openghg_inversions.models.state_activity import (
     prepare_linear_sensitivity,
     resolve_state_activity,
 )
-from openghg_inversions.observation_error import AggregationError
+from openghg_inversions.observation_error import ObservationCovariance
 from openghg_inversions.rhime.co2 import build_co2_model
 from openghg_inversions.rhime.co2.co2_cached_sigma_model import build_co2_cached_sigma_model
 from openghg_inversions.rhime.multisector import build_multisector_model
@@ -100,7 +100,7 @@ def _co2_model(sensitivity, boundary, bc_prior, *, partial_activity=False, cache
         fixed_prior_contribution=xr.zeros_like(observations).rename("fixed_prior_contribution"),
         observations=observations,
         observation_error=xr.full_like(observations, 0.1),
-        aggregation_error=AggregationError("none", np.zeros(2)),
+        aggregation_error=ObservationCovariance("none", np.zeros(2)),
         state_activity=StateActivity(active=np.array([True, False, True])) if partial_activity else None,
         **{"tau_hours": 6.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.5}} if cached else {},
         boundary=MultiplicativeChoice(

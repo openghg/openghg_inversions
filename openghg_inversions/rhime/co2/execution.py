@@ -14,6 +14,10 @@ from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, l
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import MergedData, PreparedInputs
 from openghg_inversions.observation_error import WhitenedRankRule
+from openghg_inversions.postprocessing.co2_flux_outputs import (
+    _check_complete_country_scope,
+    _validate_marginalised_country_flux,
+)
 from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
 
 from .acquisition import acquire_co2_data
@@ -207,9 +211,11 @@ def run_co2(
     if affine_path is not None:
         consumed_paths += (affine_path,)
     has_reconstruction = affine_artifact is not None or affine_path is not None
+    outer_flux = model_config.outer_flux
     product_names = _co2_product_names(
         output, has_reconstruction=has_reconstruction,
         has_countries=has_reconstruction and output.country_file is not None,
+        marginalised_outer_flux=outer_flux is not None and outer_flux.mode == "marginalise",
     )
     protected = model_config.artifact_paths() + consumed_paths
     _checked_co2_output_paths(
@@ -226,8 +232,14 @@ def run_co2(
     countries = validate_co2_product_request(
         output, prepared=prepared, bound=bound, source_to_sector=output_choices["source_to_sector"],
     )
-    if bound is not None and output.output_format != "none" and not sampler.sample_prior_predictive:
+    if {"native_flux", "country_flux"}.intersection(product_names) and not sampler.sample_prior_predictive:
         raise ValueError("CO2 affine products require prior draws; enable sample_prior_predictive.")
+    if countries is not None and outer_flux is not None and outer_flux.mode == "marginalise":
+        assert bound is not None
+        if prepared.country_functionals is not None:
+            _check_complete_country_scope(True)
+        mask = outer_flux._select_states(prepared.inv_inputs["alpha_prior_mean"])
+        _validate_marginalised_country_flux(bound, countries, mask)
     model = model_config.model_arguments()
     trace, actual = sample_co2_inference(
         prepared, model, sampler, sigma_target_accept=sampling.sigma_target_accept,
