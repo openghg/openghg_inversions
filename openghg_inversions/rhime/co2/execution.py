@@ -54,22 +54,32 @@ def load_co2_params(
         options = dict(params or {})
     _validate_co2_option_names(options, overrides or {})
     for name, value in (overrides or {}).items():
-        if name in {"data", "model", "likelihood", "sampling", "outputs"} and isinstance(value, Mapping):
-            previous = options.get(name, {})
-            if not isinstance(previous, Mapping):
-                raise ValueError(f"CO2 {name} must be a mapping.")
-            merged = {**previous, **value}
-            if name == "data":
-                for phase in ("acquisition", "preparation"):
-                    if isinstance(previous.get(phase), Mapping) and isinstance(value.get(phase), Mapping):
-                        merged[phase] = {**previous[phase], **value[phase]}
-            # A partial outer-flux override keeps the base table's other choices.
-            outer = previous.get("outer_flux") if name == "model" else None
-            if isinstance(outer, Mapping) and isinstance(value.get("outer_flux"), Mapping):
-                merged["outer_flux"] = {**outer, **value["outer_flux"]}
-            options[name] = merged
-        else:
+        if name not in {"data", "model", "likelihood", "sampling", "outputs"} or not isinstance(value, Mapping):
             options[name] = value
+            continue
+        previous = options.get(name, {})
+        if not isinstance(previous, Mapping):
+            raise ValueError(f"CO2 {name} must be a mapping.")
+        merged = {**previous, **value}
+        if name == "data":
+            for phase in ("acquisition", "preparation"):
+                base_phase = previous.get(phase)
+                override_phase = value.get(phase)
+                if not isinstance(base_phase, Mapping) or not isinstance(override_phase, Mapping):
+                    continue
+                merged_phase = {**base_phase, **override_phase}
+                if phase == "preparation":
+                    for choice in ("basis", "native_prior"):
+                        base_choice = base_phase.get(choice)
+                        override_choice = override_phase.get(choice)
+                        if isinstance(base_choice, Mapping) and isinstance(override_choice, Mapping):
+                            merged_phase[choice] = {**base_choice, **override_choice}
+                merged[phase] = merged_phase
+        # A partial outer-flux override keeps the base table's other choices.
+        outer = previous.get("outer_flux") if name == "model" else None
+        if isinstance(outer, Mapping) and isinstance(value.get("outer_flux"), Mapping):
+            merged["outer_flux"] = {**outer, **value["outer_flux"]}
+        options[name] = merged
     return validate_co2_config(options)
 
 

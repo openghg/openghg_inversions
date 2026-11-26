@@ -151,6 +151,30 @@ def test_native_phase_override_keeps_other_choices(partition: Path) -> None:
     assert resolved.native.basis.basis_partition_path == partition
 
 
+def test_basis_override_preserves_selected_partition(partition: Path) -> None:
+    """A partial basis override keeps the selected partition file."""
+    options = load_co2_params(
+        params=request(partition),
+        overrides={"data": {"preparation": {"basis": {"bc_split_height": 2000.0}}}},
+    )
+    resolved = Co2PreparationConfig.from_params(options)
+    assert resolved.native is not None
+    assert resolved.native.basis.basis_partition_path == partition
+    assert resolved.native.bc_basis.bc_basis_split_height == 2000.0
+
+
+def test_native_prior_override_preserves_stdev(partition: Path) -> None:
+    """A partial prior override keeps its required marginal standard deviation."""
+    options = load_co2_params(
+        params=request(partition),
+        overrides={"data": {"preparation": {"native_prior": {"correlation_length": 2.0}}}},
+    )
+    resolved = Co2PreparationConfig.from_params(options)
+    assert resolved.native is not None
+    assert resolved.native.native_prior.correlation_length == 2.0
+    assert resolved.native.native_prior.stdev == 0.2
+
+
 def test_fresh_prepare_requires_acquisition_selectors(tmp_path: Path, partition: Path) -> None:
     config = request(partition)
     del config["data"]["acquisition"]
