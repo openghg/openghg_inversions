@@ -819,7 +819,7 @@ here and loaded later by basis preparation. The request is not mutated.</p>
 <span class="sig-name descname"><span class="pre">resolve_bc_basis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.preparation.resolve_bc_basis" title="Link to this definition">#</a></dt>
 <dd><p>Load enabled exact BC resources, or select a built-in basis builder.</p>
 <p>Configuration owns algorithm validation. Exact files take precedence over
-the algorithm choice. With no files, <code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm</span></code> selects the
+the algorithm choice. With no files, <code class="docutils literal notranslate"><span class="pre">bc_basis.algorithm</span></code> selects the
 NESW or twelve-region builder, which reads only each site’s coordinates.
 Disabled BCs perform no resource I/O and return the NESW builder, which
 preparation never calls. Selected files are loaded before acquisition using

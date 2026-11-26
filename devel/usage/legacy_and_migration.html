@@ -550,20 +550,22 @@ reporting, <code class="docutils literal notranslate"><span class="pre">landsea_
 default to vendored files for the exact requested domain; explicit paths win.
 Missing explicit files or required domain defaults fail before acquisition.
 Country reporting requires an explicit file, independently of these defaults.</p></li>
-<li><p>Select file-backed BC bases using <code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code>, for example
-<code class="docutils literal notranslate"><span class="pre">(&quot;/data/bc/january.nc&quot;,</span> <span class="pre">&quot;/data/bc/february.nc&quot;)</span></code>. Runners load these files
+<li><p>Select file-backed BC bases using <code class="docutils literal notranslate"><span class="pre">bc_basis={&quot;paths&quot;:</span> <span class="pre">(&quot;/data/bc/january.nc&quot;,</span>
+<span class="pre">&quot;/data/bc/february.nc&quot;)}</span></code> in Python. Runners load these files
 before acquisition and preserve their time combination and alignment.
 Custom scientific sensitivity calls receive the loaded <code class="docutils literal notranslate"><span class="pre">bc_basis</span></code> dataset.
-<code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm=&quot;NESW&quot;</span></code> is the default built-in selection. It uses
+<code class="docutils literal notranslate"><span class="pre">bc_basis={&quot;algorithm&quot;:</span> <span class="pre">&quot;NESW&quot;}</span></code> is the default built-in selection. It uses
 acquired directional contributions through the default <code class="docutils literal notranslate"><span class="pre">nesw_basis</span></code>
 builder, without a file.
-Exact <code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code> win over the inactive algorithm; <code class="docutils literal notranslate"><span class="pre">use_bc=False</span></code>
-skips BC basis resolution and loading.</p></li>
+Exact files take precedence over the algorithm. Set <code class="docutils literal notranslate"><span class="pre">use_bc=False</span></code> to
+skip BC basis resolution and loading. INI files use the flat keys
+<code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm</span></code>.</p></li>
 <li><p>Modern runners reject <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code>, <code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code>
 and <code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code>. Replace them with exact basis/BC selections.
 Scientific functions receive explicit selections and never discover files.</p></li>
 <li><p>Replace the removed RHIME <code class="docutils literal notranslate"><span class="pre">params_from_config</span></code> re-export with
-<code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code>, apply overrides, then call <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>.
+<code class="docutils literal notranslate"><span class="pre">rhime.requests.load_params</span></code> to read the file and apply overrides before
+calling <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>.
 The dictionary adapter is removed. Runner frontends, including direct
 <code class="docutils literal notranslate"><span class="pre">run_standard</span></code> calls, reject historical aliases before scientific work.
 <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> accepts canonical names only and has no alias translation or warnings.
@@ -980,11 +982,11 @@ aliases or emit alias deprecation warnings.</p>
 <td><p>Select the retained artifact or exact labelled partition file(s); remove both discovery options</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">bc_basis_case=&quot;NESW&quot;</span></code> + <code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm=&quot;NESW&quot;</span></code> (also the default)</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm=&quot;NESW&quot;</span></code> is the default; no BC files are needed</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">bc_basis={&quot;algorithm&quot;:</span> <span class="pre">&quot;NESW&quot;}</span></code> in Python, or <code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm=&quot;NESW&quot;</span></code> in INI</p></td>
+<td><p>The default uses the built-in basis without BC basis files</p></td>
 </tr>
 <tr class="row-even"><td><p>Other <code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code> + <code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">bc_basis={&quot;paths&quot;:</span> <span class="pre">(...,)}</span></code> in Python, or <code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code> in INI</p></td>
 <td><p>Select the exact BC basis files, including the months needed by the run</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">country_directory</span></code></p></td>

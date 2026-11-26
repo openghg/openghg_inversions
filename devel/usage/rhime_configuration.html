@@ -714,18 +714,31 @@ case/directory pair to an explicit artifact and output destination:</p>
 <p>The first requested flux source still determines generated-basis weighting;
 all runtime sources are retained. A selected saved basis takes precedence over
 generation.</p>
+<p>Boundary-condition basis options form one nested <code class="docutils literal notranslate"><span class="pre">bc_basis</span></code> group with
+<code class="docutils literal notranslate"><span class="pre">paths</span></code>, <code class="docutils literal notranslate"><span class="pre">algorithm</span></code> and <code class="docutils literal notranslate"><span class="pre">split_height</span></code> fields. Python requests and JSON
+parameter files give it as a mapping, and saved preparation manifests record it
+the same way:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">options</span><span class="p">[</span><span class="s2">"bc_basis"</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"algorithm"</span><span class="p">:</span> <span class="s2">"twelve-region"</span><span class="p">,</span> <span class="s2">"split_height"</span><span class="p">:</span> <span class="mf">3000.0</span><span class="p">}</span>
+</pre></div>
+</div>
+<p>INI files keep the flat spelling <code class="docutils literal notranslate"><span class="pre">bc_basis_&lt;field&gt;</span></code>, for example
+<code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm</span> <span class="pre">=</span> <span class="pre">&quot;NESW&quot;</span></code>; the INI reader nests these names. Flat names in
+Python requests, JSON parameter files and older manifests are still accepted
+with a <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code>. Giving the same group in both forms is an error.
+A nested override, such as <code class="docutils literal notranslate"><span class="pre">{&quot;bc_basis&quot;:</span> <span class="pre">{&quot;split_height&quot;:</span> <span class="pre">2.5}}</span></code>, replaces only
+the fields it names.</p>
 <p>For file-backed boundary conditions, select exact files with
-<code class="docutils literal notranslate"><span class="pre">bc_basis_paths=(&quot;/data/bc/january.nc&quot;,</span> <span class="pre">&quot;/data/bc/february.nc&quot;)</span></code> (a one-file
-collection is also supported). The runner loads every selected file before
+<code class="docutils literal notranslate"><span class="pre">bc_basis={&quot;paths&quot;:</span> <span class="pre">(&quot;/data/bc/january.nc&quot;,</span> <span class="pre">&quot;/data/bc/february.nc&quot;)}</span></code> (a
+one-file collection is also supported). The runner loads every selected file before
 acquisition and passes a labelled <code class="docutils literal notranslate"><span class="pre">bc_basis</span></code> dataset to sensitivity
 construction, preserving time combination and alignment. Missing or unreadable
 selected files fail before acquisition. Scientific sensitivity functions accept
 resolved data, not <code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code> or <code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code> discovery options.</p>
-<p><code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm=&quot;NESW&quot;</span></code> selects the built-in calculation and is the
+<p><code class="docutils literal notranslate"><span class="pre">bc_basis={&quot;algorithm&quot;:</span> <span class="pre">&quot;NESW&quot;}</span></code> selects the built-in calculation and is the
 canonical default. It uses acquired directional boundary contributions without
 reading a basis file; scientific calls receive the <code class="docutils literal notranslate"><span class="pre">nesw_basis</span></code> builder,
 which is also their default. Exact
-<code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code> take precedence over the algorithm, whose value is then
+<code class="docutils literal notranslate"><span class="pre">bc_basis.paths</span></code> take precedence over the algorithm, whose value is then
 inactive. Selected files fail on read errors rather than falling back to NESW.
 <code class="docutils literal notranslate"><span class="pre">use_bc=False</span></code> skips BC basis resolution and loading, including selected files.
 Supported names are still validated; inactive algorithm values are deferred.</p>
@@ -736,18 +749,21 @@ regions. Reporting maps remain explicit: <code class="docutils literal notransla
 <code class="docutils literal notranslate"><span class="pre">country_file</span></code>. See <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for the migration schedule.</p>
 <section id="twelve-region-lateral-boundary-basis">
 <span id="twelve-region-boundary-basis"></span><h3>Twelve-region lateral boundary basis<a class="headerlink" href="#twelve-region-lateral-boundary-basis" title="Link to this heading">#</a></h3>
-<p>Select <code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm=&quot;twelve-region&quot;</span></code> to divide each native N/E/S/W
-curtain into two lower horizontal halves and one upper region. The same options
-work in Python run parameters or the <code class="docutils literal notranslate"><span class="pre">[INPUT.BASIS_CASE]</span></code> INI section:</p>
+<p>Select <code class="docutils literal notranslate"><span class="pre">bc_basis={&quot;algorithm&quot;:</span> <span class="pre">&quot;twelve-region&quot;}</span></code> to divide each native N/E/S/W
+curtain into two lower horizontal halves and one upper region:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">options</span><span class="p">[</span><span class="s2">"bc_basis"</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"algorithm"</span><span class="p">:</span> <span class="s2">"twelve-region"</span><span class="p">,</span> <span class="s2">"split_height"</span><span class="p">:</span> <span class="mf">3000.0</span><span class="p">}</span>
+</pre></div>
+</div>
+<p>In the <code class="docutils literal notranslate"><span class="pre">[INPUT.BASIS_CASE]</span></code> INI section, use the flat spelling:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bc_basis_algorithm</span> <span class="o">=</span> <span class="s2">"twelve-region"</span>
 <span class="n">bc_basis_split_height</span> <span class="o">=</span> <span class="mf">3000.0</span>
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">bc_basis_split_height</span></code> is a finite number in the native <code class="docutils literal notranslate"><span class="pre">height</span></code> coordinate’s
+<p><code class="docutils literal notranslate"><span class="pre">bc_basis.split_height</span></code> is a finite number in the native <code class="docutils literal notranslate"><span class="pre">height</span></code> coordinate’s
 units; it defaults to 3000. No unit conversion or vertical-datum conversion is
 performed. Inspect the acquired coordinate metadata before choosing a physical
 threshold. With a height coordinate in kilometres, a 3 km split requires
-<code class="docutils literal notranslate"><span class="pre">bc_basis_split_height=3.0</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">split_height=3.0</span></code>.</p>
 <p>The default follows the archived feasibility prototype’s native-coordinate
 threshold of 3000. The prototype’s height coordinate had no units or AGL/ASL
 datum metadata; its physical interpretation remains unverified. Motivation
