@@ -651,8 +651,9 @@ CO₂ uses <a class="reference internal" href="../reference/openghg_inversions.r
 selector. Preparation, model, sampler and output values are resolved at their
 concrete owners; saved sampling accepts decoded model/likelihood choices and a
 separate <code class="docutils literal notranslate"><span class="pre">sampling</span></code> mapping. The model selects the backend and update.
-Native-resolution acquisition and coherent-reduction construction
-are separate from this configured prepared-input route.</p>
+<code class="docutils literal notranslate"><span class="pre">[data]</span></code> either imports a saved preparation with <code class="docutils literal notranslate"><span class="pre">path</span></code> or, for
+CO₂ only, builds one from configured acquisition; see
+<a class="reference internal" href="#co2-configured-preparation"><span class="std std-ref">Build a CO2 preparation from configured acquisition</span></a>.</p>
 <p>Ordinary preparation and science use
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparationConfig" title="openghg_inversions.rhime.co2.Co2PreparationConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparationConfig</span></code></a> and
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2ModelConfig" title="openghg_inversions.rhime.co2.Co2ModelConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2ModelConfig</span></code></a>; linked execution uses
@@ -674,7 +675,7 @@ without parsing current science or sampling controls. The former
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">format_version</span> <span class="o">=</span> <span class="mi">1</span>
 <span class="n">recipe</span> <span class="o">=</span> <span class="s2">"co2"</span>
 
-<span class="p">[</span><span class="n">prepared_inputs</span><span class="p">]</span>
+<span class="p">[</span><span class="n">data</span><span class="p">]</span>
 <span class="n">path</span> <span class="o">=</span> <span class="s2">"co2-coherent-dense.zarr"</span>
 <span class="n">start_date</span> <span class="o">=</span> <span class="s2">"2020-01-01"</span>
 <span class="n">end_date</span> <span class="o">=</span> <span class="s2">"2020-02-01"</span>
@@ -699,8 +700,8 @@ without parsing current science or sampling controls. The former
 </div>
 <p>Configured CO₂ selects inference from the resolved scientific model using this
 automatic policy:</p>
-<div class="pst-scrollable-table-container"><table class="table" id="id1">
-<caption><span class="caption-text">CO2 inference policy</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
+<div class="pst-scrollable-table-container"><table class="table" id="id2">
+<caption><span class="caption-text">CO2 inference policy</span><a class="headerlink" href="#id2" title="Link to this table">#</a></caption>
 <colgroup>
 <col style="width: 25.0%" />
 <col style="width: 30.0%" />
@@ -775,7 +776,7 @@ record stores <code class="docutils literal notranslate"><span class="pre">targe
 numeric value. Product replay retains that record without constructing a sampler.</p>
 <p>Equivalently, <code class="docutils literal notranslate"><span class="pre">rhime.run(model=&quot;co2&quot;,</span> <span class="pre">config_file=&quot;my-co2.toml&quot;)</span></code> selects the
 same runner. Output choices remain separate from the scientific trace.
-<code class="docutils literal notranslate"><span class="pre">prepared_inputs.path</span></code>, <code class="docutils literal notranslate"><span class="pre">prepared_inputs.reconstruction_path</span></code> and
+<code class="docutils literal notranslate"><span class="pre">data.path</span></code>, <code class="docutils literal notranslate"><span class="pre">data.reconstruction_path</span></code> and
 <code class="docutils literal notranslate"><span class="pre">likelihood.eigenbasis_path</span></code> become ordinary <code class="docutils literal notranslate"><span class="pre">pathlib.Path</span></code> values.
 Relative values are interpreted from the process working directory, not the
 directory containing the TOML file. Use absolute paths when the run
@@ -822,8 +823,8 @@ forms. Scalar-or-site-map values use one number or an inline table such as
 <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">MHD</span> <span class="pre">=</span> <span class="pre">24.0,</span> <span class="pre">TAC</span> <span class="pre">=</span> <span class="pre">12.0</span> <span class="pre">}</span></code>; the component-specific sign constraints are below.
 Site maps validate every supplied value, including entries for dropped sites,
 require retained-site coverage, then select retained labels.</p>
-<div class="pst-scrollable-table-container"><table class="table" id="id2">
-<caption><span class="caption-text">CO2 likelihood configuration</span><a class="headerlink" href="#id2" title="Link to this table">#</a></caption>
+<div class="pst-scrollable-table-container"><table class="table" id="id3">
+<caption><span class="caption-text">CO2 likelihood configuration</span><a class="headerlink" href="#id3" title="Link to this table">#</a></caption>
 <colgroup>
 <col style="width: 18.0%" />
 <col style="width: 34.0%" />
@@ -914,8 +915,8 @@ automatically for both amplitude choices.</p>
 <p>The optional <code class="docutils literal notranslate"><span class="pre">[sampling]</span></code> table is shared by the supported setups.
 Defaults below apply when an option is omitted; linked fixed-error sampling
 uses NumPyro, while configured linked fixed OU defaults to and requires PyMC.</p>
-<div class="pst-scrollable-table-container"><table class="table" id="id3">
-<caption><span class="caption-text">Sampling configuration</span><a class="headerlink" href="#id3" title="Link to this table">#</a></caption>
+<div class="pst-scrollable-table-container"><table class="table" id="id4">
+<caption><span class="caption-text">Sampling configuration</span><a class="headerlink" href="#id4" title="Link to this table">#</a></caption>
 <colgroup>
 <col style="width: 23.0%" />
 <col style="width: 18.0%" />
@@ -1170,6 +1171,135 @@ default additive-sigma likelihood; its scientific options belong in
 <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch</span></code> arguments. The returned trace records the selected
 callable identity and its explicit options using the ordinary likelihood
 provenance attributes.</p>
+</section>
+<section id="build-a-co2-preparation-from-configured-acquisition">
+<span id="co2-configured-preparation"></span><h3>Build a CO2 preparation from configured acquisition<a class="headerlink" href="#build-a-co2-preparation-from-configured-acquisition" title="Link to this heading">#</a></h3>
+<p>To build a preparation, replace <code class="docutils literal notranslate"><span class="pre">data.path</span></code> with the shared data choices
+and the <code class="docutils literal notranslate"><span class="pre">[data.acquisition]</span></code> and <code class="docutils literal notranslate"><span class="pre">[data.preparation]</span></code> tables below.
+Both the full runner and staged <code class="docutils literal notranslate"><span class="pre">prepare</span></code> first acquire continuous-surface
+CO₂ through explicit surface transport (see <a class="reference internal" href="surface_preparation.html"><span class="doc">Surface CO₂/O₂ preparation pilot</span></a>).
+Scientific preparation then filters the merged observations, derives missing
+errors, builds the flux and boundary bases, and coherently reduces the native
+Gaussian prior. <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> uses the prepared inputs and affine companion in
+memory. Staged <code class="docutils literal notranslate"><span class="pre">prepare</span></code> saves the pair for later phases.</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[data]</span>
+<span class="n">start_date</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"2020-01-01"</span>
+<span class="n">end_date</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"2020-02-01"</span>
+<span class="n">domain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"EUROPE"</span>
+<span class="n">flux_sources</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"biosphere"</span><span class="p">,</span><span class="w"> </span><span class="s2">"fossil"</span><span class="p">]</span>
+
+<span class="k">[data.acquisition]</span>
+<span class="n">sites</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"MHD"</span><span class="p">,</span><span class="w"> </span><span class="s2">"TAC"</span><span class="p">]</span>
+<span class="n">averaging_period</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"1h"</span>
+<span class="n">inlet</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"10m"</span><span class="p">,</span><span class="w"> </span><span class="s2">"185m"</span><span class="p">]</span>
+<span class="n">time_resolved</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">    </span><span class="c1"># required by time_resolved surface transport</span>
+<span class="n">surface_transport</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">biosphere</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"time_resolved"</span><span class="p">,</span><span class="w"> </span><span class="n">fossil</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"integrated"</span><span class="w"> </span><span class="p">}</span>
+<span class="n">boundary_reference</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">400.0</span>
+<span class="n">boundary_reference_units</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ppm"</span>
+<span class="n">boundary_mass_tolerance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">1e-4</span>
+
+<span class="k">[data.preparation]</span>
+<span class="c1"># The boundary choice selects the representation when omitted.</span>
+<span class="c1"># boundary_representation = "centered"</span>
+<span class="n">aggregation_error_rank</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">512</span><span class="w">        </span><span class="c1"># or "exact"</span>
+<span class="n">filters</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"daytime9to5"</span><span class="p">]</span>
+
+<span class="k">[data.preparation.basis]</span>
+<span class="n">algorithm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"weighted"</span>
+<span class="n">nbasis</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span>
+
+<span class="k">[data.preparation.bc_basis]</span>
+<span class="n">algorithm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"NESW"</span>
+
+<span class="k">[data.preparation.native_prior]</span>
+<span class="n">stdev</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.5</span>
+<span class="n">correlation_length</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">1.5</span>
+
+<span class="k">[model.boundary]</span>
+<span class="n">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"multiplicative"</span>
+</pre></div>
+</div>
+<p>The multiplicative boundary adds the transported background to the model of
+absolute CO₂ observations.</p>
+<p><code class="docutils literal notranslate"><span class="pre">acquisition</span></code> takes the site selectors of
+<a class="reference internal" href="../reference/openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.SiteOptions" title="openghg_inversions.inversion_data.SiteOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">SiteOptions</span></code></a> (<code class="docutils literal notranslate"><span class="pre">time_resolved</span> <span class="pre">=</span> <span class="pre">true</span></code>
+is required when any source uses <code class="docutils literal notranslate"><span class="pre">time_resolved</span></code> transport), one surface
+transport mode per configured flux source, and store and dataset selectors (<code class="docutils literal notranslate"><span class="pre">obs_store</span></code>,
+<code class="docutils literal notranslate"><span class="pre">footprint_store</span></code>, <code class="docutils literal notranslate"><span class="pre">flux_store</span></code>, <code class="docutils literal notranslate"><span class="pre">bc_store</span></code>, <code class="docutils literal notranslate"><span class="pre">fp_model</span></code> and so on) and,
+with boundaries, the reference and mass tolerance. <code class="docutils literal notranslate"><span class="pre">boundary_reference</span></code> is a
+value you choose, such as a typical background. <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code> stores that
+physical reference converted to the observation concentration units (see
+<a class="reference internal" href="surface_preparation.html"><span class="doc">Surface CO₂/O₂ preparation pilot</span></a>). These options are checked when the configuration
+is read, before any retrieval. All sources share one dimensionless native
+scaling field. The first entry in <code class="docutils literal notranslate"><span class="pre">data.flux_sources</span></code> weights basis design.
+The requested window and domain also belong to <code class="docutils literal notranslate"><span class="pre">[data]</span></code>.</p>
+<p>Under <code class="docutils literal notranslate"><span class="pre">[data.preparation]</span></code>, <code class="docutils literal notranslate"><span class="pre">filters</span></code> selects observations and
+<code class="docutils literal notranslate"><span class="pre">averaging_error</span></code> controls whether variability contributes to derived
+observation errors. Set <code class="docutils literal notranslate"><span class="pre">use_bc</span> <span class="pre">=</span> <span class="pre">false</span></code> for a preparation without boundary
+inputs. <code class="docutils literal notranslate"><span class="pre">basis</span></code> takes <code class="docutils literal notranslate"><span class="pre">algorithm</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;weighted&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;quadtree&quot;</span></code>), <code class="docutils literal notranslate"><span class="pre">nbasis</span></code>,
+<code class="docutils literal notranslate"><span class="pre">path</span></code>, <code class="docutils literal notranslate"><span class="pre">partition_path</span></code>, <code class="docutils literal notranslate"><span class="pre">landsea_path</span></code>, <code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code>,
+<code class="docutils literal notranslate"><span class="pre">fix_outer_regions</span></code>. The separate <code class="docutils literal notranslate"><span class="pre">bc_basis</span></code> table accepts <code class="docutils literal notranslate"><span class="pre">paths</span></code> for
+exact boundary basis files, or <code class="docutils literal notranslate"><span class="pre">algorithm</span></code> and <code class="docutils literal notranslate"><span class="pre">split_height</span></code> for the
+built-in bases. Exact files take precedence.
+<code class="docutils literal notranslate"><span class="pre">&quot;region_constrained&quot;</span></code> is not available here yet because it needs a
+configured class map (<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/454">#454</a>). <code class="docutils literal notranslate"><span class="pre">native_prior</span></code> gives
+the constant native mean (default 1), the dimensionless marginal standard
+deviation <code class="docutils literal notranslate"><span class="pre">stdev</span></code>, and correlation lengths in degrees for the separable
+exponential covariance.</p>
+<p>Specify at most one flux basis file selector per request. An override of <code class="docutils literal notranslate"><span class="pre">basis.path</span></code>
+or <code class="docutils literal notranslate"><span class="pre">basis.partition_path</span></code> replaces the inherited file selection and keeps
+independent basis settings. JSON and Python overrides can clear an inherited
+selector with <code class="docutils literal notranslate"><span class="pre">null</span></code> or <code class="docutils literal notranslate"><span class="pre">None</span></code>, respectively.</p>
+<section id="boundary-representation">
+<h4>Boundary representation<a class="headerlink" href="#boundary-representation" title="Link to this heading">#</a></h4>
+<p>Configured CO₂ acquisition requests centered boundary operands when
+boundaries are enabled. One merged dataset can then feed either prepared
+representation. The configured <code class="docutils literal notranslate"><span class="pre">[model.boundary]</span></code> choice
+decides which one preparation produces: each choice class states which
+representations it can bind and which extra inputs it needs
+(<a class="reference internal" href="../reference/openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.boundary_preparation" title="openghg_inversions.models.boundary.boundary_preparation"><code class="xref py py-func docutils literal notranslate"><span class="pre">boundary_preparation()</span></code></a>).</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id5">
+<caption><span class="caption-text">Prepared boundary representation</span><a class="headerlink" href="#id5" title="Link to this table">#</a></caption>
+<thead>
+<tr class="row-odd"><th class="head"><p><code class="docutils literal notranslate"><span class="pre">[model.boundary]</span> <span class="pre">type</span></code></p></th>
+<th class="head"><p>Omitted <code class="docutils literal notranslate"><span class="pre">boundary_representation</span></code></p></th>
+<th class="head"><p>Explicit choice</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;multiplicative&quot;</span></code> (or no boundary)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;ordinary&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;ordinary&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;centered&quot;</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;additive&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;centered&quot;</span></code>, with <code class="docutils literal notranslate"><span class="pre">bc_centering_weights_path</span></code> for weighted anomalies with a positive scale</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;centered&quot;</span></code> only</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;anomaly_scaling&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;centered&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;centered&quot;</span></code> only</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Use <code class="docutils literal notranslate"><span class="pre">&quot;centered&quot;</span></code> with a multiplicative boundary where precision matters,
+for example for large absolute backgrounds. A saved preparation can serve
+several model configurations: prepare it as <code class="docutils literal notranslate"><span class="pre">&quot;centered&quot;</span></code> to keep every
+boundary family available.</p>
+<p>Every stage checks the preparation against the configured choice. Building a
+centered preparation from merged data without centered operands (the
+ModelScenario route) fails; importing or sampling a preparation whose
+representation the choice cannot bind fails before model construction, as does
+an explicit <code class="docutils literal notranslate"><span class="pre">boundary_representation</span></code> that differs from a saved artifact, or
+a weighted additive choice without stored weights.</p>
+<p>Python callers can supply in-memory merged data instead of acquiring:
+<code class="docutils literal notranslate"><span class="pre">run_co2(config_file=...,</span> <span class="pre">merged_data=merged)</span></code> or
+<code class="docutils literal notranslate"><span class="pre">handoffs.prepare(**Co2PreparationConfig.from_params(params).preparation_arguments(),</span>
+<span class="pre">merged_data=merged,</span> <span class="pre">output_dir=...)</span></code>. Supplied data must match the requested
+species, domain, window and exact set of flux sources. Omit
+<code class="docutils literal notranslate"><span class="pre">[data.acquisition]</span></code> when supplying <code class="docutils literal notranslate"><span class="pre">MergedData</span></code>. Linked CO₂/O₂
+configurations still import a saved artifact.</p>
+</section>
 </section>
 </section>
 <section id="run-the-global-scalar-sigma-co2-likelihood">
@@ -1704,7 +1834,7 @@ other retained-spectrum and reconstruction diagnostics.</p>
 
 <span class="n">result</span> <span class="o">=</span> <span class="n">run_co2</span><span class="p">(</span><span class="n">params</span><span class="o">=</span><span class="p">{</span>
     <span class="s2">"recipe"</span><span class="p">:</span> <span class="s2">"co2"</span><span class="p">,</span>
-    <span class="s2">"prepared_inputs"</span><span class="p">:</span> <span class="p">{</span>
+    <span class="s2">"data"</span><span class="p">:</span> <span class="p">{</span>
         <span class="s2">"path"</span><span class="p">:</span> <span class="s2">"co2-coherent-low-rank.zarr"</span><span class="p">,</span>
         <span class="s2">"start_date"</span><span class="p">:</span> <span class="s2">"2020-01-01"</span><span class="p">,</span> <span class="s2">"end_date"</span><span class="p">:</span> <span class="s2">"2020-02-01"</span><span class="p">,</span>
         <span class="s2">"domain"</span><span class="p">:</span> <span class="s2">"EUROPE"</span><span class="p">,</span>
@@ -1959,6 +2089,10 @@ complete tuning support, even when burn exceeds the number of tuning draws.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#compose-co2-scientific-operations">Compose CO2 scientific operations</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#select-a-boundary-correction">Select a boundary correction</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#configure-prepared-input-execution-from-toml">Configure prepared-input execution from TOML</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#build-a-co2-preparation-from-configured-acquisition">Build a CO2 preparation from configured acquisition</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#boundary-representation">Boundary representation</a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-the-global-scalar-sigma-co2-likelihood">Run the global scalar-sigma CO2 likelihood</a></li>

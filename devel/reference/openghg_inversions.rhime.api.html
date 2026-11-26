@@ -375,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.operators.html">openghg_inversions.basis.operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.options.html">openghg_inversions.basis.options</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html">openghg_inversions.basis.prior_uncertainty</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.support.html">openghg_inversions.basis.support</a></li>
 </ul>
@@ -419,6 +420,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html">openghg_inversions.models.boundary.contracts</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html">openghg_inversions.models.boundary.multiplicative</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.outputs.html">openghg_inversions.models.boundary.outputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.preparation.html">openghg_inversions.models.boundary.preparation</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
@@ -459,6 +461,7 @@
 </details></li>
 <li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.acquisition.html">openghg_inversions.rhime.co2.acquisition</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html">openghg_inversions.rhime.co2.co2_affine_output</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a></li>
@@ -480,6 +483,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.prepare_from_merged_data.html">openghg_inversions.rhime.co2.prepare_from_merged_data</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.rank_reference.html">openghg_inversions.rhime.co2.rank_reference</a></li>
 </ul>
 </details></li>
@@ -604,7 +608,7 @@
 <code class="docutils literal notranslate"><span class="pre">co2_o2</span></code> or <code class="docutils literal notranslate"><span class="pre">co2_o2_cached_sigma</span></code>.</p></li>
 <li><p><strong>**kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>) – Forwarded unchanged to the selected recipe. Standard,
 multisector and nested accept their existing INI/Python inputs.
-CO2 accepts its configured prepared-input product request.
+CO2 accepts configured native or prepared inputs for its products.
 Linked CO2/O2 recipes require <code class="docutils literal notranslate"><span class="pre">prepared_inputs</span></code>;
 selection does not add acquisition or checkpoint routes.</p></li>
 </ul>

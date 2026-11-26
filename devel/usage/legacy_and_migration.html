@@ -859,6 +859,12 @@ Remove CO2 <code class="docutils literal notranslate"><span class="pre">variant<
 selects the matched cached sampler automatically. Use a supported positive-prior
 table rather than <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior_scale</span></code>. The packaged example is now
 <code class="docutils literal notranslate"><span class="pre">co2_fixed_ou.toml</span></code>.</p>
+<p>Update ordinary CO₂ TOML files to use <code class="docutils literal notranslate"><span class="pre">[data]</span></code>. The usual unknown-option
+validation reports <code class="docutils literal notranslate"><span class="pre">[prepared_inputs]</span></code> as an unknown section for this recipe.
+Use <code class="docutils literal notranslate"><span class="pre">data.path</span></code> for a saved preparation. For a new preparation, put retrieval
+choices in <code class="docutils literal notranslate"><span class="pre">[data.acquisition]</span></code> and scientific preparation choices in
+<code class="docutils literal notranslate"><span class="pre">[data.preparation]</span></code>. See <a class="reference internal" href="co2_models.html#co2-configured-preparation"><span class="std std-ref">Build a CO2 preparation from configured acquisition</span></a>. Linked CO₂/O₂
+still uses <code class="docutils literal notranslate"><span class="pre">[prepared_inputs]</span></code> for saved preparations.</p>
 <p>Replace linked <code class="docutils literal notranslate"><span class="pre">Co2O2RunSetup</span></code> and <code class="docutils literal notranslate"><span class="pre">resolve_co2_family_config</span></code> with
 <code class="docutils literal notranslate"><span class="pre">Co2O2ModelConfig.from_params(config)</span></code> and pass <code class="docutils literal notranslate"><span class="pre">model.bind(prepared)</span></code> as
 scientific keywords to <code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs</span></code>. Remove linked

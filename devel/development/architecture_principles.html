@@ -509,6 +509,21 @@ recipes can retain short, similar orchestration while their scientific
 operations differ. For example, nested preparation owns domain alignment and
 overlap masking; cached CO2 inference keeps its matched graph, sampler and
 cache-update order together. State unsupported checkpoint routes explicitly.</p>
+<p>Ordinary CO₂ follows the standard recipe’s acquisition and preparation boundary.
+The configured acquisition step uses the shared request facts in <code class="docutils literal notranslate"><span class="pre">[data]</span></code>
+and retrieval choices in <code class="docutils literal notranslate"><span class="pre">[data.acquisition]</span></code> to produce <code class="docutils literal notranslate"><span class="pre">MergedData</span></code>.
+The preparation step takes that handoff and the choices in
+<code class="docutils literal notranslate"><span class="pre">[data.preparation]</span></code> to build the coherent inputs and affine companion.
+The full runner uses the pair in memory. Staged <code class="docutils literal notranslate"><span class="pre">prepare</span></code> calls the same
+steps and saves the pair. A caller supplying <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> starts at the
+preparation step. File-backed acquisition remains tracked in
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/829">#829</a>.</p>
+<p>Basis resource resolvers declare their inputs as
+<a class="reference internal" href="../reference/openghg_inversions.basis.options.html#openghg_inversions.basis.options.FluxBasisOptions" title="openghg_inversions.basis.options.FluxBasisOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">FluxBasisOptions</span></code></a> and
+<a class="reference internal" href="../reference/openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.BcBasisOptions" title="openghg_inversions.rhime.params.BcBasisOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">BcBasisOptions</span></code></a>, with <code class="docutils literal notranslate"><span class="pre">use_bc</span></code>
+passed explicitly to boundary basis resolution. Recipe parsers populate
+those shared types from their own configuration layouts.
+The basis builders take the resolved settings and scientific arrays explicitly.</p>
 <p>Current file-backed commands and their restrictions are documented in
 <a class="reference internal" href="../usage/staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> and <a class="reference internal" href="../usage/co2_model_family.html"><span class="doc">CO₂ model family</span></a>.
 The reusable recipe execution and prepared/sample handoffs in <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/802">PR 802</a> are a proposed
@@ -590,8 +605,8 @@ checkpoint between other layers.</p>
 An owner may be an existing shared function or a recipe-specific operation.
 State unsupported capabilities explicitly; a prepared-input-only recipe need
 not invent acquisition or a complete staged workflow.</p>
-<div class="pst-scrollable-table-container"><table class="table" id="id1">
-<caption><span class="caption-text">Responsibilities a recipe author must account for</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
+<div class="pst-scrollable-table-container"><table class="table" id="id2">
+<caption><span class="caption-text">Responsibilities a recipe author must account for</span><a class="headerlink" href="#id2" title="Link to this table">#</a></caption>
 <colgroup>
 <col style="width: 20.0%" />
 <col style="width: 45.0%" />

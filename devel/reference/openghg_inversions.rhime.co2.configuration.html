@@ -375,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.operators.html">openghg_inversions.basis.operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.options.html">openghg_inversions.basis.options</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html">openghg_inversions.basis.prior_uncertainty</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.support.html">openghg_inversions.basis.support</a></li>
 </ul>
@@ -419,6 +420,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html">openghg_inversions.models.boundary.contracts</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html">openghg_inversions.models.boundary.multiplicative</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.outputs.html">openghg_inversions.models.boundary.outputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.preparation.html">openghg_inversions.models.boundary.preparation</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
@@ -459,6 +461,7 @@
 </details></li>
 <li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l3 current active has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.acquisition.html">openghg_inversions.rhime.co2.acquisition</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html">openghg_inversions.rhime.co2.co2_affine_output</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a></li>
@@ -480,6 +483,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.prepare_from_merged_data.html">openghg_inversions.rhime.co2.prepare_from_merged_data</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.rank_reference.html">openghg_inversions.rhime.co2.rank_reference</a></li>
 </ul>
 </details></li>
@@ -606,20 +610,44 @@
 <dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">end_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">boundary_representation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_sources</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">()</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">acquisition</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">native</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.configuration.Co2PreparationConfig" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Artifact selection and original requested context, without scientific I/O.</p>
-<p>Paths resolve from the invocation directory. The affine companion is an
-association of the preparation, independent of current output choices.</p>
+<p>Resolved data request for the configured CO2 entry points.</p>
+<p><code class="docutils literal notranslate"><span class="pre">[data]</span></code> either names a saved artifact with <code class="docutils literal notranslate"><span class="pre">path</span></code> or describes a
+new preparation from merged surface data. <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> supplies the
+ordered inventory names to both steps. <code class="docutils literal notranslate"><span class="pre">acquisition</span></code> has the retrieval
+arguments, and <code class="docutils literal notranslate"><span class="pre">native</span></code> has the scientific preparation choices. Paths
+resolve from the invocation directory.</p>
+<p>The prepared boundary representation is resolved by the configured
+<code class="docutils literal notranslate"><span class="pre">[model.boundary]</span></code> choice: <code class="docutils literal notranslate"><span class="pre">boundary_representation</span></code> may select one it
+can bind, and otherwise its default is used (see
+<a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.boundary_preparation" title="openghg_inversions.models.boundary.boundary_preparation"><code class="xref py py-func docutils literal notranslate"><span class="pre">boundary_preparation()</span></code></a>). Only the
+boundary table is read from <code class="docutils literal notranslate"><span class="pre">[model]</span></code>; other model options belong to
+<a class="reference internal" href="#openghg_inversions.rhime.co2.configuration.Co2ModelConfig" title="openghg_inversions.rhime.co2.configuration.Co2ModelConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2ModelConfig</span></code></a>.</p>
 <dl class="field-list simple">
 </dl>
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.configuration.Co2PreparationConfig.from_params">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">require_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.configuration.Co2PreparationConfig.from_params" title="Link to this definition">#</a></dt>
-<dd><p>Parse only prepared-input options; optionally require an import path.</p>
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">require_source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.configuration.Co2PreparationConfig.from_params" title="Link to this definition">#</a></dt>
+<dd><p>Parse prepared-input options and the boundary choice they serve.</p>
 <dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>config</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><em>object</em></a><em>]</em>) – Complete CO2 request.</p></li>
+<li><p><strong>require_source</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Require a saved path or native preparation choices.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If options are missing, unknown, conflicting, or the
+    boundary choice cannot use the requested representation.</p>
+</dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.rhime.co2.configuration.Co2PreparationConfig" title="openghg_inversions.rhime.co2.configuration.Co2PreparationConfig"><em>Co2PreparationConfig</em></a></p>
 </dd>
@@ -633,6 +661,124 @@ association of the preparation, independent of current output choices.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.configuration.Co2NativePreparationConfig">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Co2NativePreparationConfig</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_basis</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">native_prior</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">filters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">averaging_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">aggregation_error_rank</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">512</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_centering_weights_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.configuration.Co2NativePreparationConfig" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Scientific choices for reducing merged surface CO2 data to model inputs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Variables<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>filters</strong> (<em>Any</em>) – Observation filters applied before deriving errors.</p></li>
+<li><p><strong>averaging_error</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Include variability when deriving observation errors.</p></li>
+<li><p><strong>basis</strong> (<a class="reference internal" href="openghg_inversions.basis.options.html#openghg_inversions.basis.options.FluxBasisOptions" title="openghg_inversions.basis.options.FluxBasisOptions"><em>openghg_inversions.basis.options.FluxBasisOptions</em></a>) – Saved or generated flux basis selection.</p></li>
+<li><p><strong>bc_basis</strong> (<a class="reference internal" href="openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.BcBasisOptions" title="openghg_inversions.rhime.params.BcBasisOptions"><em>openghg_inversions.rhime.params.BcBasisOptions</em></a>) – Exact boundary basis files or a built-in boundary basis.</p></li>
+<li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to prepare boundary sensitivities.</p></li>
+<li><p><strong>native_prior</strong> (<a class="reference internal" href="#openghg_inversions.rhime.co2.configuration.Co2NativePrior" title="openghg_inversions.rhime.co2.configuration.Co2NativePrior"><em>openghg_inversions.rhime.co2.configuration.Co2NativePrior</em></a>) – Native prior used for the coherent reduction and affine map.</p></li>
+<li><p><strong>aggregation_error_rank</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><em>None</em>) – Maximum stored rank, or None for exact covariance.</p></li>
+<li><p><strong>bc_centering_weights_path</strong> (<a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>pathlib.Path</em></a><em> | </em><em>None</em>) – Optional netCDF weights for weighted boundaries.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.configuration.Co2NativePreparationConfig.from_params">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">preparation</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_bc</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.configuration.Co2NativePreparationConfig.from_params" title="Link to this definition">#</a></dt>
+<dd><p>Resolve scientific choices for preparing merged CO2 data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>preparation</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><em>object</em></a><em>]</em>) – Scientific preparation options remaining after the
+boundary representation has been resolved.</p></li>
+<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Requested transport domain.</p></li>
+<li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to prepare boundary sensitivities.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Validated options for scientific preparation.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If required options are absent or choices are invalid.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.15)"><strong>TypeError</strong></a> – If an option has an invalid type.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.rhime.co2.configuration.Co2NativePreparationConfig" title="openghg_inversions.rhime.co2.configuration.Co2NativePreparationConfig"><em>Co2NativePreparationConfig</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.configuration.Co2NativePreparationConfig.resource_paths">
+<span class="sig-name descname"><span class="pre">resource_paths</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.configuration.Co2NativePreparationConfig.resource_paths" title="Link to this definition">#</a></dt>
+<dd><p>Identify the configured files native preparation reads, for output alias guards.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)">tuple</a>[<a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a>, …]</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.configuration.Co2NativePrior">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Co2NativePrior</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">stdev</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">mean</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">correlation_length</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.5</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">latitude_correlation_length</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">longitude_correlation_length</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.configuration.Co2NativePrior" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Native Gaussian prior on dimensionless flux scaling, before reduction.</p>
+<p>The prior has a constant mean and a separable exponential covariance over
+the native latitude/longitude grid, with lengths in degrees.</p>
+<dl class="field-list simple">
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.configuration.Co2NativePrior.from_params">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.configuration.Co2NativePrior.from_params" title="Link to this definition">#</a></dt>
+<dd><p>Parse the native Gaussian prior specification.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>value</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><em>object</em></a>) – Table with the prior standard deviation and optional mean
+and correlation lengths in degrees.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The constant mean and separable covariance choices.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If required values are absent or choices are invalid.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.15)"><strong>TypeError</strong></a> – If a supplied value has an invalid type.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.rhime.co2.configuration.Co2NativePrior" title="openghg_inversions.rhime.co2.configuration.Co2NativePrior"><em>Co2NativePrior</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -810,6 +956,15 @@ section names; this envelope check leaves inactive sections unresolved.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.configuration.Co2PreparationConfig"><code class="docutils literal notranslate"><span class="pre">Co2PreparationConfig</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.configuration.Co2PreparationConfig.from_params"><code class="docutils literal notranslate"><span class="pre">Co2PreparationConfig.from_params()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.configuration.Co2PreparationConfig.preparation_arguments"><code class="docutils literal notranslate"><span class="pre">Co2PreparationConfig.preparation_arguments()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.configuration.Co2NativePreparationConfig"><code class="docutils literal notranslate"><span class="pre">Co2NativePreparationConfig</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.configuration.Co2NativePreparationConfig.from_params"><code class="docutils literal notranslate"><span class="pre">Co2NativePreparationConfig.from_params()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.configuration.Co2NativePreparationConfig.resource_paths"><code class="docutils literal notranslate"><span class="pre">Co2NativePreparationConfig.resource_paths()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.configuration.Co2NativePrior"><code class="docutils literal notranslate"><span class="pre">Co2NativePrior</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.configuration.Co2NativePrior.from_params"><code class="docutils literal notranslate"><span class="pre">Co2NativePrior.from_params()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.configuration.Co2ModelConfig"><code class="docutils literal notranslate"><span class="pre">Co2ModelConfig</span></code></a><ul class="nav section-nav flex-column">

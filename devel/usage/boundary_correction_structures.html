@@ -533,8 +533,9 @@ and <code class="docutils literal notranslate"><span class="pre">anchor_time</sp
 anchored at <code class="docutils literal notranslate"><span class="pre">anchor_time</span></code> or, when it is <code class="docutils literal notranslate"><span class="pre">None</span></code>, at the fit’s earliest
 observation (the RHIME parameter adapter defaults <code class="docutils literal notranslate"><span class="pre">bc_freq_anchor</span></code> to the
 configured start date). Weighted
-centering requires the prepared <code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code>; the other
-structures ignore them.</p>
+centering with a positive <code class="docutils literal notranslate"><span class="pre">anomaly_scale</span></code> requires the prepared
+<code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code>; a level-only boundary (<code class="docutils literal notranslate"><span class="pre">anomaly_scale</span> <span class="pre">=</span> <span class="pre">0</span></code>) and
+the other structures ignore them.</p>
 <p>The mean shift responds through <span class="math notranslate nohighlight">\(M\)</span>, contributing <span class="math notranslate nohighlight">\(\delta
 M\mathbf1\)</span> to the observations. Under supported surface preparation
 <span class="math notranslate nohighlight">\(M\mathbf1=\mathbf1\)</span>; for other transport it is the transported shift

@@ -375,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.operators.html">openghg_inversions.basis.operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.options.html">openghg_inversions.basis.options</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html">openghg_inversions.basis.prior_uncertainty</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.support.html">openghg_inversions.basis.support</a></li>
 </ul>
@@ -419,6 +420,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html">openghg_inversions.models.boundary.contracts</a></li>
 <li class="toctree-l4 current active"><a class="current reference internal" href="#">openghg_inversions.models.boundary.multiplicative</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.outputs.html">openghg_inversions.models.boundary.outputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.preparation.html">openghg_inversions.models.boundary.preparation</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
@@ -459,6 +461,7 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.acquisition.html">openghg_inversions.rhime.co2.acquisition</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html">openghg_inversions.rhime.co2.co2_affine_output</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a></li>
@@ -480,6 +483,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.prepare_from_merged_data.html">openghg_inversions.rhime.co2.prepare_from_merged_data</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.rank_reference.html">openghg_inversions.rhime.co2.rank_reference</a></li>
 </ul>
 </details></li>
@@ -832,6 +836,23 @@ defaults <code class="docutils literal notranslate"><span class="pre">bc_freq_an
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.models.boundary.multiplicative.MultiplicativeChoice.preparation">
+<span class="sig-name descname"><span class="pre">preparation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">representation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.boundary.multiplicative.MultiplicativeChoice.preparation" title="Link to this definition">#</a></dt>
+<dd><p>Scaling binds either representation; ordinary unless centered is requested.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>representation</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'ordinary'</em><em>, </em><em>'centered'</em><em>] </em><em>| </em><em>None</em>) – Requested representation, or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The requested representation, defaulting to <code class="docutils literal notranslate"><span class="pre">&quot;ordinary&quot;</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.models.boundary.preparation.html#openghg_inversions.models.boundary.preparation.Preparation" title="openghg_inversions.models.boundary.preparation.Preparation"><em>Preparation</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.models.boundary.multiplicative.MultiplicativeChoice.bind">
 <span class="sig-name descname"><span class="pre">bind</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">observations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sensitivity</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.boundary.multiplicative.MultiplicativeChoice.bind" title="Link to this definition">#</a></dt>
 <dd><p>Bind prepared centered sensitivity to one fit’s rows and periods.</p>
@@ -984,6 +1005,7 @@ the caller. Alignment and materialization belong to the caller.</p>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.multiplicative.MultiplicativeChoice"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.multiplicative.MultiplicativeChoice.mean_shift"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice.mean_shift</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.multiplicative.MultiplicativeChoice.preparation"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice.preparation()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.multiplicative.MultiplicativeChoice.bind"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice.bind()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.multiplicative.MultiplicativeChoice.bind_absolute"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice.bind_absolute()</span></code></a></li>
 </ul>

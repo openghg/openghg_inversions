@@ -375,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.operators.html">openghg_inversions.basis.operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.options.html">openghg_inversions.basis.options</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html">openghg_inversions.basis.prior_uncertainty</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.support.html">openghg_inversions.basis.support</a></li>
 </ul>
@@ -419,6 +420,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html">openghg_inversions.models.boundary.contracts</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html">openghg_inversions.models.boundary.multiplicative</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.outputs.html">openghg_inversions.models.boundary.outputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.preparation.html">openghg_inversions.models.boundary.preparation</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
@@ -459,6 +461,7 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.acquisition.html">openghg_inversions.rhime.co2.acquisition</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html">openghg_inversions.rhime.co2.co2_affine_output</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a></li>
@@ -480,6 +483,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.prepare_from_merged_data.html">openghg_inversions.rhime.co2.prepare_from_merged_data</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.rank_reference.html">openghg_inversions.rhime.co2.rank_reference</a></li>
 </ul>
 </details></li>
@@ -672,7 +676,10 @@ sensitivity; only <a class="reference internal" href="#openghg_inversions.models
 <a class="reference internal" href="#openghg_inversions.models.boundary.AbsoluteChoice" title="openghg_inversions.models.boundary.AbsoluteChoice"><code class="xref py py-class docutils literal notranslate"><span class="pre">AbsoluteChoice</span></code></a>, whose <code class="docutils literal notranslate"><span class="pre">bind_absolute</span></code> binds absolute <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> to
 <a class="reference internal" href="#openghg_inversions.models.boundary.MultiplicativeBoundary" title="openghg_inversions.models.boundary.MultiplicativeBoundary"><code class="xref py py-class docutils literal notranslate"><span class="pre">MultiplicativeBoundary</span></code></a>, the one bound record that does not inherit
 <a class="reference internal" href="openghg_inversions.models.boundary.centered.html#openghg_inversions.models.boundary.centered.CenteredBoundary" title="openghg_inversions.models.boundary.centered.CenteredBoundary"><code class="xref py py-class docutils literal notranslate"><span class="pre">CenteredBoundary</span></code></a>. <a class="reference internal" href="#openghg_inversions.models.boundary.bind_prepared" title="openghg_inversions.models.boundary.bind_prepared"><code class="xref py py-func docutils literal notranslate"><span class="pre">bind_prepared()</span></code></a> is the one place
-that checks a choice against the representation preparation produced. Centered
+that checks a choice against the representation preparation produced; before
+preparation, <code class="docutils literal notranslate"><span class="pre">choice.preparation(representation)</span></code> (or
+<a class="reference internal" href="#openghg_inversions.models.boundary.boundary_preparation" title="openghg_inversions.models.boundary.boundary_preparation"><code class="xref py py-func docutils literal notranslate"><span class="pre">boundary_preparation()</span></code></a>, which also covers no boundary) states which
+representation and prepared inputs a choice needs. Centered
 sensitivity keeps small anomalies after cancellation: likelihoods use
 observations shifted by the fixed <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">M</span> <span class="pre">1</span></code>, while absolute outputs add it
 back. Binding checks precision. A default centered multiplicative prior
@@ -730,8 +737,8 @@ when the choice requests no calendar.</p></li>
 (concentration units) and <code class="docutils literal notranslate"><span class="pre">H_bc_mass</span></code> (dimensionless) on
 <code class="docutils literal notranslate"><span class="pre">(observation,</span> <span class="pre">bc_region)</span></code>, where <code class="docutils literal notranslate"><span class="pre">bc_region</span></code> indexes
 <code class="docutils literal notranslate"><span class="pre">(bc_curtain,</span> <span class="pre">bc_period)</span></code> states, and scalar <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code>
-in the anomaly’s units. Weighted anomalies hold the
-<a class="reference internal" href="openghg_inversions.models.boundary.contracts.html#openghg_inversions.models.boundary.contracts.BoundAdditiveSensitivity" title="openghg_inversions.models.boundary.contracts.BoundAdditiveSensitivity"><code class="xref py py-class docutils literal notranslate"><span class="pre">BoundAdditiveSensitivity</span></code></a> extension, with
+in the anomaly’s units. Weighted anomalies with a positive scale
+hold the <a class="reference internal" href="openghg_inversions.models.boundary.contracts.html#openghg_inversions.models.boundary.contracts.BoundAdditiveSensitivity" title="openghg_inversions.models.boundary.contracts.BoundAdditiveSensitivity"><code class="xref py py-class docutils literal notranslate"><span class="pre">BoundAdditiveSensitivity</span></code></a> extension, with
 positive <code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code> on <code class="docutils literal notranslate"><span class="pre">bc_region</span></code>.
 The arrays are borrowed and may be Dask-backed. Materialize them
 jointly with the other model inputs before <a class="reference internal" href="#openghg_inversions.models.boundary.AdditiveBoundary.add" title="openghg_inversions.models.boundary.AdditiveBoundary.add"><code class="xref py py-meth docutils literal notranslate"><span class="pre">add()</span></code></a>; rows may
@@ -883,7 +890,8 @@ period contrasts or independent anomalies.</p></li>
 anomaly coordinates, in concentration units. Zero keeps only the
 mean shift.</p></li>
 <li><p><strong>anomalies</strong> (<em>Literal</em><em>[</em><em>'weighted'</em><em>, </em><em>'period_contrasts'</em><em>, </em><em>'independent'</em><em>]</em>) – Anomaly structure: <code class="docutils literal notranslate"><span class="pre">&quot;weighted&quot;</span></code> (requires prepared
-centering weights), <code class="docutils literal notranslate"><span class="pre">&quot;period_contrasts&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;independent&quot;</span></code>.</p></li>
+centering weights when <code class="docutils literal notranslate"><span class="pre">anomaly_scale</span></code> is positive),
+<code class="docutils literal notranslate"><span class="pre">&quot;period_contrasts&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;independent&quot;</span></code>.</p></li>
 <li><p><strong>mean_by_period</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Fit one independent mean shift per boundary period;
 requires a mean prior and a <code class="docutils literal notranslate"><span class="pre">frequency</span></code>.</p></li>
 <li><p><strong>frequency</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Boundary period frequency, with the syntax and calendar of
@@ -910,6 +918,29 @@ defaults <code class="docutils literal notranslate"><span class="pre">bc_freq_an
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.models.boundary.AdditiveChoice.preparation">
+<span class="sig-name descname"><span class="pre">preparation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">representation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.boundary.AdditiveChoice.preparation" title="Link to this definition">#</a></dt>
+<dd><p>Additive corrections need centered sensitivity, and weights for sampled weighted anomalies.</p>
+<p>A level-only boundary (<code class="docutils literal notranslate"><span class="pre">anomaly_scale</span> <span class="pre">=</span> <span class="pre">0</span></code>) samples no anomalies, so
+<a class="reference internal" href="#openghg_inversions.models.boundary.AdditiveChoice.bind" title="openghg_inversions.models.boundary.AdditiveChoice.bind"><code class="xref py py-meth docutils literal notranslate"><span class="pre">bind()</span></code></a> ignores any weights and preparation need not store them.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>representation</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'ordinary'</em><em>, </em><em>'centered'</em><em>] </em><em>| </em><em>None</em>) – Requested representation, or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Centered preparation, with <code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code> for weighted
+anomalies with a positive scale.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If ordinary sensitivity is requested.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.models.boundary.preparation.html#openghg_inversions.models.boundary.preparation.Preparation" title="openghg_inversions.models.boundary.preparation.Preparation"><em>Preparation</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.models.boundary.AdditiveChoice.bind">
 <span class="sig-name descname"><span class="pre">bind</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">observations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sensitivity</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.boundary.AdditiveChoice.bind" title="Link to this definition">#</a></dt>
 <dd><p>Bind centered sensitivity, and any centering weights, to one fit.</p>
@@ -929,17 +960,18 @@ choices ignore them.</p></li>
 <dd class="field-even"><p>The bound boundary. <code class="docutils literal notranslate"><span class="pre">H_bc_anomaly</span></code> and <code class="docutils literal notranslate"><span class="pre">H_bc_mass</span></code> lie on
 <code class="docutils literal notranslate"><span class="pre">(observation,</span> <span class="pre">bc_region)</span></code> with a <code class="docutils literal notranslate"><span class="pre">(bc_curtain,</span> <span class="pre">bc_period)</span></code>
 state index, beside the stored scalar <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code> and, for
-weighted anomalies, <code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code> on <code class="docutils literal notranslate"><span class="pre">bc_region</span></code>.
+weighted anomalies with a positive scale, <code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code>
+on <code class="docutils literal notranslate"><span class="pre">bc_region</span></code>.
 Numerical payloads stay borrowed and lazy.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If PyTensor is not configured for float64, periods or
     indexed timestamps conflict with the observations, weighted
-    anomalies have no weights, or the weights’ curtain and period
-    labels differ from the bound states (for example because they
-    were prepared with another calendar), or there is no mean
-    shift prior and the bound states leave no anomaly coordinates,
-    so nothing would be sampled.</p>
+    anomalies with a positive scale have no weights, or their
+    weights’ curtain and period labels differ from the bound
+    states (for example because they were prepared with another
+    calendar), or there is no mean shift prior and the bound states
+    leave no anomaly coordinates, so nothing would be sampled.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="openghg_inversions.models.boundary.additive.html#openghg_inversions.models.boundary.additive.AdditiveBoundary" title="openghg_inversions.models.boundary.additive.AdditiveBoundary"><em>AdditiveBoundary</em></a></p>
@@ -1105,6 +1137,26 @@ earliest selected observation of the fit. See
 <dt class="sig sig-object py" id="openghg_inversions.models.boundary.AnomalyScalingChoice.mean_shift">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">mean_shift</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.models.boundary.centered.html#openghg_inversions.models.boundary.centered.MeanShift" title="openghg_inversions.models.boundary.centered.MeanShift"><span class="pre">MeanShift</span></a></span><a class="headerlink" href="#openghg_inversions.models.boundary.AnomalyScalingChoice.mean_shift" title="Link to this definition">#</a></dt>
 <dd><p>The mean shift these options define; without a prior it adds nothing.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.models.boundary.AnomalyScalingChoice.preparation">
+<span class="sig-name descname"><span class="pre">preparation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">representation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.boundary.AnomalyScalingChoice.preparation" title="Link to this definition">#</a></dt>
+<dd><p>Anomaly scaling needs centered sensitivity; the stored reference is its default <code class="docutils literal notranslate"><span class="pre">c'</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>representation</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'ordinary'</em><em>, </em><em>'centered'</em><em>] </em><em>| </em><em>None</em>) – Requested representation, or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Centered preparation.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If ordinary sensitivity is requested.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.models.boundary.preparation.html#openghg_inversions.models.boundary.preparation.Preparation" title="openghg_inversions.models.boundary.preparation.Preparation"><em>Preparation</em></a></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
@@ -1568,6 +1620,27 @@ by <a class="reference internal" href="#openghg_inversions.models.boundary.Absol
 </dl>
 </dd></dl>
 
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.models.boundary.Choice.preparation">
+<span class="sig-name descname"><span class="pre">preparation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">representation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.boundary.Choice.preparation" title="Link to this definition">#</a></dt>
+<dd><p>Return the prepared inputs this choice needs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>representation</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'ordinary'</em><em>, </em><em>'centered'</em><em>] </em><em>| </em><em>None</em>) – Requested boundary representation, or <code class="docutils literal notranslate"><span class="pre">None</span></code> for
+the family’s default.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The representation and prepared inputs this choice binds.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the family cannot bind the requested representation.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.models.boundary.preparation.html#openghg_inversions.models.boundary.preparation.Preparation" title="openghg_inversions.models.boundary.preparation.Preparation"><em>Preparation</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py class">
@@ -1699,6 +1772,50 @@ applied to both role keys and graph names; metadata is unprefixed.</p>
 </dd></dl>
 
 <dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.models.boundary.Preparation">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Preparation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">representation</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">centering_weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.boundary.Preparation" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Prepared boundary inputs required by one boundary choice.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Variables<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>representation</strong> (<em>Literal</em><em>[</em><em>'ordinary'</em><em>, </em><em>'centered'</em><em>]</em>) – <code class="docutils literal notranslate"><span class="pre">&quot;ordinary&quot;</span></code> for absolute <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;centered&quot;</span></code>
+for anomaly, mass and reference operands.</p></li>
+<li><p><strong>centering_weights</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether preparation must store
+<code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.boundary.boundary_preparation">
+<span class="sig-name descname"><span class="pre">boundary_preparation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">choice</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">representation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.boundary.boundary_preparation" title="Link to this definition">#</a></dt>
+<dd><p>Resolve the prepared boundary inputs for a choice, or for no boundary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>choice</strong> (<a class="reference internal" href="#openghg_inversions.models.boundary.Choice" title="openghg_inversions.models.boundary.Choice"><em>Choice</em></a><em> | </em><em>None</em>) – The configured boundary choice, or <code class="docutils literal notranslate"><span class="pre">None</span></code> when no boundary
+term is configured.</p></li>
+<li><p><strong>representation</strong> (<a class="reference internal" href="openghg_inversions.boundary_sensitivity.html#openghg_inversions.boundary_sensitivity.BoundaryRepresentation" title="openghg_inversions.boundary_sensitivity.BoundaryRepresentation"><em>BoundaryRepresentation</em></a><em> | </em><em>None</em>) – Explicitly requested representation, or <code class="docutils literal notranslate"><span class="pre">None</span></code> to
+use the choice’s default.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The required preparation. Without a choice, the requested
+representation or <code class="docutils literal notranslate"><span class="pre">&quot;ordinary&quot;</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the representation is unknown or the choice cannot
+    bind it.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.models.boundary.Preparation" title="openghg_inversions.models.boundary.Preparation">Preparation</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.models.boundary.MultiplicativeChoice">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">MultiplicativeChoice</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prior</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frequency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">anchor_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.boundary.MultiplicativeChoice" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
@@ -1738,6 +1855,23 @@ defaults <code class="docutils literal notranslate"><span class="pre">bc_freq_an
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>No mean shift</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.models.boundary.MultiplicativeChoice.preparation">
+<span class="sig-name descname"><span class="pre">preparation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">representation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.boundary.MultiplicativeChoice.preparation" title="Link to this definition">#</a></dt>
+<dd><p>Scaling binds either representation; ordinary unless centered is requested.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>representation</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'ordinary'</em><em>, </em><em>'centered'</em><em>] </em><em>| </em><em>None</em>) – Requested representation, or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The requested representation, defaulting to <code class="docutils literal notranslate"><span class="pre">&quot;ordinary&quot;</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.models.boundary.preparation.html#openghg_inversions.models.boundary.preparation.Preparation" title="openghg_inversions.models.boundary.preparation.Preparation"><em>Preparation</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -2028,6 +2162,7 @@ configuration; set <code class="docutils literal notranslate"><span class="pre">
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.boundary.additive.html#openghg_inversions.models.boundary.additive.AdditiveChoice"><code class="docutils literal notranslate"><span class="pre">AdditiveChoice</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.additive.html#openghg_inversions.models.boundary.additive.AdditiveChoice.mean_shift"><code class="docutils literal notranslate"><span class="pre">AdditiveChoice.mean_shift</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.additive.html#openghg_inversions.models.boundary.additive.AdditiveChoice.preparation"><code class="docutils literal notranslate"><span class="pre">AdditiveChoice.preparation()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.additive.html#openghg_inversions.models.boundary.additive.AdditiveChoice.bind"><code class="docutils literal notranslate"><span class="pre">AdditiveChoice.bind()</span></code></a></li>
 </ul>
 </li>
@@ -2054,6 +2189,7 @@ configuration; set <code class="docutils literal notranslate"><span class="pre">
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.boundary.anomaly_scaling.html#openghg_inversions.models.boundary.anomaly_scaling.AnomalyScalingChoice"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingChoice</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.anomaly_scaling.html#openghg_inversions.models.boundary.anomaly_scaling.AnomalyScalingChoice.mean_shift"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingChoice.mean_shift</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.anomaly_scaling.html#openghg_inversions.models.boundary.anomaly_scaling.AnomalyScalingChoice.preparation"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingChoice.preparation()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.anomaly_scaling.html#openghg_inversions.models.boundary.anomaly_scaling.AnomalyScalingChoice.bind"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingChoice.bind()</span></code></a></li>
 </ul>
 </li>
@@ -2106,6 +2242,7 @@ configuration; set <code class="docutils literal notranslate"><span class="pre">
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html#openghg_inversions.models.boundary.contracts.normalize_centering_weights"><code class="docutils literal notranslate"><span class="pre">normalize_centering_weights()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html#openghg_inversions.models.boundary.contracts.require_centered_precision"><code class="docutils literal notranslate"><span class="pre">require_centered_precision()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html#openghg_inversions.models.boundary.contracts.validate_centering_weight_labels"><code class="docutils literal notranslate"><span class="pre">validate_centering_weight_labels()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html#openghg_inversions.models.boundary.contracts.validate_centering_weights"><code class="docutils literal notranslate"><span class="pre">validate_centering_weights()</span></code></a></li>
 </ul>
 </li>
@@ -2123,6 +2260,7 @@ configuration; set <code class="docutils literal notranslate"><span class="pre">
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html#openghg_inversions.models.boundary.multiplicative.MultiplicativeChoice"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html#openghg_inversions.models.boundary.multiplicative.MultiplicativeChoice.mean_shift"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice.mean_shift</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html#openghg_inversions.models.boundary.multiplicative.MultiplicativeChoice.preparation"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice.preparation()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html#openghg_inversions.models.boundary.multiplicative.MultiplicativeChoice.bind"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice.bind()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html#openghg_inversions.models.boundary.multiplicative.MultiplicativeChoice.bind_absolute"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice.bind_absolute()</span></code></a></li>
 </ul>
@@ -2135,6 +2273,12 @@ configuration; set <code class="docutils literal notranslate"><span class="pre">
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.boundary.outputs.html#openghg_inversions.models.boundary.outputs.Outputs.prefixed"><code class="docutils literal notranslate"><span class="pre">Outputs.prefixed()</span></code></a></li>
 </ul>
 </li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.models.boundary.preparation.html">openghg_inversions.models.boundary.preparation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.boundary.preparation.html#openghg_inversions.models.boundary.preparation.Preparation"><code class="docutils literal notranslate"><span class="pre">Preparation</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.boundary.preparation.html#openghg_inversions.models.boundary.preparation.check_representation"><code class="docutils literal notranslate"><span class="pre">check_representation()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.boundary.preparation.html#openghg_inversions.models.boundary.preparation.boundary_preparation"><code class="docutils literal notranslate"><span class="pre">boundary_preparation()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -2202,6 +2346,7 @@ configuration; set <code class="docutils literal notranslate"><span class="pre">
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.AdditiveChoice"><code class="docutils literal notranslate"><span class="pre">AdditiveChoice</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.AdditiveChoice.mean_shift"><code class="docutils literal notranslate"><span class="pre">AdditiveChoice.mean_shift</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.AdditiveChoice.preparation"><code class="docutils literal notranslate"><span class="pre">AdditiveChoice.preparation()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.AdditiveChoice.bind"><code class="docutils literal notranslate"><span class="pre">AdditiveChoice.bind()</span></code></a></li>
 </ul>
 </li>
@@ -2213,6 +2358,7 @@ configuration; set <code class="docutils literal notranslate"><span class="pre">
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.AnomalyScalingChoice"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingChoice</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.AnomalyScalingChoice.mean_shift"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingChoice.mean_shift</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.AnomalyScalingChoice.preparation"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingChoice.preparation()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.AnomalyScalingChoice.bind"><code class="docutils literal notranslate"><span class="pre">AnomalyScalingChoice.bind()</span></code></a></li>
 </ul>
 </li>
@@ -2246,6 +2392,7 @@ configuration; set <code class="docutils literal notranslate"><span class="pre">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.Choice.frequency"><code class="docutils literal notranslate"><span class="pre">Choice.frequency</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.Choice.anchor_time"><code class="docutils literal notranslate"><span class="pre">Choice.anchor_time</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.Choice.bind"><code class="docutils literal notranslate"><span class="pre">Choice.bind()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.Choice.preparation"><code class="docutils literal notranslate"><span class="pre">Choice.preparation()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.Outputs"><code class="docutils literal notranslate"><span class="pre">Outputs</span></code></a><ul class="nav section-nav flex-column">
@@ -2258,8 +2405,11 @@ configuration; set <code class="docutils literal notranslate"><span class="pre">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.MultiplicativeBoundary.outputs"><code class="docutils literal notranslate"><span class="pre">MultiplicativeBoundary.outputs()</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.Preparation"><code class="docutils literal notranslate"><span class="pre">Preparation</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.boundary_preparation"><code class="docutils literal notranslate"><span class="pre">boundary_preparation()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.MultiplicativeChoice"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.MultiplicativeChoice.mean_shift"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice.mean_shift</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.MultiplicativeChoice.preparation"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice.preparation()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.MultiplicativeChoice.bind"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice.bind()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.boundary.MultiplicativeChoice.bind_absolute"><code class="docutils literal notranslate"><span class="pre">MultiplicativeChoice.bind_absolute()</span></code></a></li>
 </ul>

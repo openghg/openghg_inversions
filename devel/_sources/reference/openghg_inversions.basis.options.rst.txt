@@ -1,0 +1,6 @@
+openghg\_inversions.basis.options
+=================================
+
+.. automodule:: openghg_inversions.basis.options
+   :members:
+   :show-inheritance:

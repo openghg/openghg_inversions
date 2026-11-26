@@ -475,8 +475,10 @@
 <h1>CO₂ model family<a class="headerlink" href="#co2-model-family" title="Link to this heading">#</a></h1>
 <p>The advanced CO₂ model family contains the <strong>CO₂-only</strong> and <strong>linked CO₂/O₂</strong>
 recipes. O₂ is a tracer in the linked recipe, not a standalone supported model.
-Both recipes begin from scientific arrays that have already been prepared; they
-are not alternative species settings for the complete standard runner.</p>
+The linked recipe begins from scientific arrays that have already been
+prepared. The CO₂-only recipe accepts such arrays or builds its preparation from
+configured OpenGHG acquisition (see <a class="reference internal" href="co2_models.html#co2-configured-preparation"><span class="std std-ref">Build a CO2 preparation from configured acquisition</span></a>). Neither
+recipe is an alternative species setting for the complete standard runner.</p>
 <p>The experimental <a class="reference internal" href="surface_preparation.html"><span class="doc">surface preparation pilot</span></a> adds
 explicit source transport and centered stable-BC operands for additive-Gaussian
 recipes, ordinary fixed-OU likelihoods, and the matched cached fixed-OU samplers.
@@ -516,7 +518,10 @@ A complete <code class="docutils literal notranslate"><span class="pre">run_rhim
 <td><p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_inputs()</span></code></a> combines
 canonical RHIME observations and metadata with one coherent reduction
 in a dedicated
-<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact.</p></td>
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact.
+Configured <code class="docutils literal notranslate"><span class="pre">[data.acquisition]</span></code> instead acquires
+continuous-surface data from OpenGHG and builds the preparation with its
+affine companion; see <a class="reference internal" href="co2_models.html#co2-configured-preparation"><span class="std std-ref">Build a CO2 preparation from configured acquisition</span></a>.</p></td>
 <td><p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_o2_inputs()</span></code></a> gathers
 caller-supplied, channel-native prepared arrays; it does not acquire
 OpenGHG data. <a class="reference internal" href="co2_models.html#linked-prepared-replay"><span class="std std-ref">Save and replay linked prepared inputs</span></a> describes NetCDF/Zarr persistence, including
@@ -609,32 +614,39 @@ configure multiplicative or additive boundary corrections for them, follow
 </section>
 <section id="staged-co2-commands">
 <h2>Staged CO₂ commands<a class="headerlink" href="#staged-co2-commands" title="Link to this heading">#</a></h2>
-<p>CO₂ starts from canonical scientific inputs and a coherent reduction,
-or an existing <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact.
-It does not acquire OpenGHG data or infer a coherent reduction from a gas name.
+<p>CO₂ starts from one of three inputs: configured acquisition
+(<code class="docutils literal notranslate"><span class="pre">[data.acquisition]</span></code>; see <a class="reference internal" href="co2_models.html#co2-configured-preparation"><span class="std std-ref">Build a CO2 preparation from configured acquisition</span></a>);
+canonical scientific inputs with a coherent reduction; or an existing
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact. Configured
+acquisition retrieves OpenGHG data and reduces the configured native prior; CO₂
+never infers a coherent reduction from a gas name.
 <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> prepares or loads inputs, explicitly materializes the
 selected scientific arrays, constructs the model, samples, then
-calculates and writes requested products. Full execution uses no manifests.
+calculates and writes requested products. Full execution uses no manifests and
+keeps a new preparation and its affine companion in memory; only staged
+<code class="docutils literal notranslate"><span class="pre">prepare</span></code> saves a reusable pair.
 Direct scientific callers can compose materialization, model construction,
 sampling and trace annotation explicitly; see <a class="reference internal" href="co2_models.html"><span class="doc">CO₂ model recipes</span></a>.</p>
-<p>Saved phases call those same scientific operations. <code class="docutils literal notranslate"><span class="pre">prepare</span></code> references an
-existing numerical artifact and its optional affine companion in place; keep
-those files available for later operations. Python callers
-can also prepare from canonical inputs and a coherent reduction. A new
+<p>Saved phases call those same scientific operations. <code class="docutils literal notranslate"><span class="pre">prepare</span></code> either builds
+a new preparation from <code class="docutils literal notranslate"><span class="pre">[data.acquisition]</span></code> (see
+<a class="reference internal" href="co2_models.html#co2-configured-preparation"><span class="std std-ref">Build a CO2 preparation from configured acquisition</span></a>) or references an existing numerical artifact
+and its optional affine companion in place; keep imported files available for
+later operations. Python callers can also prepare from canonical inputs and a
+coherent reduction. A new
 prepared/affine pair is saved with the existing codecs and checked by the affine
 loader before its manifest is written. Imported pairs retain their numerical
 association. Both routes retain source labels, grids and projection meaning.</p>
 <p>Record original requested dates and domain explicitly. Filtering can remove
 observations at both edges, so retained observation extrema cannot supply the
 original request. Missing imported facts fail clearly; supply
-<code class="docutils literal notranslate"><span class="pre">prepared_inputs.start_date</span></code>, <code class="docutils literal notranslate"><span class="pre">end_date</span></code> and <code class="docutils literal notranslate"><span class="pre">domain</span></code>, or retain those facts
+<code class="docutils literal notranslate"><span class="pre">data.start_date</span></code>, <code class="docutils literal notranslate"><span class="pre">end_date</span></code> and <code class="docutils literal notranslate"><span class="pre">domain</span></code>, or retain those facts
 in preparation provenance. Sites and averaging periods come from the retained
 numerical preparation.</p>
 <p>A TOML configuration can contain:</p>
 <div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="n">format_version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span>
 <span class="n">recipe</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"co2"</span>
 
-<span class="k">[prepared_inputs]</span>
+<span class="k">[data]</span>
 <span class="n">path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"prepared-co2.nc"</span>
 <span class="n">start_date</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"2020-01-01"</span>
 <span class="n">end_date</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"2020-02-01"</span>
@@ -682,10 +694,10 @@ the same <code class="docutils literal notranslate"><span class="pre">sampling</
 <p>The configured <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--model</span> <span class="pre">co2</span></code> CLI route uses
 <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> and writes requested products. Python
 <code class="docutils literal notranslate"><span class="pre">rhime.run(model=&quot;co2&quot;,</span> <span class="pre">config_file=&quot;co2.toml&quot;)</span></code> selects the same configured
-runner and returns <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code>. Acquisition and construction of the defining
-native-resolution reduction remain separate from this prepared-input route.
-That extension is tracked in
-<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/890">CO₂ native preparation #890</a>.</p>
+runner and returns <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code>. Replace <code class="docutils literal notranslate"><span class="pre">data.path</span></code> with the shared input
+choices and the <code class="docutils literal notranslate"><span class="pre">[data.acquisition]</span></code> and <code class="docutils literal notranslate"><span class="pre">[data.preparation]</span></code> tables to
+retrieve and reduce native inputs in the same run. See
+<a class="reference internal" href="co2_models.html#co2-configured-preparation"><span class="std std-ref">Build a CO2 preparation from configured acquisition</span></a>.</p>
 <p>Alternatively, save preparation and inference separately:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>rhime<span class="w"> </span>prepare<span class="w"> </span>--model<span class="w"> </span>co2<span class="w"> </span>-c<span class="w"> </span>co2.toml<span class="w"> </span>--output-dir<span class="w"> </span>run/prepare
 rhime<span class="w"> </span>prior-predictive<span class="w"> </span>--model<span class="w"> </span>co2<span class="w"> </span>-c<span class="w"> </span>co2.toml<span class="w"> </span><span class="se">\</span>

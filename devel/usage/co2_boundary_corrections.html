@@ -496,9 +496,10 @@ multiplicative priors. The default multiplicative prior supports
 <code class="docutils literal notranslate"><span class="pre">floatX=float32</span></code> as well. Binding checks the selected prior and precision.
 The <a class="reference internal" href="../development/fixed_ou_likelihood.html#fixed-ou-step-precision"><span class="std std-ref">precision guide</span></a> explains the dtype
 choices and the rounding of absolute concentrations in float32.</p></li>
-<li><p>For weighted additive corrections, the complete averaging weights
-<code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code>, stored when the artifact is prepared (see
-<a class="reference internal" href="#co2-boundary-weights"><span class="std std-ref">Store the averaging weights</span></a>).</p></li>
+<li><p>For weighted additive corrections with a positive <code class="docutils literal notranslate"><span class="pre">anomaly_scale</span></code>, the
+complete averaging weights <code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code>, stored when the
+artifact is prepared (see <a class="reference internal" href="#co2-boundary-weights"><span class="std std-ref">Store the averaging weights</span></a>). A level-only
+boundary (<code class="docutils literal notranslate"><span class="pre">anomaly_scale</span> <span class="pre">=</span> <span class="pre">0</span></code>) samples no anomalies and needs none.</p></li>
 </ul>
 </section>
 <section id="choose-a-boundary">
@@ -579,6 +580,10 @@ Selecting another frequency requires matching explicit weights for that
 state partition. Binding stacks the weights once per channel and fit; exact
 labelled alignment rejects a different calendar before evaluating numerical
 payloads.</p>
+<p>A configured CO₂ preparation produces centered operands for an additive
+choice automatically and reads the weights from
+<code class="docutils literal notranslate"><span class="pre">prepared_inputs.bc_centering_weights_path</span></code> (a netCDF file with one
+<code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code> variable); see <a class="reference internal" href="co2_models.html#co2-configured-preparation"><span class="std std-ref">Build a CO2 preparation from configured acquisition</span></a>.</p>
 </section>
 </section>
 <section id="configure-a-co2-fit">
@@ -586,8 +591,8 @@ payloads.</p>
 <p><code class="docutils literal notranslate"><span class="pre">[model.boundary]</span></code> without a <code class="docutils literal notranslate"><span class="pre">type</span></code> is multiplicative and uses the
 default scaling prior unless <code class="docutils literal notranslate"><span class="pre">prior</span></code> is configured. <code class="docutils literal notranslate"><span class="pre">frequency</span></code> and
 <code class="docutils literal notranslate"><span class="pre">anchor_time</span></code> select its periods. For additive corrections, use an artifact
-containing native centered operands and <code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code> and
-configure:</p>
+containing native centered operands, plus <code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code> when weighted
+anomalies have a positive <code class="docutils literal notranslate"><span class="pre">anomaly_scale</span></code>, and configure:</p>
 <div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[model.boundary]</span>
 <span class="n">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"additive"</span>
 <span class="n">anomaly_scale</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.2</span>

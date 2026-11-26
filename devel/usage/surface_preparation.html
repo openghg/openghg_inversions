@@ -556,9 +556,15 @@ renames the primary for the provider schema; prepared concentration fields use
 <p>Ordinary preparation is the default. Omit <code class="docutils literal notranslate"><span class="pre">boundary_representation</span></code> and the
 reference arguments to obtain absolute <code class="docutils literal notranslate"><span class="pre">bc_n/e/s/w</span></code> contributions. Supply
 <code class="docutils literal notranslate"><span class="pre">boundary_representation=&quot;centered&quot;</span></code> plus the reference to retain accurate
-anomaly/mass operands instead. A reference alone never selects centered preparation;
-Centered preparation requires a justified mass tolerance; ordinary preparation
-uses OpenGHG’s existing baseline arithmetic without joint mass normalization.</p>
+anomaly/mass operands instead. A reference alone never selects centered preparation.
+Centered preparation requires a justified mass tolerance. The ordinary
+producer uses OpenGHG’s existing baseline arithmetic without joint mass normalization.</p>
+<p>Configured CO₂ acquires centered operands when boundaries are enabled. During
+scientific preparation it can reuse those operands directly, or reconstruct
+absolute contributions with
+<a class="reference internal" href="../reference/openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.select_boundary_representation" title="openghg_inversions.inversion_data.select_boundary_representation"><code class="xref py py-func docutils literal notranslate"><span class="pre">select_boundary_representation()</span></code></a>.
+Reconstructed absolute contributions retain the joint mass normalization of
+the centered acquisition.</p>
 <p>Each source and boundary contribution is calculated at native footprint release
 times, then averaged to the chosen observation cadence. Each source is convolved
 independently. <code class="docutils literal notranslate"><span class="pre">time_resolved</span></code> includes both its
@@ -656,9 +662,8 @@ reporting. Standard/multisector scientific preparation of a supplied surface
 stacking or summing. Mixed-cadence observation-space responses can be calculated
 with <code class="docutils literal notranslate"><span class="pre">prepare_surface_site</span></code>; they do not yet define a common native reporting
 axis or an affine flux companion. Supply an independently justified native
-representation before using such products. This pilot does not construct the
-ordinary CO₂ coherent reduction automatically; see <a class="reference internal" href="coherent_reduction.html"><span class="doc">Coherent Gaussian Reduction</span></a> and
-<a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a>.</p>
+representation before using such products. For a full CO₂ preparation on a
+common native grid, see <a class="reference internal" href="co2_models.html#co2-configured-preparation"><span class="std std-ref">Build a CO2 preparation from configured acquisition</span></a>.</p>
 </section>
 <section id="centered-preparation-handoff">
 <span id="surface-centered-boundary-contract"></span><h2>Centered preparation handoff<a class="headerlink" href="#centered-preparation-handoff" title="Link to this heading">#</a></h2>
@@ -671,7 +676,9 @@ existing errors remain unchanged. Project the native <code class="docutils liter
 <code class="docutils literal notranslate"><span class="pre">bc_mass_*</span></code> arrays through the same chosen BC basis using <code class="docutils literal notranslate"><span class="pre">bc_sensitivity</span></code> or
 <code class="docutils literal notranslate"><span class="pre">build_sensitivities</span></code>. Their outputs are <code class="docutils literal notranslate"><span class="pre">H_bc_anomaly</span></code> (A), <code class="docutils literal notranslate"><span class="pre">H_bc_mass</span></code> (M)
 and scalar <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code> (c). They retain spatial BC labels through gathering.
-The reference must agree across sites within a tracer.</p>
+<code class="docutils literal notranslate"><span class="pre">bc_reference</span></code> stores the supplied physical reference converted to the
+observation concentration units, or to <code class="docutils literal notranslate"><span class="pre">output_units</span></code> when specified in
+<code class="docutils literal notranslate"><span class="pre">prepare_surface_site</span></code>. The reference must agree across sites within a tracer.</p>
 <p>The source-neutral adapter accepts these projected operands (choose the summed
 response for a shared source-scaling field, or a compatible source-resolved
 flux basis for separate fields):</p>
@@ -777,8 +784,8 @@ saves/reopens preparation and restores absolute prior predictions:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>examples.surface_centered_pilot<span class="w"> </span>/tmp/surface-pilot
 </pre></div>
 </div>
-<p>The pilot is tracked in <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/957">issue 957</a>. Wider adoption,
-automatic coherent preparation, public provider APIs, alternative O₂ observables
+<p>The pilot is tracked in <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/957">issue 957</a>. Wider adoption of
+configured coherent preparation, public provider APIs, alternative O₂ observables
 and native mixed-cadence reporting remain separate work.</p>
 </section>
 </section>

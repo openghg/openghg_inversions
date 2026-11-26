@@ -376,6 +376,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.operators.html">openghg_inversions.basis.operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.options.html">openghg_inversions.basis.options</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html">openghg_inversions.basis.prior_uncertainty</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.support.html">openghg_inversions.basis.support</a></li>
 </ul>
@@ -420,6 +421,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html">openghg_inversions.models.boundary.contracts</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html">openghg_inversions.models.boundary.multiplicative</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.outputs.html">openghg_inversions.models.boundary.outputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.preparation.html">openghg_inversions.models.boundary.preparation</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
@@ -460,6 +462,7 @@
 </details></li>
 <li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l3 current active has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.acquisition.html">openghg_inversions.rhime.co2.acquisition</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html">openghg_inversions.rhime.co2.co2_affine_output</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a></li>
@@ -481,6 +484,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.prepare_from_merged_data.html">openghg_inversions.rhime.co2.prepare_from_merged_data</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.rank_reference.html">openghg_inversions.rhime.co2.rank_reference</a></li>
 </ul>
 </details></li>
@@ -814,6 +818,31 @@ omitted, infer the format from <code class="docutils literal notranslate"><span 
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_preparation.check_prepared_boundary">
+<span class="sig-name descname"><span class="pre">check_prepared_boundary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">representation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_preparation.check_prepared_boundary" title="Link to this definition">#</a></dt>
+<dd><p>Reject prepared inputs whose boundary data cannot serve the configured choice.</p>
+<p>A saved preparation can serve several model configurations, so an omitted
+<code class="docutils literal notranslate"><span class="pre">representation</span></code> accepts any representation the choice can bind; an
+explicit one must match exactly. Weighted additive choices also check the
+stored weight labels against the selected observation calendar without
+materializing numerical payloads.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>inputs</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Prepared <code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code>.</p></li>
+<li><p><strong>boundary</strong> (<a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Choice" title="openghg_inversions.models.boundary.Choice"><em>Choice</em></a><em> | </em><em>None</em>) – Configured boundary choice, or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>representation</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'ordinary'</em><em>, </em><em>'centered'</em><em>] </em><em>| </em><em>None</em>) – Explicitly requested representation, or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the boundary data are missing, in another representation,
+    or lack centering weights that match the choice’s curtain and period
+    labels.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs">
 <span class="sig-name descname"><span class="pre">prepare_co2_inputs</span></span><span class="sig-paren">(</span>
 
@@ -829,9 +858,9 @@ omitted, infer the format from <code class="docutils literal notranslate"><span 
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs" title="Link to this definition">#</a></dt>
 <dd><p>Map one coherent Gaussian reduction into the CO2 replay contract.</p>
-<p>The reduction replaces the canonical sensitivity with its effective
-operator and supplies the linked retained prior, affine intercept, and
-unresolved covariance. By default, the LRPD rank comes from the unresolved
+<p>The reduction supplies the effective sensitivity, retained prior, affine
+intercept, and unresolved covariance. Its sensitivity replaces any
+canonical <code class="docutils literal notranslate"><span class="pre">H</span></code>. By default, the LRPD rank comes from the unresolved
 covariance’s spectrum whitened by a reference mismatch covariance (see
 <a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.WhitenedRankRule" title="openghg_inversions.observation_error.WhitenedRankRule"><code class="xref py py-class docutils literal notranslate"><span class="pre">WhitenedRankRule</span></code></a>), keeping
 every mode with whitened eigenvalue above 0.1. The rule needs a
@@ -856,7 +885,8 @@ this preparation cost.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>canonical_inputs</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs"><em>PreparedInputs</em></a>) – Canonical RHIME observations and metadata whose
-observation and retained-state labels match <code class="docutils literal notranslate"><span class="pre">reduction</span></code>.</p></li>
+observation and retained-state labels match <code class="docutils literal notranslate"><span class="pre">reduction</span></code>. State
+labels come from the basis when no projected <code class="docutils literal notranslate"><span class="pre">H</span></code> is supplied.</p></li>
 <li><p><strong>reduction</strong> (<a class="reference internal" href="openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.CoherentGaussianReduction" title="openghg_inversions.coherent_reduction.CoherentGaussianReduction"><em>CoherentGaussianReduction</em></a>) – One coherent Gaussian reduction containing all linked
 retained-prior and observation products.</p></li>
 <li><p><strong>aggregation_error_rank</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.WhitenedRankRule" title="openghg_inversions.observation_error.WhitenedRankRule"><em>WhitenedRankRule</em></a><em> | </em><em>None</em>) – Whitened-spectrum rank rule (threshold, KL
@@ -1016,6 +1046,7 @@ observation extrema cannot recover the original requested window.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.load"><code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs.load()</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_preparation.check_prepared_boundary"><code class="docutils literal notranslate"><span class="pre">check_prepared_boundary()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs"><code class="docutils literal notranslate"><span class="pre">prepare_co2_inputs()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_preparation.requested_co2_facts"><code class="docutils literal notranslate"><span class="pre">requested_co2_facts()</span></code></a></li>
 </ul>

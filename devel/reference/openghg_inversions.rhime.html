@@ -375,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.operators.html">openghg_inversions.basis.operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.options.html">openghg_inversions.basis.options</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html">openghg_inversions.basis.prior_uncertainty</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.support.html">openghg_inversions.basis.support</a></li>
 </ul>
@@ -419,6 +420,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html">openghg_inversions.models.boundary.contracts</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html">openghg_inversions.models.boundary.multiplicative</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.outputs.html">openghg_inversions.models.boundary.outputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.preparation.html">openghg_inversions.models.boundary.preparation</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
@@ -459,6 +461,7 @@
 </details></li>
 <li class="toctree-l2 current active has-children"><a class="current reference internal" href="#">openghg_inversions.rhime</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.acquisition.html">openghg_inversions.rhime.co2.acquisition</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html">openghg_inversions.rhime.co2.co2_affine_output</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a></li>
@@ -480,6 +483,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.prepare_from_merged_data.html">openghg_inversions.rhime.co2.prepare_from_merged_data</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.rank_reference.html">openghg_inversions.rhime.co2.rank_reference</a></li>
 </ul>
 </details></li>
@@ -611,7 +615,7 @@ type checkers and IDEs.</p>
 <code class="docutils literal notranslate"><span class="pre">co2_o2</span></code> or <code class="docutils literal notranslate"><span class="pre">co2_o2_cached_sigma</span></code>.</p></li>
 <li><p><strong>**kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>) – Forwarded unchanged to the selected recipe. Standard,
 multisector and nested accept their existing INI/Python inputs.
-CO2 accepts its configured prepared-input product request.
+CO2 accepts configured native or prepared inputs for its products.
 Linked CO2/O2 recipes require <code class="docutils literal notranslate"><span class="pre">prepared_inputs</span></code>;
 selection does not add acquisition or checkpoint routes.</p></li>
 </ul>
@@ -1324,6 +1328,7 @@ replaces the corresponding suffix.</p></li>
 <dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_response</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'H'</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.assemble_inputs" title="Link to this definition">#</a></dt>
@@ -1345,6 +1350,7 @@ unchanged.</p></li>
 <li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Domain label attached to the assembled site data.</p></li>
 <li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Requested start date of the preparation interval.</p></li>
 <li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether missing boundary-condition inputs should be checked.</p></li>
+<li><p><strong>flux_response</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'H'</em><em>, </em><em>'fp_x_flux'</em><em>]</em>) – Projected sensitivity or the native response for a coherent reduction.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1413,9 +1419,18 @@ BC inputs available. Flat options retain their established precedence.</p>
 
 <dl>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_partition_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_partition_paths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">landsea_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">outer_regions_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'weighted'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">nbasis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fix_basis_outer_regions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">site_options</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">species</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">end_date</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">flux_sources</span></span></em>,</dd>
@@ -1429,26 +1444,17 @@ BC inputs available. Flat options retain their established precedence.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">fp_species</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">calibration_scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_partition_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">landsea_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_partition_paths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_basis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">BcBasisOptions(paths=None,</span> <span class="pre">algorithm='NESW',</span> <span class="pre">split_height=3000.0)</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">outer_regions_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_input</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'weighted'</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">nbasis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">filters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">filter_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">fix_basis_outer_regions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">averaging_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">basis_output_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">flux_non_finite_check</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'lazy'</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.DataConfig" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <a class="reference internal" href="openghg_inversions.basis.options.html#openghg_inversions.basis.options.FluxBasisOptions" title="openghg_inversions.basis.options.FluxBasisOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">FluxBasisOptions</span></code></a></p>
 <p>Resolved acquisition and preparation choices, independent of inference.</p>
 <p>External options enter through <code class="docutils literal notranslate"><span class="pre">from_params</span></code>. Ordinary option containers
 are owned; numerical payloads remain borrowed. Direct construction expects
@@ -1461,7 +1467,6 @@ accepted with a <code class="docutils literal notranslate"><span class="pre">Dep
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>site_options</strong> (<a class="reference internal" href="#openghg_inversions.rhime.SiteOptions" title="openghg_inversions.inversion_data._site_options.SiteOptions"><em>openghg_inversions.inversion_data._site_options.SiteOptions</em></a>) – Per-site observation and footprint selectors.</p></li>
 <li><p><strong>species</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Species name used for OpenGHG searches.</p></li>
-<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Footprint domain.</p></li>
 <li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Inclusive start of the inversion period.</p></li>
 <li><p><strong>end_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Exclusive end of the inversion period.</p></li>
 <li><p><strong>flux_sources</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – OpenGHG flux <code class="docutils literal notranslate"><span class="pre">source</span></code> values, in model order.</p></li>
@@ -1476,28 +1481,13 @@ accepted with a <code class="docutils literal notranslate"><span class="pre">Dep
 <li><p><strong>fp_species</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Footprint species, when it differs from <code class="docutils literal notranslate"><span class="pre">species</span></code>.</p></li>
 <li><p><strong>calibration_scale</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Observation calibration scale to convert to.</p></li>
 <li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether boundary-condition inputs are acquired and prepared.</p></li>
-<li><p><strong>basis_path</strong> (<a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>pathlib.Path</em></a><em> | </em><em>None</em>) – Exact retained <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> artifact.</p></li>
-<li><p><strong>basis_partition_path</strong> (<a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>pathlib.Path</em></a><em> | </em><em>None</em>) – Exact labelled flux basis partition file.</p></li>
-<li><p><strong>landsea_path</strong> (<a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>pathlib.Path</em></a><em> | </em><em>None</em>) – Land/sea class map used by basis preparation.</p></li>
-<li><p><strong>basis_partition_paths</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>pathlib.Path</em></a><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>) – Exact labelled partition files, sorted before
-loading; mutually exclusive with the two singular basis paths.</p></li>
 <li><p><strong>bc_basis</strong> (<a class="reference internal" href="openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.BcBasisOptions" title="openghg_inversions.rhime.params.BcBasisOptions"><em>openghg_inversions.rhime.params.BcBasisOptions</em></a>) – Boundary-condition basis selection, used when <code class="docutils literal notranslate"><span class="pre">use_bc</span></code> is true.</p></li>
-<li><p><strong>outer_regions_path</strong> (<a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>pathlib.Path</em></a><em> | </em><em>None</em>) – Fixed outer-region map used by basis preparation.</p></li>
 <li><p><strong>bc_input</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – OpenGHG boundary-condition input name, when selecting among several.</p></li>
-<li><p><strong>basis_algorithm</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Flux basis algorithm used when no basis file is
-selected: <code class="docutils literal notranslate"><span class="pre">&quot;quadtree&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;weighted&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;region_constrained&quot;</span></code>.</p></li>
-<li><p><strong>nbasis</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a>) – Requested number of flux basis regions.</p></li>
 <li><p><strong>filters</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.15)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.15)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em><em>]</em><em>] </em><em>| </em><em>None</em>) – Filter names, or per-site filter names, applied before
 observation errors and basis construction.</p></li>
 <li><p><strong>filter_options</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><em>Any</em><em>]</em><em>] </em><em>| </em><em>None</em>) – Keyword options for named filters, such as
 <code class="docutils literal notranslate"><span class="pre">{&quot;local_influence&quot;:</span> <span class="pre">{&quot;window_size&quot;:</span> <span class="pre">5,</span> <span class="pre">&quot;threshold&quot;:</span> <span class="pre">0.15}}</span></code>.
 Omitted options keep each filter’s defaults.</p></li>
-<li><p><strong>basis_seed</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><em>None</em>) – Non-negative integer seed for a generated quadtree basis.
-Without it, the quadtree search is random and each run fits a
-different basis. Rejected when another algorithm is generated;
-inactive when a saved basis or partition is selected.</p></li>
-<li><p><strong>fix_basis_outer_regions</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether outer regions are fixed from
-<code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code> during basis preparation.</p></li>
 <li><p><strong>averaging_error</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether observation averaging variability is added
 to the observation uncertainty.</p></li>
 <li><p><strong>basis_output_path</strong> (<a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>pathlib.Path</em></a><em> | </em><em>None</em>) – Optional file at which the prepared basis is saved.</p></li>
@@ -3548,22 +3538,28 @@ against this record’s resolved uppercase site labels.</p></li>
 <dd><em class="sig-param"><span class="n"><span class="pre">affine_artifact</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">aggregation_error_rank</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">WhitenedRankRule(mu_threshold=0.1,</span> <span class="pre">kl_budget_per_observation=None,</span> <span class="pre">rank=None)</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">reference_covariance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">merged_data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_centering_weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.run_co2" title="Link to this definition">#</a></dt>
 <dd><p>Prepare or load CO2 inputs, sample and create requested products.</p>
-<p>This configured product entry point consumes <code class="docutils literal notranslate"><span class="pre">model</span></code>, <code class="docutils literal notranslate"><span class="pre">likelihood</span></code>,
-<code class="docutils literal notranslate"><span class="pre">sampling</span></code> and <code class="docutils literal notranslate"><span class="pre">outputs</span></code> without intermediate manifests. Trace-only
-callers use the model-selected inference steps directly. Supplied canonical
-inputs and their coherent reduction are prepared together; an existing
-preparation is reused unchanged. Imported runs must supply requested dates
-and domain explicitly or retain them in preparation provenance. Selected prior
-artifacts and consumed preparation/reconstruction files are protected from
-trace/product output aliases before sampling.
-<code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code> is stored with a new centered preparation, as in
+<p>This configured product entry point consumes <code class="docutils literal notranslate"><span class="pre">data</span></code>,
+<code class="docutils literal notranslate"><span class="pre">model</span></code>, <code class="docutils literal notranslate"><span class="pre">likelihood</span></code>, <code class="docutils literal notranslate"><span class="pre">sampling</span></code> and <code class="docutils literal notranslate"><span class="pre">outputs</span></code> without
+intermediate manifests. Trace-only callers use the model-selected inference
+steps directly. Configured acquisition (<code class="docutils literal notranslate"><span class="pre">data.acquisition</span></code>)
+acquires, or uses supplied <code class="docutils literal notranslate"><span class="pre">merged_data</span></code>, and builds a new preparation
+with its affine companion. Supplied canonical inputs and their coherent
+reduction are prepared together; an existing preparation is reused
+unchanged. Every route is checked against the configured boundary choice.
+Imported runs must supply requested dates and domain explicitly or retain
+them in preparation provenance. Selected prior artifacts and consumed
+preparation/reconstruction files are protected from trace/product output
+aliases before sampling. <code class="docutils literal notranslate"><span class="pre">bc_centering_weights</span></code> is stored with a new
+centered preparation from canonical inputs, as in
 <a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs" title="openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_co2_inputs()</span></code></a>;
-weighted additive boundaries require it. <code class="docutils literal notranslate"><span class="pre">aggregation_error_rank</span></code>
+weighted additive boundaries with a positive <code class="docutils literal notranslate"><span class="pre">anomaly_scale</span></code> require it.
+<code class="docutils literal notranslate"><span class="pre">aggregation_error_rank</span></code>
 applies only when creating a preparation from <code class="docutils literal notranslate"><span class="pre">canonical_inputs</span></code> and
 <code class="docutils literal notranslate"><span class="pre">reduction</span></code>, with the rank contract of
 <a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs" title="openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_co2_inputs()</span></code></a>:
@@ -3715,6 +3711,10 @@ requested conditional affine products, with configured files written.</p>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_co2"><code class="docutils literal notranslate"><span class="pre">run_co2()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_cached_sigma_from_prepared_inputs()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.acquisition.html">openghg_inversions.rhime.co2.acquisition</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.acquisition.html#openghg_inversions.rhime.co2.acquisition.acquire_co2_data"><code class="docutils literal notranslate"><span class="pre">acquire_co2_data()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html">openghg_inversions.rhime.co2.co2_affine_output</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap.affine_map"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap.affine_map</span></code></a></li>
@@ -3858,6 +3858,7 @@ requested conditional affine products, with configured files written.</p>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.load"><code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs.load()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.check_prepared_boundary"><code class="docutils literal notranslate"><span class="pre">check_prepared_boundary()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs"><code class="docutils literal notranslate"><span class="pre">prepare_co2_inputs()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.requested_co2_facts"><code class="docutils literal notranslate"><span class="pre">requested_co2_facts()</span></code></a></li>
 </ul>
@@ -3878,6 +3879,15 @@ requested conditional affine products, with configured files written.</p>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.Co2PreparationConfig"><code class="docutils literal notranslate"><span class="pre">Co2PreparationConfig</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.Co2PreparationConfig.from_params"><code class="docutils literal notranslate"><span class="pre">Co2PreparationConfig.from_params()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.Co2PreparationConfig.preparation_arguments"><code class="docutils literal notranslate"><span class="pre">Co2PreparationConfig.preparation_arguments()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.Co2NativePreparationConfig"><code class="docutils literal notranslate"><span class="pre">Co2NativePreparationConfig</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.Co2NativePreparationConfig.from_params"><code class="docutils literal notranslate"><span class="pre">Co2NativePreparationConfig.from_params()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.Co2NativePreparationConfig.resource_paths"><code class="docutils literal notranslate"><span class="pre">Co2NativePreparationConfig.resource_paths()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.Co2NativePrior"><code class="docutils literal notranslate"><span class="pre">Co2NativePrior</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.Co2NativePrior.from_params"><code class="docutils literal notranslate"><span class="pre">Co2NativePrior.from_params()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.Co2ModelConfig"><code class="docutils literal notranslate"><span class="pre">Co2ModelConfig</span></code></a><ul>
@@ -3919,6 +3929,12 @@ requested conditional affine products, with configured files written.</p>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html#openghg_inversions.rhime.co2.inference.annotate_co2_inference"><code class="docutils literal notranslate"><span class="pre">annotate_co2_inference()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html#openghg_inversions.rhime.co2.inference.describe_co2_inference"><code class="docutils literal notranslate"><span class="pre">describe_co2_inference()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html#openghg_inversions.rhime.co2.inference.sample_co2_inference"><code class="docutils literal notranslate"><span class="pre">sample_co2_inference()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.prepare_from_merged_data.html">openghg_inversions.rhime.co2.prepare_from_merged_data</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.prepare_from_merged_data.html#openghg_inversions.rhime.co2.prepare_from_merged_data.Co2PreparationResources"><code class="docutils literal notranslate"><span class="pre">Co2PreparationResources</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.prepare_from_merged_data.html#openghg_inversions.rhime.co2.prepare_from_merged_data.prepare_co2_from_merged_data"><code class="docutils literal notranslate"><span class="pre">prepare_co2_from_merged_data()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.prepare_from_merged_data.html#openghg_inversions.rhime.co2.prepare_from_merged_data.resolve_co2_preparation_resources"><code class="docutils literal notranslate"><span class="pre">resolve_co2_preparation_resources()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.rank_reference.html">openghg_inversions.rhime.co2.rank_reference</a><ul>

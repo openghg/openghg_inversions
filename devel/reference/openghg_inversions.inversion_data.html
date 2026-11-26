@@ -375,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.operators.html">openghg_inversions.basis.operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.options.html">openghg_inversions.basis.options</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html">openghg_inversions.basis.prior_uncertainty</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.support.html">openghg_inversions.basis.support</a></li>
 </ul>
@@ -419,6 +420,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.contracts.html">openghg_inversions.models.boundary.contracts</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.multiplicative.html">openghg_inversions.models.boundary.multiplicative</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.outputs.html">openghg_inversions.models.boundary.outputs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.boundary.preparation.html">openghg_inversions.models.boundary.preparation</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
@@ -459,6 +461,7 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.acquisition.html">openghg_inversions.rhime.co2.acquisition</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html">openghg_inversions.rhime.co2.co2_affine_output</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a></li>
@@ -480,6 +483,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.prepare_from_merged_data.html">openghg_inversions.rhime.co2.prepare_from_merged_data</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.rank_reference.html">openghg_inversions.rhime.co2.rank_reference</a></li>
 </ul>
 </details></li>
@@ -738,6 +742,48 @@ own wrapper metadata. Older inventories and climatological years are never subst
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.MergedData" title="openghg_inversions.inversion_data.acquisition.MergedData"><em>MergedData</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.check_surface_request">
+<span class="sig-name descname"><span class="pre">check_surface_request</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">species</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">site_options</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_sources</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">transport</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">boundary_representation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'ordinary'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">boundary_reference</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">boundary_reference_units</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">boundary_mass_tolerance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.check_surface_request" title="Link to this definition">#</a></dt>
+<dd><p>Check surface acquisition options that need no retrieval.</p>
+<p><a class="reference internal" href="#openghg_inversions.inversion_data.acquire_surface_data" title="openghg_inversions.inversion_data.acquire_surface_data"><code class="xref py py-func docutils literal notranslate"><span class="pre">acquire_surface_data()</span></code></a> calls this before retrieval; configuration
+parsers can call it to reject an unusable request earlier.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>species</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Continuous-surface tracer name.</p></li>
+<li><p><strong>site_options</strong> (<a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.SiteOptions" title="openghg_inversions.inversion_data._site_options.SiteOptions"><em>SiteOptions</em></a>) – Complete aligned per-site selectors.</p></li>
+<li><p><strong>flux_sources</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – Requested flux inventory names.</p></li>
+<li><p><strong>transport</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>]</em>) – Required transport mode for each requested source.</p></li>
+<li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to retrieve boundary curtains.</p></li>
+<li><p><strong>boundary_representation</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'ordinary'</em><em>, </em><em>'centered'</em><em>]</em>) – Ordinary contributions or centered operands.</p></li>
+<li><p><strong>boundary_reference</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><em>None</em>) – Arithmetic reference required for centered output.</p></li>
+<li><p><strong>boundary_reference_units</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Concentration units of the reference.</p></li>
+<li><p><strong>boundary_mass_tolerance</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><em>None</em>) – Allowed difference of curtain mass from unity.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the species, platforms, transport modes, footprint
+    selectors or boundary options cannot form a surface request.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1538,6 +1584,41 @@ mapping, or <code class="docutils literal notranslate"><span class="pre">None</s
 </dl>
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.select_boundary_representation">
+<span class="sig-name descname"><span class="pre">select_boundary_representation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">site_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">representation</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.select_boundary_representation" title="Link to this definition">#</a></dt>
+<dd><p>Give every site dataset the requested boundary representation.</p>
+<p>An explicit centered acquisition can feed either preparation. Ordinary
+preparation collapses the centered operands to
+<code class="docutils literal notranslate"><span class="pre">bc_&lt;d&gt;</span> <span class="pre">=</span> <span class="pre">bc_anomaly_&lt;d&gt;</span> <span class="pre">+</span> <span class="pre">bc_reference</span> <span class="pre">*</span> <span class="pre">bc_mass_&lt;d&gt;</span></code> in float64,
+in the anomaly units; the reference cancels. Centered preparation keeps
+them unchanged. Input datasets are borrowed and never modified. Sites
+already in the requested representation, including sites without
+boundaries, map to the same dataset objects. Only centered sites requested
+as ordinary map to new datasets, which share their remaining variables
+with the input. Lazy payloads stay lazy.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>site_data</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a><em>]</em>) – Per-site merged datasets.</p></li>
+<li><p><strong>representation</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'ordinary'</em><em>, </em><em>'centered'</em><em>]</em>) – <code class="docutils literal notranslate"><span class="pre">&quot;ordinary&quot;</span></code> for absolute <code class="docutils literal notranslate"><span class="pre">bc_n/e/s/w</span></code>, or
+<code class="docutils literal notranslate"><span class="pre">&quot;centered&quot;</span></code> for <code class="docutils literal notranslate"><span class="pre">bc_anomaly</span></code>/<code class="docutils literal notranslate"><span class="pre">bc_mass</span></code>/<code class="docutils literal notranslate"><span class="pre">bc_reference</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A new mapping of site datasets in the requested representation.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the representation is unknown, or centered operands are
+    requested from a site that has only absolute boundary sensitivities,
+    or if recombination operands have incompatible units.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
 <div class="toctree-wrapper compound">
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a><ul>
@@ -1553,6 +1634,7 @@ mapping, or <code class="docutils literal notranslate"><span class="pre">None</s
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.MergedData.from_options"><code class="docutils literal notranslate"><span class="pre">MergedData.from_options()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.check_surface_request"><code class="docutils literal notranslate"><span class="pre">check_surface_request()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.acquire_surface_data"><code class="docutils literal notranslate"><span class="pre">acquire_surface_data()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.interpolate_flux_to_footprint_grid"><code class="docutils literal notranslate"><span class="pre">interpolate_flux_to_footprint_grid()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.SiteOptions"><code class="docutils literal notranslate"><span class="pre">SiteOptions</span></code></a><ul>
@@ -1669,6 +1751,7 @@ mapping, or <code class="docutils literal notranslate"><span class="pre">None</s
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepare_surface_site"><code class="docutils literal notranslate"><span class="pre">prepare_surface_site()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquire_surface_data"><code class="docutils literal notranslate"><span class="pre">acquire_surface_data()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.check_surface_request"><code class="docutils literal notranslate"><span class="pre">check_surface_request()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.MergedData"><code class="docutils literal notranslate"><span class="pre">MergedData</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.MergedData.sites"><code class="docutils literal notranslate"><span class="pre">MergedData.sites</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.MergedData.averaging_period"><code class="docutils literal notranslate"><span class="pre">MergedData.averaging_period</span></code></a></li>
@@ -1707,6 +1790,7 @@ mapping, or <code class="docutils literal notranslate"><span class="pre">None</s
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray"><code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs_from_xarray()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.select_boundary_representation"><code class="docutils literal notranslate"><span class="pre">select_boundary_representation()</span></code></a></li>
 </ul>
   </nav></div>
 

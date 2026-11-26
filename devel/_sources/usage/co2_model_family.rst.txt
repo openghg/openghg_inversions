@@ -3,8 +3,10 @@ CO₂ model family
 
 The advanced CO₂ model family contains the **CO₂-only** and **linked CO₂/O₂**
 recipes. O₂ is a tracer in the linked recipe, not a standalone supported model.
-Both recipes begin from scientific arrays that have already been prepared; they
-are not alternative species settings for the complete standard runner.
+The linked recipe begins from scientific arrays that have already been
+prepared. The CO₂-only recipe accepts such arrays or builds its preparation from
+configured OpenGHG acquisition (see :ref:`co2-configured-preparation`). Neither
+recipe is an alternative species setting for the complete standard runner.
 
 The experimental :doc:`surface preparation pilot <surface_preparation>` adds
 explicit source transport and centered stable-BC operands for additive-Gaussian
@@ -40,6 +42,9 @@ Current support
        canonical RHIME observations and metadata with one coherent reduction
        in a dedicated
        :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact.
+       Configured ``[data.acquisition]`` instead acquires
+       continuous-surface data from OpenGHG and builds the preparation with its
+       affine companion; see :ref:`co2-configured-preparation`.
      - :func:`openghg_inversions.rhime.co2.prepare_co2_o2_inputs` gathers
        caller-supplied, channel-native prepared arrays; it does not acquire
        OpenGHG data. :ref:`Save and replay linked prepared inputs
@@ -130,19 +135,26 @@ configure multiplicative or additive boundary corrections for them, follow
 Staged CO₂ commands
 -------------------
 
-CO₂ starts from canonical scientific inputs and a coherent reduction,
-or an existing :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact.
-It does not acquire OpenGHG data or infer a coherent reduction from a gas name.
+CO₂ starts from one of three inputs: configured acquisition
+(``[data.acquisition]``; see :ref:`co2-configured-preparation`);
+canonical scientific inputs with a coherent reduction; or an existing
+:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact. Configured
+acquisition retrieves OpenGHG data and reduces the configured native prior; CO₂
+never infers a coherent reduction from a gas name.
 ``run_co2`` prepares or loads inputs, explicitly materializes the
 selected scientific arrays, constructs the model, samples, then
-calculates and writes requested products. Full execution uses no manifests.
+calculates and writes requested products. Full execution uses no manifests and
+keeps a new preparation and its affine companion in memory; only staged
+``prepare`` saves a reusable pair.
 Direct scientific callers can compose materialization, model construction,
 sampling and trace annotation explicitly; see :doc:`co2_models`.
 
-Saved phases call those same scientific operations. ``prepare`` references an
-existing numerical artifact and its optional affine companion in place; keep
-those files available for later operations. Python callers
-can also prepare from canonical inputs and a coherent reduction. A new
+Saved phases call those same scientific operations. ``prepare`` either builds
+a new preparation from ``[data.acquisition]`` (see
+:ref:`co2-configured-preparation`) or references an existing numerical artifact
+and its optional affine companion in place; keep imported files available for
+later operations. Python callers can also prepare from canonical inputs and a
+coherent reduction. A new
 prepared/affine pair is saved with the existing codecs and checked by the affine
 loader before its manifest is written. Imported pairs retain their numerical
 association. Both routes retain source labels, grids and projection meaning.
@@ -150,7 +162,7 @@ association. Both routes retain source labels, grids and projection meaning.
 Record original requested dates and domain explicitly. Filtering can remove
 observations at both edges, so retained observation extrema cannot supply the
 original request. Missing imported facts fail clearly; supply
-``prepared_inputs.start_date``, ``end_date`` and ``domain``, or retain those facts
+``data.start_date``, ``end_date`` and ``domain``, or retain those facts
 in preparation provenance. Sites and averaging periods come from the retained
 numerical preparation.
 
@@ -161,7 +173,7 @@ A TOML configuration can contain:
    format_version = 1
    recipe = "co2"
 
-   [prepared_inputs]
+   [data]
    path = "prepared-co2.nc"
    start_date = "2020-01-01"
    end_date = "2020-02-01"
@@ -213,10 +225,10 @@ the same ``sampling`` mapping as the full configuration.
 The configured ``rhime run --model co2`` CLI route uses
 ``run_co2`` and writes requested products. Python
 ``rhime.run(model="co2", config_file="co2.toml")`` selects the same configured
-runner and returns ``Co2Output``. Acquisition and construction of the defining
-native-resolution reduction remain separate from this prepared-input route.
-That extension is tracked in
-`CO₂ native preparation #890 <https://github.com/openghg/openghg_inversions/issues/890>`_.
+runner and returns ``Co2Output``. Replace ``data.path`` with the shared input
+choices and the ``[data.acquisition]`` and ``[data.preparation]`` tables to
+retrieve and reduce native inputs in the same run. See
+:ref:`co2-configured-preparation`.
 
 Alternatively, save preparation and inference separately:
 
