@@ -44,7 +44,7 @@ def _preparation_record(manifest: str | Path) -> tuple[Path, dict[str, Any]]:
     """Read a completed preparation and its writer-assigned generation."""
     path, record = read_manifest(
         manifest, "openghg_inversions.standard.prepare", ("prepared_inputs", "data", "generation"),
-        schema_version=2,
+        schema_version=3, legacy_schema_versions=(2,),
     )
     if not isinstance(record["generation"], str) or not record["generation"]:
         raise ValueError(f"Preparation manifest {path} requires a nonempty generation.")
@@ -79,7 +79,7 @@ def save_preparation(
     destination = start_checkpoint(output_dir, "prepare", payloads=("prepared-inputs.nc",))
     prepared.save(destination / "prepared-inputs.nc")
     return finish_checkpoint(destination, "prepare", {
-        "schema": "openghg_inversions.standard.prepare", "schema_version": 2,
+        "schema": "openghg_inversions.standard.prepare", "schema_version": 3,
         "producer": "openghg_inversions", "stage": "prepare", "generation": uuid4().hex,
         "prepared_inputs": "prepared-inputs.nc", "data": data_config.to_params(),
     })
@@ -134,7 +134,7 @@ def prepare(
         ValueError: If the data configuration or supplied inputs conflict.
     """
     basis_inputs = resolve_basis_inputs(data_config)
-    bc_basis = resolve_bc_basis(data_config)
+    bc_basis = resolve_bc_basis(data_config.bc_basis, use_bc=data_config.use_bc)
 
     if merged_data is None:
         merged_data = acquire_merged_data(data_config)

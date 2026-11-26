@@ -89,20 +89,22 @@ configuration as follows:
   default to vendored files for the exact requested domain; explicit paths win.
   Missing explicit files or required domain defaults fail before acquisition.
   Country reporting requires an explicit file, independently of these defaults.
-* Select file-backed BC bases using ``bc_basis_paths``, for example
-  ``("/data/bc/january.nc", "/data/bc/february.nc")``. Runners load these files
+* Select file-backed BC bases using ``bc_basis={"paths": ("/data/bc/january.nc",
+  "/data/bc/february.nc")}`` in Python. Runners load these files
   before acquisition and preserve their time combination and alignment.
   Custom scientific sensitivity calls receive the loaded ``bc_basis`` dataset.
-  ``bc_basis_algorithm="NESW"`` is the default built-in selection. It uses
+  ``bc_basis={"algorithm": "NESW"}`` is the default built-in selection. It uses
   acquired directional contributions through the default ``nesw_basis``
   builder, without a file.
-  Exact ``bc_basis_paths`` win over the inactive algorithm; ``use_bc=False``
-  skips BC basis resolution and loading.
+  Exact files take precedence over the algorithm. Set ``use_bc=False`` to
+  skip BC basis resolution and loading. INI files use the flat keys
+  ``bc_basis_paths`` and ``bc_basis_algorithm``.
 * Modern runners reject ``fp_basis_case``, ``basis_directory``, ``bc_basis_case``
   and ``bc_basis_directory``. Replace them with exact basis/BC selections.
   Scientific functions receive explicit selections and never discover files.
 * Replace the removed RHIME ``params_from_config`` re-export with
-  ``read_rhime_ini``, apply overrides, then call ``RhimeConfig.from_params``.
+  ``rhime.requests.load_params`` to read the file and apply overrides before
+  calling ``RhimeConfig.from_params``.
   The dictionary adapter is removed. Runner frontends, including direct
   ``run_standard`` calls, reject historical aliases before scientific work.
   ``RhimeConfig.from_params`` accepts canonical names only and has no alias translation or warnings.
@@ -547,10 +549,10 @@ aliases or emit alias deprecation warnings.
      - ``basis_path``, ``basis_partition_path`` or ``basis_partition_paths``
      - Select the retained artifact or exact labelled partition file(s); remove both discovery options
    * - ``bc_basis_case="NESW"`` + ``bc_basis_directory``
-     - ``bc_basis_algorithm="NESW"`` (also the default)
-     - ``bc_basis_algorithm="NESW"`` is the default; no BC files are needed
+     - ``bc_basis={"algorithm": "NESW"}`` in Python, or ``bc_basis_algorithm="NESW"`` in INI
+     - The default uses the built-in basis without BC basis files
    * - Other ``bc_basis_case`` + ``bc_basis_directory``
-     - ``bc_basis_paths``
+     - ``bc_basis={"paths": (...,)}`` in Python, or ``bc_basis_paths`` in INI
      - Select the exact BC basis files, including the months needed by the run
    * - ``country_directory``
      - Explicit map file paths

@@ -32,7 +32,9 @@ domain = "EUROPE"
 # [data.preparation.basis]
 # algorithm = "weighted"
 # nbasis = 100
-# bc_algorithm = "NESW"
+#
+# [data.preparation.bc_basis]
+# algorithm = "NESW"
 #
 # [data.preparation.native_prior]
 # stdev = 0.5

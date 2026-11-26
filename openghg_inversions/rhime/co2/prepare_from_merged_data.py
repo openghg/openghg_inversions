@@ -79,7 +79,7 @@ def resolve_co2_preparation_resources(config: Co2NativePreparationConfig) -> Co2
     """
     return Co2PreparationResources(
         basis_inputs=resolve_basis_inputs(config.basis),
-        bc_basis=resolve_bc_basis(config.bc_basis),
+        bc_basis=resolve_bc_basis(config.bc_basis, use_bc=config.use_bc),
         bc_centering_weights=_load_centering_weights(config.bc_centering_weights_path),
     )
 
@@ -122,7 +122,7 @@ def prepare_co2_from_merged_data(
             the request, or no usable observations remain.
     """
     basis = config.basis
-    use_bc = config.bc_basis.use_bc
+    use_bc = config.use_bc
     representation = boundary_preparation(boundary, boundary_representation).representation
     basis_inputs = resources.basis_inputs
 

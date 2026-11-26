@@ -268,19 +268,33 @@ The first requested flux source still determines generated-basis weighting;
 all runtime sources are retained. A selected saved basis takes precedence over
 generation.
 
+Boundary-condition basis options form one nested ``bc_basis`` group with
+``paths``, ``algorithm`` and ``split_height`` fields. Python requests and JSON
+parameter files give it as a mapping, and saved preparation manifests record it
+the same way::
+
+   options["bc_basis"] = {"algorithm": "twelve-region", "split_height": 3000.0}
+
+INI files keep the flat spelling ``bc_basis_<field>``, for example
+``bc_basis_algorithm = "NESW"``; the INI reader nests these names. Flat names in
+Python requests, JSON parameter files and older manifests are still accepted
+with a ``DeprecationWarning``. Giving the same group in both forms is an error.
+A nested override, such as ``{"bc_basis": {"split_height": 2.5}}``, replaces only
+the fields it names.
+
 For file-backed boundary conditions, select exact files with
-``bc_basis_paths=("/data/bc/january.nc", "/data/bc/february.nc")`` (a one-file
-collection is also supported). The runner loads every selected file before
+``bc_basis={"paths": ("/data/bc/january.nc", "/data/bc/february.nc")}`` (a
+one-file collection is also supported). The runner loads every selected file before
 acquisition and passes a labelled ``bc_basis`` dataset to sensitivity
 construction, preserving time combination and alignment. Missing or unreadable
 selected files fail before acquisition. Scientific sensitivity functions accept
 resolved data, not ``bc_basis_case`` or ``bc_basis_directory`` discovery options.
 
-``bc_basis_algorithm="NESW"`` selects the built-in calculation and is the
+``bc_basis={"algorithm": "NESW"}`` selects the built-in calculation and is the
 canonical default. It uses acquired directional boundary contributions without
 reading a basis file; scientific calls receive the ``nesw_basis`` builder,
 which is also their default. Exact
-``bc_basis_paths`` take precedence over the algorithm, whose value is then
+``bc_basis.paths`` take precedence over the algorithm, whose value is then
 inactive. Selected files fail on read errors rather than falling back to NESW.
 ``use_bc=False`` skips BC basis resolution and loading, including selected files.
 Supported names are still validated; inactive algorithm values are deferred.
@@ -296,18 +310,21 @@ regions. Reporting maps remain explicit: ``domain`` never selects a reporting
 Twelve-region lateral boundary basis
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Select ``bc_basis_algorithm="twelve-region"`` to divide each native N/E/S/W
-curtain into two lower horizontal halves and one upper region. The same options
-work in Python run parameters or the ``[INPUT.BASIS_CASE]`` INI section::
+Select ``bc_basis={"algorithm": "twelve-region"}`` to divide each native N/E/S/W
+curtain into two lower horizontal halves and one upper region::
+
+   options["bc_basis"] = {"algorithm": "twelve-region", "split_height": 3000.0}
+
+In the ``[INPUT.BASIS_CASE]`` INI section, use the flat spelling::
 
    bc_basis_algorithm = "twelve-region"
    bc_basis_split_height = 3000.0
 
-``bc_basis_split_height`` is a finite number in the native ``height`` coordinate's
+``bc_basis.split_height`` is a finite number in the native ``height`` coordinate's
 units; it defaults to 3000. No unit conversion or vertical-datum conversion is
 performed. Inspect the acquired coordinate metadata before choosing a physical
 threshold. With a height coordinate in kilometres, a 3 km split requires
-``bc_basis_split_height=3.0``.
+``split_height=3.0``.
 
 The default follows the archived feasibility prototype's native-coordinate
 threshold of 3000. The prototype's height coordinate had no units or AGL/ASL

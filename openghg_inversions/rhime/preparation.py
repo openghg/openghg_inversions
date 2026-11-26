@@ -36,13 +36,14 @@ from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_s
 from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.basis.boundary import BoundaryBasis, boundary_basis, nesw_basis
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR, BasisFunctions
-from openghg_inversions.basis.options import BoundaryBasisOptions, FluxBasisOptions
+from openghg_inversions.basis.options import FluxBasisOptions
 from openghg_inversions.boundary_sensitivity import scale_satellite_boundary_sensitivity_to_column_signal
 from openghg_inversions.filters import filtering
 from openghg_inversions.inversion_data import MergedData, PreparedInputs, SiteOptions
 from openghg_inversions.inversion_data.observation_errors import prepare_observation_errors
 from openghg_inversions.inversion_data.prepared_inputs import _make_site_metadata
 from openghg_inversions.inversion_inputs import make_inv_inputs
+from openghg_inversions.rhime.params import BcBasisOptions
 
 __all__ = [
     "assemble_inputs",
@@ -361,11 +362,11 @@ def _validate_multisector_sensitivity_sources(
 
 
 
-def resolve_bc_basis(data_config: BoundaryBasisOptions) -> BoundaryBasis:
+def resolve_bc_basis(selection: BcBasisOptions, *, use_bc: bool) -> BoundaryBasis:
     """Load enabled exact BC resources, or select a built-in basis builder.
 
     Configuration owns algorithm validation. Exact files take precedence over
-    the algorithm choice. With no files, ``bc_basis_algorithm`` selects the
+    the algorithm choice. With no files, ``bc_basis.algorithm`` selects the
     NESW or twelve-region builder, which reads only each site's coordinates.
     Disabled BCs perform no resource I/O and return the NESW builder, which
     preparation never calls. Selected files are loaded before acquisition using
@@ -373,7 +374,8 @@ def resolve_bc_basis(data_config: BoundaryBasisOptions) -> BoundaryBasis:
     borrowed scientific inputs remain unchanged.
 
     Args:
-        data_config: Resolved boundary basis selection and whether to use it.
+        selection: Resolved paths, algorithm and split height.
+        use_bc: Whether this preparation needs boundary sensitivities.
 
     Returns:
         Loaded labelled BC basis or a built-in per-site basis builder.
@@ -384,11 +386,11 @@ def resolve_bc_basis(data_config: BoundaryBasisOptions) -> BoundaryBasis:
     """
     from openghg_inversions.basis.support import load_bc_basis
 
-    if not data_config.use_bc:
+    if not use_bc:
         return nesw_basis
-    if data_config.bc_basis_paths is not None:
-        return load_bc_basis(data_config.bc_basis_paths)
-    return boundary_basis(data_config.bc_basis_algorithm, split_height=data_config.bc_basis_split_height)
+    if selection.paths is not None:
+        return load_bc_basis(selection.paths)
+    return boundary_basis(selection.algorithm, split_height=selection.split_height)
 
 
 def resolve_basis_inputs(data_config: FluxBasisOptions) -> dict[str, Any]:

@@ -1,4 +1,4 @@
-"""Resolved choices shared by recipes that construct flux and boundary bases."""
+"""Resolved choices shared by recipes that construct flux bases."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,25 +33,3 @@ class FluxBasisOptions:
     nbasis: int = 100
     basis_seed: int | None = None
     fix_basis_outer_regions: bool = False
-
-
-@dataclass(frozen=True, kw_only=True)
-class BoundaryBasisOptions:
-    """Select exact boundary basis files or a builder for the acquired curtains.
-
-    Attributes:
-        use_bc: Whether the recipe needs boundary sensitivities.
-        bc_basis_paths: Exact boundary basis files, which take precedence over
-            the built-in algorithms when selected.
-        bc_basis_algorithm: Built-in algorithm to use without files. NESW uses
-            one region per curtain. Twelve-region uses two lower halves and one
-            upper region per curtain.
-        bc_basis_split_height: Height split for the twelve-region algorithm, in
-            the curtains' native height-coordinate units. NESW and exact
-            files ignore the split.
-    """
-
-    use_bc: bool = True
-    bc_basis_paths: tuple[Path, ...] | None = None
-    bc_basis_algorithm: str | None = "NESW"
-    bc_basis_split_height: float = 3000.0

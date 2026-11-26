@@ -68,7 +68,7 @@ def load_co2_params(
                     continue
                 merged_phase = {**base_phase, **override_phase}
                 if phase == "preparation":
-                    for choice in ("basis", "native_prior"):
+                    for choice in ("basis", "bc_basis", "native_prior"):
                         base_choice = base_phase.get(choice)
                         override_choice = override_phase.get(choice)
                         if isinstance(base_choice, Mapping) and isinstance(override_choice, Mapping):

@@ -157,12 +157,25 @@ def test_basis_override_preserves_selected_partition(partition: Path) -> None:
     """A partial basis override keeps the selected partition file."""
     options = load_co2_params(
         params=request(partition),
-        overrides={"data": {"preparation": {"basis": {"bc_split_height": 2000.0}}}},
+        overrides={"data": {"preparation": {"basis": {"nbasis": 12}}}},
     )
     resolved = Co2PreparationConfig.from_params(options)
     assert resolved.native is not None
     assert resolved.native.basis.basis_partition_path == partition
-    assert resolved.native.bc_basis.bc_basis_split_height == 2000.0
+    assert resolved.native.basis.nbasis == 12
+
+
+def test_boundary_basis_override_preserves_selected_files(partition: Path) -> None:
+    """Override the split height without replacing the rest of the boundary basis."""
+    config = request(partition, bc_basis={"algorithm": "twelve-region", "paths": [partition]})
+    options = load_co2_params(
+        params=config, overrides={"data": {"preparation": {"bc_basis": {"split_height": 2000.0}}}},
+    )
+    resolved = Co2PreparationConfig.from_params(options)
+    assert resolved.native is not None
+    assert resolved.native.bc_basis.paths == (partition,)
+    assert resolved.native.bc_basis.algorithm == "twelve-region"
+    assert resolved.native.bc_basis.split_height == 2000.0
 
 
 @pytest.mark.parametrize(("old", "new"), [("partition_path", "path"), ("path", "partition_path")])
@@ -174,14 +187,14 @@ def test_basis_override_switches_file_selector(
     operator = tmp_path / "operator.nc"
     operator.touch()
     paths = {"path": str(operator), "partition_path": str(partition)}
-    config = request(partition, basis={old: paths[old], "bc_split_height": 2000.0})
+    config = request(partition, basis={old: paths[old], "nbasis": 12})
     choice = {new: paths[new]}
     if clear_old:
         choice[old] = None
     options = load_co2_params(params=config, overrides={"data": {"preparation": {"basis": choice}}})
     resolved = Co2PreparationConfig.from_params(options)
     assert resolved.native is not None
-    assert resolved.native.bc_basis.bc_basis_split_height == 2000.0
+    assert resolved.native.basis.nbasis == 12
     resources = resolve_basis_inputs(resolved.native.basis)
     if new == "path":
         assert resources["basis_path"] == operator
@@ -499,8 +512,10 @@ def test_staged_cli_checks_explicit_saved_boundary_representation(
         assert not destination.exists()
 
 
+@pytest.mark.parametrize("exact_boundary_basis", [False, True], ids=["built-in-bc", "exact-bc"])
 def test_full_runner_builds_from_configuration(
     tmp_path: Path, merged: MergedData, partition: Path, monkeypatch: pytest.MonkeyPatch,
+    exact_boundary_basis: bool,
 ) -> None:
     """Compare configured acquisition with staged supplied data and a two-cell Gaussian oracle."""
     acquisition_calls = []
@@ -512,6 +527,15 @@ def test_full_runner_builds_from_configuration(
 
     monkeypatch.setattr(MergedData, "from_options", staticmethod(acquire))
     config = request(partition)
+    if exact_boundary_basis:
+        boundary_data = merged.boundary_data
+        assert boundary_data is not None
+        path = tmp_path / "boundary-basis.nc"
+        xr.Dataset({
+            f"basis_bc_{direction}": xr.ones_like(boundary_data[f"vmr_{direction}"]).expand_dims(region=["all"])
+            for direction in "nesw"
+        }).to_netcdf(path)
+        config["data"]["preparation"]["bc_basis"] = {"paths": [path], "algorithm": "unused"}
     config["model"] = {"boundary": {"prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.01}}}
     config["outputs"] = {"output_format": "none"}
 
@@ -521,6 +545,8 @@ def test_full_runner_builds_from_configuration(
     monkeypatch.setattr(execution, "sample_co2_inference", lambda *a, **kw: (xr.DataTree(), {}))
     result = run_co2(params=config)
     assert "H_bc" in result.prepared.inv_inputs
+    if exact_boundary_basis:
+        assert result.prepared.inv_inputs.H_bc.bc_region.values.tolist() == ["all"]
     (call,) = acquisition_calls
     assert call["boundary_representation"] == "centered"
     assert call["reference"] == 400.0

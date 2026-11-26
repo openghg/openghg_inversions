@@ -86,8 +86,9 @@ preparation step. File-backed acquisition remains tracked in
 
 Basis resource resolvers declare their inputs as
 :class:`~openghg_inversions.basis.options.FluxBasisOptions` and
-:class:`~openghg_inversions.basis.options.BoundaryBasisOptions`. Recipe
-parsers populate those shared types from their own configuration layouts.
+:class:`~openghg_inversions.rhime.params.BcBasisOptions`, with ``use_bc``
+passed explicitly to boundary basis resolution. Recipe parsers populate
+those shared types from their own configuration layouts.
 The basis builders take the resolved settings and scientific arrays explicitly.
 
 Current file-backed commands and their restrictions are documented in

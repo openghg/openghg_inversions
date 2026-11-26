@@ -63,7 +63,7 @@ def _preparation_record(manifest: str | Path) -> tuple[Path, dict[str, Any]]:
         manifest,
         "openghg_inversions.multisector.prepare",
         ("prepared_inputs", "data", "generation"),
-        schema_version=2,
+        schema_version=3, legacy_schema_versions=(2,),
     )
     if not isinstance(record["generation"], str) or not record["generation"]:
         raise ValueError(f"Preparation manifest {path} requires a nonempty generation.")
@@ -105,7 +105,7 @@ def save_preparation(
         "prepare",
         {
             "schema": "openghg_inversions.multisector.prepare",
-            "schema_version": 2,
+            "schema_version": 3,
             "producer": "openghg_inversions",
             "stage": "prepare",
             "generation": uuid4().hex,
@@ -170,7 +170,7 @@ def prepare(
     """
     _require_multisector(data_config)
     basis_inputs = resolve_basis_inputs(data_config)
-    bc_basis = resolve_bc_basis(data_config)
+    bc_basis = resolve_bc_basis(data_config.bc_basis, use_bc=data_config.use_bc)
 
     if merged_data is None:
         merged_data = acquire_merged_data(data_config)

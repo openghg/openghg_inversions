@@ -127,7 +127,7 @@ def test_stage_config_paths_are_relative_to_the_invocation(
     params_path = tmp_path / "config" / "params.json"
     params_path.parent.mkdir()
     params_path.write_text(
-        json.dumps(_params(bc_basis_paths=["relative/bc.nc"], basis_partition_path="relative/partition.nc",
+        json.dumps(_params(bc_basis={"paths": ["relative/bc.nc"]}, basis_partition_path="relative/partition.nc",
                            country_file="relative/country.nc")),
         encoding="utf-8",
     )
@@ -135,7 +135,7 @@ def test_stage_config_paths_are_relative_to_the_invocation(
 
     loaded = load_params(params_file=params_path)
 
-    assert loaded["data"]["bc_basis_paths"] == (tmp_path.parent / "relative/bc.nc",)
+    assert loaded["data"]["bc_basis"] == {"paths": (tmp_path.parent / "relative/bc.nc",)}
     assert loaded["output"]["country_file"] == tmp_path.parent / "relative/country.nc"
     assert loaded["data"]["basis_partition_path"] == tmp_path.parent / "relative/partition.nc"
 
