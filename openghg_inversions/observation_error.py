@@ -1,4 +1,4 @@
-"""Validate observation-error inputs and prepare aggregation-error covariances.
+"""Represent fixed observation covariance and validate observation-error inputs.
 
 Shared checks cover observations, reported errors and minimum errors.
 
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from numbers import Real
 from typing import Any, Literal, TypeAlias
 import warnings
@@ -43,17 +43,13 @@ OBSERVATION_ERROR_INPUT_NAMES = ("mf", "mf_error", "min_error")
 
 
 @dataclass(frozen=True)
-class AggregationError:
-    """Validated aggregation-error representation selected for a likelihood.
+class ObservationCovariance:
+    """Validated fixed observation covariance for a likelihood.
 
-    Model builders trust this value as already validated. Externally supplied
-    representations should be constructed through
-    :func:`resolve_aggregation_error`, which selects and validates a
-    coherent-reduction representation. Package preparation helpers may also
-    construct it directly from values they have just produced. Other direct
-    construction is an expert seam, and the caller then owns the coherence of
-    the mode, payload, marginal variance, coordinates, and numerical
-    covariance properties.
+    Use :func:`resolve_aggregation_error` to select and validate basis
+    aggregation covariance from prepared data. Direct construction assumes
+    the caller supplies a coherent mode, payload, marginal variance,
+    observation order, and numerical covariance properties.
 
     Args:
         mode: Concrete covariance representation.
@@ -69,6 +65,50 @@ class AggregationError:
     covariance: xr.DataArray | None = None
     factor: xr.DataArray | None = None
     diagonal_variance: xr.DataArray | None = None
+
+    def with_added_factor(self, factor: xr.DataArray | None) -> ObservationCovariance:
+        """Add the independent covariance represented by a dense low-rank factor.
+
+        Args:
+            factor: Factor with observations on its first axis, in the
+                covariance's row order. Pass None for an absent contribution.
+
+        Returns:
+            This covariance for an absent factor. Otherwise, the sum is
+            dense if this covariance is dense. A low-rank sum keeps the
+            original diagonal residual, or uses zero if this covariance
+            is absent.
+        """
+        if factor is None:
+            return self
+        output_dim = factor.dims[0]
+        values = np.asarray(factor.to_numpy(), dtype=np.float64)
+        marginal_variance = np.asarray(self.marginal_variance, dtype=np.float64) + np.einsum(
+            "ij,ij->i", values, values,
+        )
+        if self.mode == "dense":
+            assert self.covariance is not None
+            covariance = self.covariance + values @ values.T
+            return replace(self, covariance=covariance, marginal_variance=marginal_variance)
+        if self.mode == "low_rank":
+            assert self.factor is not None
+            existing = self.factor.transpose(output_dim, ...)
+            rank_dim = existing.dims[1]
+            combined = np.hstack([np.asarray(existing.to_numpy(), dtype=np.float64), values])
+            combined_factor = xr.DataArray(
+                combined,
+                dims=(output_dim, rank_dim),
+                coords={output_dim: existing.coords[output_dim], rank_dim: np.arange(combined.shape[1])},
+                name=existing.name,
+            )
+            return replace(self, factor=combined_factor, marginal_variance=marginal_variance)
+        diagonal = xr.DataArray(
+            np.zeros(values.shape[0]), dims=output_dim,
+            coords={output_dim: factor.coords[output_dim]}, name=DIAGONAL_RESIDUAL_VARIANCE,
+        )
+        return ObservationCovariance(
+            mode="low_rank", marginal_variance=marginal_variance, factor=factor, diagonal_variance=diagonal,
+        )
 
 
 @dataclass(frozen=True)
@@ -86,7 +126,7 @@ class LowRankAggregationErrorApproximation:
             likelihood.
     """
 
-    aggregation_error: AggregationError
+    aggregation_error: ObservationCovariance
     diagnostics: dict[str, str | int | float]
 
 
@@ -220,7 +260,7 @@ def _factorize_aggregation_error(
     marginal_variance = (
         np.einsum("ij,ij->i", approximation.factor, approximation.factor) + approximation.diagonal
     )
-    aggregation_error = AggregationError(
+    aggregation_error = ObservationCovariance(
         mode="low_rank",
         marginal_variance=marginal_variance,
         factor=factor,
@@ -255,9 +295,9 @@ def _factorize_aggregation_error(
 
 
 def aggregation_error_as_low_rank(
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Materialize fixed aggregation covariance as factor-plus-diagonal data.
+    """Materialize fixed observation covariance as factor-plus-diagonal data.
 
     Dense inputs use every eigenmode above the scale-relative numerical
     tolerance and retain the remaining marginal variance on the diagonal.
@@ -265,7 +305,7 @@ def aggregation_error_as_low_rank(
     not the low-rank performance path.
 
     Args:
-        aggregation_error: Validated fixed aggregation-error representation.
+        aggregation_error: Validated fixed observation covariance.
 
     Returns:
         A factor with shape ``(nmeasure, actual_rank)`` and non-negative
@@ -934,7 +974,7 @@ def resolve_aggregation_error(
     *,
     output_dim: str = "nmeasure",
     covariance_dim: str = "nmeasure_cov",
-) -> AggregationError:
+) -> ObservationCovariance:
     """Validate and select an aggregation-error covariance representation.
 
     In ``"auto"`` mode, ``aggregation_error_sd`` is a marginal diagnostic beside
@@ -965,7 +1005,7 @@ def resolve_aggregation_error(
     nmeasure = data.sizes[output_dim]
 
     if selected == "none":
-        return AggregationError(mode="none", marginal_variance=np.zeros(nmeasure))
+        return ObservationCovariance(mode="none", marginal_variance=np.zeros(nmeasure))
 
     if selected == "dense":
         if AGGREGATION_ERROR_COVARIANCE not in data:
@@ -1002,7 +1042,7 @@ def resolve_aggregation_error(
         )
         marginal_variance = np.diag(values).copy()
         _validate_marginal_sd(data, marginal_variance, output_dim=output_dim)
-        return AggregationError(
+        return ObservationCovariance(
             mode="dense",
             marginal_variance=marginal_variance,
             covariance=covariance,
@@ -1041,7 +1081,7 @@ def resolve_aggregation_error(
         )
     marginal_variance = np.sum(factor_values**2, axis=1) + diagonal_values
     _validate_marginal_sd(data, marginal_variance, output_dim=output_dim)
-    return AggregationError(
+    return ObservationCovariance(
         mode="low_rank",
         marginal_variance=marginal_variance,
         factor=factor,

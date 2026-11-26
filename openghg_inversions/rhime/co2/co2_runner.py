@@ -36,7 +36,7 @@ from openghg_inversions.models.scalar_sigma import (
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
-    AggregationError,
+    ObservationCovariance,
     aggregation_error_input_names,
     resolve_aggregation_error,
 )
@@ -260,7 +260,7 @@ def _resolve_co2_likelihood_kwargs(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
 ) -> Mapping[str, Any] | None:
     """Resolve file-backed scalar-sigma options before model construction."""
     if likelihood_builder is not add_scalar_sigma_eigen_likelihood:

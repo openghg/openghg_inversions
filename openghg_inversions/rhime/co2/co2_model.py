@@ -43,7 +43,7 @@ from openghg_inversions.models.state_activity import (
     prepare_linear_sensitivity,
     resolve_state_activity,
 )
-from openghg_inversions.observation_error import AggregationError
+from openghg_inversions.observation_error import ObservationCovariance
 from openghg_inversions.rhime._model_building import _call_custom_likelihood
 from openghg_inversions.rhime.builders import RhimeLikelihoodBuilder
 from openghg_inversions.sigma import SigmaAlignment
@@ -144,8 +144,8 @@ def _check_outer_flux_likelihood(
         and likelihood_builder is add_scalar_sigma_eigen_likelihood
     ):
         raise ValueError(
-            'outer_flux mode = "marginalise" changes the aggregation-error covariance, so it cannot use a '
-            "scalar-sigma eigenbasis prepared for the unchanged covariance."
+            'outer_flux mode = "marginalise" cannot use a scalar-sigma eigenbasis '
+            "prepared without the marginalised outer-flux covariance."
         )
 
 
@@ -156,7 +156,7 @@ def build_co2_model(
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     sigma_alignment: SigmaAlignment | None = None,
@@ -304,7 +304,7 @@ def _build_co2_model(
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     sigma_alignment: SigmaAlignment | None = None,
@@ -346,7 +346,6 @@ def _build_co2_model(
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
     if outer_states is not None:
         activity = outer_states.fix_states(activity)
-        aggregation_error = outer_states.add_marginal_error(flux_sensitivity, aggregation_error, output_dim="nmeasure")
 
     with registered_model() as model:
         if outer_states is not None and outer_states.choice.mode == "marginalise":
@@ -394,11 +393,17 @@ def _build_co2_model(
             observations,
             modelled_mean,
         )
+        outer_flux_factor = (
+            outer_states.marginal_error_factor(flux_sensitivity, output_dim="nmeasure")
+            if outer_states is not None and outer_states.choice.mode == "marginalise"
+            else None
+        )
+        fixed_covariance = aggregation_error.with_added_factor(outer_flux_factor)
         if likelihood_builder is None:
             add_additive_sigma_likelihood(
                 observations=likelihood_observations,
                 observation_error=observation_error,
-                aggregation_error=aggregation_error,
+                aggregation_error=fixed_covariance,
                 fixed_model_mismatch=fixed_mismatch,
                 mean=likelihood_mean,
                 additive_sigma_alignment=sigma_alignment,
@@ -410,7 +415,7 @@ def _build_co2_model(
                 likelihood_builder,
                 observations=likelihood_observations,
                 observation_error=observation_error,
-                aggregation_error=aggregation_error,
+                aggregation_error=fixed_covariance,
                 mean=likelihood_mean,
                 output_dim="nmeasure",
                 likelihood_kwargs=likelihood_kwargs,

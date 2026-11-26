@@ -26,7 +26,7 @@ from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
     DIAGONAL_RESIDUAL_VARIANCE,
     LOW_RANK_FACTOR,
-    AggregationError,
+    ObservationCovariance,
 )
 
 
@@ -42,7 +42,7 @@ class RegisteredAggregationError:
 
 
 def add_aggregation_error_data(
-    aggregation_error: AggregationError | None,
+    aggregation_error: ObservationCovariance | None,
     observations: xr.DataArray,
     *,
     output_dim: str,

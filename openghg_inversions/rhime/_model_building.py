@@ -20,7 +20,7 @@ from openghg_inversions.models.additive_sigma import (
 from openghg_inversions.models.fixed_error import add_fixed_error_likelihood
 from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
 from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.observation_error import AggregationError
+from openghg_inversions.observation_error import ObservationCovariance
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -120,7 +120,7 @@ def _call_custom_likelihood(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError | None = None,
+    aggregation_error: ObservationCovariance | None = None,
     mean: TensorVariable,
     output_dim: str,
     likelihood_kwargs: Mapping[str, Any] | None = None,

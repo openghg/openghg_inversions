@@ -36,7 +36,7 @@ from openghg_inversions.models.components import (
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.observation_error import AggregationError
+from openghg_inversions.observation_error import ObservationCovariance
 
 from .co2_model import _normalise_offset_args
 from .co2_o2_fixed_ou import linked_fixed_ou_alignment, validate_linked_ou_amplitude_units
@@ -284,7 +284,7 @@ def build_co2_o2_model(
     fixed_prior_contribution: xr.DataArray,
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
     retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
@@ -416,7 +416,7 @@ def _build_co2_o2_model(
     fixed_prior_contribution: xr.DataArray,
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
     retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
@@ -454,7 +454,6 @@ def _build_co2_o2_model(
     activity = resolve_state_activity(prepared_sensitivity.removed, state_activity)
     if outer_states is not None:
         activity = outer_states.fix_states(activity)
-        aggregation_error = outer_states.add_marginal_error(joint_sensitivity, aggregation_error, output_dim=output_dim)
 
     with registered_model() as model:
         state = add_correlated_state_with_activity(
@@ -492,6 +491,12 @@ def _build_co2_o2_model(
             observations,
             modelled,
         )
+        outer_flux_factor = (
+            outer_states.marginal_error_factor(joint_sensitivity, output_dim=output_dim)
+            if outer_states is not None and outer_states.choice.mode == "marginalise"
+            else None
+        )
+        fixed_covariance = aggregation_error.with_added_factor(outer_flux_factor)
         if tau_hours is None:
             if fixed_site_amplitudes is not None or site_amplitude_prior is not None:
                 raise ValueError("Fixed-OU amplitudes require tau_hours.")
@@ -499,7 +504,7 @@ def _build_co2_o2_model(
                 observations=likelihood_observations,
                 observation_error=independent_error_sd,
                 mean=likelihood_mean,
-                aggregation_error=aggregation_error,
+                aggregation_error=fixed_covariance,
                 output_dim=output_dim,
                 observation_error_name="fixed_independent_error_sd",
             )
@@ -513,7 +518,7 @@ def _build_co2_o2_model(
                 observations=likelihood_observations,
                 observation_error=independent_error_sd,
                 mean=likelihood_mean,
-                aggregation_error=aggregation_error,
+                aggregation_error=fixed_covariance,
                 output_dim=output_dim,
                 tau_hours=tau_hours,
                 fixed_site_amplitudes=fixed_site_amplitudes,

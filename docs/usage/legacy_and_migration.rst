@@ -135,6 +135,11 @@ See :doc:`rhime_configuration` for complete resource selection examples and
 Additional development Python API changes
 ------------------------------------------
 
+Import :class:`~openghg_inversions.observation_error.ObservationCovariance`
+in place of ``AggregationError`` when constructing covariance objects or
+annotating custom likelihoods. ``resolve_aggregation_error`` returns the new
+type. Pass it to likelihood builders through the ``aggregation_error`` keyword.
+
 .. _prepared-input-factory-retirement:
 
 Replace ``PreparedInputs.from_legacy_inputs(...)`` with

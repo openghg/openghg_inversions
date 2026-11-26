@@ -17,7 +17,7 @@ from openghg_inversions.models.state_activity import (
     prepare_linear_sensitivity,
     resolve_state_activity,
 )
-from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
+from openghg_inversions.observation_error import ObservationCovariance, resolve_aggregation_error
 from openghg_inversions.rhime.co2.co2_cached_sigma_model import build_co2_cached_sigma_model
 from openghg_inversions.rhime.co2.co2_model import build_co2_model
 
@@ -322,7 +322,7 @@ def aggregation_forms(obs):
     }
 
 
-def covariance_of(error: AggregationError) -> np.ndarray:
+def covariance_of(error: ObservationCovariance) -> np.ndarray:
     if error.mode == "dense":
         return error.covariance.values
     if error.mode == "low_rank":
@@ -334,15 +334,22 @@ def test_marginalise_adds_the_outer_prior_covariance_to_every_error_form():
     obs, flux_prior, h, states = resolved(MARGINAL)
     outer = slice(2, 5)
     added = h.values[:, outer] @ flux_prior.arithmetic_covariance.values[outer, outer] @ h.values[:, outer].T
-    assert states.prior_factor.shape == (3, 3)
+    factor = states.marginal_error_factor(h, output_dim="nmeasure")
+    assert factor.shape == (h.sizes["nmeasure"], 3)
     for form, (error, covariance) in aggregation_forms(obs).items():
-        result = states.add_marginal_error(h, error, output_dim="nmeasure")
-        assert result.mode == ("dense" if form == "dense" else "low_rank"), form
+        result = error.with_added_factor(factor)
+        if form == "dense":
+            assert result.mode == "dense"
+        else:
+            original_rank = 0 if error.factor is None else error.factor.shape[1]
+            assert result.mode == "low_rank"
+            assert result.covariance is None
+            assert result.factor.shape[1] == original_rank + factor.shape[1]
+            if error.diagonal_variance is not None:
+                assert result.diagonal_variance is error.diagonal_variance
         np.testing.assert_allclose(covariance_of(result), covariance + added, atol=1e-14, err_msg=form)
         np.testing.assert_allclose(result.marginal_variance, np.diag(covariance + added), atol=1e-14, err_msg=form)
-    # Fixed mode adds nothing.
-    error = aggregation_forms(obs)["low_rank"][0]
-    assert FIXED.resolve_states(flux_prior).add_marginal_error(h, error, output_dim="nmeasure") is error
+        assert error.with_added_factor(None) is error
 
 
 def gaussian_posterior(design, offset, observations, noise, mean, covariance):
@@ -369,7 +376,8 @@ def test_marginalised_posterior_equals_the_jointly_sampled_inner_marginal(choice
     kept = ~held
     conditioned, offset = states.condition_sensitivity(h, fixed, output_dim="nmeasure")
     assert (conditioned is h) == (cross == 0.0)
-    marginal = states.add_marginal_error(conditioned, error, output_dim="nmeasure")
+    factor = states.marginal_error_factor(conditioned, output_dim="nmeasure")
+    marginal = error.with_added_factor(factor)
     marginal_mean, marginal_covariance = gaussian_posterior(
         conditioned.values[:, kept], offset.values + design[:, held] @ mean[held], y,
         covariance_of(marginal) + np.diag(np.full(4, 0.2**2)), mean[kept], covariance[np.ix_(kept, kept)],
@@ -385,12 +393,12 @@ def test_marginalised_posterior_equals_the_jointly_sampled_inner_marginal(choice
     assert fixed_covariance[0, 0] < joint_covariance[0, 0] - 1e-4
 
 
-@pytest.mark.parametrize("cross", [0.0, 0.01], ids=["uncorrelated", "correlated"])
-def test_marginalised_model_likelihood_uses_the_widened_error(cross):
+@pytest.mark.parametrize("form, cross", [("none", 0.0), ("low_rank", 0.01), ("dense", 0.0)])
+def test_marginalised_model_likelihood_uses_the_widened_error(form, cross):
     """The likelihood is p(y | x_I) with x_O integrated out under its conditional Gaussian prior."""
     obs, flux_prior, h, _ = resolved(MARGINAL, cross)
     inputs = model_inputs(obs, flux_prior)
-    inputs["aggregation_error"], aggregation = aggregation_forms(obs)["low_rank"]
+    inputs["aggregation_error"], aggregation = aggregation_forms(obs)[form]
     model = build_co2_model(
         h, **inputs, outer_flux=MARGINAL, likelihood_builder=add_fixed_ou_gaussian_likelihood, likelihood_kwargs=NOISE,
     )

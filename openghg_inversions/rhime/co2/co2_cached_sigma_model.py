@@ -54,7 +54,7 @@ from openghg_inversions.models.state_activity import (
     resolve_state_activity,
 )
 from openghg_inversions.observation_error import (
-    AggregationError,
+    ObservationCovariance,
     aggregation_error_as_low_rank,
     validate_observation_error_arrays,
 )
@@ -427,7 +427,7 @@ def build_co2_cached_sigma_model(
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior: PriorArgs | None = None,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
@@ -558,7 +558,7 @@ def _build_co2_cached_sigma_model(
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior: PriorArgs | None = None,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
@@ -611,7 +611,6 @@ def _build_co2_cached_sigma_model(
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
     if outer_states is not None:
         activity = outer_states.fix_states(activity)
-        aggregation_error = outer_states.add_marginal_error(flux_sensitivity, aggregation_error, output_dim=output_dim)
     (
         prepared_flux,
         flux_active_design,
@@ -628,7 +627,13 @@ def _build_co2_cached_sigma_model(
     )
 
     fixed_prior_data = fixed_prior_contribution.transpose(output_dim).compute()
-    factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
+    outer_flux_factor = (
+        outer_states.marginal_error_factor(flux_sensitivity, output_dim=output_dim)
+        if outer_states is not None and outer_states.choice.mode == "marginalise"
+        else None
+    )
+    fixed_covariance = aggregation_error.with_added_factor(outer_flux_factor)
+    factor, aggregation_diagonal = aggregation_error_as_low_rank(fixed_covariance)
     covariance = prepare_fixed_ou_low_rank(
         factor,
         np.square(

@@ -1,5 +1,7 @@
 """Outer-flux option on linked CO2/O2 recipes: one state selection shared by both channels."""
 
+from dataclasses import replace
+
 import numpy as np
 import pytensor
 import pytensor.tensor as pt
@@ -113,11 +115,18 @@ def test_marginalised_linked_error_spans_both_channels():
     states = inputs["outer_flux"].resolve_states(prior)
     joint = _gather_co2_o2_sensitivity(base.co2_sensitivity, base.o2_sensitivity, output_dim="observation")
     joint = joint.sel(observation=base.observations["observation"])
-    widened = states.add_marginal_error(joint, base.aggregation_error, output_dim="observation")
+    held = np.flatnonzero(states.fixed.values)
+    design = joint.transpose("observation", prior.state_dim).values[:, held]
+    outer_covariance = prior.arithmetic_covariance.values[np.ix_(held, held)]
+    added = design @ outer_covariance @ design.T
     species = base.observations.indexes["observation"].get_level_values("species")
-    added = states.marginal_error_factor(joint, output_dim="observation").values
-    assert added.shape[1] == states.prior_factor.shape[1] > 0
-    assert np.abs(added[species == "co2"] @ added[species == "o2"].T).max() > 0
+    assert np.any(added[np.ix_(species == "co2", species == "o2")] != 0)
+    aggregation = base.aggregation_error
+    widened = replace(
+        aggregation,
+        covariance=aggregation.covariance + added,
+        marginal_variance=aggregation.marginal_variance + np.diag(added),
+    )
     fixed_choice = OuterFluxChoice("fixed", ("outer",))
     explicit = build_co2_o2_model(
         **{**inputs, "aggregation_error": widened, "outer_flux": fixed_choice}, **NOISE,

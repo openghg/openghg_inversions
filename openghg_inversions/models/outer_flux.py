@@ -12,8 +12,8 @@ forward model includes their prior-mean contribution ``H_O m_O``:
 - ``"marginalise"`` integrates the uncertainty into the observation model.
   The saved prior-mean entries are placeholders for these integrated states.
   Their low-rank covariance :math:`H_O \Sigma_{OO} H_O^T` (rank at most the number of held states) is
-  added to the fixed aggregation-error covariance, beside its own low-rank
-  factor, by :meth:`OuterStates.add_marginal_error`. For a linear Gaussian
+  projected by :meth:`OuterStates.marginal_error_factor` and added to the
+  fixed observation covariance during likelihood assembly. For a linear Gaussian
   model with ``O`` uncorrelated with the other states, the posterior of the
   other states is then exactly their marginal posterior when ``O`` is
   sampled uncentred. Under the default LogNormal-copula prior it is an
@@ -44,7 +44,7 @@ Recipe builders take the :class:`OuterFluxChoice` and resolve it with
 shared linked CO2/O2 state). They apply the result with
 :meth:`OuterStates.condition_sensitivity` before exact-zero pruning,
 :meth:`OuterStates.fix_states` after it, and
-:meth:`OuterStates.add_marginal_error` before the likelihood is built.
+:meth:`OuterStates.marginal_error_factor` during likelihood assembly.
 """
 
 from __future__ import annotations
@@ -59,11 +59,7 @@ from openghg_inversions.array_ops import to_dense
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.models.boundary import Outputs
 from openghg_inversions.models.state_activity import ResolvedStateActivity
-from openghg_inversions.observation_error import (
-    DIAGONAL_RESIDUAL_VARIANCE,
-    LOW_RANK_FACTOR,
-    AggregationError,
-)
+from openghg_inversions.observation_error import LOW_RANK_FACTOR
 
 
 OuterMode = Literal["fixed", "marginalise"]
@@ -381,61 +377,6 @@ class OuterStates:
             dims=(output_dim, _RANK_DIM),
             coords={output_dim: held.coords[output_dim], _RANK_DIM: np.arange(factor.shape[1])},
             name=LOW_RANK_FACTOR,
-        )
-
-    def add_marginal_error(
-        self, flux_sensitivity: xr.DataArray, aggregation_error: AggregationError, *, output_dim: str,
-    ) -> AggregationError:
-        """Add the marginalised outer covariance to a fixed aggregation error.
-
-        In ``"fixed"`` mode the aggregation error is returned unchanged. In
-        ``"marginalise"`` mode ``H_F L_F`` is appended to the low-rank
-        factor. Without aggregation error it supplies the entire factor, with
-        zero diagonal residual. For dense error, ``H_F Sigma_F|I H_F^T`` is
-        added to the dense covariance. The marginal variance grows by the row
-        sums of squares of ``H_F L_F``.
-
-        Args:
-            flux_sensitivity: Flux sensitivity on ``(output_dim, state_dim)``,
-                in the row order of ``aggregation_error``.
-            aggregation_error: Fixed aggregation error of the likelihood.
-            output_dim: Observation dimension.
-
-        Returns:
-            The aggregation error the likelihood should use.
-        """
-        if self.choice.mode == "fixed":
-            return aggregation_error
-        factor = self.marginal_error_factor(flux_sensitivity, output_dim=output_dim)
-        values = factor.to_numpy()
-        marginal_variance = np.asarray(aggregation_error.marginal_variance, dtype=np.float64) + np.einsum(
-            "ij,ij->i", values, values,
-        )
-        if aggregation_error.mode == "dense":
-            assert aggregation_error.covariance is not None
-            covariance = aggregation_error.covariance + values @ values.T
-            return replace(aggregation_error, covariance=covariance, marginal_variance=marginal_variance)
-        if aggregation_error.mode == "low_rank":
-            assert aggregation_error.factor is not None
-            existing = aggregation_error.factor.transpose(output_dim, ...)
-            rank_dim = existing.dims[1]
-            combined = np.hstack([np.asarray(existing.values, dtype=np.float64), values])
-            factor = xr.DataArray(
-                combined,
-                dims=(output_dim, rank_dim),
-                coords={output_dim: existing.coords[output_dim], rank_dim: np.arange(combined.shape[1])},
-                name=existing.name,
-            )
-            return replace(aggregation_error, factor=factor, marginal_variance=marginal_variance)
-        diagonal = xr.DataArray(
-            np.zeros(values.shape[0]), dims=output_dim,
-            coords={output_dim: factor.coords[output_dim]}, name=DIAGONAL_RESIDUAL_VARIANCE,
-        )
-        return AggregationError(
-            mode="low_rank",
-            marginal_variance=marginal_variance,
-            factor=factor,
-            diagonal_variance=diagonal,
         )
 
 

@@ -32,7 +32,7 @@ from openghg_inversions.models._gaussian_observation import (
     add_gaussian_observation_likelihood,
 )
 from openghg_inversions.observation_error import (
-    AggregationError,
+    ObservationCovariance,
     validate_observation_error_arrays,
 )
 from openghg_inversions.sigma import SigmaAlignment
@@ -46,7 +46,7 @@ def add_additive_sigma_likelihood(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError | None = None,
+    aggregation_error: ObservationCovariance | None = None,
     mean: TensorVariable,
     minimum_error_floor: xr.DataArray | None = None,
     fixed_model_mismatch: xr.DataArray | None = None,

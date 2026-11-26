@@ -42,8 +42,9 @@ boundary condition. An explicit state-activity policy omits inactive elements
 from the sampled correlated vector while restoring their exact fixed values
 in the full public ``flux_scaling`` vector and in ``co2_flux_contribution``.
 
-The CO2 likelihood uses the explicit :class:`~openghg_inversions.observation_error.AggregationError`
-selected from prepared inputs. With reported observation standard deviation
+The CO2 likelihood uses the aggregation covariance selected from prepared inputs
+as an explicit :class:`~openghg_inversions.observation_error.ObservationCovariance`.
+With reported observation standard deviation
 ``s_y``, optional known mismatch ``s_fixed``, and optional inferred additive
 mismatch ``sigma``, its covariance is
 
@@ -1400,7 +1401,7 @@ Inversions.
 Built-in aggregation covariance relies on the guarantees of its construction
 pipeline. The runner selects and validates prepared aggregation-error arrays
 through :func:`openghg_inversions.observation_error.resolve_aggregation_error`.
-A custom pipeline that constructs an ``AggregationError`` directly owns the
+A custom pipeline that constructs an ``ObservationCovariance`` directly owns the
 completeness, coherence, and numerical covariance guarantees of that object;
 there is no separate public complete-covariance validator.
 
