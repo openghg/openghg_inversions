@@ -25,17 +25,20 @@ from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, normalise_optional_
 
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .configuration import (
-    _validate_section_option_names, _PREPARATION_OPTION_NAMES, _SAMPLING_OPTION_NAMES,
+    _validate_section_option_names, _SAMPLING_OPTION_NAMES,
     _PRIOR_OPTION_NAMES, _MODEL_SECTION_OPTION_NAMES,
     _reject_unknown,
     _bool, _number, _take, _model, _co2_likelihood, _frozen,
-    Co2PreparationConfig,
+    _path,
     _sampling,
     _string,
     _table, _outer_flux_choice,
     load_co2_family_config,
     resolve_co2_prior_seed,
 )
+
+
+_LINKED_PREPARATION_OPTIONS = frozenset({"path", "start_date", "end_date", "domain"})
 
 
 def load_co2_o2_params(
@@ -103,7 +106,7 @@ def _validate_co2_o2_option_names(*requests: Mapping[str, object]) -> None:
     }
     _validate_section_option_names(requests, {
         "": frozenset(allowed),
-        "prepared_inputs": _PREPARATION_OPTION_NAMES,
+        "prepared_inputs": _LINKED_PREPARATION_OPTIONS | {"reconstruction_path"},
         "outer_flux": _MODEL_SECTION_OPTION_NAMES["outer_flux"],
         "channels": frozenset({"co2", "o2"}),
         **{f"channels.{channel}" + (f".{path}" if path else ""): names
@@ -135,8 +138,13 @@ class Co2O2PreparationConfig:
         prepared = _table(_table(config, "config").get("prepared_inputs", {}), "prepared_inputs")
         if "reconstruction_path" in prepared:
             raise ValueError("Linked CO2/O2 preparation does not support prepared_inputs.reconstruction_path.")
-        ordinary = Co2PreparationConfig.from_params({"prepared_inputs": prepared}, require_path=require_path)
-        return cls(ordinary.prepared_path, ordinary.start_date, ordinary.end_date, ordinary.domain)
+        _reject_unknown({name: value for name, value in prepared.items() if name not in _LINKED_PREPARATION_OPTIONS},
+                        "prepared_inputs")
+        if require_path and "path" not in prepared:
+            raise ValueError("Missing required option prepared_inputs.path.")
+        path = _path(prepared.pop("path"), "prepared_inputs.path") if "path" in prepared else None
+        facts = {name: _string(value, f"prepared_inputs.{name}") for name, value in prepared.items()}
+        return cls(prepared_path=path, **facts)
 
     def preparation_arguments(self) -> dict[str, Any]:
         """Return keywords for the linked artifact-import boundary."""

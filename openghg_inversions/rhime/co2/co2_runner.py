@@ -36,7 +36,7 @@ from openghg_inversions.models.scalar_sigma import (
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
-    AggregationError,
+    ObservationCovariance,
     aggregation_error_input_names,
     resolve_aggregation_error,
 )
@@ -53,7 +53,7 @@ from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.sigma import SigmaAlignment
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
-from .co2_model import _build_co2_model, _normalise_offset_args
+from .co2_model import _build_co2_model, _check_outer_flux_likelihood, _normalise_offset_args
 from .co2_preparation import ALPHA_PRIOR_MARGINAL, Co2PreparedInputs
 
 _CO2_SCIENTIFIC_INPUT_NAMES = (
@@ -262,7 +262,7 @@ def _resolve_co2_likelihood_kwargs(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
 ) -> Mapping[str, Any] | None:
     """Resolve file-backed scalar-sigma options before model construction."""
     if likelihood_builder is not add_scalar_sigma_eigen_likelihood:
@@ -525,6 +525,7 @@ def build_co2_from_materialized(
         raise ValueError("CO2 model inputs and enabled priors must be materialized before building.")
     if likelihood_builder is None and not no_model_error and sigma_alignment is None:
         sigma_alignment = SigmaAlignment.from_observations(model_inputs["mf"])
+    _check_outer_flux_likelihood(outer_flux, likelihood_builder)
     aggregation_error = resolve_aggregation_error(
         model_inputs,
         prepared.aggregation_error_mode,

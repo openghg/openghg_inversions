@@ -10,7 +10,7 @@ import pytest
 import sparse
 import xarray as xr
 
-from openghg_inversions.inversion_data import MergedData, SiteOptions, prepare_surface_site
+from openghg_inversions.inversion_data import MergedData, SiteOptions, prepare_surface_site, select_boundary_representation
 from openghg_inversions.inversion_data import acquisition, surface
 from tests.test_surface_acquisition import boundary_inputs, inputs as inputs, resolved_inputs
 from tests.test_boundary_getter_policy import boundary_provider as boundary_provider, acquire_monthly_boundary as acquire_monthly_boundary
@@ -30,6 +30,30 @@ def test_fresh_centered_acquisition_retains_monthly_boundary(acquire_monthly_bou
         np.testing.assert_allclose(site[f"bc_mass_{direction}"], .25)
     assert result.provenance.boundary.uuid == "boundary-id"
     assert result.provenance.boundary.dataversion == "v3"
+
+def test_centered_acquisition_can_supply_ordinary_boundaries(acquire_monthly_boundary):
+    acquired = acquire_monthly_boundary("2020-01-16", "2020-01-17", centered=True)
+    site = acquired.site_data["MHD"].chunk({"time": 1})
+    with Callback(pretask=lambda *args: pytest.fail("boundary selection computed borrowed payload")):
+        ordinary = select_boundary_representation({"MHD": site}, "ordinary")["MHD"]
+    np.testing.assert_allclose(ordinary.bc_n, 401. / 4)
+    assert ordinary.bc_n.attrs["units"] == site.mf.attrs["units"]
+    assert "bc_reference" not in ordinary
+    assert "bc_reference" in site
+
+
+@pytest.mark.parametrize("variable,units", [
+    ("bc_reference", "ppb"), ("bc_anomaly_n", "ppb"), ("bc_mass_n", "percent"),
+])
+def test_ordinary_boundary_selection_rejects_incompatible_operand_units(
+    acquire_monthly_boundary, variable, units,
+):
+    acquired = acquire_monthly_boundary("2020-01-16", "2020-01-17", centered=True)
+    site = acquired.site_data["MHD"]
+    site = site.assign({variable: site[variable].assign_attrs(units=units)})
+    with pytest.raises(ValueError, match=rf"{variable}.*same numeric scale"):
+        select_boundary_representation({"MHD": site}, "ordinary")
+
 
 def test_native_boundaries_forwarded_and_reconstructed_before_rounding(inputs, monkeypatch):
     obs, fp, flux = inputs
