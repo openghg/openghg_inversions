@@ -255,10 +255,14 @@ one observation sees either of two cells that :math:`B` and :math:`\Pi`
 treat alike, swapping the cells leaves :math:`C_\alpha`, :math:`H_\alpha`
 and :math:`A` unchanged but reverses the sign of :math:`Q B_\perp H^T`. The
 reduction therefore records a
-:func:`~openghg_inversions.coherent_reduction.native_reduction_identity`,
-a hash of the native :math:`H`, :math:`\Pi`, :math:`m`, the prolongation
-:math:`U_*` and, when the covariance action provides ``to_dataset()``, its
-description of :math:`B`. The reduction identity combines it with a hash of
+:func:`~openghg_inversions.coherent_reduction.native_reduction_identity`.
+For built-in separable covariances and independent combinations of them, it
+hashes the covariance configuration, the native :math:`H`, :math:`\Pi`,
+:math:`m`, and the prolongation :math:`U_*`. Each reduction with a custom
+covariance action receives a fresh identity. For those actions, prepare the
+fit and products from the same call to ``reduce_native_gaussian`` and keep
+the issued identity with the fit. The reduction identity combines the native
+identity with a hash of
 :math:`C_\alpha`, :math:`H_\alpha` and the exact :math:`A`, so anyone who
 stores the native identity and the reduced arrays, such as a prepared
 artifact, can recompute it and detect a changed :math:`A`. The conditioning
