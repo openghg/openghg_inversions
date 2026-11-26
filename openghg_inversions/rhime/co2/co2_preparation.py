@@ -1207,7 +1207,7 @@ def prepare_co2_inputs(
             raise ValueError("prior_marginal must use the reduction's retained-state dimension.")
         _require_same_axis(prior_marginal, reduced_state_dim, state_index, name="prior_marginal")
         marginal = _renamed(prior_marginal, {reduced_state_dim: state_dim}, name=ALPHA_PRIOR_MARGINAL)
-        mapped[ALPHA_PRIOR_MARGINAL] = marginal.copy(data=np.asarray(marginal.values).astype(str))
+        mapped[ALPHA_PRIOR_MARGINAL] = marginal.copy(data=np.asarray(marginal.values, dtype=object).astype(str))
     mapped["fixed_prior_contribution"] = _borrow_without_axis_coordinates(
         _renamed(
             intercept,

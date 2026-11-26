@@ -55,6 +55,10 @@ from openghg_inversions.models.state_activity import (
 from openghg_inversions.sigma import SigmaAlignment
 
 
+# Larger shapes lose accuracy in the float32 Gamma quantile gradient.
+_MAX_FLOAT32_GAMMA_SHAPE = 1000.0
+
+
 @dataclass
 class LinearComponentResult:
     """Objects created by :func:`add_linear_component`."""
@@ -1066,7 +1070,8 @@ def add_correlated_copula_state(
 
     Raises:
         ValueError: If the factor or marginal parameters are not finite in
-            PyMC's configured floating-point dtype.
+            PyMC's configured floating-point dtype, or if a float32 Gamma
+            state has shape above 1000.
 
     Notes:
         This must run in an active ``pm.Model``. Validation finishes before
@@ -1095,6 +1100,11 @@ def add_correlated_copula_state(
         or (shape[shaped] <= 0).any()
     ):
         raise ValueError("Copula prior factors and marginal parameters must remain finite in the model float dtype.")
+    if shape.dtype == np.float32 and (shape[family == "gamma"] > _MAX_FLOAT32_GAMMA_SHAPE).any():
+        raise ValueError(
+            "Gamma copula marginals with shape above 1000 require float64 for accurate sampling gradients. "
+            "Set PYTENSOR_FLAGS=floatX=float64 before starting Python."
+        )
 
     add_coords(prior.mean.coords, model_dims=(state_dim,))
     latent = pm.Normal(f"{var_name}_latent", 0.0, 1.0, dims=state_dim)
