@@ -169,6 +169,11 @@ def prepare_multisource_native_co2_o2_inputs(
         if set(labels) != set(sources):
             raise ValueError(f"Linked native {name} {sorted(labels)!r} differ from basis sources {sorted(sources)!r}.")
     states = _source_states(source_states, sources)
+    if prior.gpp_ter_correlation:
+        for source, sector in ((prior.gpp_source, "gpp"), (prior.ter_source, "ter")):
+            state = states.get(source) if source is not None else None
+            if state is None or (state[0].casefold(), state[1]) != (sector, "shared"):
+                raise ValueError("Linked GPP/TER correlation requires the declared shared GPP and TER sources.")
     co2_dim, o2_dim = (_observation_dim(channel, name) for channel, name in ((co2, "CO2"), (o2, "O2")))
     if co2_dim == o2_dim:
         raise ValueError("CO2 and O2 observations require distinct dimension names.")

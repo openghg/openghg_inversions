@@ -93,7 +93,9 @@ class Co2O2PreparedInputs:
             block order ``[[CO2, CO2/O2], [CO2/O2.T, O2]]``; per-axis unit
             coordinates describe mixed-unit entries.
         retained_prior: Arithmetic moments of the correlated prior over shared
-            GPP/TER/FF and separate CO2- and O2-ocean retained states.
+            GPP/TER/FF and separate CO2- and O2-ocean retained states. A
+            validated lognormal prior supplies the moments for every marginal
+            choice.
         provenance: JSON-serializable preparation and data provenance.
         boundary_sensitivity: Optional mapping keyed by co2 and o2, containing
             native-channel H_bc arrays (observation, boundary state).
@@ -973,8 +975,9 @@ def prepare_co2_o2_inputs(
             observation dimension; its distinct column dimension carries the
             same O2 labels in the same order. Entries have squared O2
             observation units.
-        retained_prior: Retained correlated prior whose indexed state axis has
-            ``source`` and ``tracer_scope`` coordinates for shared GPP/TER/FF,
+        retained_prior: Validated correlated lognormal prior supplying the
+            arithmetic moments for all marginal choices. Its indexed state
+            axis has ``source`` and ``tracer_scope`` coordinates for shared GPP/TER/FF,
             CO2 ocean, and O2 ocean states. Repeated source labels must use
             one consistent spelling, including case.
         co2_units: Non-empty units label for CO2 observations and sensitivity rows.
