@@ -2,8 +2,7 @@ r"""Model-owned likelihood with an additive model-data-mismatch scale.
 
 For reported observation-error variance :math:`s_y^2`, optional fixed mismatch
 :math:`s_{fixed}`, inferred mismatch scale :math:`\sigma`, and fixed
-aggregation covariance :math:`C_{agg}`, this
-component constructs the independent variance
+observation covariance, this component constructs the independent variance
 
 .. math::
 
@@ -32,7 +31,7 @@ from openghg_inversions.models._gaussian_observation import (
     add_gaussian_observation_likelihood,
 )
 from openghg_inversions.observation_error import (
-    AggregationError,
+    ObservationCovariance,
     validate_observation_error_arrays,
 )
 from openghg_inversions.sigma import SigmaAlignment
@@ -46,7 +45,7 @@ def add_additive_sigma_likelihood(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError | None = None,
+    aggregation_error: ObservationCovariance | None = None,
     mean: TensorVariable,
     minimum_error_floor: xr.DataArray | None = None,
     fixed_model_mismatch: xr.DataArray | None = None,
@@ -61,15 +60,15 @@ def add_additive_sigma_likelihood(
     The inferred absolute mismatch scale is observation-aligned through
     ``additive_sigma_alignment`` and enters as a separate variance term. When
     no alignment is supplied, no inferred scale is constructed. Fixed
-    dense or low-rank aggregation error is included only when
-    explicitly selected. If supplied, ``minimum_error_floor`` floors the total
-    marginal standard deviation.
+    dense or low-rank covariance is included when supplied. The optional
+    ``minimum_error_floor`` floors the total marginal standard deviation.
 
     Args:
         observations: Observed mole fractions.
         observation_error: Reported observation-error standard deviations.
-        aggregation_error: Validated fixed aggregation-error representation. Omit
-            or pass ``None`` for no fixed aggregation covariance.
+        aggregation_error: Validated fixed observation covariance contribution,
+            such as basis aggregation with any marginalised outer-flux term.
+            Omit or pass ``None`` if the contribution is absent.
         mean: Completed forward-model concentration aligned with
             ``output_dim``.
         minimum_error_floor: Optional minimum total-error standard deviations.

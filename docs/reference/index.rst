@@ -281,7 +281,7 @@ mathematical contracts and eager-computation boundaries.
    openghg_inversions.coherent_reduction.NativeFunctionalProducts
    openghg_inversions.coherent_reduction.project_native_functionals
    openghg_inversions.coherent_reduction.marginalise_functional_states
-   openghg_inversions.observation_error.AggregationError
+   openghg_inversions.observation_error.ObservationCovariance
    openghg_inversions.observation_error.prepare_low_rank_aggregation_error
    openghg_inversions.observation_error.resolve_aggregation_error
    openghg_inversions.observation_error.WhitenedRankRule

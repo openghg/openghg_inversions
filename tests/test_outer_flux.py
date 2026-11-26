@@ -1,6 +1,9 @@
-"""Outer-region flux option: state selection and fixed outer states in the CO2 recipes."""
+"""Outer-region flux option: state selection, fixed and marginalised outer states in the CO2 recipes."""
+
+from functools import partial
 
 import numpy as np
+import pymc as pm
 import pytensor
 import pytensor.tensor as pt
 import pytest
@@ -11,12 +14,13 @@ from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models.boundary import AnomalyScalingChoice
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.outer_flux import OuterFluxChoice
+from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likelihood, prepare_scalar_sigma_eigenbasis
 from openghg_inversions.models.state_activity import (
     StateActivity,
     prepare_linear_sensitivity,
     resolve_state_activity,
 )
-from openghg_inversions.observation_error import resolve_aggregation_error
+from openghg_inversions.observation_error import ObservationCovariance, resolve_aggregation_error
 from openghg_inversions.rhime.co2.co2_cached_sigma_model import build_co2_cached_sigma_model
 from openghg_inversions.rhime.co2.co2_model import build_co2_model
 
@@ -24,6 +28,8 @@ MEAN_SHIFT = {"pdf": "normal", "mu": 0.0, "sigma": 5.0}
 NOISE = dict(tau_hours=5.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75})
 FIXED = OuterFluxChoice("fixed", ("outer",))
 FIXED_OCEAN = OuterFluxChoice("fixed", ("outer",), ("ocean",))
+MARGINAL = OuterFluxChoice("marginalise", ("outer",))
+MARGINAL_OCEAN = OuterFluxChoice("marginalise", ("outer",), ("ocean",))
 
 
 @pytest.fixture(autouse=True)
@@ -114,7 +120,7 @@ def test_states_are_selected_by_basis_group_and_source():
     np.testing.assert_array_equal(FIXED_OCEAN.resolve_states(prior()).fixed, [False, False, False, False, True])
 
 
-def test_only_the_fixed_mode_is_available():
+def test_only_the_fixed_and_marginalise_modes_are_available():
     for mode in ("multiplicative", "additive"):
         with pytest.raises(ValueError, match="Unknown outer-flux mode"):
             OuterFluxChoice(mode, ("outer",))  # type: ignore[arg-type]
@@ -159,6 +165,10 @@ def test_selectors_accept_lazy_labels():
 def test_fixed_outer_states_must_be_uncorrelated_with_the_rest():
     with pytest.raises(ValueError, match="zero prior covariance"):
         FIXED_OCEAN.resolve_states(prior(cross=0.01))
+    # Marginalising conditions F on the other states instead.
+    states = MARGINAL_OCEAN.resolve_states(prior(cross=0.01))
+    assert states.regression.shape == (1, 4)
+    assert MARGINAL_OCEAN.resolve_states(prior()).regression is None
     # Correlation among states that stay sampled is kept.
     FIXED_OCEAN.resolve_states(prior())
 
@@ -214,16 +224,21 @@ def test_fixed_outer_states_keep_the_raw_forward_model(with_boundary):
     np.testing.assert_allclose(prediction, h.values @ state + 0.2 + mu_bc, atol=1e-10)
 
 
-def test_ordinary_and_cached_models_have_the_same_density():
-    obs, flux_prior, h = inputs()
+@pytest.mark.parametrize(
+    "choice, cross", [(FIXED_OCEAN, 0.0), (MARGINAL_OCEAN, 0.0), (MARGINAL_OCEAN, 0.01)],
+    ids=["fixed", "marginalise", "marginalise-correlated"],
+)
+def test_ordinary_and_cached_models_have_the_same_density(choice, cross):
+    obs, flux_prior, h = inputs(cross)
     common = model_inputs(obs, flux_prior)
     ordinary = build_co2_model(
-        h, **common, boundary=boundary(obs), outer_flux=FIXED_OCEAN,
+        h, **common, boundary=boundary(obs), outer_flux=choice,
         likelihood_builder=add_fixed_ou_gaussian_likelihood, likelihood_kwargs=NOISE,
     )
-    cached = build_co2_cached_sigma_model(h, **common, boundary=boundary(obs), outer_flux=FIXED_OCEAN, **NOISE)
+    cached = build_co2_cached_sigma_model(h, **common, boundary=boundary(obs), outer_flux=choice, **NOISE)
     point = ordinary.initial_point()
-    assert point["flux_scaling_active_latent"].shape == (3,)  # r0, r2, r3
+    # r0, r2, r3; r1 too when the held ocean is correlated with the inner states.
+    assert point["flux_scaling_active_latent"].shape == (4 if cross else 3,)
     for name in point:
         point[name] = np.linspace(0.1, 0.3, point[name].size).reshape(point[name].shape)
     cached_point = cached.model.initial_point()
@@ -261,8 +276,192 @@ def test_builders_resolve_the_choice_on_the_prior_they_sample(cached):
 
 def test_outputs_record_the_mode_and_selectors():
     outputs = FIXED_OCEAN.outputs()
-    assert FIXED_OCEAN.resolve_states(prior()).outputs() == outputs
     assert outputs.roles == {} and outputs.units == {}
     assert outputs.metadata == {
         "outer_flux_mode": "fixed", "outer_groups": ["outer"], "outer_fixed_sources": ["ocean"],
     }
+
+
+@pytest.mark.parametrize("wrap", [False, True], ids=["direct", "partial"])
+def test_direct_co2_builder_rejects_marginalised_outer_flux_with_a_scalar_sigma_eigenbasis(wrap):
+    """Reject a likelihood whose precomputed covariance omits the marginalised flux."""
+    obs, flux_prior, h = inputs()
+    options = model_inputs(obs, flux_prior)
+    eigenbasis = prepare_scalar_sigma_eigenbasis(
+        observations=obs,
+        observation_error=options["observation_error"],
+        aggregation_error=options["aggregation_error"],
+    )
+
+    builder = add_scalar_sigma_eigen_likelihood
+    kwargs = {"eigenbasis": eigenbasis, "sigma_prior": {"pdf": "halfnormal", "sigma": 0.4}}
+    if wrap:
+        builder = partial(builder, **kwargs)
+        kwargs = {}
+    with pytest.raises(ValueError, match="[Cc]annot use a scalar-sigma eigenbasis"):
+        build_co2_model(h, **options, outer_flux=MARGINAL, likelihood_builder=builder, likelihood_kwargs=kwargs)
+
+
+def aggregation_forms(obs):
+    """Fixtures for dense, low-rank, zero-rank low-rank and absent covariance."""
+    rows = obs.nmeasure
+    factor = np.array([[0.2], [0.1], [-0.1], [0.3]])
+    diagonal = np.array([0.01, 0.02, 0.01, 0.03])
+    dense = factor @ factor.T + np.diag(diagonal)
+    data = obs.to_dataset(name="mf").assign(
+        aggregation_error_sd=("nmeasure", np.sqrt(np.diag(dense))),
+        low_rank_factor=(("nmeasure", "agg_rank"), factor),
+        diagonal_residual_variance=("nmeasure", diagonal),
+        aggregation_error_covariance=(("nmeasure", "nmeasure_cov"), dense),
+    ).assign_coords(nmeasure_cov=rows.values)
+    diagonal_only = data.isel(agg_rank=slice(0, 0)).assign(
+        diagonal_residual_variance=("nmeasure", np.diag(dense)),
+    )
+    return {
+        "none": (resolve_aggregation_error(obs.to_dataset(name="mf"), "none"), np.zeros((4, 4))),
+        "diagonal_only": (resolve_aggregation_error(diagonal_only, "low_rank"), np.diag(np.diag(dense))),
+        "low_rank": (resolve_aggregation_error(data, "low_rank"), dense),
+        "dense": (resolve_aggregation_error(data, "dense"), dense),
+    }
+
+
+def test_marginalise_with_nearly_collinear_inner_states():
+    """Resolving a valid prior retains the small positive conditional variance."""
+    mean = xr.DataArray(
+        [1., 1., 1.], dims="region",
+        coords={"region": [0, 1, 2], "basis_group": ("region", ["inner", "inner", "outer"])},
+    )
+    covariance = np.array([
+        [.1, .099999999999999, .095],
+        [.099999999999999, .1, .095],
+        [.095, .095, .09035000000000044],
+    ])
+    states = MARGINAL.resolve_states(CorrelatedPrior(mean, covariance))
+    np.testing.assert_allclose(states.prior_factor @ states.prior_factor.T, [[1e-4]], atol=1e-15)
+
+
+@pytest.mark.parametrize("form", ["dense", "low_rank"])
+def test_saved_covariance_names_describe_the_combined_term(form):
+    """The trace records the complete fixed covariance with neutral names."""
+    obs, flux_prior, h, states = resolved(MARGINAL)
+    options = model_inputs(obs, flux_prior)
+    options["aggregation_error"], aggregation = aggregation_forms(obs)[form]
+    model = build_co2_model(h, **options, outer_flux=MARGINAL)
+    outer_factor = states.marginal_error_factor(h, output_dim="nmeasure").values
+    expected = aggregation + outer_factor @ outer_factor.T
+    with model:
+        trace = pm.sample_prior_predictive(draws=1, var_names=["y"], random_seed=13)
+    constants = trace.constant_data
+    assert "aggregation_error_marginal_variance" not in constants
+    assert "aggregation_error_covariance" not in constants
+    np.testing.assert_allclose(constants.fixed_observation_marginal_variance, np.diag(expected))
+    if form == "dense":
+        actual = constants.fixed_observation_covariance
+    else:
+        factor = constants.fixed_observation_factor.values
+        actual = factor @ factor.T + np.diag(constants.fixed_observation_diagonal_variance.values)
+    np.testing.assert_allclose(actual, expected)
+
+
+def covariance_of(error: ObservationCovariance) -> np.ndarray:
+    if error.mode == "dense":
+        return error.covariance.values
+    if error.mode == "low_rank":
+        return error.factor.values @ error.factor.values.T + np.diag(error.diagonal_variance.values)
+    return np.zeros((error.marginal_variance.size,) * 2)
+
+
+def test_marginalise_adds_the_outer_prior_covariance_to_every_error_form():
+    obs, flux_prior, h, states = resolved(MARGINAL)
+    outer = slice(2, 5)
+    added = h.values[:, outer] @ flux_prior.arithmetic_covariance.values[outer, outer] @ h.values[:, outer].T
+    factor = states.marginal_error_factor(h, output_dim="nmeasure")
+    assert factor.shape == (h.sizes["nmeasure"], 3)
+    for form, (error, covariance) in aggregation_forms(obs).items():
+        result = error.with_added_factor(factor)
+        if form == "dense":
+            assert result.mode == "dense"
+        else:
+            original_rank = 0 if error.factor is None else error.factor.shape[1]
+            assert result.mode == "low_rank"
+            assert result.covariance is None
+            assert result.factor.shape[1] == original_rank + factor.shape[1]
+            if error.diagonal_variance is not None:
+                assert result.diagonal_variance is error.diagonal_variance
+        np.testing.assert_allclose(covariance_of(result), covariance + added, atol=1e-14, err_msg=form)
+        np.testing.assert_allclose(result.marginal_variance, np.diag(covariance + added), atol=1e-14, err_msg=form)
+        assert error.with_added_factor(None) is error
+
+
+def gaussian_posterior(design, offset, observations, noise, mean, covariance):
+    """Exact posterior mean and covariance of x ~ N(mean, covariance), y ~ N(design x + offset, noise)."""
+    gain = covariance @ design.T @ np.linalg.inv(design @ covariance @ design.T + noise)
+    return mean + gain @ (observations - offset - design @ mean), covariance - gain @ design @ covariance
+
+
+@pytest.mark.parametrize(
+    "choice, cross", [(MARGINAL, 0.0), (MARGINAL_OCEAN, 0.0), (MARGINAL, 0.01), (MARGINAL_OCEAN, 0.01)],
+    ids=["outer", "ocean", "outer-correlated", "ocean-correlated"],
+)
+def test_marginalised_posterior_equals_the_jointly_sampled_inner_marginal(choice, cross):
+    """Linear Gaussian check: integrating O out analytically equals sampling it uncentred."""
+    obs, flux_prior, h, states = resolved(choice, cross)
+    error, aggregation = aggregation_forms(obs)["low_rank"]
+    noise = aggregation + np.diag(np.full(4, 0.2**2))
+    design, mean, covariance = h.values, flux_prior.mean.values, flux_prior.arithmetic_covariance.values
+    y = obs.values - 410.0
+    fixed = xr.full_like(obs, 0.2)
+    joint_mean, joint_covariance = gaussian_posterior(design, fixed.values, y, noise, mean, covariance)
+
+    held = states.fixed.values
+    kept = ~held
+    conditioned, offset = states.condition_sensitivity(h, fixed, output_dim="nmeasure")
+    assert (conditioned is h) == (cross == 0.0)
+    factor = states.marginal_error_factor(conditioned, output_dim="nmeasure")
+    marginal = error.with_added_factor(factor)
+    marginal_mean, marginal_covariance = gaussian_posterior(
+        conditioned.values[:, kept], offset.values + design[:, held] @ mean[held], y,
+        covariance_of(marginal) + np.diag(np.full(4, 0.2**2)), mean[kept], covariance[np.ix_(kept, kept)],
+    )
+    np.testing.assert_allclose(marginal_mean, joint_mean[kept], rtol=1e-12, atol=1e-13)
+    np.testing.assert_allclose(marginal_covariance, joint_covariance[np.ix_(kept, kept)], rtol=1e-12, atol=1e-13)
+    if cross:
+        return
+    # Holding uncorrelated O with zero uncertainty is not this marginal: it is tighter.
+    _, fixed_covariance = gaussian_posterior(
+        design[:, kept], fixed.values + design[:, held] @ mean[held], y, noise, mean[kept], covariance[np.ix_(kept, kept)],
+    )
+    assert fixed_covariance[0, 0] < joint_covariance[0, 0] - 1e-4
+
+
+@pytest.mark.parametrize("form, cross", [("none", 0.0), ("low_rank", 0.01), ("dense", 0.0)])
+def test_marginalised_model_likelihood_uses_the_widened_error(form, cross):
+    """The likelihood is p(y | x_I) with x_O integrated out under its conditional Gaussian prior."""
+    obs, flux_prior, h, _ = resolved(MARGINAL, cross)
+    inputs = model_inputs(obs, flux_prior)
+    inputs["aggregation_error"], aggregation = aggregation_forms(obs)[form]
+    model = build_co2_model(
+        h, **inputs, outer_flux=MARGINAL, likelihood_builder=add_fixed_ou_gaussian_likelihood, likelihood_kwargs=NOISE,
+    )
+    point = model.initial_point()
+    # r1 has no direct response, but with r0 correlated to the outer ocean it predicts it, so it is sampled.
+    active = 2 if cross else 1
+    assert point["flux_scaling_active_latent"].shape == (active,)
+    point["flux_scaling_active_latent"] = np.array([0.3, -0.2][:active])
+    # A negligible OU amplitude leaves R + A + H_O Sigma_OO H_O^T.
+    point["ou_site_amplitude_log__"] = np.full(point["ou_site_amplitude_log__"].shape, np.log(1e-7))
+    (state,) = evaluate(model, ["flux_scaling"], point)
+    np.testing.assert_allclose(state[2:], flux_prior.mean.values[2:])
+    # Independent reference: x_O | x_I ~ N(m_O + S_OI S_II^-1 (x_I - m_I), S_OO - S_OI S_II^-1 S_IO).
+    mean, cov = flux_prior.mean.values, flux_prior.arithmetic_covariance.values
+    inner, outer = slice(0, 2), slice(2, 5)
+    gain = np.linalg.solve(cov[inner, inner], cov[inner, outer]).T
+    outer_mean = mean[outer] + gain @ (state[inner] - mean[inner])
+    added = h.values[:, outer] @ (cov[outer, outer] - gain @ cov[inner, outer]) @ h.values[:, outer].T
+    covariance = aggregation + added + np.diag(np.full(4, 0.2**2))
+    residual = obs.values - (h.values[:, inner] @ state[inner] + h.values[:, outer] @ outer_mean + 0.2)
+    expected = -0.5 * (residual @ np.linalg.solve(covariance, residual) + np.linalg.slogdet(2 * np.pi * covariance)[1])
+    likelihood = model.compile_fn(
+        model.logp(vars=model.observed_RVs), inputs=model.value_vars, on_unused_input="ignore",
+    )(point)
+    np.testing.assert_allclose(likelihood, expected, rtol=1e-9)
