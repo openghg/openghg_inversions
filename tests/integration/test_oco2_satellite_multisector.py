@@ -108,11 +108,10 @@ def test_real_oco2_store_prepares_time_resolved_multisector_columns(
     flux = prepared.basis_functions.flux
 
     assert inputs.sizes["nmeasure"] == 6
-    assert inputs.sizes["H_back"] == 24
     assert inputs.sizes["source"] == 3
     assert inputs.sizes["region"] == 8
     assert tuple(inputs.source.values) == _FLUX_SOURCES
-    assert {"fp", "fp_residual", "fp_time_resolved"}.issubset(inputs)
+    assert {"fp", "fp_residual", "fp_time_resolved"}.isdisjoint(inputs.data_vars)
     assert inputs["H"].dims == ("region", "nmeasure", "source")
     assert np.isfinite(inputs["H"]).all().item()
     for source in _FLUX_SOURCES:
@@ -141,7 +140,7 @@ def test_real_oco2_store_prepares_time_resolved_multisector_columns(
     assert np.isfinite(prior_corrections).all().item()
     assert bool(((full_column > 400.0) & (full_column < 450.0)).all())
     assert inputs["mf"].attrs["units"] == "1e-06"
-    assert inputs["H_bc"].attrs["satellite_column_bc_scale"].startswith("Applied to satellite rows")
+    assert "satellite_column_bc_scale" not in inputs["H_bc"].attrs
     assert np.isfinite(inputs["H_bc"]).all().item()
 
     assert prepared.site_metadata.site.values.tolist() == ["OCO2-EASTASIA"]
