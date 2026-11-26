@@ -1156,7 +1156,8 @@ class MultiSourceBucketBasisOperator(BasisOperator):
                 operator. If omitted, the per-source region dimension is used.
 
         Returns:
-            A single-source bucket operator for ``source``.
+            A single-source bucket operator for ``source``, with its state
+            metadata if present.
 
         Raises:
             ValueError: If ``source`` is not present in this operator.
@@ -1167,9 +1168,22 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             raise ValueError(f"Basis operator is missing basis for source {source!r}.") from exc
 
         meta = BasisMeta(grid_dims=self.meta.grid_dims, state_dim=state_dim or self.region_in_source_dim)
+        source_metadata = self._state_metadata_for_source(source)
+        state_metadata = None
+        if source_metadata is not None:
+            state_metadata = source_metadata.to_dataset()
+            if meta.state_dim != self.region_in_source_dim:
+                state_metadata = state_metadata.rename({self.region_in_source_dim: meta.state_dim})
         operator_cls = cast(Any, BucketBasisOperator)
         return cast(
-            BucketBasisOperator, operator_cls(basis_flat=basis_flat, meta=meta, region_labels="range0")
+            BucketBasisOperator,
+            operator_cls(basis_flat=basis_flat, meta=meta, region_labels="range0", state_metadata=state_metadata),
+        )
+
+    def _state_metadata_for_source(self, source: str) -> BasisStateMetadata | None:
+        """Read aligned group metadata from the source matrix's coordinates."""
+        return BasisStateMetadata.from_matrix(
+            self._unchunked_source_matrices[source], state_dim=self.region_in_source_dim
         )
 
     def _align_source_like_state(self, other: xr.DataArray) -> xr.DataArray:

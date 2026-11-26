@@ -820,15 +820,21 @@ def _basis_artifact_metadata(dt: xr.DataTree) -> dict[str, Any]:
 
 
 def _select_operator_sources(operator: BasisOperator, sources: Sequence[str]) -> BasisOperator:
-    """Select source-specific partitions while preserving scientific dimensions."""
+    """Select source-specific partitions with their dimensions and state metadata."""
     if not isinstance(operator, MultiSourceBucketBasisOperator):
         return operator
     missing = [source for source in sources if source not in operator.basis_flat]
     if missing:
         raise ValueError(f"BasisFunctions object is missing sources required by this run: {missing}")
+    state_metadata = {
+        source: metadata
+        for source in sources
+        if (metadata := operator._state_metadata_for_source(source)) is not None
+    }
     return MultiSourceBucketBasisOperator(
         basis_flat={source: operator.basis_flat[source] for source in sources},
         meta=operator.meta,
         source_dim=operator.source_dim,
         region_in_source_dim=operator.region_in_source_dim,
+        state_metadata=state_metadata or None,
     )

@@ -674,7 +674,7 @@ def _fixed_outer_basis(tmp_path: Path) -> dict:
 
 def test_fixed_outer_basis_labels_the_prepared_prior(tmp_path: Path, merged: MergedData) -> None:
     """A fixed-outer basis labels its states, and the labels reach the reloaded prior."""
-    config = _request({"partition": tmp_path / "unused.nc"}, {"sigma": 0.2, "correlation_length": 1.0})
+    config = _request({"partition": tmp_path / "unused.nc"}, {"stdev": 0.2, "correlation_length": 1.0})
     config["data"]["preparation"]["basis"] = _fixed_outer_basis(tmp_path)
     prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, "fixed_outer")).prepared
     mean = prepared.inv_inputs.alpha_prior_mean
@@ -716,7 +716,7 @@ def test_configured_outer_flux_selects_fixed_outer_basis_states(
     from openghg_inversions.rhime.co2.inference import build_co2_inference
 
     native_prior = (_native_prior(files, "bucket") if per_source
-                    else {"sigma": 0.2, "correlation_length": 1.0})
+                    else {"stdev": 0.2, "correlation_length": 1.0})
     config = _request({"partition": tmp_path / "unused.nc"} if not per_source else files, native_prior)
     config["data"]["preparation"]["basis"] = _fixed_outer_basis(tmp_path)
     config["model"] = {"outer_flux": {"mode": "fixed", "outer_groups": ["outer"]}}

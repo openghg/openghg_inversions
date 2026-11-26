@@ -5,6 +5,7 @@ import pytest
 import xarray as xr
 from helpers import basis_function
 
+from openghg_inversions.basis.basis_functions import FluxWeightedBasis
 from openghg_inversions.basis.operators import (
     BasisOperator,
     BucketBasisOperator,
@@ -68,16 +69,32 @@ def test_multisource_state_labels_survive_the_datatree() -> None:
         },
         coords={"basis_label": [1, 2, 3]},
     )
+    bio_metadata = metadata.isel(basis_label=[0, 1]).assign(
+        region_in_partition=("basis_label", [7, 8])
+    )
     op = MultiSourceBucketBasisOperator(
         {"ff": shared, "bio": shared.where(shared != 3, 2)},
         state_dim="region",
-        state_metadata={"ff": metadata, "bio": metadata.isel(basis_label=[0, 1])},
+        state_metadata={"ff": metadata, "bio": bio_metadata},
     )
 
     assert op.basis_matrix.source.values.tolist() == ["ff", "ff", "ff", "bio", "bio"]
     assert op.basis_matrix.basis_group.values.tolist() == ["outer", "inner", "inner", "outer", "inner"]
     restored = BasisOperator.decode_datatree(op.to_datatree())
     xr.testing.assert_identical(restored.basis_matrix, op.basis_matrix)
+
+    basis = FluxWeightedBasis(operator=restored, flux=xr.ones_like(shared).expand_dims(source=["ff", "bio"]))
+    reordered = basis.select_sources(["bio", "ff"]).operator.basis_matrix
+    assert reordered.source.values.tolist() == ["bio", "bio", "ff", "ff", "ff"]
+    assert reordered.basis_group.values.tolist() == ["outer", "inner", "outer", "inner", "inner"]
+    assert reordered.region_in_partition.values.tolist() == [7, 8, 1, 1, 2]
+    subset = basis.select_sources(["bio"]).operator.basis_matrix
+    assert subset.region_in_partition.values.tolist() == [7, 8]
+    single = basis.for_source("bio", state_dim="selected_region").operator.basis_matrix
+    assert single.basis_group.dims == ("selected_region",)
+    assert single.basis_group.values.tolist() == ["outer", "inner"]
+    assert single.basis_partition.values.tolist() == ["fixed_outer", "inner"]
+    assert single.region_in_partition.values.tolist() == [7, 8]
 
 def test_multisource_basis_operator_decodes_legacy_per_source_children(basis_func, basis_func2):
     """The previous per-source-child layout remains readable after write-format revision."""

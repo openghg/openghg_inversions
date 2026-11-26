@@ -202,9 +202,8 @@ def test_fixed_outer_executes_shared_weight_graph_once(empty_inner, tmp_path):
     actual = fixed_outer_regions_basis_from_data(
         sites, sources["a"].flux, "2020-01-01", "region_constrained", "TEST", nbasis=1,
         region_classes=xr.ones_like(outer), outer_regions=outer, allow_empty_inner_region=True)
-    # Outer labels 0 and 2 come first; the unsplit inner region is the last state.
-    expected = (outer + 1).where(outer != 2, 2).where(outer != 1, 3)
-    xr.testing.assert_equal(actual.basis_flat.squeeze("time", drop=True), expected.rename("basis"))
+    expected = (outer + 1).where(outer != 1, 2 if empty_inner else 4)
+    xr.testing.assert_equal(actual.squeeze("time", drop=True), expected.rename("basis"))
     assert len(executions) == 1
     assert isinstance(sources["a"].flux.data, da.Array)
 

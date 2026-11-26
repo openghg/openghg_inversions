@@ -143,7 +143,7 @@ nested-domain outer masking (below) always zeroes the outer footprint response
 and prior flux there before the outer basis is built -- there is nothing left
 for the outer algorithm to subdivide inside that label. ``prepare_nested_rhime_inputs``
 handles this by passing ``allow_empty_inner_region=True`` to
-:func:`~openghg_inversions.basis.fixed_outer_regions_basis_from_data`
+:func:`~openghg_inversions.basis.prepare_basis`
 for the outer domain only: the marked label is
 kept as a single fixed region (like every other outer label) instead of
 raising. Outside nested preparation, an empty marked region still raises,

@@ -866,7 +866,7 @@ def fixed_outer_regions_basis_from_data(
     contrast_s_diag: xr.DataArray | None = None,
     allow_empty_inner_region: bool = False,
     seed: int | None = None,
-) -> BasisLayoutResult:
+) -> xr.DataArray:
     """Use fixed InTEM outer regions and fit inner regions with an algorithm.
 
     The InTEM outer-region file defines known outer labels. Its optional
@@ -920,15 +920,69 @@ def fixed_outer_regions_basis_from_data(
             :func:`basis_from_weights`.
 
     Returns:
-        A :class:`~openghg_inversions.basis.layout.BasisLayout` result. Its
-        flat basis, with a singleton ``time`` dimension, numbers the fixed
-        outer regions first, in outer-region map order, and then the generated
-        inner regions. Its state metadata labels them ``basis_group``
-        ``"outer"`` (partition ``"fixed_outer"``, ``region_in_partition`` the
-        map label plus one) and ``"inner"`` (partition ``"inner"``, the
-        generated label). When ``allow_empty_inner_region`` is true and finite
-        inner weights are all zero, the inner region is kept unsplit as one
-        inner state.
+        One-based basis labels with a singleton ``time`` dimension. Fixed
+        outer regions keep their map label plus one. Fitted inner labels
+        follow the largest fixed outer label, or the original inner label
+        plus one is retained in the unsplit fallback.
+    """
+    fixed, inner, max_outer_label = _fit_fixed_outer_regions(
+        site_data, weighting_flux, start_date, basis_algorithm, domain, nbasis, abs_flux,
+        outer_regions=outer_regions,
+        landsea_classes=landsea_classes,
+        region_classes=region_classes,
+        region_allocation=region_allocation,
+        min_regions_per_class=min_regions_per_class,
+        split_acceptance=split_acceptance,
+        contrast_contribution=contrast_contribution,
+        contrast_cell_weight=contrast_cell_weight,
+        min_contrast_delta_eig=min_contrast_delta_eig,
+        min_contrast_lambda=min_contrast_lambda,
+        contrast_tau=contrast_tau,
+        contrast_sigma_design=contrast_sigma_design,
+        contrast_s_diag=contrast_s_diag,
+        allow_empty_inner_region=allow_empty_inner_region,
+        seed=seed,
+    )
+    basis = fixed.copy().rename("basis")
+    if max_outer_label is not None:
+        inner_cells = inner.values > 0
+        basis.data[inner_cells] = inner.values[inner_cells] + max_outer_label
+    basis += 1
+    return basis.expand_dims({"time": [pd.to_datetime(start_date)]})
+
+
+def _fit_fixed_outer_regions(
+    site_data: Mapping[str, xr.Dataset],
+    weighting_flux: xr.DataArray,
+    start_date: str,
+    basis_algorithm: str,
+    domain: str,
+    nbasis: int = 100,
+    abs_flux: bool = False,
+    *,
+    outer_regions: xr.DataArray,
+    landsea_classes: xr.DataArray | None = None,
+    region_classes: xr.DataArray | None = None,
+    region_allocation: AllocationMode = "weight",
+    min_regions_per_class: int = 1,
+    split_acceptance: Literal["none", "contrast_score"] = "none",
+    contrast_contribution: xr.DataArray | None = None,
+    contrast_cell_weight: xr.DataArray | None = None,
+    min_contrast_delta_eig: float | None = None,
+    min_contrast_lambda: float | None = None,
+    contrast_tau: float | None = None,
+    contrast_sigma_design: float | None = None,
+    contrast_s_diag: xr.DataArray | None = None,
+    allow_empty_inner_region: bool = False,
+    seed: int | None = None,
+) -> tuple[xr.DataArray, xr.DataArray, int | None]:
+    """Fit inner labels using the options of :func:`fixed_outer_regions_basis_from_data`.
+
+    Returns:
+        The aligned fixed outer map, fitted inner labels (zero outside the
+        fitted rectangle), and the largest fixed outer label. If empty inner
+        weights leave the domain unsplit, the positive inner label is the
+        original mask and the maximum is ``None``.
     """
     _validate_basis_algorithm(basis_algorithm)
     intem_regions = outer_regions
@@ -965,7 +1019,7 @@ def fixed_outer_regions_basis_from_data(
                 "response; keeping it as a single fixed region instead of subdividing it further "
                 "(allow_empty_inner_region=True)."
             )
-            return _fixed_outer_layout(intem_regions, mask.astype(int), start_date)
+            return intem_regions, mask.astype(int), None
 
     algorithm_kwargs: dict[str, Any] = {}
     if basis_algorithm == "weighted":
@@ -1000,7 +1054,8 @@ def fixed_outer_regions_basis_from_data(
     )
 
     fixed_outer_values = intem_regions.where(~mask).to_numpy()
-    if not np.isfinite(fixed_outer_values).any():
+    finite_outer_values = fixed_outer_values[np.isfinite(fixed_outer_values)]
+    if finite_outer_values.size == 0:
         raise ValueError("Fixed outer-region map must retain at least one label outside the inner region.")
 
     # Generated algorithms label every cell of the inner region's bounding box
@@ -1011,7 +1066,7 @@ def fixed_outer_regions_basis_from_data(
     }
     inner_labels = xr.zeros_like(intem_regions, dtype=int)
     inner_labels.loc[loc_dict] = inner_region.squeeze().values
-    return _fixed_outer_layout(intem_regions, inner_labels, start_date)
+    return intem_regions, inner_labels, int(finite_outer_values.max())
 
 
 def _fixed_outer_layout(
