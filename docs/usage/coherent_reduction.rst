@@ -175,6 +175,135 @@ that the chosen rank is adequate for a particular likelihood.
 See :ref:`migrate-diagonal-aggregation-error` for older inputs that contain
 only aggregation-error standard deviations.
 
+Complete native functionals
+---------------------------
+
+The same reduction splits the native state as
+:math:`x = m + U_*(\alpha - \Pi m) + x_\perp`, where
+:math:`U_* = B \Pi^T C_\alpha^{-1}` and :math:`x_\perp` is independent of
+:math:`\alpha` with covariance :math:`B_\perp = B - U_* C_\alpha U_*^T`. A
+native linear functional :math:`Q`, such as a country total, therefore splits
+as :math:`Q x = Q m + D(\alpha - \Pi m) + Q x_\perp` with :math:`D = Q U_*`.
+Retained-state draws give only the first two terms. :math:`Q x_\perp` carries
+both variance and a data-driven mean update, because it is correlated with the
+unresolved observation error :math:`H x_\perp`; both are largest when retained
+regions cross the functional's borders.
+
+Pass the functionals to the reduction to prepare the products that condition
+:math:`Q x_\perp`::
+
+   reduction = reduce_native_gaussian(
+       ...,
+       functionals=country_functionals,  # (functional_dim, *native_dims)
+       functional_dim="country_functional",
+   )
+   products = reduction.functional_products
+
+``products`` holds :math:`Q m`, :math:`D`, :math:`Q B_\perp H^T` and
+:math:`Q B_\perp Q^T`. They are computed from bounded blocks of
+:math:`B Q^T`; :math:`B` is never densified. Use one functional row per
+reported term, for example one country total per source, so that the joint
+covariance of terms is available and sums are formed per draw.
+
+For a posterior draw of :math:`\alpha`, any other parameters :math:`\beta`
+and the noise parameters, with residual
+:math:`r = y - y_0 - H_\alpha(\alpha - \Pi m) - G\beta`,
+
+.. math::
+
+   Q x_\perp \mid \alpha, \beta, y \sim
+   N\left(Q B_\perp H^T (A + R)^{-1} r,\;
+   Q B_\perp Q^T - Q B_\perp H^T (A + R)^{-1} H B_\perp Q^T\right).
+
+Under the prior, :math:`Q x_\perp \sim N(0, Q B_\perp Q^T)` independently of
+:math:`\alpha`. For a Gaussian retained state and the exact :math:`A`, the
+complete functional mean and covariance equal the native-grid Gaussian
+posterior for any retained partition. With a LogNormal retained state the
+conditioning on each draw remains exact under the reduced model, but the
+reduced model is the moment-matched approximation described in
+`Assumptions and limitations`_, so the result is not the native-grid
+posterior of a LogNormal native field.
+:func:`openghg_inversions.postprocessing.unresolved_functionals.complete_functional_draws`
+adds the conditional mean and one conditional draw to each retained draw. It
+takes :math:`(A + R)^{-1}` as a labelled solve whose observation labels
+must equal the residuals':
+:func:`~openghg_inversions.postprocessing.unresolved_functionals.dense_solve`
+for one fixed dense covariance, whose labelled columns are aligned to its rows
+and checked for symmetry, or
+:func:`~openghg_inversions.postprocessing.unresolved_functionals.fixed_ou_solve`
+for the fit's low-rank-plus-diagonal :math:`A` with each draw's fixed-OU
+amplitudes, selected by chain and draw label. ``FixedOuLowRank`` keeps no
+observation labels, so ``fixed_ou_solve`` trusts the supplied
+``observation_index`` for row order: it checks the row count and each row's
+site (from ``site_index``, such as the fit's ``ou_site_index``, or the index's
+``site`` level) against the covariance, but not the time order within a site. Residuals
+must carry the units of :math:`H`.
+
+For CO2 country totals, build :math:`Q` with
+:func:`~openghg_inversions.postprocessing.co2_flux_outputs.co2_country_functionals`
+and pass an
+:class:`~openghg_inversions.postprocessing.unresolved_functionals.UnresolvedFunctionalConditioning`
+to :func:`~openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs`.
+Its outputs then carry ``uncertainty_scope="complete_native"`` and the
+conditioning description; without it they remain
+``"retained_state_conditional"`` and omit the unresolved native state.
+
+The products record the
+:func:`~openghg_inversions.coherent_reduction.reduction_identity` of their
+reduction. The reduced arrays alone cannot identify the native problem: if
+one observation sees either of two cells that :math:`B` and :math:`\Pi`
+treat alike, swapping the cells leaves :math:`C_\alpha`, :math:`H_\alpha`
+and :math:`A` unchanged but reverses the sign of :math:`Q B_\perp H^T`. The
+reduction therefore records a
+:func:`~openghg_inversions.coherent_reduction.native_reduction_identity`.
+For built-in separable covariances and independent combinations of them, it
+hashes the covariance configuration, the native :math:`H`, :math:`\Pi`,
+:math:`m`, and the prolongation :math:`U_*`. Each reduction with a custom
+covariance action receives a fresh identity. For those actions, prepare the
+fit and products from the same call to ``reduce_native_gaussian`` and keep
+the issued identity with the fit. The reduction identity combines the native
+identity with a hash of
+:math:`C_\alpha`, :math:`H_\alpha` and the exact :math:`A`, so anyone who
+stores the native identity and the reduced arrays, such as a prepared
+artifact, can recompute it and detect a changed :math:`A`. The conditioning
+must carry the identity recorded when the fit was prepared, and the two must
+be equal. :math:`Q m` and :math:`D` do not depend on :math:`H`, so products
+built with another observation operator are caught only by the identity.
+The identity is an exact hash, not a tolerance: take it from the same
+``reduce_native_gaussian(functionals=...)`` call that produced the products,
+rather than recomputing it from another reduction. In addition, the
+products' :math:`Q m` and :math:`D` must equal the map's own :math:`A F m` and
+:math:`A F U_*`, which rejects products prepared for another functional,
+partition or covariance.
+
+Use the same :math:`A` in the solve as in the products. The products use the
+exact :math:`B_\perp`, so pairing them with a truncated low-rank :math:`A`
+mixes two covariance models: the conditional mean update can be inflated and
+the conditional covariance can lose positive semidefiniteness. Negative
+eigenvalues up to ``clipping_tolerance`` (default ``1e-6``) relative to the
+largest eigenvalue of the prior functional covariance
+:math:`Q B Q^T = Q B_\perp Q^T + D C_\alpha D^T` are treated as roundoff and
+clipped before drawing. That scale is used because the drawn covariances are
+formed by subtracting terms of that size and can themselves be zero, as when
+the retained states resolve every functional. The most negative relative
+eigenvalue is recorded as ``conditional_covariance_min_eigenvalue``. A larger
+negative eigenvalue raises an error instead of producing ``complete_native``
+output. A
+:class:`~openghg_inversions.models.fixed_ou.FixedOuLowRank` prepared with a
+full-width factor of the exact :math:`A` gives the exact update with sampled
+OU amplitudes.
+
+When retained states are marginalised into :math:`A`,
+:func:`openghg_inversions.coherent_reduction.marginalise_functional_states`
+moves their functional contribution into :math:`Q x_\perp`, matching a
+reduction with the kept rows of :math:`\Pi`. For CO2 country outputs, pass
+full-restriction products and declare the marginalised states on the
+conditioning; they must be exactly the fit's inactive states, which are
+otherwise held fixed without their variance and make complete uncertainty
+undefined. Activity is read from the ``<flux_scale>_is_active`` mask that the
+fitted model records for every activity policy, including all-active; a trace
+without it is rejected.
+
 Assumptions and limitations
 ---------------------------
 
@@ -220,8 +349,9 @@ such as ``SuppliedRestriction`` with ``require_positivity_preserving=True``. The
 bucket-compatible restriction derived by ``PreserveBucketProlongation`` is not
 guaranteed to preserve positivity.
 
-The function does not construct a likelihood, approximate :math:`A`, serialize
-the result, or reconstruct arbitrary native quantities. Do not add another
+The function does not construct a likelihood, approximate :math:`A`, or
+serialize the result. It reconstructs native quantities only as the
+linear functionals requested through ``functionals``. Do not add another
 error term representing the same unresolved flux. Adding covariance components
 also assumes that their errors are independent unless their cross-covariances
 are included explicitly.

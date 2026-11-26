@@ -31,11 +31,11 @@ def test_bc_resource_loading_precedes_acquisition(tmp_path, monkeypatch, route, 
         for path, time, weight in zip(paths, times, [2, 3], strict=True):
             _basis([time], [weight]).to_netcdf(path)
     if selection not in ("nesw", "explicit_nesw", "invalid"):
-        options["bc_basis_paths"] = [] if selection == "empty" else paths
+        options.setdefault("bc_basis", {})["paths"] = [] if selection == "empty" else paths
     if selection in ("files", "disabled", "invalid"):
-        options["bc_basis_algorithm"] = "inactive" if selection != "invalid" else "unsupported"
+        options.setdefault("bc_basis", {})["algorithm"] = "inactive" if selection != "invalid" else "unsupported"
     elif selection == "explicit_nesw":
-        options["bc_basis_algorithm"] = "NESW"
+        options.setdefault("bc_basis", {})["algorithm"] = "NESW"
     loaded = []
     from openghg_inversions.basis import support
     real_load = support.load_bc_basis

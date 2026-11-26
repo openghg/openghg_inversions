@@ -16,6 +16,10 @@ from openghg_inversions.models.boundary import Choice, MultiplicativeChoice
 from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.inversion_inputs import normalise_frequency
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
+from openghg_inversions.inversion_data.o2n2 import (
+    DELTA_O2_N2, MOLE_FRACTION, O2_OBSERVABLE_PROVENANCE_KEY, O2_OBSERVABLES, DeltaO2N2Declaration,
+    is_per_meg_unit, is_ratio_anomaly_unit,
+)
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, normalise_optional_mapping
 
@@ -92,7 +96,7 @@ def _validate_co2_o2_option_names(*requests: Mapping[str, object]) -> None:
     from .co2_o2_outputs import Co2O2OutputOptions
 
     channel_sections = {
-        "": frozenset({"units", "independent_error_sd", "boundary", "offset"}),
+        "": frozenset({"units", "observable", "independent_error_sd", "boundary", "offset"}),
         **{name: options for name, options in _MODEL_SECTION_OPTION_NAMES.items() if name != "outer_flux"},
         "boundary": _MODEL_SECTION_OPTION_NAMES["boundary"] | {"activity"},
         "boundary.activity": frozenset({"active", "fixed_value"}),
@@ -139,34 +143,66 @@ class Co2O2PreparationConfig:
         return {item.name: getattr(self, item.name) for item in fields(self)}
 
 
-def validate_co2_o2_units(prepared: Co2O2PreparedInputs) -> str:
-    """Require both prepared channels to use one supported mole-fraction unit.
+def validate_co2_o2_channel_units(
+    prepared: Co2O2PreparedInputs, *, identical_mole_fraction_units: bool = True,
+) -> dict[str, str]:
+    """Check each prepared channel's units against its declared observable.
 
+    CO2 rows are always mole fractions. O2 rows are either mole fractions, or
+    delta(O2/N2) in per meg when preparation provenance declares that
+    observable (see
+    :class:`~openghg_inversions.inversion_data.o2n2.DeltaO2N2Declaration`).
     Reads the observation-aligned species and unit coordinates, leaving the
-    borrowed artifact unchanged. This staged contract excludes heterogeneous
-    ppm/per-meg operation until its scientific transform is defined.
+    borrowed artifact unchanged.
+
+    Args:
+        prepared: Linked prepared inputs.
+        identical_mole_fraction_units: Require O2 mole fractions to use the
+            CO2 unit label. The configured and handoff boundaries keep this
+            on. Direct reporting turns it off, because it converts each
+            channel to mol/mol with that channel's own scale.
 
     Returns:
-        The common channel unit label.
+        Unit labels keyed by ``co2`` and ``o2``.
 
     Raises:
-        ValueError: If either channel or coordinate is missing, unit labels
-            differ, or the common unit cannot be converted to mol/mol.
+        ValueError: If either channel or coordinate is missing, a channel has
+            several unit labels, CO2 is not a mole fraction, O2 mole fractions
+            differ from CO2 when identical units are required, or per-meg O2
+            lacks a matching declaration.
     """
     observations = prepared.observations
     for name in ("species", "observation_units"):
         if name not in observations.coords or observations[name].dims != ("observation",):
             raise ValueError(f"Linked prepared observations require observation-aligned {name}.")
-    if set(observations.species.values.tolist()) != {"co2", "o2"}:
+    # Loaded Zarr labels may use NumPy's variable-width StringDType.
+    species = np.asarray([str(value) for value in observations.species.values])
+    if set(species.tolist()) != {"co2", "o2"}:
         raise ValueError("Linked prepared observations must contain exactly CO2 and O2 channels.")
-    units = np.unique([str(unit) for unit in observations.observation_units.values])
-    if units.size != 1:
-        raise ValueError("Linked staged inputs require identical CO2 and O2 units (OPE-86).")
-    unit = _string(str(units[0]), "prepared observation_units")
-    if "meg" in unit.casefold() or "delta" in unit.casefold():
-        raise ValueError("Linked staged inputs require mole-fraction units; per-meg/delta O2 requires OPE-86.")
-    mole_fraction_unit_scale(unit, context="linked prepared observation_units")
-    return unit
+    labels = np.asarray([str(value) for value in observations.observation_units.values])
+    units: dict[str, str] = {}
+    for channel in ("co2", "o2"):
+        channel_units = np.unique(labels[species == channel])
+        if channel_units.size != 1:
+            raise ValueError(f"Linked prepared {channel} observations require one unit label.")
+        units[channel] = _string(str(channel_units[0]), f"prepared {channel} observation_units")
+    mole_fraction_unit_scale(units["co2"], context="Linked prepared CO2 observation_units")
+    declaration = DeltaO2N2Declaration.from_provenance(prepared.provenance)
+    if declaration is None:
+        if is_ratio_anomaly_unit(units["o2"]):
+            raise ValueError(
+                f"Linked O2 observations in {units['o2']!r} require a delta(O2/N2) declaration in "
+                f"preparation provenance[{O2_OBSERVABLE_PROVENANCE_KEY!r}] with its reference ratio."
+            )
+        mole_fraction_unit_scale(units["o2"], context="Linked prepared O2 observation_units")
+        if identical_mole_fraction_units and units["o2"] != units["co2"]:
+            raise ValueError("Linked CO2 and O2 mole fractions require identical units.")
+    elif units["o2"] != declaration.units:
+        raise ValueError(
+            f"Linked O2 observation_units {units['o2']!r} do not match the declared "
+            f"delta(O2/N2) units {declaration.units!r}."
+        )
+    return units
 
 
 def _likelihood(config: Mapping[str, object]) -> dict[str, object] | None:
@@ -189,10 +225,13 @@ def _likelihood(config: Mapping[str, object]) -> dict[str, object] | None:
 class Co2O2ModelConfig:
     """Linked channel science independent of prepared arrays and sampling.
 
-    Both channels require identical mole-fraction units. Error overrides must
+    CO2 uses mole-fraction units. ``o2_observable`` is ``"mole_fraction"``
+    (O2 in the CO2 unit) or ``"delta_o2_n2"`` (O2 in per meg, which the
+    prepared artifact must declare with its reference ratio). Error overrides must
     be supplied for both channels or omitted for both to use saved errors.
     Fixed independent error and fixed-amplitude OU are supported; inferred OU
-    and per-meg transformations remain separate work.
+    remains separate work. The transform to delta(O2/N2) is applied before
+    the artifact is prepared, not by this configuration.
     ``boundary`` maps configured channels to a choice, or to ``None`` when
     that channel's boundary is explicitly disabled. Boundary frequency and
     anchor choices apply to every enabled channel; choices supplied under both
@@ -208,9 +247,20 @@ class Co2O2ModelConfig:
     offset_args: Mapping[str, Any] | None = None
     tau_hours: float | Mapping[str, float] | None = None
     fixed_site_amplitudes: float | Mapping[str, float] | None = None
+    o2_observable: str = MOLE_FRACTION
     outer_flux: OuterFluxChoice | None = None
 
     def __post_init__(self) -> None:
+        if self.o2_observable not in O2_OBSERVABLES:
+            raise ValueError(f"channels.o2.observable must be one of {O2_OBSERVABLES}.")
+        mole_fraction_unit_scale(self.co2_units, context="channels.co2.units")
+        if self.o2_observable == DELTA_O2_N2:
+            if not is_per_meg_unit(self.o2_units):
+                raise ValueError("channels.o2.observable 'delta_o2_n2' requires per-meg channels.o2.units.")
+        else:
+            mole_fraction_unit_scale(self.o2_units, context="channels.o2.units")
+            if self.o2_units != self.co2_units:
+                raise ValueError("Linked O2 mole fractions require the CO2 channel units.")
         for item in fields(self):
             value = getattr(self, item.name)
             if isinstance(value, Mapping):
@@ -225,6 +275,7 @@ class Co2O2ModelConfig:
         options = _table(config, "config")
         channels = _table(options.get("channels", {}), "channels")
         units: dict[str, str] = {}
+        observables: dict[str, str] = {}
         errors: dict[str, float] = {}
         model: dict[str, Any] = {}
         if "outer_flux" in options:
@@ -232,7 +283,8 @@ class Co2O2ModelConfig:
         for name in ("co2", "o2"):
             channel = _table(_take(channels, name, "channels"), f"channels.{name}")
             units[name] = _string(_take(channel, "units", f"channels.{name}"), f"channels.{name}.units")
-            mole_fraction_unit_scale(units[name], context=f"channels.{name}.units")
+            observable = channel.pop("observable", MOLE_FRACTION)
+            observables[name] = _string(observable, f"channels.{name}.observable")
             if "independent_error_sd" in channel:
                 errors[name] = _number(channel.pop("independent_error_sd"), f"channels.{name}.independent_error_sd", positive=True)
             selected = {key: channel.pop(key) for key in ("boundary", "offset") if key in channel}
@@ -256,11 +308,12 @@ class Co2O2ModelConfig:
         _reject_unknown(channels, "channels")
         if errors and len(errors) != 2:
             raise ValueError("Configure independent_error_sd for both linked channels or omit it for both.")
-        if units["co2"] != units["o2"]:
-            raise ValueError("The linked configuration currently requires identical CO2 and O2 channel units.")
+        if observables["co2"] != MOLE_FRACTION:
+            raise ValueError("channels.co2.observable must be 'mole_fraction'.")
         likelihood = _likelihood(options)
         kwargs = {} if likelihood is None else _co2_likelihood(likelihood)["likelihood_kwargs"]
-        return cls(units["co2"], units["o2"], _frozen(errors), **_frozen(model), **kwargs)
+        return cls(units["co2"], units["o2"], _frozen(errors), **_frozen(model), **kwargs,
+                   o2_observable=observables["o2"])
 
     def bind(self, prepared: Co2O2PreparedInputs) -> dict[str, Any]:
         """Bind channel errors and check units at the scientific array boundary.
@@ -269,9 +322,12 @@ class Co2O2ModelConfig:
         expand over labelled observations; agreement with saved errors is checked
         by model construction at its materialization boundary.
         """
-        unit = validate_co2_o2_units(prepared)
-        if unit != self.co2_units or unit != self.o2_units:
+        units = validate_co2_o2_channel_units(prepared)
+        if units != {"co2": self.co2_units, "o2": self.o2_units}:
             raise ValueError("Configured channels.co2/o2.units do not match prepared observation_units.")
+        declared = DeltaO2N2Declaration.from_provenance(prepared.provenance) is not None
+        if declared != (self.o2_observable == DELTA_O2_N2):
+            raise ValueError("Configured channels.o2.observable does not match the prepared O2 observable.")
         observations = prepared.observations
         if self.independent_error_sd:
             species = observations.species.values
@@ -285,7 +341,9 @@ class Co2O2ModelConfig:
             if independent is None:
                 raise ValueError("Omitted channel independent_error_sd requires errors in the prepared artifact.")
         result = {item.name: getattr(self, item.name) for item in fields(self)
-                  if item.name not in {"co2_units", "o2_units", "independent_error_sd", "boundary"}
+                  if item.name not in {
+                      "co2_units", "o2_units", "o2_observable", "independent_error_sd", "boundary",
+                  }
                   and getattr(self, item.name) is not None}
         return {**result, "independent_error_sd": independent, "boundary": self._channel_boundaries(prepared)}
 
@@ -356,5 +414,6 @@ def resolve_co2_o2_prior_seed(config: Mapping[str, object]) -> int | None:
 
 __all__ = [
     "load_co2_o2_params", "Co2O2PreparationConfig", "Co2O2ModelConfig",
-    "resolve_co2_o2_sampler", "resolve_co2_o2_prior_seed", "validate_co2_o2_units",
+    "resolve_co2_o2_sampler", "resolve_co2_o2_prior_seed",
+    "validate_co2_o2_channel_units",
 ]
