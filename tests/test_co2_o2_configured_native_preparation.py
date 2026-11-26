@@ -99,7 +99,8 @@ def _channel_data(channel: str) -> MergedData:
         )
     site = prepare_surface_site(
         obs, fp, fluxes, species=channel, transport=dict.fromkeys(fluxes, "integrated"), boundary_data=bc,
-        boundary_reference=reference, boundary_reference_units="ppm", boundary_mass_tolerance=1e-6,
+        boundary_representation="centered", boundary_reference=reference, boundary_reference_units="ppm",
+        boundary_mass_tolerance=1e-6,
     )
     return MergedData(
         site_data={"TOY": site}, flux_data=fluxes, boundary_data=bc,
