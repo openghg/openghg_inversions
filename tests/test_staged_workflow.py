@@ -127,7 +127,7 @@ def test_stage_config_paths_are_relative_to_the_invocation(
     params_path = tmp_path / "config" / "params.json"
     params_path.parent.mkdir()
     params_path.write_text(
-        json.dumps(_params(bc_basis_paths=["relative/bc.nc"], basis_partition_path="relative/partition.nc",
+        json.dumps(_params(bc_basis={"paths": ["relative/bc.nc"]}, basis_partition_path="relative/partition.nc",
                            country_file="relative/country.nc")),
         encoding="utf-8",
     )
@@ -135,7 +135,7 @@ def test_stage_config_paths_are_relative_to_the_invocation(
 
     loaded = load_params(params_file=params_path)
 
-    assert loaded["data"]["bc_basis_paths"] == (tmp_path.parent / "relative/bc.nc",)
+    assert loaded["data"]["bc_basis"] == {"paths": (tmp_path.parent / "relative/bc.nc",)}
     assert loaded["output"]["country_file"] == tmp_path.parent / "relative/country.nc"
     assert loaded["data"]["basis_partition_path"] == tmp_path.parent / "relative/partition.nc"
 
@@ -325,14 +325,14 @@ def test_co2_stage_override_paths_use_invocation_directory(tmp_path, monkeypatch
 
     source = tmp_path / "configs" / "co2.json"
     source.parent.mkdir()
-    source.write_text(json.dumps({"prepared_inputs": {"path": "prepared.nc"},
+    source.write_text(json.dumps({"data": {"path": "prepared.nc"},
                                  "outputs": {"country_file": "country.nc"}}))
     monkeypatch.chdir(tmp_path)
-    overrides = {"prepared_inputs": {"path": "selected.nc"}}
+    overrides = {"data": {"path": "selected.nc"}}
     loaded = load_co2_params(params_file=source, overrides=overrides)
     assert Co2PreparationConfig.from_params(loaded).preparation_arguments()["prepared_path"] == tmp_path / "selected.nc"
     assert resolve_co2_output(loaded)["output"].country_file == tmp_path / "country.nc"
-    assert overrides["prepared_inputs"]["path"] == "selected.nc"
+    assert overrides["data"]["path"] == "selected.nc"
 
 
 @pytest.mark.parametrize("model", ["standard", "multisector", "co2", "co2_o2"])

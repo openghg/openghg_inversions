@@ -38,9 +38,10 @@ import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
+from openghg_inversions.correlated_state import GAMMA_LATENT_CAP, CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.array_ops import select_gathered_data_array
 from openghg_inversions.inversion_inputs import make_freq_indicator, make_site_indicator
+from openghg_inversions.models._gamma_quantile import _GammaStandardQuantile
 from openghg_inversions.models.coords import add_component_data, add_coords, add_model_data as add_model_data, component_coords
 from openghg_inversions.models._flux import _namespace_sector_state_coords
 from openghg_inversions.models.priors import parse_prior
@@ -93,19 +94,18 @@ class StateVectorResult:
 
 @dataclass
 class CorrelatedStateResult:
-    """Objects created by ``add_correlated_lognormal_state``.
+    """Objects created by ``add_correlated_lognormal_state`` or ``add_correlated_copula_state``.
 
     Attributes:
         latent: Standard-normal whitened state used by the sampler.
-        state: Positive user-facing state with the requested arithmetic
-            LogNormal moments.
+        state: User-facing state with the requested arithmetic moments.
         prior: Validated backend-neutral moment contract used to build the
             graph.
     """
 
     latent: TensorVariable
     state: TensorVariable
-    prior: CorrelatedLognormalPrior
+    prior: CorrelatedLognormalPrior | CorrelatedPrior
 
 
 def get_model_latent(variable: TensorVariable, base_name: str) -> TensorVariable:
@@ -494,12 +494,17 @@ def add_state_vector(
     prior_args: dict[str, Any],
     var_name: str,
     coordinate_owner: str | None = None,
+    *,
+    transform: pm.distributions.transforms.Transform | None = None,
 ) -> StateVectorResult:
     """Construct an active/fixed state graph from a resolved activity contract.
 
     When every state is active, this creates the same base prior graph as
-    ``add_linear_component``. Partial activity creates an active-only prior and
-    restores it into a full deterministic state vector. An all-fixed policy
+    ``add_linear_component``. The ``<var_name>_is_active`` mask is registered as
+    model data for every policy, including all-active, so postprocessing can
+    read which states were sampled from the trace. Partial activity creates
+    an active-only prior and restores it into a full deterministic state
+    vector. An all-fixed policy
     creates no random variable and exposes the fixed values as the full
     deterministic state.
 
@@ -510,6 +515,7 @@ def add_state_vector(
             full-state arrays, or labelled state ``DataArray`` objects.
         var_name: Name of the full user-facing state vector.
         coordinate_owner: Optional namespace for registered state coordinates.
+        transform: Optional replacement for the prior's default PyMC transform.
 
     Returns:
         The effective latent, full state vector, and supplied activity.
@@ -536,18 +542,21 @@ def add_state_vector(
         for name, value in active_prior_args(prior_args, activity, select_active=False).items()
     }
 
+    # The activity mask is recorded for every policy, including all-active, so
+    # postprocessing reads which states were sampled from the fitted model.
+    add_model_data(
+        component_coords(activity.active, coordinate_owner).rename(f"{var_name}_is_active"),
+        f"{var_name}_is_active",
+    )
+    transform_options = {} if transform is None else {"transform": transform, "default_transform": None}
     if activity.n_active == activity.n_state:
-        state = parse_prior(var_name, parameters, dims=state_dim)
+        state = parse_prior(var_name, parameters, dims=state_dim, **transform_options)
         return StateVectorResult(
             latent=get_model_latent(state, var_name),
             state=state,
             activity=activity,
         )
 
-    add_model_data(
-        component_coords(activity.active, coordinate_owner).rename(f"{var_name}_is_active"),
-        f"{var_name}_is_active",
-    )
     fixed_value = add_model_data(
         component_coords(activity.fixed_value, coordinate_owner).rename(f"{var_name}_fixed_value"),
         f"{var_name}_fixed_value",
@@ -564,6 +573,7 @@ def add_state_vector(
             dims=active_dim,
             active_indices=active_indices,
             record_name=var_name,
+            **transform_options,
         )
         latent = get_model_latent(active_state, f"{var_name}_active")
 
@@ -633,10 +643,10 @@ def _add_multisource_state_vector(
         )
         draws.append((positions[active_indices], draw))
 
+    add_model_data(zero_sensitivity.copy(data=active).rename(f"{var_name}_is_active"))
     if active.all():
         state = pt.zeros(len(state_index))
     else:
-        add_model_data(zero_sensitivity.copy(data=active).rename(f"{var_name}_is_active"))
         state = add_model_data(zero_sensitivity.copy(data=fixed_values).rename(f"{var_name}_fixed_value"))
     for positions, draw in draws:
         state = pt.set_subtensor(state[positions], draw)
@@ -755,18 +765,49 @@ def add_correlated_lognormal_state_with_activity(
 
 def _add_prepared_correlated_lognormal_state_with_activity(
     activity: ResolvedStateActivity,
-    active_prior: CorrelatedLognormalPrior | None,
+    active_prior: CorrelatedLognormalPrior | CorrelatedPrior | None,
     /,
     *,
     var_name: str,
 ) -> StateVectorResult:
-    """Construct a state from the package-prepared active prior."""
+    """Construct a state from the package-prepared active prior.
+
+    ``active_prior`` comes from :func:`prepare_active_correlated_prior` or
+    :func:`prepare_active_correlated_lognormal_prior`. A lognormal prior, or a
+    :class:`CorrelatedPrior` whose marginals are all lognormal, builds the
+    lognormal graph unchanged; other marginals use
+    :func:`add_correlated_copula_state`.
+    """
+    if isinstance(active_prior, CorrelatedPrior):
+        if active_prior.lognormal is None:
+            return _add_prepared_state_with_activity(
+                activity, active_prior, var_name=var_name, add_state=add_correlated_copula_state,
+            )
+        active_prior = active_prior.lognormal
+    return _add_prepared_state_with_activity(
+        activity, active_prior, var_name=var_name, add_state=add_correlated_lognormal_state,
+    )
+
+
+def _add_prepared_state_with_activity(
+    activity: ResolvedStateActivity,
+    active_prior: Any,
+    /,
+    *,
+    var_name: str,
+    add_state: Any,
+) -> StateVectorResult:
+    """Construct a full state from an active prior and its state builder."""
     state_dim = activity.state_dim
     add_coords(activity.zero_sensitivity.coords, model_dims=(state_dim,))
+    add_model_data(
+        activity.active.rename(f"{var_name}_is_active"),
+        f"{var_name}_is_active",
+    )
 
     if activity.n_active == activity.n_state:
         assert active_prior is not None
-        result = add_correlated_lognormal_state(
+        result = add_state(
             active_prior,
             var_name=var_name,
         )
@@ -776,10 +817,6 @@ def _add_prepared_correlated_lognormal_state_with_activity(
             activity=activity,
         )
 
-    add_model_data(
-        activity.active.rename(f"{var_name}_is_active"),
-        f"{var_name}_is_active",
-    )
     fixed_value = add_model_data(
         activity.fixed_value.rename(f"{var_name}_fixed_value"),
         f"{var_name}_fixed_value",
@@ -789,7 +826,7 @@ def _add_prepared_correlated_lognormal_state_with_activity(
     active_state: TensorVariable | None = None
     if activity.n_active:
         assert active_prior is not None
-        result = add_correlated_lognormal_state(
+        result = add_state(
             active_prior,
             var_name=f"{var_name}_active",
         )
@@ -801,6 +838,41 @@ def _add_prepared_correlated_lognormal_state_with_activity(
         full_state = pt.set_subtensor(full_state[active_indices], active_state)
     state = pm.Deterministic(var_name, full_state, dims=state_dim)
     return StateVectorResult(latent=latent, state=state, activity=activity)
+
+
+def _check_active_prior_labels(
+    activity: ResolvedStateActivity, mean: xr.DataArray, prior_state_dim: str, *, label: str
+) -> None:
+    """Require the prior and the activity to share state labels and coordinates."""
+    state_dim = activity.state_dim
+    if prior_state_dim != state_dim:
+        raise ValueError(
+            f"{label} prior and state activity must use the same "
+            f"state dimension; found {prior_state_dim!r} and {state_dim!r}."
+        )
+    activity_index = activity.zero_sensitivity.coords[state_dim].to_index()
+    if not mean.coords[state_dim].to_index().equals(activity_index):
+        raise ValueError(
+            f"{label} prior labels must exactly match state-activity labels in the same order."
+        )
+    prior_coords, activity_coords = compute(
+        mean.coords.to_dataset(), activity.zero_sensitivity.coords.to_dataset(),
+    )
+    xr.merge([prior_coords, activity_coords], join="exact", compat="equals")
+
+
+def _active_state_array(
+    values: xr.DataArray, state_dim: str, active_indices: np.ndarray, var_name: str
+) -> xr.DataArray:
+    """Select active entries onto the namespaced active-state dimension."""
+    active_dim, active_coords = _active_state_coords(values.coords[state_dim], active_indices, f"{var_name}_active")
+    return xr.DataArray(
+        values.isel({state_dim: active_indices}).values,
+        dims=(active_dim,),
+        coords=active_coords,
+        name=values.name,
+        attrs=values.attrs,
+    )
 
 
 def prepare_active_correlated_lognormal_prior(
@@ -816,54 +888,162 @@ def prepare_active_correlated_lognormal_prior(
     coordinate datasets together before comparing auxiliary labels. Borrowed
     inputs remain unchanged and shared Dask coordinate tasks run once.
     """
-    state_dim = activity.state_dim
-    if prior.state_dim != state_dim:
-        raise ValueError(
-            "Correlated LogNormal prior and state activity must use the same "
-            f"state dimension; found {prior.state_dim!r} and {state_dim!r}."
-        )
     mean = prior.mean
-    activity_index = activity.zero_sensitivity.coords[state_dim].to_index()
-    if not mean.coords[state_dim].to_index().equals(activity_index):
-        raise ValueError(
-            "Correlated LogNormal prior labels must exactly match state-activity labels in the same order."
-        )
-    prior_coords, activity_coords = compute(
-        mean.coords.to_dataset(), activity.zero_sensitivity.coords.to_dataset(),
-    )
-    xr.merge([prior_coords, activity_coords], join="exact", compat="equals")
+    _check_active_prior_labels(activity, mean, prior.state_dim, label="Correlated LogNormal")
     if activity.n_active == 0:
         return None
     if activity.n_active == activity.n_state:
         return prior
 
     active_indices = activity.active_indices
-    active_dim, active_coords = _active_state_coords(mean.coords[state_dim], active_indices, f"{var_name}_active")
-    active_mean = xr.DataArray(
-        mean.isel({state_dim: active_indices}).values,
-        dims=(active_dim,),
-        coords=active_coords,
-        name=mean.name,
-        attrs=mean.attrs,
-    )
+    active_mean = _active_state_array(mean, activity.state_dim, active_indices, var_name)
     active_covariance = prior.arithmetic_covariance.isel(
-        {state_dim: active_indices, prior.covariance_dim: active_indices}
+        {activity.state_dim: active_indices, prior.covariance_dim: active_indices}
     ).values
     return CorrelatedLognormalPrior(active_mean, active_covariance)
 
 
+def _as_lognormal_prior(prior: CorrelatedLognormalPrior | CorrelatedPrior) -> CorrelatedLognormalPrior | None:
+    """Return the validated lognormal prior, given directly or carried by an all-lognormal wrapper.
+
+    ``None`` when a :class:`CorrelatedPrior` has a non-lognormal marginal.
+    """
+    return prior.lognormal if isinstance(prior, CorrelatedPrior) else prior
+
+
+def _log_negative_log_normal_sf(u: TensorVariable) -> TensorVariable:
+    """Return ``log(-log(Phi(-u)))`` for the Weibull quantile.
+
+    Use the asymptotic ``erfc`` series before the probability underflows.
+    Below ``u = -8``, ``-log(1 - Phi(u))`` equals ``Phi(u)`` to working
+    precision. Keeping its logarithm preserves narrow Weibull values there.
+    """
+    a = pt.switch(u < 0, -u, u) / np.asarray(np.sqrt(2.0), dtype=u.dtype)
+    switch = 8.0 if u.dtype == "float32" else 10.0
+    direct = pt.log(0.5 * pt.erfc(pt.minimum(a, switch)))
+    large = pt.maximum(a, switch)
+    inverse = 1.0 / pt.square(large)
+    # S(a) = sum_n (-1)**n (2n - 1)!! / (2 a**2)**n, n = 0..6, in Horner form.
+    series = 10395 / 64
+    for coefficient in (-945 / 32, 105 / 16, -15 / 8, 3 / 4, -1 / 2, 1.0):
+        series = coefficient + inverse * series
+    scale = np.asarray(2.0 * np.sqrt(np.pi), dtype=u.dtype)
+    asymptotic = -pt.square(large) - pt.log(scale * large) + pt.log(series)
+    log_tail = pt.switch(a <= switch, direct, asymptotic)
+    lower = pt.log(-pt.log1p(-pt.exp(pt.maximum(log_tail, -40.0))))
+    return pt.switch(u >= 0, pt.log(-log_tail), pt.switch(u < -8, log_tail, lower))
+
+
+def _copula_marginal_map(
+    latent: TensorVariable,
+    family: np.ndarray,
+    mean: np.ndarray,
+    shape: np.ndarray,
+    scale: np.ndarray,
+) -> TensorVariable:
+    """Return ``F_i^-1(Phi(u_i))`` for correlated standard-normal ``u``.
+
+    The Gamma map supplies a stable latent derivative for both sampler backends.
+    """
+    pieces: list[tuple[np.ndarray, TensorVariable]] = []
+    for name in dict.fromkeys(family):
+        index = np.flatnonzero(family == name)
+        u = latent if index.size == family.size else latent[index]
+        k = pt.as_tensor_variable(floatX(shape[index]))
+        theta = pt.as_tensor_variable(floatX(scale[index]))
+        if name == "lognormal":
+            value = theta * pt.exp(k * u)
+        elif name == "normal":
+            value = pt.as_tensor_variable(floatX(mean[index])) + theta * u
+        elif name == "gamma":
+            u = pt.minimum(u, GAMMA_LATENT_CAP)
+            value = theta * _GammaStandardQuantile(u.type, k.type)(u, k)
+        else:
+            value = theta * pt.exp(_log_negative_log_normal_sf(u) / k)
+        pieces.append((index, value))
+    if len(pieces) == 1:
+        return pieces[0][1]
+    state = pt.zeros(family.size)
+    for index, value in pieces:
+        state = pt.set_subtensor(state[index], value)
+    return state
+
+
+def add_correlated_copula_state(
+    prior: CorrelatedPrior,
+    /,
+    *,
+    var_name: str,
+) -> CorrelatedStateResult:
+    """Add a whitened Gaussian-copula state with per-state marginals.
+
+    The whitened latent is ``{var_name}_latent``, as for
+    :func:`add_correlated_lognormal_state`, and the state is
+    ``x_i = F_i^-1(Phi((L z)_i))`` with ``L`` the prior's latent-correlation
+    Cholesky factor.
+
+    Args:
+        prior: Arithmetic moments, marginals and latent correlation.
+        var_name: Name of the user-facing state.
+
+    Returns:
+        The whitened latent, the state, and the supplied prior.
+
+    Raises:
+        ValueError: If the factor or marginal parameters are not finite in
+            PyMC's configured floating-point dtype.
+
+    Notes:
+        This must run in an active ``pm.Model``. Validation finishes before
+        the model is changed. The same moment-matched closure caveat as
+        :func:`add_correlated_lognormal_state` applies.
+
+        Every marginal compiles for PyMC's sampler and for JAX samplers.
+        Under JAX, gamma states use TensorFlow Probability's inverse
+        regularized incomplete gamma (the ``tfp-nightly`` dependency).
+    """
+    state_dim = prior.state_dim
+    family = np.asarray(prior.marginal.values).astype(str)
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        mean = np.asarray(floatX(np.asarray(prior.mean.values)))
+        cholesky = np.asarray(floatX(np.asarray(prior.latent_correlation_cholesky.values)))
+        shape = np.asarray(floatX(np.asarray(prior.marginal_shape.values)))
+        scale = np.asarray(floatX(np.asarray(prior.marginal_scale.values)))
+    shaped = family != "normal"
+    if (
+        not np.isfinite(cholesky).all()
+        or (np.diag(cholesky) <= 0).any()
+        or not np.isfinite(mean).all()
+        or not np.isfinite(scale).all()
+        or (scale <= 0).any()
+        or not np.isfinite(shape[shaped]).all()
+        or (shape[shaped] <= 0).any()
+    ):
+        raise ValueError("Copula prior factors and marginal parameters must remain finite in the model float dtype.")
+
+    add_coords(prior.mean.coords, model_dims=(state_dim,))
+    latent = pm.Normal(f"{var_name}_latent", 0.0, 1.0, dims=state_dim)
+    correlated = pt.dot(pt.as_tensor_variable(cholesky), latent)
+    state = pm.Deterministic(
+        var_name, _copula_marginal_map(correlated, family, mean, shape, scale), dims=state_dim,
+    )
+    return CorrelatedStateResult(latent=latent, state=state, prior=prior)
+
+
 def add_correlated_state_with_activity(
     activity: ResolvedStateActivity,
-    prior: CorrelatedPrior,
+    prior: CorrelatedLognormalPrior | CorrelatedPrior,
     /,
     *,
     var_name: str,
 ) -> StateVectorResult:
     """Construct a correlated state with each state's marginal and exact fixed values.
 
-    Every marginal is lognormal, so this is
-    :func:`add_correlated_lognormal_state_with_activity` on the prior's
-    lognormal copula.
+    A validated lognormal prior, given directly or as an all-lognormal
+    :class:`CorrelatedPrior`, uses
+    :func:`add_correlated_lognormal_state_with_activity`, so the graph is
+    unchanged. Otherwise the active states use
+    :func:`add_correlated_copula_state`.
 
     Args:
         activity: Resolved activity in canonical full-state order.
@@ -873,21 +1053,25 @@ def add_correlated_state_with_activity(
     Returns:
         Effective whitened latent, full state vector, and supplied activity.
     """
-    return add_correlated_lognormal_state_with_activity(activity, prior.lognormal, var_name=var_name)
+    lognormal = _as_lognormal_prior(prior)
+    if lognormal is not None:
+        return add_correlated_lognormal_state_with_activity(activity, lognormal, var_name=var_name)
+    active_prior = prepare_active_correlated_prior(activity, prior, var_name=var_name)
+    return _add_prepared_correlated_lognormal_state_with_activity(activity, active_prior, var_name=var_name)
 
 
 def prepare_active_correlated_prior(
     activity: ResolvedStateActivity,
-    prior: CorrelatedPrior,
+    prior: CorrelatedLognormalPrior | CorrelatedPrior,
     /,
     *,
     var_name: str,
-) -> CorrelatedLognormalPrior | None:
+) -> CorrelatedLognormalPrior | CorrelatedPrior | None:
     """Subset a correlated prior to its active states before graph construction.
 
-    Every marginal is lognormal, so the active prior is the active subset of
-    the lognormal copula, for
-    ``_add_prepared_correlated_lognormal_state_with_activity``.
+    The active prior keeps each active state's marginal and the corresponding
+    block of the full prior's latent correlation, including any applied repair.
+    Pass the result to ``_add_prepared_correlated_lognormal_state_with_activity``.
 
     Args:
         activity: Resolved activity in canonical full-state order.
@@ -895,12 +1079,26 @@ def prepare_active_correlated_prior(
         var_name: Name of the full user-facing state vector.
 
     Returns:
-        The active lognormal prior, or ``None`` when every state is fixed.
+        The active prior, or ``None`` when every state is fixed.
 
     Raises:
         ValueError: If the prior and activity labels differ.
     """
-    return prepare_active_correlated_lognormal_prior(activity, prior.lognormal, var_name=var_name)
+    lognormal = _as_lognormal_prior(prior)
+    if lognormal is not None:
+        return prepare_active_correlated_lognormal_prior(activity, lognormal, var_name=var_name)
+    assert isinstance(prior, CorrelatedPrior)
+    mean = prior.mean
+    _check_active_prior_labels(activity, mean, prior.state_dim, label="Correlated")
+    if activity.n_active == 0:
+        return None
+    if activity.n_active == activity.n_state:
+        return prior
+    active_indices = activity.active_indices
+    state_dim = activity.state_dim
+    active_mean = _active_state_array(mean, state_dim, active_indices, var_name)
+    active_marginal = _active_state_array(prior.marginal, state_dim, active_indices, var_name)
+    return prior._restrict(active_mean, active_marginal, active_indices)
 
 
 def add_sigma_component(

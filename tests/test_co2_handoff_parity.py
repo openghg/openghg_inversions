@@ -88,6 +88,33 @@ def test_ordinary_output_options_normalize_only_their_paths(tmp_path, monkeypatc
 
 
 @pytest.mark.parametrize("likelihood_kind", ["additive_sigma", "fixed_ou"])
+def test_saved_copula_prior_records_the_marginals_actually_used(tmp_path, likelihood_kind):
+    """Both ordinary and cached fits preserve the fitted prior in replay metadata."""
+    from openghg_inversions.rhime.co2 import handoffs, prepare_co2_inputs
+
+    canonical, reduction, _, _, countries = synthetic_inputs(tmp_path)
+    marginal = reduction.retained_mean.copy(data=["weibull", "gamma"])
+    prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=1, prior_marginal=marginal)
+    manifest = handoffs.save_preparation(
+        prepared, output_dir=tmp_path / "prepare", start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
+    )
+    params = configuration(tmp_path / "reports", countries)
+    params["sampling"].update(draws=4, tune=4, sample_prior_predictive=0, sample_posterior_predictive=False)
+    if likelihood_kind == "fixed_ou":
+        params["likelihood"] = {"kind": "fixed_ou", "tau_hours": 24.0, "fixed_site_amplitudes": 0.5}
+    samples = handoffs.sample(
+        manifest, model=Co2ModelConfig.from_params(params), sampling=params["sampling"], output_dir=tmp_path / "sample",
+    )
+    replay = handoffs.postprocess(samples, output=Co2OutputOptions())
+
+    np.testing.assert_array_equal(replay.prepared.inv_inputs.alpha_prior_marginal, marginal)
+    for attrs in (replay.idata.attrs, replay.outputs["basic"].attrs):
+        metadata = json.loads(attrs["rhime_model_metadata"])
+        assert metadata["prior"] == "correlated arithmetic-moment Gaussian copula"
+        assert metadata["prior_marginals"] == {"gamma": 1, "weibull": 1}
+
+
+@pytest.mark.parametrize("likelihood_kind", ["additive_sigma", "fixed_ou"])
 def test_shared_inference_preserves_coherent_equations_and_products(
     tmp_path, monkeypatch, likelihood_kind,
 ):
@@ -254,7 +281,7 @@ def test_co2_execution_adapters_forward_inference_and_preserve_trace(tmp_path, m
             )
         trace[name] = dataset
     params = {
-        "prepared_inputs": {"start_date": START_DATE, "end_date": END_DATE, "domain": "EUROPE"},
+        "data": {"start_date": START_DATE, "end_date": END_DATE, "domain": "EUROPE"},
         "likelihood": {"kind": likelihood_kind},
         "sampling": {"draws": 3, "tune": 2, "chains": 2, "random_seed": 17},
         "outputs": {"output_format": "none", "output_path": str(tmp_path / "unopened")},
@@ -301,7 +328,7 @@ def test_co2_execution_adapters_forward_inference_and_preserve_trace(tmp_path, m
         assert not list(tmp_path.glob("**/*manifest*"))
     else:
         preparation = handoffs.save_preparation(
-            prepared, output_dir=tmp_path / "prepared", **params["prepared_inputs"],
+            prepared, output_dir=tmp_path / "prepared", **params["data"],
         )
         before = preparation.read_bytes()
         monkeypatch.setattr(handoffs, "sample_co2_inference", sample)
@@ -421,9 +448,9 @@ def test_full_rejects_supplied_preparation_with_an_unrelated_saved_affine_pair(t
         prepared.aggregation_error_mode, prepared.provenance,
     )
     params = configuration(tmp_path / "rejected", countries)
-    params["prepared_inputs"]["path"] = str(source)
+    params["data"]["path"] = str(source)
     params["outputs"]["output_format"] = "none"
-    params["prepared_inputs"]["reconstruction_path"] = str(companion)
+    params["data"]["reconstruction_path"] = str(companion)
 
     def forbidden(*args, **kwargs):
         raise AssertionError("A conflicting prepared/affine pair must fail before inference")

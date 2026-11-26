@@ -18,7 +18,9 @@ from openghg_inversions._labelled_matrices import renamed_column_coordinates
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import PreparedInputs
+from openghg_inversions.models.fixed_ou import fixed_ou_mismatch_covariance
 from openghg_inversions.rhime.co2 import Co2PreparedInputs, prepare_co2_inputs
+from openghg_inversions.rhime.co2.co2_preparation import CO2_PREPARED_INPUTS_SCHEMA_VERSION
 from openghg_inversions.rhime.co2 import (
     co2_cached_sigma_runner,
     co2_runner,
@@ -136,6 +138,7 @@ def _reduction(canonical: PreparedInputs) -> CoherentGaussianReduction:
         ).assign_attrs(units="ppm"),
         unresolved_observation_covariance=unresolved,
         projection_strategy="unit-test-projection",
+        native_identity="sha256:unit-test-native-inputs",
     )
 
 
@@ -199,12 +202,18 @@ def test_prepare_co2_inputs_constructs_truncated_low_rank_representation() -> No
     assert prepared.provenance["aggregation_error"]["requested_rank"] == 1
 
 
-def test_prepare_co2_inputs_caps_default_low_rank_at_observation_count() -> None:
-    """The default LRPD rank is capped at the available observation count."""
+def test_prepare_co2_inputs_default_rank_comes_from_whitened_spectrum() -> None:
+    """The default LRPD rank is the whitened-spectrum count, capped at the observation count."""
     canonical = _canonical_inputs()
 
-    prepared = prepare_co2_inputs(canonical, _reduction(canonical))
+    reference = fixed_ou_mismatch_covariance(
+        canonical.inv_inputs["mf"], canonical.inv_inputs["mf_error"], fixed_site_amplitudes=1.0
+    )
+    prepared = prepare_co2_inputs(canonical, _reduction(canonical), reference_covariance=reference)
 
+    selection = prepared.provenance["aggregation_error_rank_selection"]
+    assert prepared.provenance["aggregation_error_rank"] == "whitened_spectrum"
+    assert selection["count_mu_above_threshold"] == 3
     assert prepared.inv_inputs["low_rank_factor"].shape == (3, 3)
     assert prepared.provenance["aggregation_error"]["requested_rank"] == 3
 
@@ -361,6 +370,7 @@ def test_prepare_co2_inputs_rejects_conflicting_projection_strategy() -> None:
         prepare_co2_inputs(
             canonical,
             reduction,
+            aggregation_error_rank=None,
             provenance={"projection_strategy": "different-strategy"},
         )
 
@@ -598,7 +608,7 @@ def test_centered_co2_envelope_embeds_current_generic_representation(tmp_path: P
     canonical = PreparedInputs(inputs, canonical.basis_functions, canonical.site_metadata)
     prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None)
     tree = prepared.to_datatree()
-    assert tree.attrs["schema_version"] == 3
+    assert tree.attrs["schema_version"] == CO2_PREPARED_INPUTS_SCHEMA_VERSION == 4
     assert tree["rhime_inputs"].attrs["schema_version"] == 3
     assert tree["rhime_inputs"].attrs["representation"] == "centered"
     path = tmp_path / f"centered-co2{suffix}"
@@ -714,7 +724,7 @@ def test_centered_unit_response_and_resolved_weights_keep_independent_states(tmp
     xr.testing.assert_identical(loaded.inv_inputs.bc_centering_weights, weights.rename("bc_centering_weights"))
 
 
-@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("version", [1, 2, 3])
 def test_co2_rejects_old_prepared_formats_with_repreparation_message(version):
     canonical = _canonical_inputs()
     prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None)

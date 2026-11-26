@@ -155,16 +155,19 @@ def _request(files: dict[str, Path], native_prior: dict) -> dict:
     """A complete configured CO2 request building a per-source preparation."""
     return {
         "format_version": 1, "recipe": "co2",
-        "prepared_inputs": {
+        "data": {
             **WINDOW,
+            "flux_sources": list(SOURCES),
             "acquisition": {
-                "sites": ["TOY"], "averaging_period": "3h", "flux_sources": list(SOURCES),
+                "sites": ["TOY"], "averaging_period": "3h",
                 "surface_transport": dict.fromkeys(SOURCES, "integrated"),
                 "boundary_reference": 400.0, "boundary_reference_units": "ppm", "boundary_mass_tolerance": 1e-6,
             },
-            "basis": {"partition_path": str(files["partition"])},
-            "native_prior": native_prior,
-            "aggregation_error_rank": "exact",
+            "preparation": {
+                "basis": {"partition_path": str(files["partition"])},
+                "native_prior": native_prior,
+                "aggregation_error_rank": "exact",
+            },
         },
         "likelihood": {"kind": "additive_sigma", "no_model_error": True, "fixed_model_mismatch": 0.0},
     }
@@ -274,23 +277,23 @@ def test_multisource_configuration_round_trips(files: dict[str, Path]) -> None:
         assert again.native.native_prior == prior
     assert prior.sources["gpp"].sigma is None and prior.calibration.statistic == "median"
     assert prior.sources["ff"].geodesic_correlation_length_km == {"1": FF_GEODESIC_KM}
-    single = Co2PreparationConfig.from_params(_request(files, {"sigma": 0.2}), require_source=True)
-    assert single.native.native_prior == Co2NativePrior(sigma=0.2)
+    single = Co2PreparationConfig.from_params(_request(files, {"stdev": 0.2}), require_source=True)
+    assert single.native.native_prior == Co2NativePrior(stdev=0.2)
 
 
 @pytest.mark.parametrize("change,message", [
-    ({"sigma": 0.5}, "belongs to the single-field prior"),
-    ({"gpp_source": None}, "requires prepared_inputs.native_prior.gpp_source"),
+    ({"stdev": 0.5}, "belongs to the single-field prior"),
+    ({"gpp_source": None}, "requires data.preparation.native_prior.gpp_source"),
     ({"gpp_ter_correlation": 1.0}, r"\|rho\| < 1"),
     ({"restriction": "nearest"}, "restriction must be one of"),
     ({"retained_regions_path": "r.json"}, "requires restriction = 'absolute_flux_weighted_mean'"),
-    ({"ff": None}, "exactly the acquisition flux_sources"),
+    ({"ff": None}, "exactly the configured flux_sources"),
     ({"ter": {"sigma": 0.4, "latitude_correlation_length": 9.0}}, "one shared kernel"),
     ({"ter": {"mean": 1.0, "latitude_correlation_length": BIO_LENGTHS[0],
               "longitude_correlation_length": BIO_LENGTHS[1]}}, "sources.ter.sigma is required"),
     ({"ff": {"sigma": 0.3, "colour": "red"}}, "Unknown configuration option"),
     ({"calibration": {"targets_path": "t.nc"}}, "no source to calibrate"),
-    ({"class_labels_path": None}, "requires prepared_inputs.native_prior.class_labels_path"),
+    ({"class_labels_path": None}, "requires data.preparation.native_prior.class_labels_path"),
 ])
 def test_multisource_configuration_rejects_inconsistent_options(
     files: dict[str, Path], change: dict, message: str,
@@ -311,7 +314,7 @@ def test_multisource_configuration_rejects_inconsistent_options(
 
 def test_single_field_options_reject_multisource_keys(files: dict[str, Path]) -> None:
     with pytest.raises(ValueError, match="requires per-source priors"):
-        Co2PreparationConfig.from_params(_request(files, {"sigma": 0.2, "gpp_ter_correlation": 0.5}))
+        Co2PreparationConfig.from_params(_request(files, {"stdev": 0.2, "gpp_ter_correlation": 0.5}))
 
 
 @pytest.mark.parametrize("template", ["co2.toml", "co2_fixed_ou.toml"])
@@ -328,7 +331,7 @@ def test_template_multisource_examples_parse(template: str, example: str) -> Non
         if not line.startswith("#"):
             break
         block.append(line.removeprefix("#").removeprefix(" "))
-    prior = Co2MultiSourceNativePrior.from_params(tomllib.loads("\n".join(block))["prepared_inputs"]["native_prior"])
+    prior = Co2MultiSourceNativePrior.from_params(tomllib.loads("\n".join(block))["data"]["preparation"]["native_prior"])
     gpp, ter = prior.sources["co2_BASE_GPP"], prior.sources["co2_BASE_TER"]
     assert prior.gpp_ter_correlation == pytest.approx(0.7) and gpp.kernel_key == ter.kernel_key
     if example == "E-r07":
@@ -482,7 +485,6 @@ def test_single_field_route_is_bit_identical_to_the_direct_reduction(tmp_path: P
     from openghg_inversions.native_covariance import SeparableExponentialCovariance
     from openghg_inversions.native_flux import resolve_runtime_flux
     from openghg_inversions.rhime.co2 import prepare_co2_inputs
-    from openghg_inversions.rhime.co2.co2_native_preparation import _native_sensitivity
     from openghg_inversions.rhime.preparation import (
         assemble_inputs, build_sensitivities, filter_observations, resolve_basis_inputs,
     )
@@ -495,9 +497,9 @@ def test_single_field_route_is_bit_identical_to_the_direct_reduction(tmp_path: P
     partition = tmp_path / "partition.nc"
     xr.ones_like(fluxes["fossil"].flux.isel(time=0, drop=True), dtype=int).rename("basis").to_dataset().to_netcdf(
         partition)
-    config = _request({"partition": partition}, {"sigma": 0.2, "mean": 1.1, "correlation_length": 1.0})
-    config["prepared_inputs"]["acquisition"].update(
-        flux_sources=["biosphere", "fossil"], surface_transport={"biosphere": "integrated", "fossil": "integrated"})
+    config = _request({"partition": partition}, {"stdev": 0.2, "mean": 1.1, "correlation_length": 1.0})
+    config["data"]["flux_sources"] = ["biosphere", "fossil"]
+    config["data"]["acquisition"]["surface_transport"] = {"biosphere": "integrated", "fossil": "integrated"}
     resolved = Co2PreparationConfig.from_params(load_co2_params(params=config), require_source=True)
     prepared = handoffs.load_preparation(
         handoffs.prepare(**resolved.preparation_arguments(), merged_data=pilot, output_dir=tmp_path / "p")
@@ -517,7 +519,12 @@ def test_single_field_route_is_bit_identical_to_the_direct_reduction(tmp_path: P
         build_sensitivities(filtered, basis, flux_sources=("biosphere", "fossil"), multisector=False),
         basis, site_options=site_options, domain="TOY", start_date=WINDOW["start_date"], use_bc=True,
     )
-    sensitivity = _native_sensitivity(filtered, canonical)
+    sensitivity = (
+        filtered["TOY"].fp_x_flux.reset_coords(drop=True).rename(time="observation")
+        .drop_vars("observation").assign_coords(
+            xr.Coordinates.from_pandas_multiindex(canonical.inv_inputs.indexes["nmeasure"], "observation")
+        ).assign_attrs(units=canonical.inv_inputs.mf.attrs["units"])
+    )
     mean = xr.full_like(sensitivity.isel(observation=0, drop=True), 1.1).assign_attrs(units="1")
     reduction = reduce_native_gaussian(
         covariance=SeparableExponentialCovariance(sensitivity.lat, sensitivity.lon, sigma=0.2, correlation_length=1.0),
@@ -529,7 +536,7 @@ def test_single_field_route_is_bit_identical_to_the_direct_reduction(tmp_path: P
                  "aggregation_error_covariance", "mf", "mf_error", "H_bc"):
         np.testing.assert_array_equal(prepared.inv_inputs[name].values, direct.inv_inputs[name].values)
     assert prepared.provenance["native_preparation"]["native_prior"] == {
-        "sigma": 0.2, "mean": 1.1, "correlation_length": 1.0,
+        "stdev": 0.2, "mean": 1.1, "correlation_length": 1.0,
         "latitude_correlation_length": None, "longitude_correlation_length": None,
     }
 
@@ -623,7 +630,7 @@ def test_shared_partition_is_repeated_per_source(
     path = tmp_path / "shared.nc"
     shared.to_dataset().to_netcdf(path)
     config = _request(files, _native_prior(files, restriction))
-    config["prepared_inputs"]["basis"] = {"partition_path": str(path)}
+    config["data"]["preparation"]["basis"] = {"partition_path": str(path)}
     prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, "shared")).prepared
     inputs = prepared.inv_inputs
     assert list(inputs.indexes["region"]) == [(s, r) for s in SOURCES for r in range(3)]
@@ -637,7 +644,7 @@ def test_generated_basis_is_repeated_per_source(tmp_path: Path, merged: MergedDa
     from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR
 
     config = _request(files, _native_prior(files))
-    config["prepared_inputs"]["basis"] = {"algorithm": "quadtree", "nbasis": 4}
+    config["data"]["preparation"]["basis"] = {"algorithm": "quadtree", "nbasis": 4}
     prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, "generated")).prepared
     operator = prepared.basis_functions.operator
     assert operator.source_labels == SOURCES
@@ -668,7 +675,7 @@ def _fixed_outer_basis(tmp_path: Path) -> dict:
 def test_fixed_outer_basis_labels_the_prepared_prior(tmp_path: Path, merged: MergedData) -> None:
     """A fixed-outer basis labels its states, and the labels reach the reloaded prior."""
     config = _request({"partition": tmp_path / "unused.nc"}, {"sigma": 0.2, "correlation_length": 1.0})
-    config["prepared_inputs"]["basis"] = _fixed_outer_basis(tmp_path)
+    config["data"]["preparation"]["basis"] = _fixed_outer_basis(tmp_path)
     prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, "fixed_outer")).prepared
     mean = prepared.inv_inputs.alpha_prior_mean
     inner = mean.sizes["region"] - 1
@@ -683,7 +690,7 @@ def test_fixed_outer_basis_labels_per_source_states(
 ) -> None:
     """Per-source priors repeat the fixed-outer groups for every source through either restriction."""
     config = _request(files, _native_prior(files, restriction))
-    config["prepared_inputs"]["basis"] = _fixed_outer_basis(tmp_path)
+    config["data"]["preparation"]["basis"] = _fixed_outer_basis(tmp_path)
     prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, restriction)).prepared
     mean = prepared.inv_inputs.alpha_prior_mean
     groups = prepared.basis_functions.operator.basis_matrix.basis_group.values.tolist()
@@ -711,7 +718,7 @@ def test_configured_outer_flux_selects_fixed_outer_basis_states(
     native_prior = (_native_prior(files, "bucket") if per_source
                     else {"sigma": 0.2, "correlation_length": 1.0})
     config = _request({"partition": tmp_path / "unused.nc"} if not per_source else files, native_prior)
-    config["prepared_inputs"]["basis"] = _fixed_outer_basis(tmp_path)
+    config["data"]["preparation"]["basis"] = _fixed_outer_basis(tmp_path)
     config["model"] = {"outer_flux": {"mode": "fixed", "outer_groups": ["outer"]}}
     prepared = handoffs.load_preparation(_prepare(tmp_path, config, merged, "outer_flux")).prepared
     choices = Co2ModelConfig.from_params(load_co2_params(params=config)).model_arguments()
@@ -728,3 +735,105 @@ def test_configured_outer_flux_selects_fixed_outer_basis_states(
         OuterFluxChoice("fixed", ("outer",)).resolve_states(prior)
     with pytest.raises(ValueError, match="zero prior covariance"):
         build_co2_inference(prepared, choices)
+
+
+# ---------------------------------------------------------------------------
+# Per-source marginals (#1098)
+# ---------------------------------------------------------------------------
+
+
+def _with_marginals(table: dict, **marginals: str) -> dict:
+    """Add marginal families to the specified sources in a test prior table."""
+    for source, marginal in marginals.items():
+        table["sources"][source]["marginal"] = marginal
+    return table
+
+
+def test_source_marginal_round_trips_and_defaults_to_unset(files: dict[str, Path]) -> None:
+    table = _with_marginals(_native_prior(files), gpp="weibull", ter="gamma")
+    prior = Co2PreparationConfig.from_params(_request(files, table), require_source=True).native.native_prior
+    assert isinstance(prior, Co2MultiSourceNativePrior)
+    assert (prior.sources["gpp"].marginal, prior.sources["ter"].marginal, prior.sources["ff"].marginal) == (
+        "weibull", "gamma", None,
+    )
+    assert Co2MultiSourceNativePrior.from_params(prior.to_params()) == prior
+    assert "marginal" not in Co2MultiSourceNativePrior.from_params(_native_prior(files)).to_params()["sources"]["ff"]
+
+
+@pytest.mark.parametrize("restriction", ["bucket", "absolute_flux_weighted_mean"])
+def test_preparation_records_each_retained_state_marginal(
+    tmp_path: Path, merged: MergedData, files: dict[str, Path], restriction: str,
+) -> None:
+    from openghg_inversions.rhime.co2.co2_cached_sigma_runner import co2_cached_sigma_input_names
+    from openghg_inversions.rhime.co2.co2_runner import co2_model_input_names
+
+    plain = handoffs.load_preparation(
+        _prepare(tmp_path, _request(files, _native_prior(files, restriction)), merged, "plain")
+    ).prepared
+    assert "alpha_prior_marginal" not in plain.inv_inputs
+    table = _with_marginals(_native_prior(files, restriction), gpp="weibull", ter="normal")
+    prepared = handoffs.load_preparation(_prepare(tmp_path, _request(files, table), merged, "marginal")).prepared
+    inputs = prepared.inv_inputs
+    expected = {"ff": "lognormal", "gpp": "weibull", "ter": "normal"}
+    assert list(inputs.alpha_prior_marginal.values) == [expected[str(s)] for s in inputs.source.values]
+    assert inputs.alpha_prior_marginal.indexes["region"].equals(inputs.indexes["region"])
+    # The marginal changes only the sampled prior, not the reduced moments.
+    xr.testing.assert_identical(inputs.alpha_prior_mean, plain.inv_inputs.alpha_prior_mean)
+    xr.testing.assert_identical(inputs.alpha_prior_covariance, plain.inv_inputs.alpha_prior_covariance)
+    assert "alpha_prior_marginal" in co2_model_input_names(prepared, preserve_prepared_fixed_mismatch=False)
+    assert "alpha_prior_marginal" in co2_cached_sigma_input_names(prepared)
+    assert prepared.provenance["native_preparation"]["native_prior"]["sources"]["gpp"]["marginal"] == "weibull"
+
+
+@pytest.mark.usefixtures("double_precision")
+def test_source_marginals_sample_through_the_runner(merged: MergedData, files: dict[str, Path]) -> None:
+    # This likelihood samples with numpyro (JAX); gamma uses TensorFlow Probability there.
+    config = _request(files, _with_marginals(_native_prior(files), gpp="weibull", ter="gamma"))
+    config["sampling"] = {"draws": 20, "tune": 20, "chains": 1, "progressbar": False, "random_seed": 3}
+    config["outputs"] = {"output_format": "none"}
+    result = run_co2(params=config, merged_data=merged)
+    posterior = result.idata["posterior"]
+    assert posterior["flux_scaling"].sizes["region"] == 7
+    biosphere = posterior["flux_scaling"].where(posterior["source"] != "ff", drop=True)
+    assert biosphere.sizes["region"] == 4 and float(biosphere.min()) > 0
+
+
+def test_latent_correlation_floor_round_trips_and_needs_a_copula_marginal(files: dict[str, Path]) -> None:
+    table = _with_marginals(_native_prior(files), gpp="weibull")
+    table["latent_correlation_floor"] = 1e-6
+    prior = Co2PreparationConfig.from_params(_request(files, table), require_source=True).native.native_prior
+    assert isinstance(prior, Co2MultiSourceNativePrior) and prior.latent_correlation_floor == 1e-6
+    assert Co2MultiSourceNativePrior.from_params(prior.to_params()) == prior
+    lognormal = _native_prior(files)
+    lognormal["latent_correlation_floor"] = 1e-6
+    with pytest.raises(ValueError, match="latent_correlation_floor applies only to copula priors"):
+        Co2MultiSourceNativePrior.from_params(lognormal)
+    table["latent_correlation_floor"] = 0.5
+    with pytest.raises(ValueError, match=r"latent_correlation_floor must be in \(0, 0.1\]"):
+        Co2MultiSourceNativePrior.from_params(table)
+
+
+def test_preparation_stores_the_latent_correlation_floor(
+    tmp_path: Path, merged: MergedData, files: dict[str, Path],
+) -> None:
+    from openghg_inversions.rhime.co2.co2_preparation import retained_prior_options
+
+    table = _with_marginals(_native_prior(files), gpp="weibull", ter="weibull")
+    table["latent_correlation_floor"] = 1e-6
+    prepared = handoffs.load_preparation(_prepare(tmp_path, _request(files, table), merged, "floor")).prepared
+    assert prepared.inv_inputs.alpha_prior_marginal.attrs["latent_correlation_floor"] == 1e-6
+    assert retained_prior_options(prepared.inv_inputs)["latent_correlation_floor"] == 1e-6
+
+
+@pytest.mark.usefixtures("double_precision")
+def test_runner_records_the_prior_marginals_and_repair_in_the_trace(merged: MergedData, files: dict[str, Path]) -> None:
+    table = _with_marginals(_native_prior(files), gpp="weibull", ter="weibull")
+    table["latent_correlation_floor"] = 1e-6
+    config = _request(files, table)
+    config["sampling"] = {"draws": 5, "tune": 5, "chains": 1, "progressbar": False, "random_seed": 3}
+    config["outputs"] = {"output_format": "none"}
+    metadata = json.loads(run_co2(params=config, merged_data=merged).idata.attrs["rhime_model_metadata"])
+    assert metadata["prior"] == "correlated arithmetic-moment Gaussian copula"
+    assert metadata["prior_marginals"] == {"lognormal": 3, "weibull": 4}
+    repair = metadata["prior_latent_correlation_repair"]
+    assert repair["method"] == "eigenvalue_floor" and repair["floor"] == 1e-6 and repair["applied"] is False

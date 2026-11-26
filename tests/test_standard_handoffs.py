@@ -103,8 +103,7 @@ def test_saved_sampling_forwards_scientific_objects_and_persists_returned_trace(
         assert kwargs["likelihood_kwargs"] == likelihood_kwargs
         return built
 
-    def sample(actual_sampler, model, *, variable_roles, recompute_deterministics=False):
-        assert recompute_deterministics is False
+    def sample(actual_sampler, model, *, variable_roles):
         assert actual_sampler.describe() == inference
         assert model is built.model and variable_roles == contract.variable_roles
         return posterior
@@ -818,7 +817,7 @@ def test_supplied_preparation_skips_resources_and_acquisition(monkeypatch):
 def test_sample_version_rejects_retired_model_record_before_payload_loading(tmp_path, monkeypatch):
     preparation, sampled = _saved(tmp_path)
     record = json.loads(sampled.read_text())
-    assert json.loads(preparation.read_text())["schema_version"] == 2
+    assert json.loads(preparation.read_text())["schema_version"] == 3
     assert record["schema_version"] == 3
     assert isinstance(stages.load_samples(sampled), InversionOutput)
     record["schema_version"] = 2

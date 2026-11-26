@@ -529,3 +529,41 @@ def test_make_inv_inputs_rejects_per_site_resolved_boundary_weights() -> None:
     sites["AAA"]["bc_centering_weights"] = xr.DataArray([1.0, 1.0], dims="bc_region")
     with pytest.raises(ValueError, match="resolved boundary states"):
         make_inv_inputs(sites)
+
+
+def test_make_inv_inputs_drops_native_grid_variables_without_computing_them() -> None:
+    """Raw footprints and curtains are reduced before assembly and must not reach checkpoints."""
+    from dask import delayed
+
+    @delayed
+    def unexpected_compute():
+        raise AssertionError("A native-grid variable was materialized during assembly")
+
+    time = pd.date_range("2019-01-01", periods=2, freq="h")
+    lat, lon, height, h_back = np.arange(3.0), np.arange(4.0), np.arange(2.0), np.arange(5)
+
+    def lazy(*shape):
+        return da.from_delayed(unexpected_compute(), shape=shape, dtype=np.float32)
+
+    dataset = xr.Dataset(
+        {
+            "H": (("region", "time"), [[1.0, 2.0]]),
+            "mf": ("time", [1.0, 2.0]),
+            "mf_error": ("time", [0.1, 0.1]),
+            "mf_repeatability": ("time", [0.1, 0.1]),
+            "mf_variability": ("time", [0.0, 0.0]),
+            "fp": (("lat", "lon", "time"), lazy(3, 4, 2)),
+            "fp_HiTRes": (("lat", "lon", "H_back", "time"), lazy(3, 4, 5, 2)),
+            "fp_x_flux": (("lat", "lon", "time"), lazy(3, 4, 2)),
+            "bc_n": (("height", "lon", "time"), lazy(2, 4, 2)),
+            "particle_locations_e": (("height", "lat", "time"), lazy(2, 3, 2)),
+        },
+        coords={"region": [0], "time": time, "lat": lat, "lon": lon, "height": height, "H_back": h_back},
+    )
+
+    result = make_inv_inputs({"AAA": dataset}, sites=["AAA"])
+
+    assert set(result.data_vars).isdisjoint({"fp", "fp_HiTRes", "fp_x_flux", "bc_n", "particle_locations_e"})
+    np.testing.assert_allclose(result["H"].transpose("region", "nmeasure").values, [[1.0, 2.0]])
+    np.testing.assert_allclose(result["mf"].values, [1.0, 2.0])
+    assert "fp_HiTRes" in dataset  # the caller's dataset is not modified

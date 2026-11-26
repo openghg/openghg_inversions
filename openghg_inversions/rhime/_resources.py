@@ -1,15 +1,19 @@
 """Convert declared RHIME filesystem types at frontend boundaries."""
 
 from collections.abc import Mapping
+from dataclasses import is_dataclass
 from pathlib import Path
 from types import UnionType
-from typing import Any, Union, get_args, get_origin
+from typing import Any, Union, get_args, get_origin, get_type_hints
 
 
 def _convert_path(value: Any, annotation: Any, base_dir: Path) -> Any:
     """Convert only filesystem members of a declared type, preserving sentinels."""
     if value is None:
         return None
+    if isinstance(annotation, type) and is_dataclass(annotation) and isinstance(value, Mapping):
+        hints = get_type_hints(annotation)
+        return {name: _convert_path(item, hints.get(name), base_dir) for name, item in value.items()}
     origin = get_origin(annotation)
     args = get_args(annotation)
     if annotation is Path:
@@ -40,7 +44,8 @@ def resolve_resource_paths(
     """Convert external paths using caller-owned types and frontend origins.
 
     Already resolved absolute paths and path tuples are forwarded unchanged.
-    This helper knows no concrete configuration, output or scientific owners.
+    A mapping declared as a dataclass type, such as a nested option group,
+    has its fields converted by that dataclass's annotations. This helper knows no concrete configuration, output or scientific owners.
     """
     return {
         name: _convert_path(value, annotations.get(name), base_dir)
