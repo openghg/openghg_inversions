@@ -1027,7 +1027,8 @@ the staged linked route also exposes these products through
        idata, prepared, obs_avg_period="4h", output_path="paris",
    )
    co2_concentration = products["co2"]["concentration"]
-   o2_concentration = products["o2"]["concentration"]
+   # Absent for a declared delta(O2/N2) O2 channel (see below).
+   o2_concentration = products["o2"].get("concentration")
 
 Observations require site labels and datetime coordinates marking interval
 starts. Concentration products hold dry-air mole fractions convertible to

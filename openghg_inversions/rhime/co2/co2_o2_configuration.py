@@ -143,21 +143,24 @@ class Co2O2PreparationConfig:
         return {item.name: getattr(self, item.name) for item in fields(self)}
 
 
-def _mole_fraction_unit(unit: str, context: str) -> str:
-    """Check one mole-fraction label; the shared parser rejects ratio-anomaly labels such as per meg."""
-    mole_fraction_unit_scale(unit, context=context)
-    return unit
-
-
-def validate_co2_o2_channel_units(prepared: Co2O2PreparedInputs) -> dict[str, str]:
+def validate_co2_o2_channel_units(
+    prepared: Co2O2PreparedInputs, *, identical_mole_fraction_units: bool = True,
+) -> dict[str, str]:
     """Check each prepared channel's units against its declared observable.
 
-    CO2 rows are always mole fractions. O2 rows are either mole fractions in
-    the CO2 unit, or delta(O2/N2) in per meg when preparation provenance
-    declares that observable (see
+    CO2 rows are always mole fractions. O2 rows are either mole fractions, or
+    delta(O2/N2) in per meg when preparation provenance declares that
+    observable (see
     :class:`~openghg_inversions.inversion_data.o2n2.DeltaO2N2Declaration`).
     Reads the observation-aligned species and unit coordinates, leaving the
     borrowed artifact unchanged.
+
+    Args:
+        prepared: Linked prepared inputs.
+        identical_mole_fraction_units: Require O2 mole fractions to use the
+            CO2 unit label. The configured and handoff boundaries keep this
+            on. Direct reporting turns it off, because it converts each
+            channel to mol/mol with that channel's own scale.
 
     Returns:
         Unit labels keyed by ``co2`` and ``o2``.
@@ -165,7 +168,8 @@ def validate_co2_o2_channel_units(prepared: Co2O2PreparedInputs) -> dict[str, st
     Raises:
         ValueError: If either channel or coordinate is missing, a channel has
             several unit labels, CO2 is not a mole fraction, O2 mole fractions
-            differ from CO2, or per-meg O2 lacks a matching declaration.
+            differ from CO2 when identical units are required, or per-meg O2
+            lacks a matching declaration.
     """
     observations = prepared.observations
     for name in ("species", "observation_units"):
@@ -182,7 +186,7 @@ def validate_co2_o2_channel_units(prepared: Co2O2PreparedInputs) -> dict[str, st
         if channel_units.size != 1:
             raise ValueError(f"Linked prepared {channel} observations require one unit label.")
         units[channel] = _string(str(channel_units[0]), f"prepared {channel} observation_units")
-    _mole_fraction_unit(units["co2"], "Linked prepared CO2 observation_units")
+    mole_fraction_unit_scale(units["co2"], context="Linked prepared CO2 observation_units")
     declaration = DeltaO2N2Declaration.from_provenance(prepared.provenance)
     if declaration is None:
         if is_ratio_anomaly_unit(units["o2"]):
@@ -190,8 +194,8 @@ def validate_co2_o2_channel_units(prepared: Co2O2PreparedInputs) -> dict[str, st
                 f"Linked O2 observations in {units['o2']!r} require a delta(O2/N2) declaration in "
                 f"preparation provenance[{O2_OBSERVABLE_PROVENANCE_KEY!r}] with its reference ratio."
             )
-        _mole_fraction_unit(units["o2"], "Linked prepared O2 observation_units")
-        if units["o2"] != units["co2"]:
+        mole_fraction_unit_scale(units["o2"], context="Linked prepared O2 observation_units")
+        if identical_mole_fraction_units and units["o2"] != units["co2"]:
             raise ValueError("Linked CO2 and O2 mole fractions require identical units.")
     elif units["o2"] != declaration.units:
         raise ValueError(
@@ -199,25 +203,6 @@ def validate_co2_o2_channel_units(prepared: Co2O2PreparedInputs) -> dict[str, st
             f"delta(O2/N2) units {declaration.units!r}."
         )
     return units
-
-
-def validate_co2_o2_units(prepared: Co2O2PreparedInputs) -> str:
-    """Require both prepared channels to use one supported mole-fraction unit.
-
-    Use :func:`validate_co2_o2_channel_units` for artifacts that may carry
-    per-meg delta(O2/N2) rows.
-
-    Returns:
-        The common channel unit label.
-
-    Raises:
-        ValueError: If either channel or coordinate is missing, unit labels
-            differ, or the common unit cannot be converted to mol/mol.
-    """
-    units = validate_co2_o2_channel_units(prepared)
-    if units["o2"] != units["co2"]:
-        raise ValueError("This route requires identical CO2 and O2 mole-fraction units.")
-    return units["co2"]
 
 
 def _likelihood(config: Mapping[str, object]) -> dict[str, object] | None:
@@ -268,12 +253,12 @@ class Co2O2ModelConfig:
     def __post_init__(self) -> None:
         if self.o2_observable not in O2_OBSERVABLES:
             raise ValueError(f"channels.o2.observable must be one of {O2_OBSERVABLES}.")
-        _mole_fraction_unit(self.co2_units, "channels.co2.units")
+        mole_fraction_unit_scale(self.co2_units, context="channels.co2.units")
         if self.o2_observable == DELTA_O2_N2:
             if not is_per_meg_unit(self.o2_units):
                 raise ValueError("channels.o2.observable 'delta_o2_n2' requires per-meg channels.o2.units.")
         else:
-            _mole_fraction_unit(self.o2_units, "channels.o2.units")
+            mole_fraction_unit_scale(self.o2_units, context="channels.o2.units")
             if self.o2_units != self.co2_units:
                 raise ValueError("Linked O2 mole fractions require the CO2 channel units.")
         for item in fields(self):
@@ -429,6 +414,6 @@ def resolve_co2_o2_prior_seed(config: Mapping[str, object]) -> int | None:
 
 __all__ = [
     "load_co2_o2_params", "Co2O2PreparationConfig", "Co2O2ModelConfig",
-    "resolve_co2_o2_sampler", "resolve_co2_o2_prior_seed", "validate_co2_o2_units",
+    "resolve_co2_o2_sampler", "resolve_co2_o2_prior_seed",
     "validate_co2_o2_channel_units",
 ]

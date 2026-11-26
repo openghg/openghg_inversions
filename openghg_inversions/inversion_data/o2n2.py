@@ -1,16 +1,19 @@
-"""Declared delta(O2/N2) observables for linked CO2/O2 inversions.
+"""Declarations for δ(O2/N2) observables.
 
-A linked preparation whose O2 rows are delta(O2/N2) rather than O2 mole
-fractions declares that observable in its provenance under
-:data:`O2_OBSERVABLE_PROVENANCE_KEY`. The declaration records the per-meg
-definition and the reference ratio it is relative to::
+A δ(O2/N2) observable is the per-meg anomaly of the O2/N2 mole ratio from a
+declared reference ratio::
 
     delta(O2/N2) = 1e6 * ((x_O2 / x_N2) / reference_ratio - 1)   [per meg]
 
 The reference ratio belongs to the O2 and N2 products used to build the rows
 (for example 0.20946/0.78084 for CORSO TM5 curtains), so it is always declared
 with its source and never defaulted here. Rows and covariance blocks must
-already be in per meg; this module does not transform observations.
+already be in per meg; this module does not transform observations, and
+per-meg values are never converted to mol/mol.
+
+A linked CO2/O2 preparation whose O2 rows are δ(O2/N2) rather than O2 mole
+fractions stores its :class:`DeltaO2N2Declaration` in preparation provenance
+under :data:`O2_OBSERVABLE_PROVENANCE_KEY`.
 """
 
 from __future__ import annotations
@@ -18,14 +21,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 import math
-from typing import Any, Literal
+from typing import Any
 
 from ._units import is_ratio_anomaly_unit
 
 O2_OBSERVABLE_PROVENANCE_KEY = "o2_observable"
 MOLE_FRACTION = "mole_fraction"
 DELTA_O2_N2 = "delta_o2_n2"
-O2Observable = Literal["mole_fraction", "delta_o2_n2"]
 O2_OBSERVABLES: tuple[str, ...] = (MOLE_FRACTION, DELTA_O2_N2)
 
 
@@ -101,7 +103,12 @@ class DeltaO2N2Declaration:
             raise ValueError(f"Provenance {O2_OBSERVABLE_PROVENANCE_KEY!r} must be a JSON object.")
         options = dict(record)
         kind = options.pop("kind", None)
-        if kind == MOLE_FRACTION and not options:
+        if kind == MOLE_FRACTION:
+            if options:
+                raise ValueError(
+                    f"Provenance {O2_OBSERVABLE_PROVENANCE_KEY!r} kind 'mole_fraction' takes no other "
+                    f"fields; found {sorted(options)}."
+                )
             return None
         if kind != DELTA_O2_N2:
             raise ValueError(
@@ -122,7 +129,6 @@ __all__ = [
     "O2_OBSERVABLE_PROVENANCE_KEY",
     "MOLE_FRACTION",
     "DELTA_O2_N2",
-    "O2Observable",
     "O2_OBSERVABLES",
     "DeltaO2N2Declaration",
     "is_per_meg_unit",

@@ -93,8 +93,10 @@ def reconstruct_co2_o2_concentrations(
     if trace.attrs.get("rhime_recipe") not in {"co2_o2", "co2_o2_cached_sigma_fixed_ou"}:
         raise ValueError("Linked PARIS outputs require one joint co2_o2 posterior.")
     # Same per-channel unit/observable check as the configured and handoff paths,
-    # so a declaration cannot relabel mole-fraction rows (or vice versa).
-    channel_units = validate_co2_o2_channel_units(prepared)
+    # so a declaration cannot relabel mole-fraction rows (or vice versa). Each
+    # mole-fraction channel is reported with its own scale, so ppm CO2 with
+    # ppb O2 stays valid here.
+    channel_units = validate_co2_o2_channel_units(prepared, identical_mole_fraction_units=False)
     roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
     sensitivity = _gather_co2_o2_sensitivity(prepared.co2_sensitivity, prepared.o2_sensitivity)
     state_dim = prepared.retained_prior.state_dim

@@ -14,7 +14,7 @@ from openghg_inversions.rhime.co2.co2_o2_configuration import (
     Co2O2PreparationConfig,
     resolve_co2_o2_prior_seed,
     resolve_co2_o2_sampler,
-    validate_co2_o2_units,
+    validate_co2_o2_channel_units,
 )
 from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2
 
@@ -132,12 +132,13 @@ def test_new_configured_path_rejects_inferred_ou_explicitly(likelihood):
     ["bananas"] * 5,
     ["permeg"] * 5,
     ["ppm", "ppm", None, None, None],
+    ["ppm", "ppm", "ppb", "ppb", "ppb"],
 ])
 def test_actual_artifact_units_are_validated_without_model_settings(units):
     prepared = _prepared()
     prepared = replace(prepared, observations=prepared.observations.assign_coords(observation_units=("observation", units)))
     with pytest.raises(ValueError, match="identical|mol/mol|declaration|mole fraction"):
-        validate_co2_o2_units(prepared)
+        validate_co2_o2_channel_units(prepared)
 
 
 def test_model_binds_variable_width_species_and_unit_strings():
@@ -152,7 +153,7 @@ def test_model_binds_variable_width_species_and_unit_strings():
     arguments = Co2O2ModelConfig.from_params(_config()).bind(prepared)
 
     np.testing.assert_allclose(arguments["independent_error_sd"], [0.2, 0.2, 0.3, 0.3, 0.3])
-    assert validate_co2_o2_units(prepared) == "ppm"
+    assert validate_co2_o2_channel_units(prepared) == {"co2": "ppm", "o2": "ppm"}
 
 
 def test_model_rejects_configured_units_that_differ_from_artifact():

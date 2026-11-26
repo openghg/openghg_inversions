@@ -18,7 +18,6 @@ from openghg_inversions.rhime.co2 import co2_o2_handoffs as handoffs, prepare_co
 from openghg_inversions.rhime.co2.co2_o2_configuration import (
     Co2O2ModelConfig,
     validate_co2_o2_channel_units,
-    validate_co2_o2_units,
 )
 from openghg_inversions.rhime.co2.co2_o2_outputs import Co2O2OutputOptions
 
@@ -92,8 +91,6 @@ def test_declaration_round_trips_and_rejects_invalid_records():
 
 def test_declared_per_meg_channel_units_are_accepted():
     assert validate_co2_o2_channel_units(_declared()) == {"co2": "ppm", "o2": "per meg"}
-    with pytest.raises(ValueError, match="identical CO2 and O2 mole-fraction"):
-        validate_co2_o2_units(_declared())
 
 
 def test_per_meg_without_declaration_or_matching_units_is_rejected():
@@ -205,3 +202,34 @@ def test_handoffs_import_save_and_replay_declared_per_meg(tmp_path, extension, n
     assert o2.attrs["o2_n2_reference_ratio"] == pytest.approx(0.20946 / 0.78084)
     assert json.loads(o2.attrs["o2_observable_declaration"]) == DECLARATION.to_provenance()
     assert "o2_n2_reference_ratio" not in result.outputs["co2_basic"].attrs
+
+
+def test_mole_fraction_kind_with_extra_fields_names_the_problem():
+    """A mole-fraction record with delta fields is reported as such, not as an unknown kind."""
+    record = {"kind": "mole_fraction", "reference_ratio": 0.268}
+    with pytest.raises(ValueError, match="'mole_fraction' takes no other fields.*reference_ratio"):
+        DeltaO2N2Declaration.from_provenance({O2_OBSERVABLE_PROVENANCE_KEY: record})
+
+
+@pytest.mark.parametrize(
+    ("o2_units", "record", "message"),
+    [
+        ("ppm", DECLARATION.to_provenance(), "do not match the declared"),
+        ("per meg", {**DECLARATION.to_provenance(), "units": "per_meg"}, "do not match the declared"),
+        ("per meg", {**DECLARATION.to_provenance(), "reference_ratio": -1.0}, "reference_ratio"),
+    ],
+)
+def test_preparation_checks_the_declaration_against_o2_units(o2_units, record, message):
+    """A declaration is validated and matched to the O2 units when the artifact is built."""
+    inputs = _inputs()
+    inputs["o2_units"] = o2_units
+    inputs["provenance"] = {**FACTS, O2_OBSERVABLE_PROVENANCE_KEY: record}
+    with pytest.raises(ValueError, match=message):
+        prepare_co2_o2_inputs(**inputs)
+
+
+def test_configured_units_spelling_must_match_the_declared_artifact():
+    """``per_meg`` in the configuration does not silently stand in for the artifact's ``per meg``."""
+    model = Co2O2ModelConfig.from_params(_config(o2_units="per_meg"))
+    with pytest.raises(ValueError, match="do not match prepared"):
+        model.bind(_declared())

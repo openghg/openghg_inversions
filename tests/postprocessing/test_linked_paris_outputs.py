@@ -511,3 +511,20 @@ def test_direct_output_api_rejects_per_meg_declaration_on_ppm_o2_rows(tmp_path):
     with pytest.raises(ValueError, match="do not match the declared delta"):
         make_co2_o2_paris_outputs(trace, mismatched, output_path=tmp_path / "outputs")
     assert not (tmp_path / "outputs").exists()
+
+
+def test_direct_output_api_reports_each_mole_fraction_channel_in_its_own_units(tmp_path):
+    """Direct reporting keeps per-channel scales: CO2 in ppm and O2 in ppb both convert to mol/mol."""
+    prepared, trace = _joint_fixture(baseline=False, o2_units="ppb")
+
+    components = reconstruct_co2_o2_concentrations(trace, prepared)
+    assert {species: value.attrs["units"] for species, value in components.items()} == {"co2": "ppm", "o2": "ppb"}
+    assert {value.attrs["observable"] for value in components.values()} == {"mole_fraction"}
+
+    products = make_co2_o2_paris_outputs(trace, prepared, output_path=tmp_path / "outputs")
+    roles = json.loads(trace.attrs["rhime_variable_roles"])
+    modelled = trace["posterior"][roles["modelled_concentration"]].mean(("chain", "draw"))
+    for species, rows, scale in (("co2", slice(0, 2), 1e-6), ("o2", slice(2, 5), 1e-9)):
+        dataset = products[species]["concentration"]
+        np.testing.assert_allclose(dataset.mf_posterior, modelled.isel(observation=rows) * scale, rtol=1e-6)
+        assert dataset.mf_posterior.attrs["units"] == "mol mol-1"
