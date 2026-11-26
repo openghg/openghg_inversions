@@ -656,10 +656,8 @@ def project_native_covariance(
     state_covariance_values = np.asarray(state_covariance.values, dtype=np.float64)
     state_covariance = state_covariance.copy(
         data=(state_covariance_values + state_covariance_values.T) * 0.5
-    ).rename("state_covariance").assign_attrs(
-        mathematical_name="C_alpha",
-        units="1",
-    )
+    ).rename("state_covariance")
+    state_covariance.attrs = {"mathematical_name": "C_alpha", "units": "1"}
     prolongation, reciprocal_condition = _derive_covariance_natural_prolongation(
         projection.restriction,
         state_covariance,
