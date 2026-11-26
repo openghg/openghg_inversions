@@ -753,7 +753,7 @@ observation-dimension name.</p>
 labels, units, and values used to prepare <code class="docutils literal notranslate"><span class="pre">eigenbasis</span></code>. Their
 variance is already represented in the eigenvalues; they are also
 registered as model data and contribute to <code class="docutils literal notranslate"><span class="pre">epsilon</span></code>.</p></li>
-<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Validated fixed aggregation error. Its marginal
+<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.ObservationCovariance" title="openghg_inversions.observation_error.ObservationCovariance"><em>ObservationCovariance</em></a>) – Validated fixed observation covariance. Its marginal
 variance contributes to <code class="docutils literal notranslate"><span class="pre">epsilon</span></code>; its full covariance is already
 represented by <code class="docutils literal notranslate"><span class="pre">eigenbasis</span></code>.</p></li>
 <li><p><strong>mean</strong> (<em>TensorVariable</em>) – Completed modelled concentration on <code class="docutils literal notranslate"><span class="pre">output_dim</span></code>.</p></li>
@@ -769,7 +769,8 @@ concentration units.</p></li>
 <dd class="field-even"><p>Observed custom Gaussian variable named <code class="docutils literal notranslate"><span class="pre">y</span></code>.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> does not have non-negative support.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the eigenbasis omits an added fixed covariance term or
+    <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> does not have non-negative support.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>TensorVariable</em></p>
@@ -803,7 +804,7 @@ before model construction.</p>
 <li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Observations that will consume the cache.</p></li>
 <li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Reported errors that will consume the cache, with
 the same ordered labels and concentration units as <code class="docutils literal notranslate"><span class="pre">observations</span></code>.</p></li>
-<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Currently resolved aggregation-error representation
+<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.ObservationCovariance" title="openghg_inversions.observation_error.ObservationCovariance"><em>ObservationCovariance</em></a>) – Currently resolved aggregation-error representation
 that will consume the cache.</p></li>
 </ul>
 </dd>
@@ -844,7 +845,7 @@ that will consume the cache.</p></li>
 coordinate and explicit concentration units.</p></li>
 <li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Reported standard deviations in the same units and
 exact observation order.</p></li>
-<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Validated fixed aggregation-error representation.</p></li>
+<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.ObservationCovariance" title="openghg_inversions.observation_error.ObservationCovariance"><em>ObservationCovariance</em></a>) – Validated fixed aggregation-error representation.</p></li>
 <li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Observation dimension name.</p></li>
 </ul>
 </dd>
@@ -912,7 +913,7 @@ together before forming <code class="docutils literal notranslate"><span class="
 ordered observation coordinate and a non-empty <code class="docutils literal notranslate"><span class="pre">units</span></code> attribute.</p></li>
 <li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Non-negative reported standard deviations in the
 same units and observation order as <code class="docutils literal notranslate"><span class="pre">observations</span></code>.</p></li>
-<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Validated aggregation-error representation for the
+<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.ObservationCovariance" title="openghg_inversions.observation_error.ObservationCovariance"><em>ObservationCovariance</em></a>) – Validated aggregation-error representation for the
 same observations.</p></li>
 <li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Observation dimension name.</p></li>
 <li><p><strong>covariance_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Column dimension used by a dense covariance.</p></li>

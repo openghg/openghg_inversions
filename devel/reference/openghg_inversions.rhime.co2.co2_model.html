@@ -676,7 +676,7 @@ for the retained state.</p></li>
 named <code class="docutils literal notranslate"><span class="pre">fixed_prior_contribution</span></code> on <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>.</p></li>
 <li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Observed CO2 concentrations on <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>.</p></li>
 <li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Reported observation standard deviation.</p></li>
-<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Prepared fixed aggregation-error representation.</p></li>
+<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.ObservationCovariance" title="openghg_inversions.observation_error.ObservationCovariance"><em>ObservationCovariance</em></a>) – Prepared fixed aggregation-error representation.</p></li>
 <li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.15)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional ordinary likelihood component. When
 supplied, it replaces the default additive-sigma likelihood. With
 a centered <code class="docutils literal notranslate"><span class="pre">boundary</span></code>, only the exact
@@ -692,8 +692,10 @@ standard deviation.</p></li>
 states.</p></li>
 <li><p><strong>boundary</strong> (<a class="reference internal" href="openghg_inversions.models.boundary.html#openghg_inversions.models.boundary.Bound" title="openghg_inversions.models.boundary.Bound"><em>Bound</em></a><em> | </em><em>None</em>) – Resolved boundary component bound to this fit.</p></li>
 <li><p><strong>outer_flux</strong> (<a class="reference internal" href="openghg_inversions.models.outer_flux.html#openghg_inversions.models.outer_flux.OuterFluxChoice" title="openghg_inversions.models.outer_flux.OuterFluxChoice"><em>OuterFluxChoice</em></a><em> | </em><em>None</em>) – Optional outer-flux choice, resolved here on
-<code class="docutils literal notranslate"><span class="pre">retained_prior</span></code>. Its fixed outer states are held at their prior
-mean with zero uncertainty after exact-zero pruning. See
+<code class="docutils literal notranslate"><span class="pre">retained_prior</span></code>. The <code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code> mode uses the selected states’
+prior means with zero uncertainty. The <code class="docutils literal notranslate"><span class="pre">&quot;marginalise&quot;</span></code> mode
+integrates the selected states into the observation mean and
+covariance. See
 <a class="reference internal" href="openghg_inversions.models.outer_flux.html#module-openghg_inversions.models.outer_flux" title="openghg_inversions.models.outer_flux"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.models.outer_flux</span></code></a>.</p></li>
 <li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior for an offset component. When omitted, no
 offset is added. Site codes are derived from the <code class="docutils literal notranslate"><span class="pre">site</span></code> coordinate
@@ -710,9 +712,9 @@ and Gaussian likelihood.</p>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If shared preparation, prior construction, or registered
     coordinate alignment fails, or if <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> is supplied
     without <code class="docutils literal notranslate"><span class="pre">sigma_alignment</span></code>, or if a centered boundary is combined
-    with a custom likelihood callback or wrapper. Conflicting
-    likelihood and boundary options are rejected before any input is
-    computed.</p>
+    with a custom likelihood callback or wrapper, or if marginalised
+    outer flux is combined with a scalar-sigma eigenbasis.
+    Conflicting model options fail before any input is computed.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.4.0)"><em>Model</em></a></p>

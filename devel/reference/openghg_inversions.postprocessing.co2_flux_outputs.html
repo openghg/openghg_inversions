@@ -631,7 +631,8 @@ borrowed.</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the recipe, role, samples, native layout, state labels,
-    or units cannot represent these products faithfully.</p>
+    or units cannot represent these products faithfully, or if any
+    outer flux states were marginalised.</p>
 </dd>
 </dl>
 <p class="rubric">Notes</p>
@@ -710,9 +711,9 @@ without <code class="docutils literal notranslate"><span class="pre">unresolved<
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If input requirements or exact country-grid alignment
     fail, if <code class="docutils literal notranslate"><span class="pre">source_to_sector</span></code> uses the reserved sector name
-    <code class="docutils literal notranslate"><span class="pre">total</span></code>, or if <code class="docutils literal notranslate"><span class="pre">unresolved</span></code> was prepared for a different country
-    functional, native mean, partition or covariance, or does not
-    account for the fit’s inactive states.</p>
+    <code class="docutils literal notranslate"><span class="pre">total</span></code>, if a requested quantity depends on a marginalised outer
+    state, or if <code class="docutils literal notranslate"><span class="pre">unresolved</span></code> is incompatible with the functional or
+    the fit.</p>
 </dd>
 </dl>
 <p class="rubric">Notes</p>

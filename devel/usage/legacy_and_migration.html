@@ -393,7 +393,7 @@
 <li class="toctree-l1"><a class="reference internal" href="surface_preparation.html">Surface CO₂/O₂ preparation pilot</a></li>
 <li class="toctree-l1"><a class="reference internal" href="centered_boundary_conditions.html">Boundary-condition operators</a></li>
 <li class="toctree-l1"><a class="reference internal" href="boundary_correction_structures.html">Boundary correction structures</a></li>
-<li class="toctree-l1"><a class="reference internal" href="atmospheric_baseline.html">Outer-region flux states held at their prior mean</a></li>
+<li class="toctree-l1"><a class="reference internal" href="atmospheric_baseline.html">Outer-region flux states held or marginalised</a></li>
 <li class="toctree-l1"><a class="reference internal" href="configured_co2_priors.html">Configured CO2 priors</a></li>
 <li class="toctree-l1"><a class="reference internal" href="prepared_format_support.html">Prepared artifact format support</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -597,6 +597,10 @@ paths or loading scientific data during configuration construction.</p></li>
 </section>
 <section id="additional-development-python-api-changes">
 <h2>Additional development Python API changes<a class="headerlink" href="#additional-development-python-api-changes" title="Link to this heading">#</a></h2>
+<p>Import <a class="reference internal" href="../reference/openghg_inversions.observation_error.html#openghg_inversions.observation_error.ObservationCovariance" title="openghg_inversions.observation_error.ObservationCovariance"><code class="xref py py-class docutils literal notranslate"><span class="pre">ObservationCovariance</span></code></a>
+in place of <code class="docutils literal notranslate"><span class="pre">AggregationError</span></code> when constructing covariance objects or
+annotating custom likelihoods. <code class="docutils literal notranslate"><span class="pre">resolve_aggregation_error</span></code> returns the new
+type. Pass it to likelihood builders through the <code class="docutils literal notranslate"><span class="pre">aggregation_error</span></code> keyword.</p>
 <p id="prepared-input-factory-retirement">Replace <code class="docutils literal notranslate"><span class="pre">PreparedInputs.from_legacy_inputs(...)</span></code> with
 <code class="docutils literal notranslate"><span class="pre">PreparedInputs(inv_inputs=...,</span> <span class="pre">basis_functions=...,</span> <span class="pre">site_metadata=...)</span></code>.
 Supply a dataset indexed by <code class="docutils literal notranslate"><span class="pre">site</span></code> with one aligned <code class="docutils literal notranslate"><span class="pre">averaging_period</span></code> value

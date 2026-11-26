@@ -661,7 +661,7 @@ convention, and provenance. The borrowed payload may remain lazy.</p></li>
 scalar state-resolved ratios cannot be exposed because the paired
 native O2 flux embeds spatial ratios before convolution. Exactly
 one of this value and <code class="docutils literal notranslate"><span class="pre">o2_co2_flux_ratio</span></code> is present.</p></li>
-<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Validated dense joint aggregation error. Covariance
+<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.ObservationCovariance" title="openghg_inversions.observation_error.ObservationCovariance"><em>ObservationCovariance</em></a>) – Validated dense joint aggregation error. Covariance
 rows use <code class="docutils literal notranslate"><span class="pre">observation</span></code> and columns use <code class="docutils literal notranslate"><span class="pre">observation_cov</span></code> in
 block order <code class="docutils literal notranslate"><span class="pre">[[CO2,</span> <span class="pre">CO2/O2],</span> <span class="pre">[CO2/O2.T,</span> <span class="pre">O2]]</span></code>; per-axis unit
 coordinates describe mixed-unit entries.</p></li>

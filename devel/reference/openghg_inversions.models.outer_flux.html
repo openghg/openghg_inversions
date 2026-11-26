@@ -47,6 +47,7 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.models.outer_flux';</script>
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.21.0';
@@ -596,21 +597,51 @@
                   
   <section id="module-openghg_inversions.models.outer_flux">
 <span id="openghg-inversions-models-outer-flux"></span><h1>openghg_inversions.models.outer_flux<a class="headerlink" href="#module-openghg_inversions.models.outer_flux" title="Link to this heading">#</a></h1>
-<p>Select outer-region flux states and hold them at their prior mean.</p>
+<p>Select outer-region flux states and hold or marginalise them.</p>
 <p>Outer-region flux states are the retained flux states whose <code class="docutils literal notranslate"><span class="pre">basis_group</span></code>
 label is in a chosen set. By default the CO2 recipes sample them with the
 inner states, uncentred, beside any boundary correction. This option selects
-them once on the flux prior’s state axis and, in <code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code> mode, holds the
-selected states at their prior mean through state activity.</p>
-<p><code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code> is a what-if for a known outer prior: the held states have zero
-uncertainty, and nothing is added to the observation error for them. It is
-not a stand-in for leaving the outer flux unsampled. That would marginalise
-the outer states, adding <code class="docutils literal notranslate"><span class="pre">H_O</span> <span class="pre">Sigma_OO</span> <span class="pre">H_O^T</span></code> to the error covariance, which
-this module does not do.</p>
+outer states <code class="docutils literal notranslate"><span class="pre">O</span></code> on the flux prior’s state axis and excludes them from sampling.
+Both modes record <code class="docutils literal notranslate"><span class="pre">m_O</span></code> in the selected entries of the state vector. The
+forward model includes their prior-mean contribution <code class="docutils literal notranslate"><span class="pre">H_O</span> <span class="pre">m_O</span></code>:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code> treats the selected states as known. They have zero uncertainty and nothing is
+added to the observation error. Use it to represent a known outer flux.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;marginalise&quot;</span></code> integrates the uncertainty into the observation model.
+The saved prior-mean entries are placeholders for these integrated states.
+Their low-rank covariance <span class="math notranslate nohighlight">\(H_O \Sigma_{OO} H_O^T\)</span> (rank at most the number of held states) is
+projected by <a class="reference internal" href="#openghg_inversions.models.outer_flux.OuterStates.marginal_error_factor" title="openghg_inversions.models.outer_flux.OuterStates.marginal_error_factor"><code class="xref py py-meth docutils literal notranslate"><span class="pre">OuterStates.marginal_error_factor()</span></code></a> and added to the
+fixed observation covariance during likelihood assembly. For a linear Gaussian
+model with <code class="docutils literal notranslate"><span class="pre">O</span></code> uncorrelated with the other states, the posterior of the
+other states is then exactly their marginal posterior when <code class="docutils literal notranslate"><span class="pre">O</span></code> is
+sampled uncentred. Under the default LogNormal-copula prior it is an
+approximation: <code class="docutils literal notranslate"><span class="pre">Sigma_OO</span></code> is the prior’s arithmetic covariance, so the
+outer contribution is replaced by a Gaussian with the same first two
+moments. Correlated outer states are conditioned on the others, below.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">&quot;marginalise&quot;</span></code> also accepts outer states correlated with the other states
+<code class="docutils literal notranslate"><span class="pre">I</span></code> (cross-covariance <code class="docutils literal notranslate"><span class="pre">Sigma_OI</span></code>). The outer states are then replaced by
+their best linear predictor from <code class="docutils literal notranslate"><span class="pre">I</span></code> under the prior’s arithmetic moments,
+<code class="docutils literal notranslate"><span class="pre">x_O</span> <span class="pre">=</span> <span class="pre">m_O</span> <span class="pre">+</span> <span class="pre">B</span> <span class="pre">(x_I</span> <span class="pre">-</span> <span class="pre">m_I)</span> <span class="pre">+</span> <span class="pre">r</span></code> with <code class="docutils literal notranslate"><span class="pre">B</span> <span class="pre">=</span> <span class="pre">Sigma_OI</span> <span class="pre">Sigma_II^+</span></code>, so</p>
+<ul class="simple">
+<li><p>the inner design becomes <code class="docutils literal notranslate"><span class="pre">H_I</span> <span class="pre">+</span> <span class="pre">H_O</span> <span class="pre">B</span></code> (<a class="reference internal" href="#openghg_inversions.models.outer_flux.OuterStates.condition_sensitivity" title="openghg_inversions.models.outer_flux.OuterStates.condition_sensitivity"><code class="xref py py-meth docutils literal notranslate"><span class="pre">OuterStates.condition_sensitivity()</span></code></a>);</p></li>
+<li><p>the fixed term gains <code class="docutils literal notranslate"><span class="pre">-H_O</span> <span class="pre">B</span> <span class="pre">m_I</span></code>;</p></li>
+<li><p>the error covariance gains <code class="docutils literal notranslate"><span class="pre">H_O</span> <span class="pre">Sigma_O|I</span> <span class="pre">H_O^T</span></code> with
+<code class="docutils literal notranslate"><span class="pre">Sigma_O|I</span> <span class="pre">=</span> <span class="pre">Sigma_OO</span> <span class="pre">-</span> <span class="pre">B</span> <span class="pre">Sigma_IO</span></code>.</p></li>
+</ul>
+<p>The prior of <code class="docutils literal notranslate"><span class="pre">I</span></code> is unchanged. For a Gaussian prior this is exact (the
+residual <code class="docutils literal notranslate"><span class="pre">r</span></code> is independent of <code class="docutils literal notranslate"><span class="pre">x_I</span></code>). Under the LogNormal copula <code class="docutils literal notranslate"><span class="pre">r</span></code> is
+uncorrelated with <code class="docutils literal notranslate"><span class="pre">x_I</span></code> but not independent of it, a moment-level
+approximation of the same kind as the coherent reduction. States held by state
+activity or pruning are part of <code class="docutils literal notranslate"><span class="pre">I</span></code> at their fixed values. <code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code> still
+requires zero cross-covariance, because holding <code class="docutils literal notranslate"><span class="pre">O</span></code> at <code class="docutils literal notranslate"><span class="pre">m_O</span></code> exactly
+would need the inner prior conditioned on it.</p>
 <p>Recipe builders take the <a class="reference internal" href="#openghg_inversions.models.outer_flux.OuterFluxChoice" title="openghg_inversions.models.outer_flux.OuterFluxChoice"><code class="xref py py-class docutils literal notranslate"><span class="pre">OuterFluxChoice</span></code></a> and resolve it with
 <a class="reference internal" href="#openghg_inversions.models.outer_flux.OuterFluxChoice.resolve_states" title="openghg_inversions.models.outer_flux.OuterFluxChoice.resolve_states"><code class="xref py py-meth docutils literal notranslate"><span class="pre">OuterFluxChoice.resolve_states()</span></code></a> on the prior they sample (once for the
-shared linked CO2/O2 state), then apply the result with
-<a class="reference internal" href="#openghg_inversions.models.outer_flux.OuterStates.fix_states" title="openghg_inversions.models.outer_flux.OuterStates.fix_states"><code class="xref py py-meth docutils literal notranslate"><span class="pre">OuterStates.fix_states()</span></code></a> after exact-zero pruning.</p>
+shared linked CO2/O2 state). They apply the result with
+<a class="reference internal" href="#openghg_inversions.models.outer_flux.OuterStates.condition_sensitivity" title="openghg_inversions.models.outer_flux.OuterStates.condition_sensitivity"><code class="xref py py-meth docutils literal notranslate"><span class="pre">OuterStates.condition_sensitivity()</span></code></a> before exact-zero pruning,
+<a class="reference internal" href="#openghg_inversions.models.outer_flux.OuterStates.fix_states" title="openghg_inversions.models.outer_flux.OuterStates.fix_states"><code class="xref py py-meth docutils literal notranslate"><span class="pre">OuterStates.fix_states()</span></code></a> after it, and
+<a class="reference internal" href="#openghg_inversions.models.outer_flux.OuterStates.marginal_error_factor" title="openghg_inversions.models.outer_flux.OuterStates.marginal_error_factor"><code class="xref py py-meth docutils literal notranslate"><span class="pre">OuterStates.marginal_error_factor()</span></code></a> during likelihood assembly.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.models.outer_flux.OuterFluxChoice">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">OuterFluxChoice</span></span><span class="sig-paren">(</span>
@@ -629,12 +660,14 @@ shared linked CO2/O2 state), then apply the result with
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>mode</strong> (<em>Literal</em><em>[</em><em>'fixed'</em><em>]</em>) – <code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code> holds the selected outer states at their prior mean
-with zero uncertainty.</p></li>
+<li><p><strong>mode</strong> (<em>Literal</em><em>[</em><em>'fixed'</em><em>, </em><em>'marginalise'</em><em>]</em>) – <code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code> holds the selected outer states at their prior mean
+with zero uncertainty. <code class="docutils literal notranslate"><span class="pre">&quot;marginalise&quot;</span></code> integrates the selected
+states into the fitted mean and covariance. The prior-mean entries
+for integrated states are placeholders in saved draws.</p></li>
 <li><p><strong>outer_groups</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – <code class="docutils literal notranslate"><span class="pre">basis_group</span></code> labels of the outer states.</p></li>
-<li><p><strong>fixed_sources</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – <code class="docutils literal notranslate"><span class="pre">source</span></code> labels of the outer states to hold, for
-example <code class="docutils literal notranslate"><span class="pre">(&quot;ocean&quot;,)</span></code>. Empty holds every outer state; other outer
-states stay sampled as usual.</p></li>
+<li><p><strong>fixed_sources</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – <code class="docutils literal notranslate"><span class="pre">source</span></code> labels of the outer states to hold (or
+marginalise), for example <code class="docutils literal notranslate"><span class="pre">(&quot;ocean&quot;,)</span></code>. Empty selects every
+outer state; other outer states stay sampled as usual.</p></li>
 <li><p><strong>group_coord</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – State coordinate holding the basis-group labels.</p></li>
 <li><p><strong>source_coord</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – State coordinate holding the source labels.</p></li>
 </ul>
@@ -674,8 +707,9 @@ the state labels and selector coordinates.</p>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If a selector coordinate is missing or not on the state
     axis, any label in <code class="docutils literal notranslate"><span class="pre">outer_groups</span></code> matches no state, any label
-    in <code class="docutils literal notranslate"><span class="pre">fixed_sources</span></code> matches no outer state, or a held state has
-    nonzero prior covariance with any other state.</p>
+    in <code class="docutils literal notranslate"><span class="pre">fixed_sources</span></code> matches no outer state, or, in <code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code>
+    mode, a held state has nonzero prior covariance with any other
+    state.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.models.outer_flux.OuterStates" title="openghg_inversions.models.outer_flux.OuterStates"><em>OuterStates</em></a></p>
@@ -687,7 +721,7 @@ the state labels and selector coordinates.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.models.outer_flux.OuterStates">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">OuterStates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">choice</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_dim</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_mean</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.outer_flux.OuterStates" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">OuterStates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">choice</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_dim</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_mean</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_factor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regression</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.outer_flux.OuterStates" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Held outer states on the flux prior’s state axis, shared by every channel.</p>
 <dl class="field-list simple">
@@ -697,9 +731,56 @@ the state labels and selector coordinates.</p>
 <li><p><strong>state_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Flux state dimension.</p></li>
 <li><p><strong>fixed</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Boolean mask of outer states <code class="docutils literal notranslate"><span class="pre">F</span></code> held at their prior mean.</p></li>
 <li><p><strong>prior_mean</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Labelled baseline arithmetic prior mean <code class="docutils literal notranslate"><span class="pre">m</span></code>.</p></li>
+<li><p><strong>prior_factor</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>numpy.ndarray</em></a><em> | </em><em>None</em>) – In <code class="docutils literal notranslate"><span class="pre">&quot;marginalise&quot;</span></code> mode, a factor <code class="docutils literal notranslate"><span class="pre">L_F</span></code> of the held
+states’ arithmetic prior covariance given the other states,
+<code class="docutils literal notranslate"><span class="pre">L_F</span> <span class="pre">L_F^T</span> <span class="pre">=</span> <span class="pre">Sigma_F|I</span></code> (<code class="docutils literal notranslate"><span class="pre">Sigma_FF</span></code> when uncorrelated), with
+rows in state order of <code class="docutils literal notranslate"><span class="pre">F</span></code>; <code class="docutils literal notranslate"><span class="pre">None</span></code> in <code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code> mode.</p></li>
+<li><p><strong>regression</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>numpy.ndarray</em></a><em> | </em><em>None</em>) – In <code class="docutils literal notranslate"><span class="pre">&quot;marginalise&quot;</span></code> mode with correlated held states,
+<code class="docutils literal notranslate"><span class="pre">B</span> <span class="pre">=</span> <span class="pre">Sigma_FI</span> <span class="pre">Sigma_II^+</span></code> with rows in state order of <code class="docutils literal notranslate"><span class="pre">F</span></code> and
+columns in state order of the other states; otherwise <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
 </ul>
 </dd>
 </dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.models.outer_flux.OuterStates.condition_sensitivity">
+<span class="sig-name descname"><span class="pre">condition_sensitivity</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_sensitivity</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fixed_prior_contribution</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">output_dim</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.outer_flux.OuterStates.condition_sensitivity" title="Link to this definition">#</a></dt>
+<dd><p>Move correlated outer response onto the other states’ design.</p>
+<p>For held states correlated with the other states, the outer
+contribution is <code class="docutils literal notranslate"><span class="pre">H_F</span> <span class="pre">(m_F</span> <span class="pre">+</span> <span class="pre">B</span> <span class="pre">(x_I</span> <span class="pre">-</span> <span class="pre">m_I))</span></code>. Holding <code class="docutils literal notranslate"><span class="pre">F</span></code> at <code class="docutils literal notranslate"><span class="pre">m_F</span></code>
+then needs <code class="docutils literal notranslate"><span class="pre">H_F</span> <span class="pre">B</span></code> added to the other states’ columns and
+<code class="docutils literal notranslate"><span class="pre">-H_F</span> <span class="pre">B</span> <span class="pre">m_I</span></code> added to the fixed contribution. Without correlation
+(or in <code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code> mode) the inputs are returned unchanged.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>flux_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Flux sensitivity on <code class="docutils literal notranslate"><span class="pre">(output_dim,</span> <span class="pre">state_dim)</span></code>,
+possibly sparse, before exact-zero pruning.</p></li>
+<li><p><strong>fixed_prior_contribution</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Fixed contribution on <code class="docutils literal notranslate"><span class="pre">output_dim</span></code>.</p></li>
+<li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Observation dimension.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The conditioned sensitivity (dense when changed) and fixed
+contribution.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the sensitivity’s state labels differ from the prior’s.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)">tuple</a>[<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.models.outer_flux.OuterStates.fix_states">
 <span class="sig-name descname"><span class="pre">fix_states</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">activity</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.outer_flux.OuterStates.fix_states" title="Link to this definition">#</a></dt>
@@ -728,18 +809,31 @@ their activity and fixed values.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.models.outer_flux.OuterStates.outputs">
-<span class="sig-name descname"><span class="pre">outputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prefix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.outer_flux.OuterStates.outputs" title="Link to this definition">#</a></dt>
-<dd><p>Record the resolved choice’s mode and selectors as run metadata.</p>
+<dt class="sig sig-object py" id="openghg_inversions.models.outer_flux.OuterStates.marginal_error_factor">
+<span class="sig-name descname"><span class="pre">marginal_error_factor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flux_sensitivity</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.outer_flux.OuterStates.marginal_error_factor" title="Link to this definition">#</a></dt>
+<dd><p>Return the observation-space factor <code class="docutils literal notranslate"><span class="pre">H_F</span> <span class="pre">L_F</span></code> of the marginalised outer flux.</p>
+<p>Its outer product <code class="docutils literal notranslate"><span class="pre">H_F</span> <span class="pre">Sigma_F|I</span> <span class="pre">H_F^T</span></code> is the covariance the held
+states would add to the observations if they were sampled, beyond
+what the other states predict (<code class="docutils literal notranslate"><span class="pre">Sigma_FF</span></code> when uncorrelated).</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>prefix</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Graph-name prefix of the recipe’s variables.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>flux_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Eager or lazy flux sensitivity on
+<code class="docutils literal notranslate"><span class="pre">(output_dim,</span> <span class="pre">state_dim)</span></code>, aligned with the observations;
+possibly sparse.</p></li>
+<li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Observation dimension.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>See <a class="reference internal" href="#openghg_inversions.models.outer_flux.OuterFluxChoice.outputs" title="openghg_inversions.models.outer_flux.OuterFluxChoice.outputs"><code class="xref py py-meth docutils literal notranslate"><span class="pre">OuterFluxChoice.outputs()</span></code></a>.</p>
+<dd class="field-even"><p>Dense factor on <code class="docutils literal notranslate"><span class="pre">(output_dim,</span> <span class="pre">&quot;agg_rank&quot;)</span></code>; its column count is
+the numerical rank of <code class="docutils literal notranslate"><span class="pre">Sigma_F|I</span></code>.</p>
 </dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.models.boundary.outputs.html#openghg_inversions.models.boundary.outputs.Outputs" title="openghg_inversions.models.boundary.outputs.Outputs"><em>Outputs</em></a></p>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the mode is not <code class="docutils literal notranslate"><span class="pre">&quot;marginalise&quot;</span></code>, or the
+    sensitivity’s state labels differ from the prior’s.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -801,8 +895,9 @@ their activity and fixed values.</p>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.outer_flux.OuterStates"><code class="docutils literal notranslate"><span class="pre">OuterStates</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.outer_flux.OuterStates.condition_sensitivity"><code class="docutils literal notranslate"><span class="pre">OuterStates.condition_sensitivity()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.outer_flux.OuterStates.fix_states"><code class="docutils literal notranslate"><span class="pre">OuterStates.fix_states()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.outer_flux.OuterStates.outputs"><code class="docutils literal notranslate"><span class="pre">OuterStates.outputs()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.outer_flux.OuterStates.marginal_error_factor"><code class="docutils literal notranslate"><span class="pre">OuterStates.marginal_error_factor()</span></code></a></li>
 </ul>
 </li>
 </ul>

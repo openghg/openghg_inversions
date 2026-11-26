@@ -642,7 +642,7 @@ dimension is <code class="docutils literal notranslate"><span class="pre">output
 <li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – One-dimensional, non-negative reported
 observation-error standard deviations in the same units and
 observation order as <code class="docutils literal notranslate"><span class="pre">observations</span></code>.</p></li>
-<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a><em> | </em><em>None</em>) – Validated fixed aggregation-error representation
+<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.ObservationCovariance" title="openghg_inversions.observation_error.ObservationCovariance"><em>ObservationCovariance</em></a><em> | </em><em>None</em>) – Validated fixed aggregation-error representation
 for the same observation order. Its diagonal, dense, or low-rank
 covariance is included exactly once. Omit or pass <code class="docutils literal notranslate"><span class="pre">None</span></code> for
 no fixed aggregation covariance.</p></li>

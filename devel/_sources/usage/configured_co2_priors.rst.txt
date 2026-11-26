@@ -66,21 +66,29 @@ Configure the outer-flux option
 
 ``[model.outer_flux]`` adds the outer-flux option of :doc:`atmospheric_baseline`
 to the ordinary and cached fixed-OU CO2 recipes. Linked CO2/O2 configurations
-use a top-level ``[outer_flux]`` table, because the flux state is shared by
-both channels:
+use a top-level ``[outer_flux]`` table for the shared flux state. The linked
+configuration supports fixed independent error or fixed OU amplitudes. The
+linked cached runner for inferred OU amplitudes is available through Python.
 
 .. code-block:: toml
 
    [model.outer_flux]
-   mode = "fixed"
+   mode = "marginalise"        # or "fixed"
    outer_groups = ["outer"]
    fixed_sources = ["ocean"]   # optional
 
-``"fixed"`` is the only mode. It holds the selected outer states at their
-prior mean with zero uncertainty, a what-if for a known outer prior rather
-than a way to leave the outer flux unsampled. ``outer_groups`` selects outer
+``"fixed"`` holds the selected outer states at their prior means with zero
+uncertainty. ``"marginalise"`` integrates those states into the likelihood
+and adds their contribution to the observation covariance. If they are
+correlated with the remaining states, it also transfers their conditional
+mean into the concentration model. This is exact for a Gaussian prior and
+a moment approximation under the LogNormal copula. The configured CO2
+route and the Python builder reject ``"marginalise"`` with a scalar-sigma
+eigenbasis.
+See :doc:`atmospheric_baseline` for equations, evidence and flux-output
+limitations. ``outer_groups`` selects outer
 states by the ``basis_group`` coordinate of the prepared retained prior;
-``fixed_sources``, when given, holds only those with a matching ``source``
+``fixed_sources``, when given, selects only those with a matching ``source``
 coordinate and leaves the other outer states sampled. Model construction
 rejects the option when the prepared state lacks those coordinates.
 

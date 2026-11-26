@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Outer-region flux states held at their prior mean &#8212; OpenGHG Inversions</title>
+    <title>Outer-region flux states held or marginalised &#8212; OpenGHG Inversions</title>
   
   
   
@@ -394,7 +394,7 @@
 <li class="toctree-l1"><a class="reference internal" href="surface_preparation.html">Surface CO₂/O₂ preparation pilot</a></li>
 <li class="toctree-l1"><a class="reference internal" href="centered_boundary_conditions.html">Boundary-condition operators</a></li>
 <li class="toctree-l1"><a class="reference internal" href="boundary_correction_structures.html">Boundary correction structures</a></li>
-<li class="toctree-l1 current active"><a class="current reference internal" href="#">Outer-region flux states held at their prior mean</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Outer-region flux states held or marginalised</a></li>
 <li class="toctree-l1"><a class="reference internal" href="configured_co2_priors.html">Configured CO2 priors</a></li>
 <li class="toctree-l1"><a class="reference internal" href="prepared_format_support.html">Prepared artifact format support</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -455,7 +455,7 @@
     
     <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Outer-region flux states held at their prior mean</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Outer-region flux states held or marginalised</span></li>
   </ul>
 </nav>
 </div>
@@ -472,16 +472,18 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="outer-region-flux-states-held-at-their-prior-mean">
-<h1>Outer-region flux states held at their prior mean<a class="headerlink" href="#outer-region-flux-states-held-at-their-prior-mean" title="Link to this heading">#</a></h1>
+  <section id="outer-region-flux-states-held-or-marginalised">
+<h1>Outer-region flux states held or marginalised<a class="headerlink" href="#outer-region-flux-states-held-or-marginalised" title="Link to this heading">#</a></h1>
 <p>By default the CO2 recipes sample every retained flux state, including the
 outer-region states, uncentred and beside any boundary correction. The
-outer-flux option selects the outer-region states once on the flux prior and
-holds chosen ones at their prior mean. Existing model defaults are unchanged.</p>
+outer-flux option selects outer-region states on the flux prior. The
+<code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code> mode holds them at their prior mean with zero uncertainty.
+The <code class="docutils literal notranslate"><span class="pre">&quot;marginalise&quot;</span></code> mode integrates them out of the likelihood and carries
+their uncertainty as an observation-error term.</p>
 <p>Outer states are the flux states whose <code class="docutils literal notranslate"><span class="pre">basis_group</span></code> coordinate is in
-<code class="docutils literal notranslate"><span class="pre">outer_groups</span></code>. They stay in the ordinary <code class="docutils literal notranslate"><span class="pre">flux_scaling</span></code> state, so CO2
-outputs, state activity and the <a class="reference internal" href="flux_prior.html"><span class="doc">retained flux prior</span></a> work
-as they do without the option.</p>
+<code class="docutils literal notranslate"><span class="pre">outer_groups</span></code>. Their entries in <code class="docutils literal notranslate"><span class="pre">flux_scaling</span></code> retain the prior mean in
+both modes. In <code class="docutils literal notranslate"><span class="pre">&quot;marginalise&quot;</span></code> mode those entries are placeholders in
+the raw trace.</p>
 <section id="fixed-mode">
 <h2><code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code> mode<a class="headerlink" href="#fixed-mode" title="Link to this heading">#</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code> holds the selected outer states at their prior mean, with zero
@@ -494,12 +496,74 @@ states, so the variance their prior would contribute,
 <span class="math notranslate nohighlight">\(\operatorname{diag}(H_O\Sigma_{OO}H_O^T)\)</span>, is left out of the model.
 When the outer prior mean is close to the truth, holding it there can look
 better than sampling it; that is the benefit of the known prior, not evidence
-that the outer flux need not be sampled. Leaving the outer flux unsampled
-fairly would marginalise it, adding <span class="math notranslate nohighlight">\(H_O\Sigma_{OO}H_O^T\)</span> to the error
-covariance; this option does not do that.</p>
-<p>Holding a state at its prior mean while sampling the marginal prior of the
-others is exact only when the held state is uncorrelated with them, so the
-option rejects held outer states with nonzero prior covariance.</p>
+that the outer flux need not be sampled. Use <code class="docutils literal notranslate"><span class="pre">&quot;marginalise&quot;</span></code> to leave the
+outer flux unsampled fairly.</p>
+</section>
+<section id="marginalise-mode">
+<h2><code class="docutils literal notranslate"><span class="pre">&quot;marginalise&quot;</span></code> mode<a class="headerlink" href="#marginalise-mode" title="Link to this heading">#</a></h2>
+<p>For selected outer states <span class="math notranslate nohighlight">\(O\)</span> uncorrelated with the other states,
+<code class="docutils literal notranslate"><span class="pre">&quot;marginalise&quot;</span></code> includes <span class="math notranslate nohighlight">\(H_O m_O\)</span> in the likelihood mean and uses
+the covariance</p>
+<div class="math notranslate nohighlight">
+\[W = R + A + H_O \Sigma_{OO} H_O^T,\]</div>
+<p>Here <span class="math notranslate nohighlight">\(R\)</span> is the observation and model-mismatch covariance and <span class="math notranslate nohighlight">\(A\)</span>
+is the supplied aggregation-error covariance, which represents variability
+unresolved by the flux basis. The last term projects the prior covariance
+<span class="math notranslate nohighlight">\(\Sigma_{OO}\)</span> of the selected states into observation space through
+their sensitivity <span class="math notranslate nohighlight">\(H_O\)</span>. It enters the likelihood even when
+aggregation error is absent. In linked CO2/O2 recipes it spans both channels,
+carrying the cross-channel covariance induced by the shared states.</p>
+<p>For a linear Gaussian model with uncorrelated outer states this is exact: the
+posterior of the other states equals their marginal posterior when the outer
+states are sampled uncentred (the default). Correlated outer states are
+conditioned on the others as described below. In a synthetic-observation
+experiment with 5,314 observations and 18 selected outer states, exact Gaussian
+posterior solves with and without integration agreed within 2e-9 Tg CO2/yr.</p>
+<p>Under the default LogNormal-copula flux prior it is an approximation, not a
+pure reparameterisation of sampling the outer states:
+<span class="math notranslate nohighlight">\(\Sigma_{OO}\)</span> is the prior’s arithmetic covariance, so the outer
+contribution is replaced by the Gaussian with the same mean and covariance,
+and the posterior can differ. In the same experiment under the LogNormal-copula
+prior, marginalisation increased the inner-domain net biosphere and total flux
+posterior means by about 90 Tg CO2/yr relative to sampling the outer states with
+NUTS. That shift was 0.05 posterior standard deviations and about two Monte
+Carlo standard errors. The fossil-fuel flux posterior mean was unchanged.</p>
+<p>Marginalisation reduces the number of sampled states and adds a covariance
+term to the likelihood. In the test above, marginalisation took slightly
+longer than sampling the outer states.</p>
+<p>The outer ocean can be marginalised the same way instead of being held with
+zero uncertainty, with <code class="docutils literal notranslate"><span class="pre">fixed_sources=(&quot;ocean&quot;,)</span></code>.</p>
+</section>
+<section id="correlated-outer-states">
+<h2>Correlated outer states<a class="headerlink" href="#correlated-outer-states" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code> requires zero prior covariance between the selected outer states
+and the states outside the selection.</p>
+<p><code class="docutils literal notranslate"><span class="pre">&quot;marginalise&quot;</span></code> accepts them. With cross-covariance <span class="math notranslate nohighlight">\(\Sigma_{OI}\)</span>
+between the selected states and all other states <span class="math notranslate nohighlight">\(I\)</span>, the outer states
+are replaced by their best linear predictor from <span class="math notranslate nohighlight">\(I\)</span> under the prior’s
+arithmetic moments,</p>
+<div class="math notranslate nohighlight">
+\[x_O = m_O + B(x_I - m_I) + r, \qquad B = \Sigma_{OI}\Sigma_{II}^{+},\]</div>
+<p>and <span class="math notranslate nohighlight">\(r\)</span> is integrated out. So</p>
+<ul class="simple">
+<li><p>the design of the other states becomes <span class="math notranslate nohighlight">\(H_I + H_O B\)</span>;</p></li>
+<li><p>the fixed term gains <span class="math notranslate nohighlight">\(-H_O B m_I\)</span>;</p></li>
+<li><p>the error term is <span class="math notranslate nohighlight">\(H_O\Sigma_{O|I}H_O^T\)</span> with
+<span class="math notranslate nohighlight">\(\Sigma_{O|I} = \Sigma_{OO} - B\Sigma_{IO}\)</span>.</p></li>
+</ul>
+<p>The prior of the other states is unchanged, so a LogNormal-copula inner prior
+stays positive. For a Gaussian prior this is exact. Under the LogNormal copula
+<span class="math notranslate nohighlight">\(r\)</span> is uncorrelated with <span class="math notranslate nohighlight">\(x_I\)</span> but not independent of it, a
+moment-level approximation of the same kind as the <a class="reference internal" href="coherent_reduction.html"><span class="doc">coherent reduction</span></a>. States
+that state activity or exact-zero pruning hold fixed enter at their fixed
+values. A state with no direct response but correlated with the outer states
+gains a column through <span class="math notranslate nohighlight">\(H_O B\)</span>, so it is sampled rather than pruned.
+The selected outer entries in <code class="docutils literal notranslate"><span class="pre">flux_scaling</span></code> are prior-mean placeholders.
+Given the other states, <span class="math notranslate nohighlight">\(m_O + B(x_I - m_I)\)</span> is the conditional prior
+mean in the Gaussian model and the linear predictor in the LogNormal
+approximation. Conditioning on the observations also updates the outer
+residual. Posterior reconstruction is tracked in
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/1129">#1129</a>.</p>
 </section>
 <section id="building-a-model">
 <h2>Building a model<a class="headerlink" href="#building-a-model" title="Link to this heading">#</a></h2>
@@ -509,7 +573,7 @@ samples:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models.outer_flux</span><span class="w"> </span><span class="kn">import</span> <span class="n">OuterFluxChoice</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2.co2_cached_sigma_model</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_co2_cached_sigma_model</span>
 
-<span class="n">outer_flux</span> <span class="o">=</span> <span class="n">OuterFluxChoice</span><span class="p">(</span><span class="s2">"fixed"</span><span class="p">,</span> <span class="p">(</span><span class="s2">"outer"</span><span class="p">,))</span>
+<span class="n">outer_flux</span> <span class="o">=</span> <span class="n">OuterFluxChoice</span><span class="p">(</span><span class="s2">"marginalise"</span><span class="p">,</span> <span class="p">(</span><span class="s2">"outer"</span><span class="p">,))</span>
 
 <span class="n">cached</span> <span class="o">=</span> <span class="n">build_co2_cached_sigma_model</span><span class="p">(</span>
     <span class="n">flux_sensitivity</span><span class="p">,</span> <span class="n">retained_prior</span><span class="o">=</span><span class="n">flux_prior</span><span class="p">,</span>
@@ -522,24 +586,50 @@ samples:</p>
 </pre></div>
 </div>
 <p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.co2_model.html#openghg_inversions.rhime.co2.co2_model.build_co2_model" title="openghg_inversions.rhime.co2.co2_model.build_co2_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">build_co2_model()</span></code></a> takes the same
-<code class="docutils literal notranslate"><span class="pre">outer_flux</span></code> argument. Any boundary, or none, may be used with it. Exact-zero
-columns of <span class="math notranslate nohighlight">\(H\)</span> are pruned first, as in the ordinary recipe, and the held
-states are then made inactive at their prior mean. Every label in
+<code class="docutils literal notranslate"><span class="pre">outer_flux</span></code> argument. Any boundary, or none, may be used with it. For
+correlated marginalisation the builder adjusts the design before pruning
+exact-zero columns. It then sets the selected states inactive at their prior
+mean and includes the marginalised covariance in the likelihood. Every label in
 <code class="docutils literal notranslate"><span class="pre">outer_groups</span></code> and <code class="docutils literal notranslate"><span class="pre">fixed_sources</span></code> must match a state, and a
 <code class="docutils literal notranslate"><span class="pre">state_activity</span></code> policy that explicitly fixes a held state at a value other
 than its prior mean is rejected. Run metadata records the
 mode and selectors.</p>
 </section>
+<section id="reporting-with-marginalised-outer-flux">
+<h2>Reporting with marginalised outer flux<a class="headerlink" href="#reporting-with-marginalised-outer-flux" title="Link to this heading">#</a></h2>
+<p>CO2 <code class="docutils literal notranslate"><span class="pre">basic</span></code> reporting provides fitted concentrations and saved predictive
+draws where available. It uses the fitted affine intercept, including any
+adjustment for correlated outer states. The full native flux map and the
+combined PARIS concentration-and-flux export require posterior outer flux
+draws.</p>
+<p>To report an inner-domain total, supply the matching affine reconstruction
+artifact, enable <code class="docutils literal notranslate"><span class="pre">sampling.sample_prior_predictive</span></code>, and give an exact-grid
+country or reporting region mask in <code class="docutils literal notranslate"><span class="pre">outputs.country_file</span></code>. For a configured
+full run, set <code class="docutils literal notranslate"><span class="pre">data.reconstruction_path</span></code>. For staged reporting,
+use a preparation saved with its affine artifact and samples with prior draws. Use
+<code class="docutils literal notranslate"><span class="pre">outputs.paris_postprocessing_kwargs.country_selections</span></code> to request specific
+names. Every requested quantity must have zero loading on each marginalised
+state through the bound affine map, whose prolongation can couple
+geographically separate regions. The full runner checks the projection before
+sampling. Replay checks it against the fitted state labels saved in the trace.
+These totals retain the affine map’s retained-state-conditional uncertainty scope.
+For these totals, prepare without complete native country functionals.</p>
+</section>
 <section id="linked-co2-o2">
 <h2>Linked CO2/O2<a class="headerlink" href="#linked-co2-o2" title="Link to this heading">#</a></h2>
 <p>The linked recipes share one flux state and prior between the CO2 and O2
-channels, so each builder resolves the choice once on that shared prior. The
-held states are fixed in the joint state after joint exact-zero pruning, with
-the same meaning as above: zero uncertainty and nothing added to the error
-covariance, in the ordinary and cached linked recipes alike:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2.co2_o2_model</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_co2_o2_model</span>
+channels, so each builder resolves the choice once on that shared prior.
+<code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code> sets the selected states to their prior means. <code class="docutils literal notranslate"><span class="pre">&quot;marginalise&quot;</span></code>
+adds a joint covariance term spanning both channels, including the covariance
+between CO2 and O2 induced by the selected states. Both modes are available
+in the ordinary and cached linked recipes. For marginalised outer flux,
+use the saved joint concentration predictions. Linked basic and PARIS
+products require the fitted design and intercept for their component
+reconstruction.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models.outer_flux</span><span class="w"> </span><span class="kn">import</span> <span class="n">OuterFluxChoice</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2.co2_o2_model</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_co2_o2_model</span>
 
-<span class="n">model</span> <span class="o">=</span> <span class="n">build_co2_o2_model</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">outer_flux</span><span class="o">=</span><span class="n">OuterFluxChoice</span><span class="p">(</span><span class="s2">"fixed"</span><span class="p">,</span> <span class="p">(</span><span class="s2">"outer"</span><span class="p">,)))</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">build_co2_o2_model</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">outer_flux</span><span class="o">=</span><span class="n">OuterFluxChoice</span><span class="p">(</span><span class="s2">"marginalise"</span><span class="p">,</span> <span class="p">(</span><span class="s2">"outer"</span><span class="p">,)))</span>
 </pre></div>
 </div>
 </section>
@@ -593,7 +683,10 @@ covariance, in the ordinary and cached linked recipes alike:</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#fixed-mode"><code class="docutils literal notranslate"><span class="pre">"fixed"</span></code> mode</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#marginalise-mode"><code class="docutils literal notranslate"><span class="pre">"marginalise"</span></code> mode</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#correlated-outer-states">Correlated outer states</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#building-a-model">Building a model</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#reporting-with-marginalised-outer-flux">Reporting with marginalised outer flux</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#linked-co2-o2">Linked CO2/O2</a></li>
 </ul>
   </nav></div>

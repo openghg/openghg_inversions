@@ -600,8 +600,7 @@
 <p>Model-owned likelihood with an additive model-data-mismatch scale.</p>
 <p>For reported observation-error variance <span class="math notranslate nohighlight">\(s_y^2\)</span>, optional fixed mismatch
 <span class="math notranslate nohighlight">\(s_{fixed}\)</span>, inferred mismatch scale <span class="math notranslate nohighlight">\(\sigma\)</span>, and fixed
-aggregation covariance <span class="math notranslate nohighlight">\(C_{agg}\)</span>, this
-component constructs the independent variance</p>
+observation covariance, this component constructs the independent variance</p>
 <div class="math notranslate nohighlight">
 \[v = s_y^2 + s_{fixed}^2 + \sigma^2\]</div>
 <p>An optional error-floor policy may apply a lower bound to total marginal
@@ -631,16 +630,16 @@ component: RHIME-specific site/frequency translation lives outside this module.<
 The inferred absolute mismatch scale is observation-aligned through
 <code class="docutils literal notranslate"><span class="pre">additive_sigma_alignment</span></code> and enters as a separate variance term. When
 no alignment is supplied, no inferred scale is constructed. Fixed
-dense or low-rank aggregation error is included only when
-explicitly selected. If supplied, <code class="docutils literal notranslate"><span class="pre">minimum_error_floor</span></code> floors the total
-marginal standard deviation.</p>
+dense or low-rank covariance is included when supplied. The optional
+<code class="docutils literal notranslate"><span class="pre">minimum_error_floor</span></code> floors the total marginal standard deviation.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Observed mole fractions.</p></li>
 <li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Reported observation-error standard deviations.</p></li>
-<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a><em> | </em><em>None</em>) – Validated fixed aggregation-error representation. Omit
-or pass <code class="docutils literal notranslate"><span class="pre">None</span></code> for no fixed aggregation covariance.</p></li>
+<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.ObservationCovariance" title="openghg_inversions.observation_error.ObservationCovariance"><em>ObservationCovariance</em></a><em> | </em><em>None</em>) – Validated fixed observation covariance contribution,
+such as basis aggregation with any marginalised outer-flux term.
+Omit or pass <code class="docutils literal notranslate"><span class="pre">None</span></code> if the contribution is absent.</p></li>
 <li><p><strong>mean</strong> (<em>TensorVariable</em>) – Completed forward-model concentration aligned with
 <code class="docutils literal notranslate"><span class="pre">output_dim</span></code>.</p></li>
 <li><p><strong>minimum_error_floor</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional minimum total-error standard deviations.</p></li>

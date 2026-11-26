@@ -594,7 +594,7 @@
                   
   <section id="module-openghg_inversions.observation_error">
 <span id="openghg-inversions-observation-error"></span><h1>openghg_inversions.observation_error<a class="headerlink" href="#module-openghg_inversions.observation_error" title="Link to this heading">#</a></h1>
-<p>Validate observation-error inputs and prepare aggregation-error covariances.</p>
+<p>Represent fixed observation covariance and validate observation-error inputs.</p>
 <p>Shared checks cover observations, reported errors and minimum errors.</p>
 <p>Aggregation error is fixed input data, separate from measurement error and
 the inferred RHIME model-error term.  Prepared inversion inputs may represent
@@ -610,8 +610,8 @@ are present or only marginal standard deviations are supplied.</p>
 </dd></dl>
 
 <dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.observation_error.AggregationError">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">AggregationError</span></span><span class="sig-paren">(</span>
+<dt class="sig sig-object py" id="openghg_inversions.observation_error.ObservationCovariance">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ObservationCovariance</span></span><span class="sig-paren">(</span>
 
 <dl>
 <dd><em class="sig-param"><span class="n"><span class="pre">mode</span></span></em>,</dd>
@@ -619,19 +619,17 @@ are present or only marginal standard deviations are supplied.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">covariance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">factor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">diagonal_variance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">includes_added_factor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 </dl>
 
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.observation_error.AggregationError" title="Link to this definition">#</a></dt>
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.observation_error.ObservationCovariance" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Validated aggregation-error representation selected for a likelihood.</p>
-<p>Model builders trust this value as already validated. Externally supplied
-representations should be constructed through
-<a class="reference internal" href="#openghg_inversions.observation_error.resolve_aggregation_error" title="openghg_inversions.observation_error.resolve_aggregation_error"><code class="xref py py-func docutils literal notranslate"><span class="pre">resolve_aggregation_error()</span></code></a>, which selects and validates a
-coherent-reduction representation. Package preparation helpers may also
-construct it directly from values they have just produced. Other direct
-construction is an expert seam, and the caller then owns the coherence of
-the mode, payload, marginal variance, coordinates, and numerical
-covariance properties.</p>
+<p>Validated fixed observation covariance for a likelihood.</p>
+<p>Use <a class="reference internal" href="#openghg_inversions.observation_error.resolve_aggregation_error" title="openghg_inversions.observation_error.resolve_aggregation_error"><code class="xref py py-func docutils literal notranslate"><span class="pre">resolve_aggregation_error()</span></code></a> to select and validate basis
+aggregation covariance from prepared data. Direct construction assumes
+the caller supplies a coherent mode, payload, marginal variance,
+observation order, and numerical covariance properties.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -641,9 +639,32 @@ covariance properties.</p>
 <li><p><strong>factor</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional low-rank covariance factor.</p></li>
 <li><p><strong>diagonal_variance</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional independent residual variance for a
 low-rank representation.</p></li>
+<li><p><strong>includes_added_factor</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether an independent term has been added
+to the original covariance.</p></li>
 </ul>
 </dd>
 </dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.observation_error.ObservationCovariance.with_added_factor">
+<span class="sig-name descname"><span class="pre">with_added_factor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">factor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.observation_error.ObservationCovariance.with_added_factor" title="Link to this definition">#</a></dt>
+<dd><p>Add the independent covariance represented by a dense low-rank factor.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>factor</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Factor with observations on its first axis, in the
+covariance’s row order. Pass None for an absent contribution.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>This covariance for an absent factor. Otherwise, the sum is
+dense if this covariance is dense. A low-rank sum keeps the
+original diagonal residual, or uses zero if this covariance
+is absent.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.observation_error.ObservationCovariance" title="openghg_inversions.observation_error.ObservationCovariance"><em>ObservationCovariance</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py class">
@@ -654,7 +675,7 @@ low-rank representation.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>openghg_inversions.observation_error.AggregationError</em></a>) – Labelled low-rank factor and non-negative diagonal
+<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="#openghg_inversions.observation_error.ObservationCovariance" title="openghg_inversions.observation_error.ObservationCovariance"><em>openghg_inversions.observation_error.ObservationCovariance</em></a>) – Labelled low-rank factor and non-negative diagonal
 residual accepted by the shared likelihood components.</p></li>
 <li><p><strong>diagnostics</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>]</em>) – JSON-safe mapping containing the method, requested rank,
 actual retained factor width, retained spectral fraction, relative
@@ -717,14 +738,14 @@ diagnostics.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.observation_error.aggregation_error_as_low_rank">
 <span class="sig-name descname"><span class="pre">aggregation_error_as_low_rank</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.observation_error.aggregation_error_as_low_rank" title="Link to this definition">#</a></dt>
-<dd><p>Materialize fixed aggregation covariance as factor-plus-diagonal data.</p>
+<dd><p>Materialize fixed observation covariance as factor-plus-diagonal data.</p>
 <p>Dense inputs use every eigenmode above the scale-relative numerical
 tolerance and retain the remaining marginal variance on the diagonal.
 This is exact when every positive mode exceeds that tolerance, but it is
 not the low-rank performance path.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>aggregation_error</strong> (<a class="reference internal" href="#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Validated fixed aggregation-error representation.</p>
+<dd class="field-odd"><p><strong>aggregation_error</strong> (<a class="reference internal" href="#openghg_inversions.observation_error.ObservationCovariance" title="openghg_inversions.observation_error.ObservationCovariance"><em>ObservationCovariance</em></a>) – Validated fixed observation covariance.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>A factor with shape <code class="docutils literal notranslate"><span class="pre">(nmeasure,</span> <span class="pre">actual_rank)</span></code> and non-negative
@@ -963,7 +984,7 @@ covariance dimension.</p></li>
     non-finite, or not a valid covariance representation.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a></p>
+<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.observation_error.ObservationCovariance" title="openghg_inversions.observation_error.ObservationCovariance"><em>ObservationCovariance</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1018,7 +1039,10 @@ covariance dimension.</p></li>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.AggregationErrorMode"><code class="docutils literal notranslate"><span class="pre">AggregationErrorMode</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.AggregationError"><code class="docutils literal notranslate"><span class="pre">AggregationError</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.ObservationCovariance"><code class="docutils literal notranslate"><span class="pre">ObservationCovariance</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.ObservationCovariance.with_added_factor"><code class="docutils literal notranslate"><span class="pre">ObservationCovariance.with_added_factor()</span></code></a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.LowRankAggregationErrorApproximation"><code class="docutils literal notranslate"><span class="pre">LowRankAggregationErrorApproximation</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.prepare_low_rank_aggregation_error"><code class="docutils literal notranslate"><span class="pre">prepare_low_rank_aggregation_error()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.aggregation_error_as_low_rank"><code class="docutils literal notranslate"><span class="pre">aggregation_error_as_low_rank()</span></code></a></li>

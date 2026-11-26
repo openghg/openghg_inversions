@@ -59,7 +59,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Prepared artifact format support" href="prepared_format_support.html" />
-    <link rel="prev" title="Outer-region flux states held at their prior mean" href="atmospheric_baseline.html" />
+    <link rel="prev" title="Outer-region flux states held or marginalised" href="atmospheric_baseline.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="devel" />
@@ -393,7 +393,7 @@
 <li class="toctree-l1"><a class="reference internal" href="surface_preparation.html">Surface CO₂/O₂ preparation pilot</a></li>
 <li class="toctree-l1"><a class="reference internal" href="centered_boundary_conditions.html">Boundary-condition operators</a></li>
 <li class="toctree-l1"><a class="reference internal" href="boundary_correction_structures.html">Boundary correction structures</a></li>
-<li class="toctree-l1"><a class="reference internal" href="atmospheric_baseline.html">Outer-region flux states held at their prior mean</a></li>
+<li class="toctree-l1"><a class="reference internal" href="atmospheric_baseline.html">Outer-region flux states held or marginalised</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Configured CO2 priors</a></li>
 <li class="toctree-l1"><a class="reference internal" href="prepared_format_support.html">Prepared artifact format support</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -474,7 +474,7 @@
   <section id="configured-co2-priors">
 <h1>Configured CO2 priors<a class="headerlink" href="#configured-co2-priors" title="Link to this heading">#</a></h1>
 <p>Use this workflow to configure <a class="reference internal" href="boundary_correction_structures.html"><span class="doc">Boundary correction structures</span></a> or the
-outer-flux option of <a class="reference internal" href="atmospheric_baseline.html"><span class="doc">Outer-region flux states held at their prior mean</span></a>. Both are choices bound to
+outer-flux option of <a class="reference internal" href="atmospheric_baseline.html"><span class="doc">Outer-region flux states held or marginalised</span></a>. Both are choices bound to
 the prepared inputs at model construction; nothing is prepared or saved
 separately. Existing model defaults are unchanged. These APIs require the
 package’s supported Python 3.12 or 3.13 runtime.</p>
@@ -528,21 +528,29 @@ replay. This protection covers aliases and overlapping directory stores.</p>
 </section>
 <section id="configure-the-outer-flux-option">
 <h2>Configure the outer-flux option<a class="headerlink" href="#configure-the-outer-flux-option" title="Link to this heading">#</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">[model.outer_flux]</span></code> adds the outer-flux option of <a class="reference internal" href="atmospheric_baseline.html"><span class="doc">Outer-region flux states held at their prior mean</span></a>
+<p><code class="docutils literal notranslate"><span class="pre">[model.outer_flux]</span></code> adds the outer-flux option of <a class="reference internal" href="atmospheric_baseline.html"><span class="doc">Outer-region flux states held or marginalised</span></a>
 to the ordinary and cached fixed-OU CO2 recipes. Linked CO2/O2 configurations
-use a top-level <code class="docutils literal notranslate"><span class="pre">[outer_flux]</span></code> table, because the flux state is shared by
-both channels:</p>
+use a top-level <code class="docutils literal notranslate"><span class="pre">[outer_flux]</span></code> table for the shared flux state. The linked
+configuration supports fixed independent error or fixed OU amplitudes. The
+linked cached runner for inferred OU amplitudes is available through Python.</p>
 <div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[model.outer_flux]</span>
-<span class="n">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"fixed"</span>
+<span class="n">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"marginalise"</span><span class="w">        </span><span class="c1"># or "fixed"</span>
 <span class="n">outer_groups</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"outer"</span><span class="p">]</span>
 <span class="n">fixed_sources</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"ocean"</span><span class="p">]</span><span class="w">   </span><span class="c1"># optional</span>
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code> is the only mode. It holds the selected outer states at their
-prior mean with zero uncertainty, a what-if for a known outer prior rather
-than a way to leave the outer flux unsampled. <code class="docutils literal notranslate"><span class="pre">outer_groups</span></code> selects outer
+<p><code class="docutils literal notranslate"><span class="pre">&quot;fixed&quot;</span></code> holds the selected outer states at their prior means with zero
+uncertainty. <code class="docutils literal notranslate"><span class="pre">&quot;marginalise&quot;</span></code> integrates those states into the likelihood
+and adds their contribution to the observation covariance. If they are
+correlated with the remaining states, it also transfers their conditional
+mean into the concentration model. This is exact for a Gaussian prior and
+a moment approximation under the LogNormal copula. The configured CO2
+route and the Python builder reject <code class="docutils literal notranslate"><span class="pre">&quot;marginalise&quot;</span></code> with a scalar-sigma
+eigenbasis.
+See <a class="reference internal" href="atmospheric_baseline.html"><span class="doc">Outer-region flux states held or marginalised</span></a> for equations, evidence and flux-output
+limitations. <code class="docutils literal notranslate"><span class="pre">outer_groups</span></code> selects outer
 states by the <code class="docutils literal notranslate"><span class="pre">basis_group</span></code> coordinate of the prepared retained prior;
-<code class="docutils literal notranslate"><span class="pre">fixed_sources</span></code>, when given, holds only those with a matching <code class="docutils literal notranslate"><span class="pre">source</span></code>
+<code class="docutils literal notranslate"><span class="pre">fixed_sources</span></code>, when given, selects only those with a matching <code class="docutils literal notranslate"><span class="pre">source</span></code>
 coordinate and leaves the other outer states sampled. Model construction
 rejects the option when the prepared state lacks those coordinates.</p>
 <p>Preparation and saved preparations keep these coordinates but do not create
@@ -573,7 +581,7 @@ metadata.</p>
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Outer-region flux states held at their prior mean</p>
+        <p class="prev-next-title">Outer-region flux states held or marginalised</p>
       </div>
     </a>
     <a class="right-next"

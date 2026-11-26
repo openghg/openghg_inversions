@@ -394,7 +394,7 @@
 <li class="toctree-l1"><a class="reference internal" href="surface_preparation.html">Surface CO₂/O₂ preparation pilot</a></li>
 <li class="toctree-l1"><a class="reference internal" href="centered_boundary_conditions.html">Boundary-condition operators</a></li>
 <li class="toctree-l1"><a class="reference internal" href="boundary_correction_structures.html">Boundary correction structures</a></li>
-<li class="toctree-l1"><a class="reference internal" href="atmospheric_baseline.html">Outer-region flux states held at their prior mean</a></li>
+<li class="toctree-l1"><a class="reference internal" href="atmospheric_baseline.html">Outer-region flux states held or marginalised</a></li>
 <li class="toctree-l1"><a class="reference internal" href="configured_co2_priors.html">Configured CO2 priors</a></li>
 <li class="toctree-l1"><a class="reference internal" href="prepared_format_support.html">Prepared artifact format support</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -507,13 +507,20 @@ therefore require separate scientific justification.</p>
 boundary condition. An explicit state-activity policy omits inactive elements
 from the sampled correlated vector while restoring their exact fixed values
 in the full public <code class="docutils literal notranslate"><span class="pre">flux_scaling</span></code> vector and in <code class="docutils literal notranslate"><span class="pre">co2_flux_contribution</span></code>.</p>
-<p>The CO2 likelihood uses the explicit <a class="reference internal" href="../reference/openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><code class="xref py py-class docutils literal notranslate"><span class="pre">AggregationError</span></code></a>
-selected from prepared inputs. With reported observation standard deviation
+<p>The CO2 likelihood uses the aggregation covariance selected from prepared inputs
+as an explicit <a class="reference internal" href="../reference/openghg_inversions.observation_error.html#openghg_inversions.observation_error.ObservationCovariance" title="openghg_inversions.observation_error.ObservationCovariance"><code class="xref py py-class docutils literal notranslate"><span class="pre">ObservationCovariance</span></code></a>.
+With reported observation standard deviation
 <code class="docutils literal notranslate"><span class="pre">s_y</span></code>, optional known mismatch <code class="docutils literal notranslate"><span class="pre">s_fixed</span></code>, and optional inferred additive
 mismatch <code class="docutils literal notranslate"><span class="pre">sigma</span></code>, its covariance is</p>
 <div class="math notranslate nohighlight">
-\[R = C_{agg} + \operatorname{diag}
+\[R = C_{agg} + M + \operatorname{diag}
     (s_y^2 + s_{fixed}^2 + \sigma^2).\]</div>
+<p>The default is <span class="math notranslate nohighlight">\(M=0\)</span>. With <a class="reference internal" href="atmospheric_baseline.html"><span class="doc">outer-flux marginalisation</span></a>, <span class="math notranslate nohighlight">\(M\)</span> is the observation-space covariance from the
+selected outer states. With marginalisation, the additive-sigma trace records
+the combined fixed term <span class="math notranslate nohighlight">\(C_{agg}+M\)</span> as <code class="docutils literal notranslate"><span class="pre">fixed_observation_covariance</span></code> or as
+<code class="docutils literal notranslate"><span class="pre">fixed_observation_factor</span></code> and <code class="docutils literal notranslate"><span class="pre">fixed_observation_diagonal_variance</span></code>.
+<code class="docutils literal notranslate"><span class="pre">fixed_observation_marginal_variance</span></code> gives its diagonal. Custom CO2
+likelihoods receive the combined fixed term through the <code class="docutils literal notranslate"><span class="pre">aggregation_error</span></code> keyword.</p>
 <p>The lower-level builder adds inferred <code class="docutils literal notranslate"><span class="pre">sigma</span></code> only when the caller supplies a
 <code class="docutils literal notranslate"><span class="pre">sigma_alignment</span></code>. The scientific construction operation
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized" title="openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized"><code class="xref py py-func docutils literal notranslate"><span class="pre">build_co2_from_materialized()</span></code></a>
@@ -1929,7 +1936,7 @@ Inversions.</p>
 <p>Built-in aggregation covariance relies on the guarantees of its construction
 pipeline. The runner selects and validates prepared aggregation-error arrays
 through <a class="reference internal" href="../reference/openghg_inversions.observation_error.html#openghg_inversions.observation_error.resolve_aggregation_error" title="openghg_inversions.observation_error.resolve_aggregation_error"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.resolve_aggregation_error()</span></code></a>.
-A custom pipeline that constructs an <code class="docutils literal notranslate"><span class="pre">AggregationError</span></code> directly owns the
+A custom pipeline that constructs an <code class="docutils literal notranslate"><span class="pre">ObservationCovariance</span></code> directly owns the
 completeness, coherence, and numerical covariance guarantees of that object;
 there is no separate public complete-covariance validator.</p>
 </section>
@@ -1941,13 +1948,14 @@ there is no separate public complete-covariance validator.</p>
 numerical component as the CO2 recipe, with groups defined by both species and
 site. The complete joint covariance is</p>
 <div class="math notranslate nohighlight">
-\[R = A_{joint} + D_{obs}
+\[R = A_{joint} + M + D_{obs}
     + \operatorname{blockdiag}_{(species, site)}
       \left(\sigma_{species,site}^{2} T_{species,site}\right),
 \qquad T_{ij}=\exp(-|t_i-t_j|/\tau_{species,site}).\]</div>
-<p><code class="docutils literal notranslate"><span class="pre">A_joint</span></code> is the prepared aggregation covariance, including its nonzero
-cross-channel blocks. <code class="docutils literal notranslate"><span class="pre">D_obs</span></code> is the squared reported independent error.
-Each term enters exactly once. Rows may be irregular and interleaved; the
+<p><code class="docutils literal notranslate"><span class="pre">A_joint</span></code> is the prepared aggregation covariance, including any cross-channel
+blocks. The default is <span class="math notranslate nohighlight">\(M=0\)</span>. With <a class="reference internal" href="atmospheric_baseline.html"><span class="doc">outer-flux marginalisation</span></a>, <span class="math notranslate nohighlight">\(M\)</span> is the joint covariance induced by the shared
+outer states, including their cross-channel contribution. <code class="docutils literal notranslate"><span class="pre">D_obs</span></code> is the
+squared reported independent error. Rows may be irregular and interleaved. The
 OU groups preserve their original row positions. Different channels at the
 same site have separate amplitudes and no cross-channel OU contribution.
 Inferred amplitudes require the same concentration units in both channels;

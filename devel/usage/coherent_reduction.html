@@ -394,7 +394,7 @@
 <li class="toctree-l1"><a class="reference internal" href="surface_preparation.html">Surface CO₂/O₂ preparation pilot</a></li>
 <li class="toctree-l1"><a class="reference internal" href="centered_boundary_conditions.html">Boundary-condition operators</a></li>
 <li class="toctree-l1"><a class="reference internal" href="boundary_correction_structures.html">Boundary correction structures</a></li>
-<li class="toctree-l1"><a class="reference internal" href="atmospheric_baseline.html">Outer-region flux states held at their prior mean</a></li>
+<li class="toctree-l1"><a class="reference internal" href="atmospheric_baseline.html">Outer-region flux states held or marginalised</a></li>
 <li class="toctree-l1"><a class="reference internal" href="configured_co2_priors.html">Configured CO2 priors</a></li>
 <li class="toctree-l1"><a class="reference internal" href="prepared_format_support.html">Prepared artifact format support</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -749,8 +749,9 @@ fitted model records for every activity policy, including all-active; a trace
 without it is rejected.</p>
 <section id="staged-co2-outputs">
 <h3>Staged CO2 outputs<a class="headerlink" href="#staged-co2-outputs" title="Link to this heading">#</a></h3>
-<p>The staged CO2 pipeline reports complete country totals when the prepared
-artifact carries the country products:</p>
+<p>Complete country totals require a supported fit and a prepared artifact with
+country products. See <a class="reference internal" href="atmospheric_baseline.html"><span class="doc">Outer-region flux states held or marginalised</span></a> for the
+retained-state-conditional totals available with outer-flux marginalisation.</p>
 <ol class="arabic simple">
 <li><p>Build <span class="math notranslate nohighlight">\(Q\)</span> from the signed reference flux the affine reconstruction
 will carry with
