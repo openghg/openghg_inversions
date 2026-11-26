@@ -36,14 +36,17 @@ Supported numerical envelopes
        unstacked curtain/period averaging weights. The embedded ``rhime_inputs``
        tree follows the generic format rules above.
    * - ``openghg_inversions.co2_o2_prepared_inputs``
-     - 5
+     - 6
      - Linked channels with absolute or independently labelled centered
-       transport and optional unstacked curtain/period averaging weights.
+       transport, optional unstacked curtain/period averaging weights, and
+       optional retained-prior marginal families and latent-correlation floor.
+   * - ``openghg_inversions.co2_o2_prepared_inputs``
+     - 5 (read only)
+     - Linked channels with the default all-lognormal retained prior.
 
-Only the current CO₂ and linked envelopes are accepted; older internal artifacts
-require preparation and sampling again. The envelopes have independent histories. Their versions do not
-follow the generic version number. Coherent-reduction covariance remains part of
-the CO₂ scientific contract.
+Internal artifacts outside this map require preparation and sampling again.
+The envelopes have independent histories and version numbers.
+Coherent-reduction covariance remains part of the CO₂ scientific contract.
 
 Supported stage manifests
 -------------------------

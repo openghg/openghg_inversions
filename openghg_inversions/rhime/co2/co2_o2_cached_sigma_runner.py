@@ -30,7 +30,7 @@ from .co2_cached_sigma_runner import (
 )
 from .co2_o2_cached_sigma_model import _build_co2_o2_cached_sigma_model
 from .co2_o2_model import _validate_channel_offset_options
-from .co2_o2_preparation import Co2O2PreparedInputs
+from .co2_o2_preparation import Co2O2PreparedInputs, _correlated_prior
 from .co2_o2_runner import (
     _CO2_O2_VARIABLE_ROLES,
     _bind_co2_o2_boundaries,
@@ -116,13 +116,16 @@ def _sample_linked_cached(
     offset_prior = eager_priors["offset"]
     site_amplitude_prior = eager_priors.get("amplitude")
     observations, fixed_contribution, co2, o2, error = materialized
+    flux_prior = _correlated_prior(
+        prepared.retained_prior, prepared.retained_prior_marginal, prepared.latent_correlation_floor
+    )
     cached = _build_co2_o2_cached_sigma_model(
         observations=observations,
         fixed_prior_contribution=fixed_contribution,
         co2_sensitivity=co2,
         o2_sensitivity=o2,
         aggregation_error=prepared.aggregation_error,
-        retained_prior=prepared.retained_prior,
+        retained_prior=flux_prior,
         independent_error_sd=error,
         tau_hours=tau_hours,
         site_amplitude_prior=site_amplitude_prior,
@@ -134,7 +137,7 @@ def _sample_linked_cached(
         offset_prior=offset_prior,
         offset_args=offset_args,
     )
-    metadata = _co2_o2_metadata(prepared, observations=observations)
+    metadata = _co2_o2_metadata(prepared, observations=observations, flux_prior=flux_prior)
     metadata.update(likelihood="joint Gaussian with fixed OU blocks by (species, site)")
     if recipe != "co2_o2":
         metadata["recipe"] = recipe
