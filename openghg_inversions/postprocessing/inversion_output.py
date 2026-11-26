@@ -97,6 +97,12 @@ def filter_data_vars_by_prefix(
     return ds[data_vars]
 
 
+def _marginalises_outer_flux(trace: xr.DataTree) -> bool:
+    """Read the outer-flux mode used by this fitted trace."""
+    metadata = json.loads(trace.attrs.get("rhime_model_metadata", "{}"))
+    return isinstance(metadata, dict) and metadata.get("outer_flux_mode") == "marginalise"
+
+
 def trace_group(trace: xr.DataTree, name: str) -> xr.Dataset:
     """Return one exact, direct trace group as a Dataset.
 

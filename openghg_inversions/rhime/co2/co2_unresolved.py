@@ -35,13 +35,17 @@ import xarray as xr
 from openghg_inversions.coherent_reduction import NativeFunctionalProducts
 from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
 from openghg_inversions.observation_error import (
-    AggregationError,
+    ObservationCovariance,
     aggregation_error_as_low_rank,
     resolve_aggregation_error,
 )
-from openghg_inversions.postprocessing.co2_flux_outputs import COUNTRY_FUNCTIONAL_DIM, co2_country_functionals
+from openghg_inversions.postprocessing.co2_flux_outputs import (
+    COUNTRY_FUNCTIONAL_DIM,
+    _check_complete_country_scope,
+    co2_country_functionals,
+)
 from openghg_inversions.postprocessing.countries import Countries
-from openghg_inversions.postprocessing.inversion_output import trace_group
+from openghg_inversions.postprocessing.inversion_output import _marginalises_outer_flux, trace_group
 from openghg_inversions.postprocessing.unresolved_functionals import (
     ObservationCovarianceSolve,
     UnresolvedFunctionalConditioning,
@@ -121,11 +125,12 @@ def co2_unresolved_conditioning(
         ValueError: If the artifact has no country functionals or does not
             store the exact ``A``, a requested country or source was not
             prepared, the trace lacks the residual or noise records, or the
-            likelihood is unsupported.
+            likelihood is unsupported or marginalises outer flux.
     """
     products = prepared.country_functionals
     if products is None:
         raise ValueError("Prepared CO2 inputs carry no country functional products.")
+    _check_complete_country_scope(_marginalises_outer_flux(trace))
     if prepared.aggregation_error_mode != "dense":
         raise ValueError(
             "Complete CO2 country outputs require the exact dense A that the products were computed with; "
@@ -214,7 +219,7 @@ def _observation_solve(
 def _fixed_ou_solve(
     trace: xr.DataTree,
     prepared: Co2PreparedInputs,
-    aggregation: AggregationError,
+    aggregation: ObservationCovariance,
     constant: xr.Dataset,
 ) -> ObservationCovarianceSolve:
     """Rebuild the fit's fixed-OU covariance and use each draw's site amplitudes."""
@@ -279,7 +284,7 @@ def _hours(tau: xr.DataArray) -> np.ndarray:
 def _diagonal_solve(
     trace: xr.DataTree,
     prepared: Co2PreparedInputs,
-    aggregation: AggregationError,
+    aggregation: ObservationCovariance,
     roles: dict[str, str],
     constant: xr.Dataset,
 ) -> ObservationCovarianceSolve:
@@ -330,7 +335,7 @@ def _diagonal_solve(
     return ObservationCovarianceSolve(index, solve, varies_by_draw=True, description=description)
 
 
-def _diagonal_update(aggregation: AggregationError, variance: FloatArray) -> Callable[[FloatArray], FloatArray]:
+def _diagonal_update(aggregation: ObservationCovariance, variance: FloatArray) -> Callable[[FloatArray], FloatArray]:
     """Factorize ``A + diag(variance)`` once and return its solve.
 
     Dense ``A`` uses a Cholesky factor. Low-rank ``A = F F.T + diag(d)`` uses

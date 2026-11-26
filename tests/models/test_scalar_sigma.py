@@ -24,7 +24,7 @@ from openghg_inversions.models.scalar_sigma import (
     save_scalar_sigma_eigenbasis,
     scalar_sigma_base_covariance,
 )
-from openghg_inversions.observation_error import AggregationError
+from openghg_inversions.observation_error import ObservationCovariance
 
 
 LABELS = np.array(["MHD-0", "MHD-1", "TAC-0"])
@@ -48,9 +48,9 @@ def _observations() -> tuple[xr.DataArray, xr.DataArray]:
     return observations, error
 
 
-def _dense_aggregation() -> AggregationError:
+def _dense_aggregation() -> ObservationCovariance:
     covariance = np.array([[0.4, 0.08, 0.02], [0.08, 0.3, 0.04], [0.02, 0.04, 0.5]])
-    return AggregationError(
+    return ObservationCovariance(
         mode="dense",
         marginal_variance=np.diag(covariance),
         covariance=xr.DataArray(
@@ -73,7 +73,7 @@ def _eigenbasis(covariance: np.ndarray) -> ScalarSigmaEigenbasis:
     return prepare_scalar_sigma_eigenbasis(
         observations=observations,
         observation_error=error,
-        aggregation_error=AggregationError(
+        aggregation_error=ObservationCovariance(
             mode="dense",
             marginal_variance=np.diag(covariance),
             covariance=xr.DataArray(
@@ -142,7 +142,7 @@ def test_base_covariance_materializes_aligned_payloads_once(
     factor = np.array([[0.4], [0.2], [0.1]])
     dense = factor @ factor.T + np.diag(diagonal)
     if mode == "dense":
-        aggregation = AggregationError(
+        aggregation = ObservationCovariance(
             mode="dense",
             marginal_variance=np.diag(dense),
             covariance=xr.DataArray(
@@ -153,7 +153,7 @@ def test_base_covariance_materializes_aligned_payloads_once(
         )
         expected_aggregation = dense
     elif mode == "low_rank":
-        aggregation = AggregationError(
+        aggregation = ObservationCovariance(
             mode="low_rank",
             marginal_variance=np.sum(factor**2, axis=1) + diagonal,
             factor=xr.DataArray(
@@ -169,7 +169,7 @@ def test_base_covariance_materializes_aligned_payloads_once(
         )
         expected_aggregation = dense
     else:
-        aggregation = AggregationError(mode="none", marginal_variance=np.zeros(3))
+        aggregation = ObservationCovariance(mode="none", marginal_variance=np.zeros(3))
         expected_aggregation = np.zeros((3, 3))
 
     import openghg_inversions.array_ops as array_ops
@@ -204,7 +204,7 @@ def test_preparation_rejects_misaligned_error_and_covariance() -> None:
 
     aggregation = _dense_aggregation()
     assert aggregation.covariance is not None
-    aggregation = AggregationError(
+    aggregation = ObservationCovariance(
         mode="dense",
         marginal_variance=aggregation.marginal_variance,
         covariance=aggregation.covariance.assign_coords(nmeasure_cov=LABELS[::-1]),
@@ -257,7 +257,7 @@ def test_covariance_validation_is_invariant_to_concentration_units(
         prepare_scalar_sigma_eigenbasis(
             observations=observations,
             observation_error=error,
-            aggregation_error=AggregationError(
+            aggregation_error=ObservationCovariance(
                 mode="dense",
                 marginal_variance=np.diag(indefinite),
                 covariance=xr.DataArray(
@@ -274,7 +274,7 @@ def test_covariance_validation_is_invariant_to_concentration_units(
         scalar_sigma_base_covariance(
             observations,
             error,
-            AggregationError(
+            ObservationCovariance(
                 mode="dense",
                 marginal_variance=np.diag(asymmetric),
                 covariance=xr.DataArray(
@@ -363,7 +363,7 @@ def test_cache_round_trip_checks_schema_labels_units_and_covariance(tmp_path: Pa
     changed_covariance = aggregation.covariance.copy(
         data=aggregation.covariance.values + np.eye(3) * 0.1
     )
-    changed_aggregation = AggregationError(
+    changed_aggregation = ObservationCovariance(
         mode="dense",
         marginal_variance=np.diag(changed_covariance.values),
         covariance=changed_covariance,
@@ -381,7 +381,7 @@ def test_cache_round_trip_checks_schema_labels_units_and_covariance(tmp_path: Pa
             path,
             observations=observations,
             observation_error=error,
-            aggregation_error=AggregationError(
+            aggregation_error=ObservationCovariance(
                 mode="none",
                 marginal_variance=np.zeros(3),
             ),
@@ -420,7 +420,7 @@ def test_cache_round_trip_preserves_multiindex_labels(tmp_path: Path) -> None:
         coords={"nmeasure": index},
         attrs={"units": "ppm"},
     )
-    aggregation = AggregationError(
+    aggregation = ObservationCovariance(
         mode="none",
         marginal_variance=np.zeros(3),
     )

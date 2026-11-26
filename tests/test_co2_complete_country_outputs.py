@@ -350,6 +350,37 @@ def test_staged_country_outputs_are_complete_native_from_prepare_to_replay(tmp_p
     assert np.abs(retained_sd - native_sd).max() > 0.1 * native_sd.max()
 
 
+def test_complete_country_outputs_reject_outer_flux_marginalisation(tmp_path, monkeypatch) -> None:
+    """Both configured fitting and staged replay reject an unsupported complete country output."""
+    from openghg_inversions.rhime.co2 import execution
+
+    _, _, prepared, affine = _case()
+    trace = _fit_fixture(prepared, count=2)
+    trace.attrs["rhime_model_metadata"] = json.dumps({"recipe": "co2", "outer_flux_mode": "marginalise"})
+    message = "Complete native country outputs are unavailable with marginalised outer flux"
+    with pytest.raises(ValueError, match=message):
+        _staged(tmp_path, prepared, affine, trace)
+    assert not (tmp_path / "products").exists()
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Unsupported reporting must fail before sampling")
+
+    monkeypatch.setattr(execution, "sample_co2_inference", forbidden)
+    params = {
+        "model": {"outer_flux": {"mode": "marginalise", "outer_groups": ["outer"]}},
+        "likelihood": {"kind": "additive_sigma", "no_model_error": True},
+        "sampling": {"sample_prior_predictive": 2},
+        "outputs": {
+            "output_format": "basic",
+            "output_path": str(tmp_path / "products"),
+            "country_file": str(tmp_path / "countries.nc"),
+        },
+    }
+    with pytest.raises(ValueError, match=message):
+        execution.run_co2(params=params, prepared=prepared, affine_artifact=affine)
+    assert not (tmp_path / "products").exists()
+
+
 def test_staged_replay_rejects_a_sector_named_total(tmp_path) -> None:
     """The reserved ``total`` sector is refused before replayed products are built."""
     _, _, prepared, affine = _case()

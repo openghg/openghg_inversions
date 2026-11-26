@@ -18,6 +18,7 @@ from openghg_inversions.models import StateActivity
 from openghg_inversions.models.boundary import Bound, Choice, bind_prepared
 from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs, prior_records
+from openghg_inversions.observation_error import AGGREGATION_ERROR_COVARIANCE, FIXED_OBSERVATION_COVARIANCE
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, _sample_linked_rhime_model
@@ -213,8 +214,9 @@ def _annotate_co2_o2_trace(
             group[variable].attrs["units"] = "dimensionless flux scale"
         if "co2_o2_sensitivity" in group:
             group["co2_o2_sensitivity"].attrs["units"] = "observation_units per dimensionless flux scale"
-        if "aggregation_error_covariance" in group:
-            group["aggregation_error_covariance"].attrs["units"] = "observation_units * observation_units_cov"
+        for name in (AGGREGATION_ERROR_COVARIANCE, FIXED_OBSERVATION_COVARIANCE):
+            if name in group:
+                group[name].attrs["units"] = "observation_units * observation_units_cov"
         for name, unit in built.output_contract.metadata.get("boundary_units", {}).items():
             if name in group:
                 group[name].attrs["units"] = unit

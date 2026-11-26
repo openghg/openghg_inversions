@@ -35,7 +35,7 @@ from openghg_inversions.inversion_data.o2n2 import (
 )
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
-    AggregationError,
+    ObservationCovariance,
     resolve_aggregation_error,
 )
 
@@ -112,7 +112,7 @@ class Co2O2PreparedInputs:
     o2_sensitivity: xr.DataArray
     o2_co2_flux_ratio: xr.DataArray | None
     o2_co2_flux_ratio_unavailable_reason: str | None
-    aggregation_error: AggregationError
+    aggregation_error: ObservationCovariance
     retained_prior: CorrelatedLognormalPrior
     provenance: Mapping[str, Any] = field(default_factory=dict)
     boundary_sensitivity: Mapping[str, xr.DataArray] = field(default_factory=dict)
