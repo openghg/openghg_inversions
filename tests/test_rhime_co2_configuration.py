@@ -92,7 +92,7 @@ def test_installed_templates_pass_the_semantic_resolver() -> None:
         config = load_co2_family_config(resource)
         if config.get("recipe") == "co2_o2":
             load_co2_o2_params(params=config)
-            Co2O2PreparationConfig.from_params(config, require_path=True).preparation_arguments()
+            Co2O2PreparationConfig.from_params(config, require_source=True).preparation_arguments()
             resolve_co2_o2_sampler(config, model=Co2O2ModelConfig.from_params(config))
         elif config["recipe"] == "co2":
             validate_co2_config(config)

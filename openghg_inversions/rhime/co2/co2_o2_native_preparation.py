@@ -31,7 +31,9 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.basis.basis_functions import FluxWeightedBasis
+from openghg_inversions.basis import prepare_basis
+from openghg_inversions.basis.basis_functions import FluxWeightedBasis, basis_functions_from_flat_basis
+from openghg_inversions.basis.boundary import BoundaryBasis
 from openghg_inversions.basis.covariance_products import (
     PreserveBucketProlongation,
     RetainedProjectionStrategy,
@@ -40,21 +42,37 @@ from openghg_inversions.basis.covariance_products import (
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.coherent_reduction import reduce_native_gaussian
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.inversion_data import MergedData, select_boundary_representation
+from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
+from openghg_inversions.inversion_data.observation_errors import prepare_observation_errors
+from openghg_inversions.models.boundary import Preparation
+from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.rhime.preparation import (
+    assemble_inputs,
+    build_sensitivities,
+    filter_observations,
+    resolve_basis_inputs,
+    resolve_bc_basis,
+)
 
 from .co2_native_preparation import (
     NATIVE_SOURCE_DIM,
     MultiSourceNativeResources,
     _flux_weighted_restriction,
     _multisource_record,
+    _native_source_sensitivity,
     _retained_marginal,
     _source_class_labels,
     _source_covariance,
     _source_flux,
     _source_sigmas,
+    _sectoral_response_only,
 )
 from .co2_o2_preparation import Co2O2PreparedInputs, _stack, prepare_co2_o2_inputs
+from .prepare_from_merged_data import _load_centering_weights, _without_centered_boundary
 
 if TYPE_CHECKING:
+    from .co2_o2_configuration import Co2O2NativePreparationConfig
     from .configuration import Co2MultiSourceNativePrior
 
 TRACER_SCOPES = ("shared", "co2", "o2")
@@ -287,6 +305,204 @@ def prepare_multisource_native_co2_o2_inputs(
     )
 
 
+_CENTERED_OPERANDS = ("H_bc_anomaly", "H_bc_mass", "bc_reference")
+
+
+def prepare_native_co2_o2(
+    native: Co2O2NativePreparationConfig,
+    *,
+    domain: str,
+    start_date: str,
+    end_date: str,
+    boundaries: Mapping[str, Preparation],
+    merged_data: Mapping[str, MergedData] | None = None,
+) -> Co2O2PreparedInputs:
+    """Acquire both tracers and prepare one linked artifact from native responses.
+
+    For each tracer in turn, as on the configured CO2 route: acquire (or
+    accept) its merged surface data, select its boundary representation,
+    filter observations, derive observation errors, project its per-source
+    responses on its flux sources' layers of the configured partition, and
+    gather each retained row's native per-source response. The flux sources
+    are then renamed to their native sources and
+    :func:`prepare_multisource_native_co2_o2_inputs` reduces both tracers
+    jointly.
+
+    Args:
+        native: Configured acquisition and native choices.
+        domain: Transport domain.
+        start_date: Requested window start.
+        end_date: Requested window end.
+        boundaries: Boundary preparation each channel's configured model needs.
+        merged_data: Optional borrowed merged data per channel, skipping acquisition.
+
+    Returns:
+        Linked prepared inputs with each channel's observations, independent
+        errors and boundary transport.
+
+    Raises:
+        ValueError: If supplied data conflict with the request, a channel's
+            observations are not in a ppm-scale mole fraction, or a
+            preparation contract fails.
+    """
+    basis_inputs = resolve_basis_inputs(native.basis)
+    bc_basis = resolve_bc_basis(native.bc_basis, use_bc=any(
+        table["use_bc"] for table in native.acquisition.values()
+    ))
+    partition = basis_inputs.get("basis_partition")
+    sources = list(native.native_prior.sources)
+    if not isinstance(partition, xr.DataArray) or "source" not in partition.dims:
+        raise ValueError("Linked preparation needs a basis partition with a source dimension keyed by native source.")
+    missing = sorted(set(sources) - {str(source) for source in partition.indexes["source"]})
+    if missing:
+        raise ValueError(f"The basis partition has no layer for native source(s) {missing!r}.")
+    layers = {source: partition.sel(source=source, drop=True) for source in sources}
+    weights = _load_centering_weights(native.bc_centering_weights_path)
+    resources = MultiSourceNativeResources.load(native.native_prior)
+
+    channels: dict[str, LinkedNativeChannel] = {}
+    fluxes: dict[str, xr.DataArray] = {}
+    boundary_operands: dict[str, xr.Dataset] = {}
+    boundary_sensitivity: dict[str, xr.DataArray] = {}
+    for channel in ("co2", "o2"):
+        renamed = native.flux_sources(channel)
+        prepared = _prepare_channel(
+            native, channel, domain=domain, start_date=start_date, end_date=end_date,
+            boundary=boundaries[channel], layers={flux: layers[source] for flux, source in renamed.items()},
+            basis_inputs=basis_inputs, bc_basis=bc_basis,
+            merged_data=None if merged_data is None else merged_data[channel],
+        )
+        channels[channel], flux, operands, absolute = prepared
+        fluxes.update({str(name): flux.sel(source=name, drop=True) for name in flux.indexes["source"]})
+        if operands is not None:
+            boundary_operands[channel] = operands
+        if absolute is not None:
+            boundary_sensitivity[channel] = absolute
+
+    # Each native source's prior flux in the tracer that weights it.
+    weighting = []
+    for source in sources:
+        state = native.source_states[source]
+        tracer = state.tracer_scope if state.tracer_scope != "shared" else (state.flux_tracer or "co2")
+        flux_source = getattr(state, f"{tracer}_flux_source")
+        weighting.append(fluxes[f"{tracer}:{flux_source}"].expand_dims(source=[source]))
+    basis = basis_functions_from_flat_basis(flux=xr.concat(weighting, dim="source", join="exact"), basis_flat=layers)
+    representation = {channel: boundaries[channel].representation for channel in ("co2", "o2")}
+    return prepare_multisource_native_co2_o2_inputs(
+        co2=channels["co2"], o2=channels["o2"], basis=basis, prior=native.native_prior,
+        source_states={source: (state.source, state.tracer_scope) for source, state in native.source_states.items()},
+        resources=resources,
+        boundary_sensitivity=boundary_sensitivity or None,
+        boundary_operands=boundary_operands or None,
+        bc_centering_weights=(
+            {channel: weights for channel in boundary_operands} if weights is not None else None
+        ),
+        provenance={"native_preparation": {
+            "boundary_representation": representation,
+            "flux_sources": {channel: native.flux_sources(channel) for channel in ("co2", "o2")},
+            "source_state_options": {source: state.to_params() for source, state in native.source_states.items()},
+        }},
+    )
+
+
+def _prepare_channel(
+    native: Co2O2NativePreparationConfig,
+    channel: str,
+    *,
+    domain: str,
+    start_date: str,
+    end_date: str,
+    boundary: Preparation,
+    layers: Mapping[str, xr.DataArray],
+    basis_inputs: Mapping[str, Any],
+    bc_basis: BoundaryBasis,
+    merged_data: MergedData | None,
+) -> tuple[LinkedNativeChannel, xr.DataArray, xr.Dataset | None, xr.DataArray | None]:
+    """Acquire and prepare one tracer: its channel inputs, window-mean flux and boundary transport.
+
+    The flux is keyed ``"<channel>:<flux source>"`` so both tracers' fluxes
+    can be held together before they are renamed to native sources.
+    """
+    acquisition = dict(native.acquisition[channel])
+    flux_sources = tuple(acquisition["flux_sources"])
+    use_bc = bool(acquisition.get("use_bc", True))
+    if merged_data is None:
+        merged_data = MergedData.from_options(
+            species=channel, domain=domain, start_date=start_date, end_date=end_date, **acquisition,
+        )
+    merged_data.validate_for_preparation(
+        species=channel, domain=domain, start_date=start_date, end_date=end_date, split_by_sectors=False,
+    )
+    if set(merged_data.flux_data) != set(flux_sources):
+        raise ValueError(f"Acquired {channel} flux sources must match the configured source set.")
+    merged_data.validate_scientific_inputs(
+        split_by_sectors=False, use_bc=use_bc, flux_sources=flux_sources, require_footprints=False,
+    )
+    site_data = merged_data.site_data
+    if use_bc:
+        site_data = select_boundary_representation(site_data, boundary.representation)
+    filtered, site_options = filter_observations(
+        site_data, merged_data.site_options, filters=native.filters.get(channel),
+    )
+    filtered = prepare_observation_errors(filtered, averaging_error=native.averaging_error.get(channel, True))
+    sectoral = resolve_runtime_flux(merged_data.flux_data, split_by_sectors=True, explicit_surface=True)
+    basis_functions = prepare_basis(
+        site_data=filtered, runtime_flux=sectoral, weighting_flux=merged_data.flux_data[flux_sources[0]]["flux"],
+        domain=domain, start_date=start_date, basis_algorithm=native.basis.basis_algorithm,
+        nbasis=native.basis.nbasis, fix_outer_regions=False,
+        **{**basis_inputs, "basis_partition": dict(layers)},
+    )
+    sensitivities = build_sensitivities(
+        _sectoral_response_only(filtered), basis_functions, flux_sources=flux_sources, use_bc=use_bc,
+        bc_basis=bc_basis, multisector=True,
+    )
+    if not use_bc:
+        sensitivities = _without_centered_boundary(sensitivities)
+    canonical = assemble_inputs(
+        sensitivities, basis_functions, site_options=site_options, domain=domain, start_date=start_date, use_bc=use_bc,
+    )
+    operator = basis_functions.operator
+    if not isinstance(operator, MultiSourceBucketBasisOperator):
+        raise ValueError("Linked native preparation requires a source-specific bucket basis.")
+    inputs = canonical.inv_inputs
+    if not inputs.sizes["nmeasure"]:
+        raise ValueError(f"No usable {channel} observations remain for coherent reduction.")
+    units = str(inputs["mf"].attrs.get("units", ""))
+    try:
+        scale = mole_fraction_unit_scale(units, context=f"{channel} observations")
+    except ValueError as exc:
+        raise ValueError(f"Configured native {channel} observations must be ppm-scale mole fractions.") from exc
+    if not np.isclose(scale, 1e-6, rtol=1e-12, atol=0.0):
+        raise ValueError(f"Linked {channel} observations must be in ppm; got {units!r}.")
+    # Same numerical scale, relabelled so both channels and their transport carry one unit label.
+    dim = f"{channel}_measure"
+    observations = inputs["mf"].rename({"nmeasure": dim}).assign_attrs(units="ppm")
+    error = inputs["mf_error"].rename({"nmeasure": dim}).assign_attrs(units="ppm")
+    response = _native_source_sensitivity(filtered, canonical, list(operator.source_labels))
+    response = response.rename(observation=dim)
+    keep = [name for name in observations.coords if dim in observations[name].dims]
+    observations = observations.reset_coords([name for name in observations.coords if name not in keep], drop=True)
+    error = error.reset_coords([name for name in error.coords if name not in keep], drop=True)
+    renamed = native.flux_sources(channel)
+    response = response.assign_coords({NATIVE_SOURCE_DIM: [renamed[str(name)] for name in response[NATIVE_SOURCE_DIM].values]})
+
+    operands = absolute = None
+    if use_bc and inputs.attrs.get("boundary_representation") == "centered-v1":
+        operands = xr.Dataset(
+            {name: inputs[name].assign_attrs(units="ppm") if name != "H_bc_mass" else inputs[name]
+             for name in _CENTERED_OPERANDS},
+            attrs={"boundary_representation": "centered-v1"},
+        )
+    elif use_bc and "H_bc" in inputs:
+        absolute = inputs["H_bc"].transpose("nmeasure", ...).rename({"nmeasure": dim}).assign_attrs(units="ppm")
+    flux = sectoral.mean("time") if "time" in sectoral.dims else sectoral
+    flux = flux.assign_coords(source=[f"{channel}:{name}" for name in flux.indexes["source"]])
+    return (
+        LinkedNativeChannel(observations, response, units="ppm", independent_error_sd=error),
+        flux, operands, absolute,
+    )
+
+
 def _source_states(source_states: Mapping[str, tuple[str, str]], sources: list[str]) -> dict[str, tuple[str, str]]:
     """Check each native source's retained (source, tracer_scope) labels."""
     states: dict[str, tuple[str, str]] = {}
@@ -350,4 +566,4 @@ def _joint_rows(
     )
 
 
-__all__ = ["TRACER_SCOPES", "LinkedNativeChannel", "prepare_multisource_native_co2_o2_inputs"]
+__all__ = ["TRACER_SCOPES", "LinkedNativeChannel", "prepare_multisource_native_co2_o2_inputs", "prepare_native_co2_o2"]

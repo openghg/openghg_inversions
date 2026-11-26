@@ -293,17 +293,16 @@ def _positive_int(value: object, path: str) -> int:
     return value
 
 
-def _validate_basis_file_selection(options: Mapping[str, object]) -> None:
+def _validate_basis_file_selection(options: Mapping[str, object], *, path: str = "data.preparation.basis") -> None:
     """Require at most one selected flux basis file."""
     if sum(options.get(name) is not None for name in _BASIS_FILE_FIELDS) > 1:
-        raise ValueError("Select either data.preparation.basis.path or data.preparation.basis.partition_path.")
+        raise ValueError(f"Select either {path}.path or {path}.partition_path.")
 
 
-def _basis_options(value: object, *, domain: str) -> FluxBasisOptions:
+def _basis_options(value: object, *, domain: str, path: str = "data.preparation.basis") -> FluxBasisOptions:
     """Translate the CO2 flux basis table to the shared basis choices."""
-    path = "data.preparation.basis"
     options = _table(value, path)
-    _validate_basis_file_selection(options)
+    _validate_basis_file_selection(options, path=path)
     flux: dict[str, Any] = {}
     if "algorithm" in options:
         flux["basis_algorithm"] = _string(options.pop("algorithm"), f"{path}.algorithm")
@@ -476,9 +475,11 @@ class Co2NativeBCalibration:
     statistic: str = "geometric-mean"
 
     @classmethod
-    def from_params(cls, value: object) -> Co2NativeBCalibration:
-        """Parse ``[data.preparation.native_prior.calibration]``."""
-        path = "data.preparation.native_prior.calibration"
+    def from_params(
+        cls, value: object, *, path: str = "data.preparation.native_prior.calibration",
+    ) -> Co2NativeBCalibration:
+        """Parse one named amplitude calibration table."""
+
         options = _table(value, path)
         result: dict[str, Any] = {
             "targets_path": _path(_take(options, "targets_path", path), f"{path}.targets_path"),
@@ -548,9 +549,20 @@ class Co2MultiSourceNativePrior:
     latent_correlation_floor: float | None = None
 
     @classmethod
-    def from_params(cls, value: object) -> Co2MultiSourceNativePrior:
-        """Parse ``[data.preparation.native_prior]`` with a ``sources`` table."""
-        path = "data.preparation.native_prior"
+    def from_params(cls, value: object, *, path: str = "data.preparation.native_prior") -> Co2MultiSourceNativePrior:
+        """Parse a native prior with a ``sources`` table.
+
+        Args:
+            value: Native prior table.
+            path: Configuration path used in validation errors.
+
+        Returns:
+            Resolved native priors and their joint restriction and covariance choices.
+
+        Raises:
+            ValueError: If native source or joint prior settings are inconsistent.
+            TypeError: If a setting has the wrong type.
+        """
         options = _table(value, path)
         shared = sorted(_NATIVE_PRIOR_OPTION_NAMES & set(options))
         if shared:
@@ -586,7 +598,7 @@ class Co2MultiSourceNativePrior:
             if name in options:
                 result[name] = _path(options.pop(name), f"{path}.{name}")
         if "calibration" in options:
-            result["calibration"] = Co2NativeBCalibration.from_params(options.pop("calibration"))
+            result["calibration"] = Co2NativeBCalibration.from_params(options.pop("calibration"), path=f"{path}.calibration")
         if "latent_correlation_floor" in options:
             floor = _number(options.pop("latent_correlation_floor"), f"{path}.latent_correlation_floor", positive=True)
             if floor > 0.1:
@@ -724,14 +736,9 @@ class Co2NativePreparationConfig:
             TypeError: If an option has an invalid type.
         """
         path = "data.preparation"
-        bc_basis = _table(preparation.pop("bc_basis", {}), f"{path}.bc_basis")
-        if (paths := bc_basis.get("paths")) is not None:
-            if isinstance(paths, str | bytes) or not isinstance(paths, Sequence) or not paths:
-                raise TypeError(f"{path}.bc_basis.paths must be a non-empty list of paths.")
-            bc_basis["paths"] = tuple(_path(item, f"{path}.bc_basis.paths item") for item in paths)
         result: dict[str, Any] = {
             "basis": _basis_options(preparation.pop("basis", {}), domain=domain),
-            "bc_basis": BcBasisOptions.from_params(bc_basis, active=use_bc),
+            "bc_basis": _bc_basis_options(preparation.pop("bc_basis", {}), use_bc=use_bc, path=f"{path}.bc_basis"),
             "use_bc": use_bc,
             "native_prior": _native_prior(_take(preparation, "native_prior", path)),
         }
@@ -788,9 +795,21 @@ class Co2NativePreparationConfig:
         return tuple(Path(path).resolve() for path in paths if path is not None)
 
 
-def _acquisition(value: object, *, flux_sources: tuple[str, ...], use_bc: bool) -> dict[str, Any]:
-    """Resolve the settings used only by fresh CO2 acquisition."""
-    path = "data.acquisition"
+def _bc_basis_options(value: object, *, use_bc: bool, path: str) -> BcBasisOptions:
+    """Resolve optional boundary basis paths using the shared basis choice."""
+    options = _table(value, path)
+    if (paths := options.get("paths")) is not None:
+        if isinstance(paths, str | bytes) or not isinstance(paths, Sequence) or not paths:
+            raise TypeError(f"{path}.paths must be a non-empty list of paths.")
+        options["paths"] = tuple(_path(item, f"{path}.paths item") for item in paths)
+    return BcBasisOptions.from_params(options, active=use_bc)
+
+
+def _acquisition(
+    value: object, *, flux_sources: tuple[str, ...], use_bc: bool,
+    path: str = "data.acquisition", species: str = "co2",
+) -> dict[str, Any]:
+    """Resolve settings used only by fresh surface acquisition."""
     options = _table(value, path)
     sites: dict[str, Any] = {name: options.pop(name) for name in _SITE_OPTION_NAMES if name in options}
     for name in SiteOptions.REQUIRED_INPUT_NAMES:
@@ -814,7 +833,7 @@ def _acquisition(value: object, *, flux_sources: tuple[str, ...], use_bc: bool) 
     _reject_unknown(options, path)
     result["boundary_representation"] = "centered" if use_bc else "ordinary"
     check_surface_request(
-        species="co2", site_options=result["site_options"], flux_sources=flux_sources,
+        species=species, site_options=result["site_options"], flux_sources=flux_sources,
         transport=result["surface_transport"], use_bc=use_bc,
         boundary_representation=result["boundary_representation"],
         boundary_reference=result.get("boundary_reference"),
