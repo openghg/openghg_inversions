@@ -215,7 +215,7 @@ def gaussian_marginal_substitution(
     """
     if ALPHA_PRIOR_MARGINAL in inputs:
         stored = inputs[ALPHA_PRIOR_MARGINAL]
-        families = np.asarray(stored.values).astype(str)
+        families = np.asarray(stored.values, dtype=object).astype(str)
         floor = stored.attrs.get(LATENT_CORRELATION_FLOOR)
     else:
         families = np.full(inputs["alpha_prior_mean"].size, "lognormal")
@@ -252,7 +252,7 @@ def _gaussian_state_prior(inputs: xr.Dataset) -> tuple[GaussianStatePrior, dict[
         factor.factor, dims=(state_dim, _MODE_DIM),
         coords={**mean.coords, _MODE_DIM: np.arange(factor.factor.shape[1])},
     )
-    return GaussianStatePrior(mean=mean, factor=labelled, description=description), factor.diagnostics
+    return GaussianStatePrior(mean=mean, covariance=covariance, factor=labelled, description=description), factor.diagnostics
 
 
 def _co2_noise_factor(
@@ -614,6 +614,7 @@ def sample_co2_gaussian(
             mismatch_summary.update({f"type2_ml_{name}": eb[name] for name in (
                 "aggregation", "aggregation_representation", "optimiser", "converged", "iterations",
                 "log_marginal_likelihood", "log_marginal_likelihood_start", "log_marginal_likelihood_floor",
+                "log_marginal_likelihood_start_failure", "log_marginal_likelihood_floor_failure",
                 "selected_start", "ambiguous_starts",
             )})
     actual: dict[str, Any] = {

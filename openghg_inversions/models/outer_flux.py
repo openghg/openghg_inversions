@@ -98,7 +98,22 @@ class OuterFluxChoice:
                 in ``fixed_sources`` matches no outer state, or a held state has
                 nonzero prior covariance with any other state.
         """
-        mean = flux_prior.mean
+        return self.resolve_state_moments(flux_prior.mean, flux_prior.arithmetic_covariance)
+
+    def resolve_state_moments(self, mean: xr.DataArray, covariance: xr.DataArray) -> OuterStates:
+        """Select held states using the aligned arithmetic moments of the sampled prior.
+
+        Args:
+            mean: Prior mean carrying state labels and selector coordinates.
+            covariance: Prior covariance with both axes in the same order as the mean.
+
+        Returns:
+            The held outer selector and the prior mean.
+
+        Raises:
+            ValueError: If selector coordinates or requested labels are missing,
+                or a held state has nonzero covariance with any sampled state.
+        """
 
         # Selector labels are small; materialise them once so lazy coordinates
         # can be matched and masked.
@@ -120,15 +135,14 @@ class OuterFluxChoice:
 
         # Holding F at its prior mean while sampling the marginal prior of the
         # other states is exact only when F is uncorrelated with them.
-        covariance = flux_prior.arithmetic_covariance.to_numpy()
         fixed_positions = np.flatnonzero(fixed.to_numpy())
         other_positions = np.flatnonzero(~fixed.to_numpy())
-        if np.any(covariance[np.ix_(fixed_positions, other_positions)] != 0):
+        if np.any(covariance.to_numpy()[np.ix_(fixed_positions, other_positions)] != 0):
             raise ValueError("Fixed outer flux states must have zero prior covariance with every other state.")
 
         return OuterStates(
             choice=self,
-            state_dim=flux_prior.state_dim,
+            state_dim=str(mean.dims[0]),
             fixed=fixed.rename("fixed_outer"),
             prior_mean=mean,
         )

@@ -264,9 +264,21 @@ def exact_gaussian_trace(
     draws = posterior.draw(sampler.draws, posterior_rng)
     arrays = {name: value[None] for name, value in variables.split(draws).items()}
     coords, dims = coords_and_dims_for_inferencedata(model)
-    samples = dict_to_dataset(arrays, inference_library=pm, coords=coords, dims=dims)
+    if arrays:
+        samples = dict_to_dataset(arrays, inference_library=pm, coords=coords, dims=dims)
+        posterior_data = _restore_deterministics(samples, model)
+    else:
+        # PyMC's deterministic evaluator requires at least one posterior variable.
+        expressions = model.replace_rvs_by_values(model.deterministics)
+        values = pytensor.function([], expressions)()
+        fixed = {
+            str(variable.name): np.broadcast_to(value, (1, sampler.draws, *value.shape))
+            for variable, value in zip(model.deterministics, values, strict=True)
+        }
+        posterior_data = dict_to_dataset(fixed, inference_library=pm, coords=coords, dims=dims)
+        posterior_data = posterior_data.assign_coords(chain=[0], draw=np.arange(sampler.draws))
     converter = DataTreeConverter(model=model, prior=arrays)
-    groups: dict[str, Any] = {"posterior": _restore_deterministics(samples, model)}
+    groups: dict[str, Any] = {"posterior": posterior_data}
     for name, group in (("observed_data", converter.observed_data_to_xarray()),
                         ("constant_data", converter.constant_data_to_xarray())):
         if group is not None:
@@ -275,7 +287,7 @@ def exact_gaussian_trace(
     predictive = sampler._posterior_predictive_options(model, variable_roles)
     predictive.setdefault("random_seed", predictive_rng)
     trace = sampler._extend_predictive(
-        trace, model=model, prior_random_seed=prior_rng, posterior_predictive_kwargs=predictive,
+        trace, model=model, prior_random_seed=prior_rng, posterior_predictive_kwargs=predictive, compile_kwargs={},
     )
     registry = get_coord_registry(model)
     if registry is not None:

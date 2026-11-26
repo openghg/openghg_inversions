@@ -501,9 +501,8 @@ def build_co2_from_materialized(
         outer_flux: Optional outer-flux choice, which the model builder
             resolves on the retained flux prior.
         gaussian_prior: Optional Gaussian retained-state prior replacing the
-            retained flux prior in the graph, for the Gaussian estimator. Outer
-            states are still selected on the retained flux prior, whose
-            moments the Gaussian prior shares.
+            retained flux prior in the graph, for the Gaussian estimator. Its
+            arithmetic moments are used to select any held outer states.
 
     Returns:
         Constructed PyMC model with component-declared scientific roles, units
@@ -548,16 +547,21 @@ def build_co2_from_materialized(
         observation_error=model_inputs["mf_error"],
         aggregation_error=aggregation_error,
     )
-    prior_covariance = model_inputs["alpha_prior_covariance"]
-    retained_prior = CorrelatedPrior(
-        model_inputs["alpha_prior_mean"],
-        prior_covariance,
-        **retained_prior_options(model_inputs),
-        covariance_dim=str(prior_covariance.dims[-1]),
-    )
+    retained_prior = None
+    if gaussian_prior is None:
+        prior_covariance = model_inputs["alpha_prior_covariance"]
+        retained_prior = CorrelatedPrior(
+            model_inputs["alpha_prior_mean"],
+            prior_covariance,
+            **retained_prior_options(model_inputs),
+            covariance_dim=str(prior_covariance.dims[-1]),
+        )
+        prior_metadata = retained_prior.metadata()
+    else:
+        prior_metadata = {"prior": gaussian_prior.description}
     model = _build_co2_model(
         model_inputs["H"],
-        retained_prior=None if gaussian_prior is not None else retained_prior,
+        retained_prior=retained_prior,
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
@@ -573,7 +577,6 @@ def build_co2_from_materialized(
         offset_prior=priors["offset_latent"] if offset_prior is not None else None,
         offset_args=offset_args,
         gaussian_prior=gaussian_prior,
-        outer_flux_prior=retained_prior if gaussian_prior is not None and outer_flux is not None else None,
     )
     variable_roles = {
         "observation": "y",
@@ -612,10 +615,7 @@ def build_co2_from_materialized(
             metadata={
                 "recipe": "co2",
                 "kind": "builtin",
-                **(
-                    {"prior": gaussian_prior.description} if gaussian_prior is not None
-                    else retained_prior.metadata()
-                ),
+                **prior_metadata,
                 "no_model_error": no_model_error,
                 "use_bc": boundary is not None,
                 **(boundary_outputs.metadata if boundary_outputs is not None else {"boundary_formulation": None}),

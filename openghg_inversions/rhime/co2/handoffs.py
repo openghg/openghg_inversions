@@ -437,8 +437,8 @@ def prior_predictive(
 ) -> dict[str, Any]:
     """Check exact graph prior predictions without posterior inference.
 
-    This checks the NUTS graph, with the prepared correlated LogNormal (or
-    calibrated) retained prior, whatever ``sampling.method`` a later sample
+    This checks the NUTS graph with the prepared retained-state marginals,
+    whatever ``sampling.method`` a later sample
     stage selects. The Gaussian estimator's moment-matched Gaussian prior is
     recorded in its ``gaussian_posterior`` group and ``prior`` draws instead.
     A per-site ``fixed_model_mismatch`` table is mapped onto the observations;

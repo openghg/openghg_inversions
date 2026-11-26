@@ -221,7 +221,7 @@ def observation_sites(observations: xr.DataArray) -> NDArray[np.str_]:
     site = observations.coords.get("site")
     if site is None or site.dims != observations.dims or observations.ndim != 1:
         raise ValueError("Per-site model mismatch requires an observation-aligned 'site' coordinate.")
-    return np.asarray(site.values).astype(str)
+    return np.asarray(site.values, dtype=object).astype(str)
 
 
 def per_site_mismatch(sigma_by_site: Mapping[str, float], observations: xr.DataArray) -> xr.DataArray:
@@ -444,7 +444,7 @@ def type2_ml_mismatch(
     recorded, and starts within 2 log-likelihood units of the best with a
     materially different per-site independent SD are listed in
     ``ambiguous_starts``. A failed likelihood evaluation at a start or the
-    lower bound is recorded as ``nan`` with its reason.
+    lower bound is recorded as ``None`` with its reason.
 
     Args:
         choice: Mode ``type2_ml`` with its floor and options.
@@ -494,11 +494,14 @@ def type2_ml_mismatch(
         if not any(np.allclose(clipped, kept, rtol=1e-9, atol=0.0) for kept in starts.values()):
             starts[name] = clipped
 
-    def guarded(log_sigma: NDArray[np.float64]) -> tuple[float, str | None]:
+    def guarded(log_sigma: NDArray[np.float64]) -> tuple[float | None, str | None]:
         try:
-            return marginal(log_sigma)[0], None
+            value = marginal(log_sigma)[0]
+            if not np.isfinite(value):
+                raise FloatingPointError("Nonfinite log marginal likelihood.")
+            return float(value), None
         except (np.linalg.LinAlgError, FloatingPointError, ValueError) as error:
-            return float("nan"), f"{type(error).__name__}: {error}"
+            return None, f"{type(error).__name__}: {error}"
 
     floor_value, floor_failure = guarded(np.full(len(labels), np.log(lower_sigma)))
 
@@ -513,14 +516,17 @@ def type2_ml_mismatch(
         run["initial"], run["failure"] = guarded(np.log(start))
         if run["failure"] is None:
             try:
-                run["result"] = minimize(objective, np.log(start), jac=True, method="L-BFGS-B", bounds=bounds,
-                                         options={"maxiter": choice.max_iterations})
+                result = minimize(objective, np.log(start), jac=True, method="L-BFGS-B", bounds=bounds,
+                                  options={"maxiter": choice.max_iterations})
+                if not np.isfinite(result.fun) or not np.isfinite(result.x).all():
+                    raise FloatingPointError(f"Nonfinite optimizer result: {result.message}")
+                run["result"] = result
+                run["value"] = float(-result.fun)
             except (np.linalg.LinAlgError, FloatingPointError, ValueError) as error:
                 run["failure"] = f"{type(error).__name__}: {error}"
-        run["value"] = float(-run["result"].fun) if run["result"] is not None else float("nan")
         runs.append(run)
     elapsed = perf_counter() - began
-    finished = [run for run in runs if run["result"] is not None and np.isfinite(run["value"])]
+    finished = [run for run in runs if run["result"] is not None]
     if not finished:
         raise np.linalg.LinAlgError(
             "Type-II ML failed from every start: " + "; ".join(f"{run['name']}: {run['failure']}" for run in runs)
@@ -562,14 +568,14 @@ def type2_ml_mismatch(
         "aggregation_representation": aggregation_representation,
         "converged": bool(result.success), "message": str(result.message),
         "iterations": int(result.nit), "function_evaluations": int(result.nfev),
-        "log_marginal_likelihood": float(-result.fun), "log_marginal_likelihood_start": float(selected["initial"]),
-        "log_marginal_likelihood_floor": float(floor_value),
+        "log_marginal_likelihood": float(-result.fun), "log_marginal_likelihood_start": selected["initial"],
+        "log_marginal_likelihood_floor": floor_value,
         "log_marginal_likelihood_start_failure": selected["failure"],
         "log_marginal_likelihood_floor_failure": floor_failure,
         "selected_start": selected["name"],
         "starts": [
             {"name": run["name"], "start_sigma": dict(zip(labels, map(float, run["start"]))),
-             "log_marginal_likelihood_initial": float(run["initial"]), "failure": run["failure"],
+             "log_marginal_likelihood_initial": run["initial"], "failure": run["failure"],
              **({} if run["result"] is None else {
                  "sigma": dict(zip(labels, map(float, np.exp(run["result"].x)))),
                  "log_marginal_likelihood": run["value"], "converged": bool(run["result"].success),

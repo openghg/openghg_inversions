@@ -893,8 +893,8 @@ def add_correlated_gaussian_state_with_activity(
     active_indices = activity.active_indices
     latent: TensorVariable | None = None
     full_state: TensorVariable | None = None
+    add_model_data(activity.active.rename(f"{var_name}_is_active"), f"{var_name}_is_active")
     if activity.n_active != activity.n_state:
-        add_model_data(activity.active.rename(f"{var_name}_is_active"), f"{var_name}_is_active")
         full_state = add_model_data(
             activity.fixed_value.rename(f"{var_name}_fixed_value"), f"{var_name}_fixed_value",
         )

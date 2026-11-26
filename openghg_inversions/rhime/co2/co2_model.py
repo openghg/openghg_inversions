@@ -56,12 +56,14 @@ class GaussianStatePrior:
 
     Attributes:
         mean: Labelled arithmetic mean on the retained state dimension.
+        covariance: Labelled arithmetic covariance on the retained state axes.
         factor: Labelled ``(state_dim, mode_dim)`` factor of the prior
             covariance, as returned by a PSD factorisation.
         description: Prior family recorded in the model metadata.
     """
 
     mean: xr.DataArray
+    covariance: xr.DataArray
     factor: xr.DataArray
     description: str = "correlated arithmetic-moment gaussian"
 
@@ -314,7 +316,6 @@ def _build_co2_model(
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
     gaussian_prior: GaussianStatePrior | None = None,
-    outer_flux_prior: CorrelatedPrior | None = None,
 ) -> pm.Model:
     """Validate choices and construct the CO2 graph from eager inputs.
 
@@ -327,16 +328,11 @@ def _build_co2_model(
     every other prior is Normal and the likelihood has fixed error; the
     Gaussian estimator solves it exactly instead of sampling it.
 
-    With ``gaussian_prior``, ``outer_flux`` is resolved on
-    ``outer_flux_prior``: the retained prior whose arithmetic moments the
-    Gaussian prior takes. Its mean must equal the Gaussian prior's mean.
-    Rebuilding the covariance from the Gaussian factor would add round-off to
-    the exact zero cross-covariance check.
+    With ``gaussian_prior``, ``outer_flux`` uses the supplied arithmetic
+    covariance, preserving exact zeros for the cross-covariance check.
     """
     if (gaussian_prior is None) == (retained_prior is None):
         raise ValueError("Pass exactly one of retained_prior or gaussian_prior.")
-    if outer_flux_prior is not None and gaussian_prior is None:
-        raise ValueError("outer_flux_prior applies only with gaussian_prior.")
     _check_co2_model_options(
         boundary=boundary,
         likelihood_builder=likelihood_builder,
@@ -354,21 +350,12 @@ def _build_co2_model(
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
     if outer_flux is not None:
-        # Resolve the choice on the prior this model samples, so the held
-        # states and the covariance check always refer to it.
-        selection_prior = retained_prior
         if gaussian_prior is not None:
-            if outer_flux_prior is None:
-                raise ValueError("An outer-flux choice with gaussian_prior needs outer_flux_prior.")
-            try:
-                xr.testing.assert_equal(
-                    outer_flux_prior.mean.reset_coords(drop=True), gaussian_prior.mean.reset_coords(drop=True),
-                )
-            except AssertionError as error:
-                raise ValueError("outer_flux_prior must have the Gaussian prior's mean.") from error
-            selection_prior = outer_flux_prior
-        assert selection_prior is not None
-        activity = outer_flux.resolve_states(selection_prior).fix_states(activity)
+            outer_states = outer_flux.resolve_state_moments(gaussian_prior.mean, gaussian_prior.covariance)
+        else:
+            assert retained_prior is not None
+            outer_states = outer_flux.resolve_states(retained_prior)
+        activity = outer_states.fix_states(activity)
 
     with registered_model() as model:
         if gaussian_prior is not None:

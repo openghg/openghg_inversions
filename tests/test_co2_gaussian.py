@@ -85,13 +85,14 @@ def test_configured_gaussian_matches_dense_posterior_and_feeds_products(case, do
                 + (inputs.H_bc * posterior.bc).sum("bc_region") + posterior.offset_latent.sum("offset_term"))
     xr.testing.assert_allclose(posterior.modelled_concentration, expected.transpose(*posterior.modelled_concentration.dims))
     assert posterior.flux_scaling.attrs["units"] == "1"
+    np.testing.assert_array_equal(trace.constant_data.flux_scaling_is_active, [True, True])
     assert posterior.modelled_concentration.attrs["units"] == "ppm"
 
 
 def test_gaussian_samples_round_trip_through_saved_handoffs(case, tmp_path, double_precision):
     prepared, affine, params = case
     manifest = handoffs.save_preparation(prepared, output_dir=tmp_path / "prepare", affine_artifact=affine,
-                                         **params["prepared_inputs"])
+                                         **params["data"])
     model = Co2ModelConfig.from_params(params)
     samples = handoffs.sample(manifest, model=model, sampling=params["sampling"], output_dir=tmp_path / "sample")
     record = json.loads(samples.read_text())
@@ -260,7 +261,8 @@ def test_scalar_site_and_measurement_mismatch_forms_agree(case, double_precision
 
 
 def test_per_site_mismatch_names_exactly_the_observed_sites(case, double_precision):
-    observations = xr.DataArray([1.0, 2.0, 3.0], dims="nmeasure", coords={"site": ("nmeasure", ["A", "B", "A"])})
+    sites = np.array(["A", "B", "A"], dtype=np.dtypes.StringDType())
+    observations = xr.DataArray([1.0, 2.0, 3.0], dims="nmeasure", coords={"site": ("nmeasure", sites)})
     np.testing.assert_array_equal(per_site_mismatch({"A": 0.1, "B": 0.2}, observations), [0.1, 0.2, 0.1])
     with pytest.raises(ValueError, match=r"missing: \['B'\]"):
         per_site_mismatch({"A": 0.1}, observations)
@@ -340,7 +342,7 @@ def test_specified_mismatch_logs_only_the_prior_substitution(case, caplog, doubl
 def _with_marginals(prepared, families, floor=None):
     """Store per-state marginal families as #1100's preparation does."""
     inputs = prepared.inv_inputs
-    marginal = inputs.alpha_prior_mean.copy(data=np.asarray(families).astype(str)).rename("alpha_prior_marginal")
+    marginal = inputs.alpha_prior_mean.copy(data=np.asarray(families)).rename("alpha_prior_marginal")
     marginal.attrs = {} if floor is None else {"latent_correlation_floor": floor}
     rhime_inputs = replace(prepared.rhime_inputs, inv_inputs=inputs.assign(alpha_prior_marginal=marginal))
     return replace(prepared, rhime_inputs=rhime_inputs)
@@ -397,7 +399,7 @@ def test_mixed_marginal_gaussian_route_records_the_replaced_families(case, caplo
     normal_trace, normal_actual = _run_gaussian(_with_marginals(prepared, ["normal", "normal"]), params)
     assert normal_actual["state_prior_substitution"] == "none"
     assert normal_actual["state_prior_marginals"] == {"normal": 2} and normal_actual["state_prior_substituted"] == {}
-    mixed = _with_marginals(prepared, ["weibull", "normal"], floor=1e-6)
+    mixed = _with_marginals(prepared, np.array(["weibull", "normal"], dtype=np.dtypes.StringDType()), floor=1e-6)
     with pytest.raises(ValueError, match="weibull: 1 states.*substitute_marginals = true"):
         _run_gaussian(mixed, params)
     opted = deepcopy(params)
@@ -421,6 +423,41 @@ def test_mixed_marginal_gaussian_route_records_the_replaced_families(case, caplo
         np.testing.assert_array_equal(
             trace["gaussian_posterior"].dataset[name].values, normal_trace["gaussian_posterior"].dataset[name].values,
         )
+
+
+def test_gaussian_accepts_moments_incompatible_with_lognormal(case, double_precision):
+    prepared, _, params = case
+    inputs = prepared.inv_inputs
+    covariance = np.array([[2.25, -1.125], [-1.125, 2.25]])
+    inputs = inputs.assign(
+        alpha_prior_mean=inputs.alpha_prior_mean.copy(data=np.ones(2)),
+        alpha_prior_covariance=inputs.alpha_prior_covariance.copy(data=covariance),
+    )
+    prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
+
+    trace, actual = _run_gaussian(prepared, params)
+
+    assert actual["state_prior_substitution"] == "lognormal→normal (moment-matched)"
+    np.testing.assert_allclose(trace.gaussian_posterior.prior_covariance.values[:2, :2], covariance)
+
+
+def test_all_fixed_gaussian_states_keep_the_configured_draw_axis(case, double_precision):
+    prepared, _, params = case
+    inputs = prepared.inv_inputs
+    inputs = inputs.assign(state_is_active=xr.zeros_like(inputs.alpha_prior_mean, dtype=bool))
+    prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
+    params["model"] = {"boundary": {"enabled": False}}
+    params["sampling"]["sample_prior_predictive"] = True
+    params["sampling"]["sample_posterior_predictive"] = True
+
+    trace, _ = _run_gaussian(prepared, params)
+
+    assert trace.posterior.sizes["chain"] == 1
+    assert trace.posterior.sizes["draw"] == params["sampling"]["draws"]
+    assert trace.prior.sizes["draw"] == trace.posterior_predictive.sizes["draw"] == trace.posterior.sizes["draw"]
+    np.testing.assert_array_equal(trace.constant_data.flux_scaling_is_active, [False, False])
+    np.testing.assert_array_equal(trace.posterior.flux_scaling, 1.0)
+    np.testing.assert_array_equal(trace.gaussian_posterior.posterior_covariance, 0.0)
 
 
 def test_all_normal_marginals_log_no_substitution(case, caplog, double_precision):
@@ -547,7 +584,7 @@ def test_numpy_scalar_mismatch_is_recorded_as_a_scalar(case, double_precision):
 def test_prior_predictive_maps_site_tables_and_refuses_empirical_bayes(case, tmp_path):
     prepared, affine, params = case
     manifest = handoffs.save_preparation(prepared, output_dir=tmp_path / "prepare", affine_artifact=affine,
-                                         **params["prepared_inputs"])
+                                         **params["data"])
     params["likelihood"]["fixed_model_mismatch"] = {"MHD": 0.3}
     result = handoffs.prior_predictive(manifest, model=Co2ModelConfig.from_params(params),
                                        output_dir=tmp_path / "prior", draws=5, random_seed=1)
@@ -717,13 +754,13 @@ def test_type2_ml_escapes_a_site_started_at_its_lower_bound():
     assert all(start["converged"] and start["iterations"] > 0 for start in starts.values())
 
 
-def test_type2_ml_records_a_failed_floor_evaluation(monkeypatch):
+def test_type2_ml_records_unavailable_likelihoods_as_json_null(monkeypatch):
     from openghg_inversions.rhime.co2 import model_mismatch
 
     original = model_mismatch.GaussianMarginal.__call__
 
     def fragile(self, log_sigma):
-        if np.all(np.exp(log_sigma) < 1e-3):
+        if np.all(np.exp(log_sigma) < 0.2):
             raise np.linalg.LinAlgError("not positive definite")
         return original(self, log_sigma)
 
@@ -736,7 +773,10 @@ def test_type2_ml_records_a_failed_floor_evaluation(monkeypatch):
         aggregation_dense=None, aggregation_variance=np.full(100, 0.1), error_variance=np.full(100, 0.01),
         aggregation_representation="test",
     )
-    assert np.isnan(record["log_marginal_likelihood_floor"])
+    assert json.loads(json.dumps(record, allow_nan=False)) == record
+    assert record["log_marginal_likelihood_floor"] is None
+    assert record["starts"][0]["log_marginal_likelihood_initial"] is None
+    assert "LinAlgError" in record["starts"][0]["failure"]
     assert "LinAlgError" in record["log_marginal_likelihood_floor_failure"]
     assert record["converged"] and record["sigma_lower_bound"] == pytest.approx(1e-6 * np.sqrt(0.11))
 
