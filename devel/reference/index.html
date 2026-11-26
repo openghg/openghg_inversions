@@ -453,6 +453,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.paris_options.html">openghg_inversions.postprocessing.paris_options</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.unresolved_functionals.html">openghg_inversions.postprocessing.unresolved_functionals</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
 </ul>
 </details></li>
@@ -1165,22 +1166,31 @@ mathematical contracts and eager-computation boundaries.</p>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.reduce_native_gaussian" title="openghg_inversions.coherent_reduction.reduce_native_gaussian"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.coherent_reduction.reduce_native_gaussian</span></code></a></p></td>
 <td><p>Prepare the exact centred Gaussian model for one <code class="docutils literal notranslate"><span class="pre">B/H/Pi/m</span></code> set.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.AggregationError</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.NativeFunctionalProducts" title="openghg_inversions.coherent_reduction.NativeFunctionalProducts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.coherent_reduction.NativeFunctionalProducts</span></code></a></p></td>
+<td><p>Reduction-side products for labelled native linear functionals <code class="docutils literal notranslate"><span class="pre">Q</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.project_native_functionals" title="openghg_inversions.coherent_reduction.project_native_functionals"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.coherent_reduction.project_native_functionals</span></code></a></p></td>
+<td><p>Compute the coherent-reduction products of native linear functionals.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.marginalise_functional_states" title="openghg_inversions.coherent_reduction.marginalise_functional_states"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.coherent_reduction.marginalise_functional_states</span></code></a></p></td>
+<td><p>Move marginalised retained states of functional products into <code class="docutils literal notranslate"><span class="pre">x_perp</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.AggregationError</span></code></a></p></td>
 <td><p>Validated aggregation-error representation selected for a likelihood.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.prepare_low_rank_aggregation_error" title="openghg_inversions.observation_error.prepare_low_rank_aggregation_error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.prepare_low_rank_aggregation_error</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.prepare_low_rank_aggregation_error" title="openghg_inversions.observation_error.prepare_low_rank_aggregation_error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.prepare_low_rank_aggregation_error</span></code></a></p></td>
 <td><p>Approximate a labelled covariance by a low-rank-plus-diagonal form.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.resolve_aggregation_error" title="openghg_inversions.observation_error.resolve_aggregation_error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.resolve_aggregation_error</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.resolve_aggregation_error" title="openghg_inversions.observation_error.resolve_aggregation_error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.resolve_aggregation_error</span></code></a></p></td>
 <td><p>Validate and select an aggregation-error covariance representation.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.WhitenedRankRule" title="openghg_inversions.observation_error.WhitenedRankRule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.WhitenedRankRule</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.WhitenedRankRule" title="openghg_inversions.observation_error.WhitenedRankRule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.WhitenedRankRule</span></code></a></p></td>
 <td><p>Choose an LRPD aggregation-error rank from the R-whitened spectrum.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.select_whitened_rank" title="openghg_inversions.observation_error.select_whitened_rank"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.select_whitened_rank</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.select_whitened_rank" title="openghg_inversions.observation_error.select_whitened_rank"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.select_whitened_rank</span></code></a></p></td>
 <td><p>Apply a rank rule to whitened eigenvalues.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.whitened_eigenvalue_kl" title="openghg_inversions.observation_error.whitened_eigenvalue_kl"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.whitened_eigenvalue_kl</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.whitened_eigenvalue_kl" title="openghg_inversions.observation_error.whitened_eigenvalue_kl"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.whitened_eigenvalue_kl</span></code></a></p></td>
 <td><p>Return the Gaussian KL carried by whitened covariance eigenvalues.</p></td>
 </tr>
 </tbody>
@@ -1362,6 +1372,24 @@ and samples; it does not write products. See
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html#openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs" title="openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs</span></code></a></p></td>
 <td><p>Summarize affine CO2 country flux without constructing native flux draws.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html#openghg_inversions.postprocessing.co2_flux_outputs.co2_country_functionals" title="openghg_inversions.postprocessing.co2_flux_outputs.co2_country_functionals"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.co2_flux_outputs.co2_country_functionals</span></code></a></p></td>
+<td><p>Return CO2 country totals as labelled native linear functionals <code class="docutils literal notranslate"><span class="pre">Q</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.unresolved_functionals.html#openghg_inversions.postprocessing.unresolved_functionals.UnresolvedFunctionalConditioning" title="openghg_inversions.postprocessing.unresolved_functionals.UnresolvedFunctionalConditioning"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.unresolved_functionals.UnresolvedFunctionalConditioning</span></code></a></p></td>
+<td><p>Inputs that condition unresolved native functionals on posterior draws.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.unresolved_functionals.html#openghg_inversions.postprocessing.unresolved_functionals.ObservationCovarianceSolve" title="openghg_inversions.postprocessing.unresolved_functionals.ObservationCovarianceSolve"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.unresolved_functionals.ObservationCovarianceSolve</span></code></a></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">(A</span> <span class="pre">+</span> <span class="pre">R)^-1</span></code> for each posterior draw, on labelled observations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.unresolved_functionals.html#openghg_inversions.postprocessing.unresolved_functionals.complete_functional_draws" title="openghg_inversions.postprocessing.unresolved_functionals.complete_functional_draws"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.unresolved_functionals.complete_functional_draws</span></code></a></p></td>
+<td><p>Reconstruct complete native functional draws from retained-state draws.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.unresolved_functionals.html#openghg_inversions.postprocessing.unresolved_functionals.dense_solve" title="openghg_inversions.postprocessing.unresolved_functionals.dense_solve"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.unresolved_functionals.dense_solve</span></code></a></p></td>
+<td><p>Return a draw-independent solve with one dense observation covariance.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.unresolved_functionals.html#openghg_inversions.postprocessing.unresolved_functionals.fixed_ou_solve" title="openghg_inversions.postprocessing.unresolved_functionals.fixed_ou_solve"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.unresolved_functionals.fixed_ou_solve</span></code></a></p></td>
+<td><p>Return a per-draw solve with the fit's fixed-OU covariance.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.make_co2_output" title="openghg_inversions.rhime.co2.co2_outputs.make_co2_output"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_outputs.make_co2_output</span></code></a></p></td>
 <td><p>Construct a scientific view without graph execution or array copying.</p></td>

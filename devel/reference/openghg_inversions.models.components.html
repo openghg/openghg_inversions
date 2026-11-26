@@ -453,6 +453,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.paris_options.html">openghg_inversions.postprocessing.paris_options</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.unresolved_functionals.html">openghg_inversions.postprocessing.unresolved_functionals</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
 </ul>
 </details></li>
@@ -1019,8 +1020,11 @@ observations’ attributes.</p>
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.add_state_vector" title="Link to this definition">#</a></dt>
 <dd><p>Construct an active/fixed state graph from a resolved activity contract.</p>
 <p>When every state is active, this creates the same base prior graph as
-<code class="docutils literal notranslate"><span class="pre">add_linear_component</span></code>. Partial activity creates an active-only prior and
-restores it into a full deterministic state vector. An all-fixed policy
+<code class="docutils literal notranslate"><span class="pre">add_linear_component</span></code>. The <code class="docutils literal notranslate"><span class="pre">&lt;var_name&gt;_is_active</span></code> mask is registered as
+model data for every policy, including all-active, so postprocessing can
+read which states were sampled from the trace. Partial activity creates
+an active-only prior and restores it into a full deterministic state
+vector. An all-fixed policy
 creates no random variable and exposes the fixed values as the full
 deterministic state.</p>
 <dl class="field-list simple">

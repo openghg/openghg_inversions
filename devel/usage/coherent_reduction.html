@@ -629,6 +629,125 @@ that the chosen rank is adequate for a particular likelihood.</p>
 <p>See <a class="reference internal" href="legacy_and_migration.html#migrate-diagonal-aggregation-error"><span class="std std-ref">Migrating diagonal aggregation error</span></a> for older inputs that contain
 only aggregation-error standard deviations.</p>
 </section>
+<section id="complete-native-functionals">
+<h2>Complete native functionals<a class="headerlink" href="#complete-native-functionals" title="Link to this heading">#</a></h2>
+<p>The same reduction splits the native state as
+<span class="math notranslate nohighlight">\(x = m + U_*(\alpha - \Pi m) + x_\perp\)</span>, where
+<span class="math notranslate nohighlight">\(U_* = B \Pi^T C_\alpha^{-1}\)</span> and <span class="math notranslate nohighlight">\(x_\perp\)</span> is independent of
+<span class="math notranslate nohighlight">\(\alpha\)</span> with covariance <span class="math notranslate nohighlight">\(B_\perp = B - U_* C_\alpha U_*^T\)</span>. A
+native linear functional <span class="math notranslate nohighlight">\(Q\)</span>, such as a country total, therefore splits
+as <span class="math notranslate nohighlight">\(Q x = Q m + D(\alpha - \Pi m) + Q x_\perp\)</span> with <span class="math notranslate nohighlight">\(D = Q U_*\)</span>.
+Retained-state draws give only the first two terms. <span class="math notranslate nohighlight">\(Q x_\perp\)</span> carries
+both variance and a data-driven mean update, because it is correlated with the
+unresolved observation error <span class="math notranslate nohighlight">\(H x_\perp\)</span>; both are largest when retained
+regions cross the functional’s borders.</p>
+<p>Pass the functionals to the reduction to prepare the products that condition
+<span class="math notranslate nohighlight">\(Q x_\perp\)</span>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">reduction</span> <span class="o">=</span> <span class="n">reduce_native_gaussian</span><span class="p">(</span>
+    <span class="o">...</span><span class="p">,</span>
+    <span class="n">functionals</span><span class="o">=</span><span class="n">country_functionals</span><span class="p">,</span>  <span class="c1"># (functional_dim, *native_dims)</span>
+    <span class="n">functional_dim</span><span class="o">=</span><span class="s2">"country_functional"</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">products</span> <span class="o">=</span> <span class="n">reduction</span><span class="o">.</span><span class="n">functional_products</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">products</span></code> holds <span class="math notranslate nohighlight">\(Q m\)</span>, <span class="math notranslate nohighlight">\(D\)</span>, <span class="math notranslate nohighlight">\(Q B_\perp H^T\)</span> and
+<span class="math notranslate nohighlight">\(Q B_\perp Q^T\)</span>. They are computed from bounded blocks of
+<span class="math notranslate nohighlight">\(B Q^T\)</span>; <span class="math notranslate nohighlight">\(B\)</span> is never densified. Use one functional row per
+reported term, for example one country total per source, so that the joint
+covariance of terms is available and sums are formed per draw.</p>
+<p>For a posterior draw of <span class="math notranslate nohighlight">\(\alpha\)</span>, any other parameters <span class="math notranslate nohighlight">\(\beta\)</span>
+and the noise parameters, with residual
+<span class="math notranslate nohighlight">\(r = y - y_0 - H_\alpha(\alpha - \Pi m) - G\beta\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[Q x_\perp \mid \alpha, \beta, y \sim
+N\left(Q B_\perp H^T (A + R)^{-1} r,\;
+Q B_\perp Q^T - Q B_\perp H^T (A + R)^{-1} H B_\perp Q^T\right).\]</div>
+<p>Under the prior, <span class="math notranslate nohighlight">\(Q x_\perp \sim N(0, Q B_\perp Q^T)\)</span> independently of
+<span class="math notranslate nohighlight">\(\alpha\)</span>. For a Gaussian retained state and the exact <span class="math notranslate nohighlight">\(A\)</span>, the
+complete functional mean and covariance equal the native-grid Gaussian
+posterior for any retained partition. With a LogNormal retained state the
+conditioning on each draw remains exact under the reduced model, but the
+reduced model is the moment-matched approximation described in
+<a class="reference internal" href="#assumptions-and-limitations">Assumptions and limitations</a>, so the result is not the native-grid
+posterior of a LogNormal native field.
+<a class="reference internal" href="../reference/openghg_inversions.postprocessing.unresolved_functionals.html#openghg_inversions.postprocessing.unresolved_functionals.complete_functional_draws" title="openghg_inversions.postprocessing.unresolved_functionals.complete_functional_draws"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.unresolved_functionals.complete_functional_draws()</span></code></a>
+adds the conditional mean and one conditional draw to each retained draw. It
+takes <span class="math notranslate nohighlight">\((A + R)^{-1}\)</span> as a labelled solve whose observation labels
+must equal the residuals’:
+<a class="reference internal" href="../reference/openghg_inversions.postprocessing.unresolved_functionals.html#openghg_inversions.postprocessing.unresolved_functionals.dense_solve" title="openghg_inversions.postprocessing.unresolved_functionals.dense_solve"><code class="xref py py-func docutils literal notranslate"><span class="pre">dense_solve()</span></code></a>
+for one fixed dense covariance, whose labelled columns are aligned to its rows
+and checked for symmetry, or
+<a class="reference internal" href="../reference/openghg_inversions.postprocessing.unresolved_functionals.html#openghg_inversions.postprocessing.unresolved_functionals.fixed_ou_solve" title="openghg_inversions.postprocessing.unresolved_functionals.fixed_ou_solve"><code class="xref py py-func docutils literal notranslate"><span class="pre">fixed_ou_solve()</span></code></a>
+for the fit’s low-rank-plus-diagonal <span class="math notranslate nohighlight">\(A\)</span> with each draw’s fixed-OU
+amplitudes, selected by chain and draw label. <code class="docutils literal notranslate"><span class="pre">FixedOuLowRank</span></code> keeps no
+observation labels, so <code class="docutils literal notranslate"><span class="pre">fixed_ou_solve</span></code> trusts the supplied
+<code class="docutils literal notranslate"><span class="pre">observation_index</span></code> for row order: it checks the row count and each row’s
+site (from <code class="docutils literal notranslate"><span class="pre">site_index</span></code>, such as the fit’s <code class="docutils literal notranslate"><span class="pre">ou_site_index</span></code>, or the index’s
+<code class="docutils literal notranslate"><span class="pre">site</span></code> level) against the covariance, but not the time order within a site. Residuals
+must carry the units of <span class="math notranslate nohighlight">\(H\)</span>.</p>
+<p>For CO2 country totals, build <span class="math notranslate nohighlight">\(Q\)</span> with
+<a class="reference internal" href="../reference/openghg_inversions.postprocessing.co2_flux_outputs.html#openghg_inversions.postprocessing.co2_flux_outputs.co2_country_functionals" title="openghg_inversions.postprocessing.co2_flux_outputs.co2_country_functionals"><code class="xref py py-func docutils literal notranslate"><span class="pre">co2_country_functionals()</span></code></a>
+and pass an
+<a class="reference internal" href="../reference/openghg_inversions.postprocessing.unresolved_functionals.html#openghg_inversions.postprocessing.unresolved_functionals.UnresolvedFunctionalConditioning" title="openghg_inversions.postprocessing.unresolved_functionals.UnresolvedFunctionalConditioning"><code class="xref py py-class docutils literal notranslate"><span class="pre">UnresolvedFunctionalConditioning</span></code></a>
+to <a class="reference internal" href="../reference/openghg_inversions.postprocessing.co2_flux_outputs.html#openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs" title="openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">co2_country_flux_outputs()</span></code></a>.
+Its outputs then carry <code class="docutils literal notranslate"><span class="pre">uncertainty_scope=&quot;complete_native&quot;</span></code> and the
+conditioning description; without it they remain
+<code class="docutils literal notranslate"><span class="pre">&quot;retained_state_conditional&quot;</span></code> and omit the unresolved native state.</p>
+<p>The products record the
+<a class="reference internal" href="../reference/openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.reduction_identity" title="openghg_inversions.coherent_reduction.reduction_identity"><code class="xref py py-func docutils literal notranslate"><span class="pre">reduction_identity()</span></code></a> of their
+reduction. The reduced arrays alone cannot identify the native problem: if
+one observation sees either of two cells that <span class="math notranslate nohighlight">\(B\)</span> and <span class="math notranslate nohighlight">\(\Pi\)</span>
+treat alike, swapping the cells leaves <span class="math notranslate nohighlight">\(C_\alpha\)</span>, <span class="math notranslate nohighlight">\(H_\alpha\)</span>
+and <span class="math notranslate nohighlight">\(A\)</span> unchanged but reverses the sign of <span class="math notranslate nohighlight">\(Q B_\perp H^T\)</span>. The
+reduction therefore records a
+<a class="reference internal" href="../reference/openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.native_reduction_identity" title="openghg_inversions.coherent_reduction.native_reduction_identity"><code class="xref py py-func docutils literal notranslate"><span class="pre">native_reduction_identity()</span></code></a>.
+For built-in separable covariances and independent combinations of them, it
+hashes the covariance configuration, the native <span class="math notranslate nohighlight">\(H\)</span>, <span class="math notranslate nohighlight">\(\Pi\)</span>,
+<span class="math notranslate nohighlight">\(m\)</span>, and the prolongation <span class="math notranslate nohighlight">\(U_*\)</span>. Each reduction with a custom
+covariance action receives a fresh identity. For those actions, prepare the
+fit and products from the same call to <code class="docutils literal notranslate"><span class="pre">reduce_native_gaussian</span></code> and keep
+the issued identity with the fit. The reduction identity combines the native
+identity with a hash of
+<span class="math notranslate nohighlight">\(C_\alpha\)</span>, <span class="math notranslate nohighlight">\(H_\alpha\)</span> and the exact <span class="math notranslate nohighlight">\(A\)</span>, so anyone who
+stores the native identity and the reduced arrays, such as a prepared
+artifact, can recompute it and detect a changed <span class="math notranslate nohighlight">\(A\)</span>. The conditioning
+must carry the identity recorded when the fit was prepared, and the two must
+be equal. <span class="math notranslate nohighlight">\(Q m\)</span> and <span class="math notranslate nohighlight">\(D\)</span> do not depend on <span class="math notranslate nohighlight">\(H\)</span>, so products
+built with another observation operator are caught only by the identity.
+The identity is an exact hash, not a tolerance: take it from the same
+<code class="docutils literal notranslate"><span class="pre">reduce_native_gaussian(functionals=...)</span></code> call that produced the products,
+rather than recomputing it from another reduction. In addition, the
+products’ <span class="math notranslate nohighlight">\(Q m\)</span> and <span class="math notranslate nohighlight">\(D\)</span> must equal the map’s own <span class="math notranslate nohighlight">\(A F m\)</span> and
+<span class="math notranslate nohighlight">\(A F U_*\)</span>, which rejects products prepared for another functional,
+partition or covariance.</p>
+<p>Use the same <span class="math notranslate nohighlight">\(A\)</span> in the solve as in the products. The products use the
+exact <span class="math notranslate nohighlight">\(B_\perp\)</span>, so pairing them with a truncated low-rank <span class="math notranslate nohighlight">\(A\)</span>
+mixes two covariance models: the conditional mean update can be inflated and
+the conditional covariance can lose positive semidefiniteness. Negative
+eigenvalues up to <code class="docutils literal notranslate"><span class="pre">clipping_tolerance</span></code> (default <code class="docutils literal notranslate"><span class="pre">1e-6</span></code>) relative to the
+largest eigenvalue of the prior functional covariance
+<span class="math notranslate nohighlight">\(Q B Q^T = Q B_\perp Q^T + D C_\alpha D^T\)</span> are treated as roundoff and
+clipped before drawing. That scale is used because the drawn covariances are
+formed by subtracting terms of that size and can themselves be zero, as when
+the retained states resolve every functional. The most negative relative
+eigenvalue is recorded as <code class="docutils literal notranslate"><span class="pre">conditional_covariance_min_eigenvalue</span></code>. A larger
+negative eigenvalue raises an error instead of producing <code class="docutils literal notranslate"><span class="pre">complete_native</span></code>
+output. A
+<a class="reference internal" href="../reference/openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.FixedOuLowRank" title="openghg_inversions.models.fixed_ou.FixedOuLowRank"><code class="xref py py-class docutils literal notranslate"><span class="pre">FixedOuLowRank</span></code></a> prepared with a
+full-width factor of the exact <span class="math notranslate nohighlight">\(A\)</span> gives the exact update with sampled
+OU amplitudes.</p>
+<p>When retained states are marginalised into <span class="math notranslate nohighlight">\(A\)</span>,
+<a class="reference internal" href="../reference/openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.marginalise_functional_states" title="openghg_inversions.coherent_reduction.marginalise_functional_states"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.coherent_reduction.marginalise_functional_states()</span></code></a>
+moves their functional contribution into <span class="math notranslate nohighlight">\(Q x_\perp\)</span>, matching a
+reduction with the kept rows of <span class="math notranslate nohighlight">\(\Pi\)</span>. For CO2 country outputs, pass
+full-restriction products and declare the marginalised states on the
+conditioning; they must be exactly the fit’s inactive states, which are
+otherwise held fixed without their variance and make complete uncertainty
+undefined. Activity is read from the <code class="docutils literal notranslate"><span class="pre">&lt;flux_scale&gt;_is_active</span></code> mask that the
+fitted model records for every activity policy, including all-active; a trace
+without it is rejected.</p>
+</section>
 <section id="assumptions-and-limitations">
 <h2>Assumptions and limitations<a class="headerlink" href="#assumptions-and-limitations" title="Link to this heading">#</a></h2>
 <p>The native coordinates of the mean and sensitivity must match exactly. The
@@ -668,8 +787,9 @@ requires a separately established positivity-preserving physical restriction,
 such as <code class="docutils literal notranslate"><span class="pre">SuppliedRestriction</span></code> with <code class="docutils literal notranslate"><span class="pre">require_positivity_preserving=True</span></code>. The
 bucket-compatible restriction derived by <code class="docutils literal notranslate"><span class="pre">PreserveBucketProlongation</span></code> is not
 guaranteed to preserve positivity.</p>
-<p>The function does not construct a likelihood, approximate <span class="math notranslate nohighlight">\(A\)</span>, serialize
-the result, or reconstruct arbitrary native quantities. Do not add another
+<p>The function does not construct a likelihood, approximate <span class="math notranslate nohighlight">\(A\)</span>, or
+serialize the result. It reconstructs native quantities only as the
+linear functionals requested through <code class="docutils literal notranslate"><span class="pre">functionals</span></code>. Do not add another
 error term representing the same unresolved flux. Adding covariance components
 also assumes that their errors are independent unless their cross-covariances
 are included explicitly.</p>
@@ -726,6 +846,7 @@ are included explicitly.</p>
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#preparing-the-exact-result">Preparing the exact result</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#preparing-co2-model-inputs">Preparing CO2 model inputs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#complete-native-functionals">Complete native functionals</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#assumptions-and-limitations">Assumptions and limitations</a></li>
 </ul>
   </nav></div>

@@ -629,10 +629,18 @@ reconstruct draws in bounded tiles. Shared sample statistics complete bounded
 non-sample blocks and return computed summaries, retaining complete required
 samples within each block.
 Neither function mutates the trace or reconstruction inputs.</p>
-<p>Both products retain prepared-artifact identity, reconstruction provenance and
-<code class="docutils literal notranslate"><span class="pre">uncertainty_scope=&quot;retained_state_conditional&quot;</span></code>. Their intervals exclude
+<p>Both products retain prepared-artifact identity and reconstruction provenance.
+By default they carry <code class="docutils literal notranslate"><span class="pre">uncertainty_scope=&quot;retained_state_conditional&quot;</span></code>: their
+means and intervals describe <span class="math notranslate nohighlight">\(Q m + D(\alpha - \Pi m)\)</span> only, and exclude
 unresolved native-state uncertainty and its observation-conditioned mean
-update. These functions return labelled summary datasets. The
+update. Native flux output is always retained-state conditional. Country output
+includes the unresolved native contribution only when
+<code class="docutils literal notranslate"><span class="pre">co2_country_flux_outputs</span></code> receives <code class="docutils literal notranslate"><span class="pre">unresolved=</span></code>, functional products and
+per-draw conditioning inputs for the reduction the fit used. It then carries
+<code class="docutils literal notranslate"><span class="pre">uncertainty_scope=&quot;complete_native&quot;</span></code> and records which observation
+covariance conditioned the draws. See “Complete native functionals” in the
+<a class="reference internal" href="coherent_reduction.html"><span class="doc">coherent reduction guide</span></a> for the conditional
+moments, the checks on the products and the choice of <span class="math notranslate nohighlight">\(A\)</span>. These functions return labelled summary datasets. The
 <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ staged output adapter</span></a> uses them for conditional
 native-flux and country products and supported PARIS exports. Linked CO2/O2
 traces need a
