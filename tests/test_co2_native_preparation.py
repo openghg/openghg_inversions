@@ -156,6 +156,24 @@ def test_fresh_prepare_requires_acquisition_selectors(tmp_path: Path, partition:
         prepare(tmp_path, config, None, "missing-acquisition")
 
 
+@pytest.mark.parametrize("route", ["full", "staged"])
+def test_missing_partition_fails_before_acquisition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, route: str,
+) -> None:
+    """Both configured routes check the selected basis before querying stores."""
+    def reject_acquisition(**kwargs):
+        """Fail if a missing resource reaches the store."""
+        pytest.fail("Acquisition should wait until preparation resources are resolved.")
+
+    monkeypatch.setattr(MergedData, "from_options", staticmethod(reject_acquisition))
+    config = request(tmp_path / "missing-partition.nc")
+    with pytest.raises(FileNotFoundError, match=r"missing-partition\.nc"):
+        if route == "full":
+            run_co2(params=config)
+        else:
+            prepare(tmp_path, config, None, "staged")
+
+
 def test_disabled_boundary_allows_acquisition_without_boundaries(partition: Path) -> None:
     config = {**request(partition), "model": {"boundary": {"enabled": False}}}
     config["data"]["preparation"]["use_bc"] = False

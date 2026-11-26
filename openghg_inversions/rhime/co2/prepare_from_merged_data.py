@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, replace
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import xarray as xr
@@ -11,6 +12,7 @@ import xarray as xr
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact
+from openghg_inversions.basis.boundary import BoundaryBasis
 from openghg_inversions.basis.covariance_products import PreserveBucketProlongation
 from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 from openghg_inversions.coherent_reduction import reduce_native_gaussian
@@ -30,6 +32,21 @@ from openghg_inversions.rhime.preparation import (
 from .co2_affine_output import produce_bucket_affine_flux_map
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs
 from .configuration import Co2NativePreparationConfig
+
+
+@dataclass(frozen=True)
+class Co2PreparationResources:
+    """Resolved resources for scientific preparation of acquired CO2 data.
+
+    Attributes:
+        basis_inputs: Resolved flux basis arguments for ``prepare_basis``.
+        bc_basis: Loaded boundary basis or a builder that uses site coordinates.
+        bc_centering_weights: Loaded weights for weighted boundary centering.
+    """
+
+    basis_inputs: dict[str, Any]
+    bc_basis: BoundaryBasis
+    bc_centering_weights: xr.DataArray | None
 
 
 def acquire_co2_data(
@@ -69,10 +86,34 @@ def _load_centering_weights(path: Path | None) -> xr.DataArray | None:
     return weights
 
 
+def resolve_co2_preparation_resources(config: Co2NativePreparationConfig) -> Co2PreparationResources:
+    """Resolve selected scientific resources before retrieving observations and transport.
+
+    Built-in boundary basis builders are evaluated later against site coordinates.
+
+    Args:
+        config: Resolved CO2 choices for native scientific preparation.
+
+    Returns:
+        Resources to pass to scientific preparation.
+
+    Raises:
+        OSError: If a selected file is missing or unreadable.
+        KeyError: If a selected basis map or partition lacks its required variable.
+        ValueError: If selected basis inputs or centering weights are invalid.
+    """
+    return Co2PreparationResources(
+        basis_inputs=resolve_basis_inputs(config.basis),
+        bc_basis=resolve_bc_basis(config.basis),
+        bc_centering_weights=_load_centering_weights(config.bc_centering_weights_path),
+    )
+
+
 def prepare_co2_from_merged_data(
     merged_data: MergedData,
     config: Co2NativePreparationConfig,
     *,
+    resources: Co2PreparationResources,
     domain: str,
     start_date: str,
     end_date: str,
@@ -88,6 +129,7 @@ def prepare_co2_from_merged_data(
     Args:
         merged_data: Borrowed observations, transport and native flux.
         config: Resolved choices for native scientific preparation.
+        resources: Basis and centering resources resolved for these choices.
         domain: Requested transport domain.
         start_date: Requested window start.
         end_date: Requested window end.
@@ -106,9 +148,7 @@ def prepare_co2_from_merged_data(
     basis = config.basis
     use_bc = basis.use_bc
     representation = boundary_preparation(boundary, boundary_representation).representation
-    basis_inputs = resolve_basis_inputs(basis)
-    bc_basis = resolve_bc_basis(basis)
-    weights = _load_centering_weights(config.bc_centering_weights_path)
+    basis_inputs = resources.basis_inputs
 
     merged_data.validate_for_preparation(
         species="co2", domain=domain, start_date=start_date, end_date=end_date, split_by_sectors=False,
@@ -145,7 +185,7 @@ def prepare_co2_from_merged_data(
         ]
         sensitivities[site] = dataset.drop_vars(("mf_mod", "mf_mod_sectoral", *grid_coordinates), errors="ignore")
     if use_bc:
-        sensitivities = bc_sensitivity(sensitivities, bc_basis=bc_basis)
+        sensitivities = bc_sensitivity(sensitivities, bc_basis=resources.bc_basis)
     else:
         # Assembly reads the reference and marker as requests for centered sensitivities.
         for site, dataset in sensitivities.items():
@@ -182,7 +222,7 @@ def prepare_co2_from_merged_data(
     canonical = replace(canonical, inv_inputs=inputs.drop_dims(("lat", "lon")))
     prepared = prepare_co2_inputs(
         canonical, reduction, aggregation_error_rank=config.aggregation_error_rank,
-        bc_centering_weights=weights,
+        bc_centering_weights=resources.bc_centering_weights,
         provenance={
             "domain": domain, "start_date": start_date, "end_date": end_date,
             "native_preparation": {
@@ -197,4 +237,9 @@ def prepare_co2_from_merged_data(
     return prepared, affine
 
 
-__all__ = ["acquire_co2_data", "prepare_co2_from_merged_data"]
+__all__ = [
+    "Co2PreparationResources",
+    "acquire_co2_data",
+    "prepare_co2_from_merged_data",
+    "resolve_co2_preparation_resources",
+]

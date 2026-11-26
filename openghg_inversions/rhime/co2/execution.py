@@ -23,7 +23,9 @@ from .co2_outputs import (
 )
 from .co2_preparation import Co2PreparedInputs, check_prepared_boundary, prepare_co2_inputs, requested_co2_facts
 from .inference import sample_co2_inference
-from .prepare_from_merged_data import acquire_co2_data, prepare_co2_from_merged_data
+from .prepare_from_merged_data import (
+    acquire_co2_data, prepare_co2_from_merged_data, resolve_co2_preparation_resources,
+)
 from .configuration import (
     load_co2_family_config, validate_co2_config, _validate_co2_option_names, Co2PreparationConfig,
     Co2ModelConfig, _resolve_co2_sampling,
@@ -158,10 +160,11 @@ def run_co2(
         domain = cast(str, preparation.domain)
         window_start = cast(str, preparation.start_date)
         window_end = cast(str, preparation.end_date)
+        resources = resolve_co2_preparation_resources(native)
         if merged_data is None:
             merged_data = acquire_co2_data(native, domain=domain, start_date=window_start, end_date=window_end)
         prepared, affine_artifact = prepare_co2_from_merged_data(
-            merged_data, native, domain=domain, start_date=window_start, end_date=window_end,
+            merged_data, native, resources=resources, domain=domain, start_date=window_start, end_date=window_end,
             boundary=preparation.boundary, boundary_representation=preparation.boundary_representation,
         )
         consumed_paths += native.resource_paths()

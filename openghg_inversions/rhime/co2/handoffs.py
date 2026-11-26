@@ -49,7 +49,9 @@ from .execution import load_co2_params
 from .inference import (
     annotate_co2_inference, build_co2_inference, sample_co2_inference, describe_co2_inference,
 )
-from .prepare_from_merged_data import acquire_co2_data, prepare_co2_from_merged_data
+from .prepare_from_merged_data import (
+    acquire_co2_data, prepare_co2_from_merged_data, resolve_co2_preparation_resources,
+)
 from .configuration import Co2ModelConfig, Co2NativePreparationConfig, _resolve_co2_sampling
 
 
@@ -189,10 +191,11 @@ def prepare(
             )
         if start_date is None or end_date is None or domain is None:
             raise ValueError("Native preparation requires start_date, end_date and domain.")
+        resources = resolve_co2_preparation_resources(native)
         if merged_data is None:
             merged_data = acquire_co2_data(native, domain=domain, start_date=start_date, end_date=end_date)
         prepared, affine = prepare_co2_from_merged_data(
-            merged_data, native, domain=domain, start_date=start_date, end_date=end_date,
+            merged_data, native, resources=resources, domain=domain, start_date=start_date, end_date=end_date,
             boundary=boundary, boundary_representation=boundary_representation,
         )
         check_prepared_boundary(prepared.inv_inputs, boundary, boundary_representation)
