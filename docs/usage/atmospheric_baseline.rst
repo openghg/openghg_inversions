@@ -34,40 +34,44 @@ outer flux unsampled fairly.
 ----------------------
 
 For selected outer states :math:`O` uncorrelated with the other states,
-``"marginalise"`` includes :math:`H_O m_O` in the mean and adds their
-prior covariance as seen by the observations,
+``"marginalise"`` includes :math:`H_O m_O` in the likelihood mean and uses
+the covariance
 
 .. math::
 
    W = R + A + H_O \Sigma_{OO} H_O^T,
 
-to the likelihood. The new term has rank at most the number of selected
-states. It is stored as a factor :math:`H_O L_O` with
-:math:`L_O L_O^T = \Sigma_{OO}`, appended to the low-rank aggregation-error
-factor of :math:`A`. For dense :math:`A`, the full term is added. Without
-aggregation error, the new factor supplies the entire term. All CO2 recipes
-that take ``outer_flux``
-(ordinary, cached fixed-OU and linked CO2/O2) use it. In linked recipes one
-term spans both channels, so it also carries the CO2/O2 covariance the shared
-outer states induce.
+Here :math:`R` is the observation and model-mismatch covariance and :math:`A`
+is the supplied aggregation-error covariance, which represents variability
+unresolved by the flux basis. The last term comes from integrating out the
+selected states that the basis does represent.
+
+The model combines the two fixed covariance terms at likelihood assembly so
+they can use the same covariance calculations. If :math:`A` is low rank plus
+diagonal, the builder appends the columns of :math:`H_O L_O` to its existing
+factor, where :math:`L_O L_O^T = \Sigma_{OO}`. The concatenated factor's
+product with its transpose adds the two covariances and leaves the diagonal
+residual unchanged. For dense :math:`A`, the builder adds the covariance
+directly. When aggregation error is absent, the outer-state covariance still
+enters the likelihood on its own. In linked CO2/O2 recipes it spans both
+channels, carrying the cross-channel covariance induced by the shared states.
 
 For a linear Gaussian model with uncorrelated outer states this is exact: the
 posterior of the other states equals their marginal posterior when the outer
 states are sampled uncentred (the default). Correlated outer states are
-conditioned on the others; see below.
+conditioned on the others as described below. In a synthetic-observation
+experiment with 5,314 observations and 18 selected outer states, exact Gaussian
+posterior solves with and without integration agreed within 2e-9 Tg CO2/yr.
 
 Under the default LogNormal-copula flux prior it is an approximation, not a
 pure reparameterisation of sampling the outer states:
 :math:`\Sigma_{OO}` is the prior's arithmetic covariance, so the outer
 contribution is replaced by the Gaussian with the same mean and covariance,
-and the posterior can differ. In one WUR BASE July 2021 synthetic-observation
-experiment (5314 observations, 18 marginalised outer states), NUTS with
-``"marginalise"``
-moved the inner NET_BIOSPHERE and TOTAL posterior means by +90 Tg CO2/yr
-(0.05 posterior SD, about two Monte Carlo standard errors) relative to
-sampling the outer states, and left FF unchanged. Exact solves of the same
-problem with a Gaussian prior agreed to 2e-9 Tg CO2/yr. This comparison
-quantifies the approximation for that case and prior.
+and the posterior can differ. In the same experiment under the LogNormal-copula
+prior, marginalisation increased the inner-domain net biosphere and total flux
+posterior means by about 90 Tg CO2/yr relative to sampling the outer states with
+NUTS. That shift was 0.05 posterior standard deviations and about two Monte
+Carlo standard errors. The fossil-fuel flux posterior mean was unchanged.
 
 Taking the outer states out of the sampler makes the state smaller, but it
 need not make NUTS faster: the likelihood gains a low-rank term, and in the
@@ -101,7 +105,8 @@ and :math:`r` is integrated out. So
 The prior of the other states is unchanged, so a LogNormal-copula inner prior
 stays positive. For a Gaussian prior this is exact. Under the LogNormal copula
 :math:`r` is uncorrelated with :math:`x_I` but not independent of it, a
-moment-level approximation of the same kind as the coherent reduction. States
+moment-level approximation of the same kind as the :doc:`coherent reduction
+<coherent_reduction>`. States
 that state activity or exact-zero pruning hold fixed enter at their fixed
 values. A state with no direct response but correlated with the outer states
 gains a column through :math:`H_O B`, so it is sampled rather than pruned.
@@ -139,7 +144,7 @@ samples:
 ``outer_flux`` argument. Any boundary, or none, may be used with it. For
 correlated marginalisation the builder adjusts the design before pruning
 exact-zero columns. It then sets the selected states inactive at their prior
-mean and adds any marginalised covariance to ``aggregation_error``. Every label in
+mean and includes the marginalised covariance in the likelihood. Every label in
 ``outer_groups`` and ``fixed_sources`` must match a state, and a
 ``state_activity`` policy that explicitly fixes a held state at a value other
 than its prior mean is rejected. Run metadata records the
