@@ -1,0 +1,6 @@
+openghg\_inversions.models.outer\_flux
+======================================
+
+.. automodule:: openghg_inversions.models.outer_flux
+   :members:
+   :show-inheritance:

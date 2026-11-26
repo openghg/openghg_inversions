@@ -16,12 +16,14 @@ from openghg_inversions.array_ops import select_gathered_data_array, to_dense_tr
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.boundary import Bound, Choice, bind_prepared
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
-from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
+from openghg_inversions.rhime.sampling import RhimeSampler, _sample_linked_rhime_model
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
+from .co2_o2_fixed_ou import linked_channel_units
 from .co2_o2_model import _build_co2_o2_model, _validate_channel_offset_options
 from .co2_o2_preparation import Co2O2PreparedInputs
 
@@ -284,6 +286,7 @@ def build_rhime_co2_o2(
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Choice | None] | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     tau_hours: float | Mapping[str, float] | None = None,
@@ -329,6 +332,7 @@ def build_rhime_co2_o2(
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
         boundary=bound,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
     )
@@ -341,6 +345,8 @@ def build_rhime_co2_o2(
     if bound or offset_prior:
         variable_roles["baseline_concentration"] = "baseline_concentration"
     metadata = {**_co2_o2_metadata(prepared, observations=observations), **boundary_metadata}
+    if outer_flux is not None:
+        metadata.update(outer_flux.outputs().metadata)
     if tau_hours is not None:
         variable_roles.update(
             {
@@ -366,6 +372,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Choice | None] | None = None,
+    outer_flux: OuterFluxChoice | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     sampler: RhimeSampler | Literal["default"] = "default",
@@ -405,24 +412,35 @@ def run_rhime_co2_o2_from_prepared_inputs(
             centered operands (with any prepared centering weights). ``None``
             disables a channel's boundary; omitted channels have no boundary
             term, with a warning when the preparation has their transport.
+        outer_flux: Optional outer-flux choice for the joint flux state,
+            resolved once on the flux prior and shared by both channels.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
-            with the same meanings as the CO2 offset component. Baseline terms
-            require identical channel units and are zero on the other channel.
+            with the same meanings as the CO2 offset component. Each channel's
+            offset is in that channel's units and is zero on the other channel,
+            so offsets allow mixed units (for example ppm CO2 and per-meg O2).
+            Boundary terms still require identical channel units.
         tau_hours: Optional fixed OU timescale, scalar or mapping keyed by
-            ``co2:SITE``/``o2:SITE``, in hours. Requires the same channel units.
+            ``co2:SITE``/``o2:SITE``, in hours.
         fixed_site_amplitudes: Fixed additive species/site standard deviations
-            in concentration units, scalar or mapping using the same keys.
+            in each group's channel units, scalar or mapping using the same keys.
+            With mixed channel units a nonzero value must be a mapping. These
+            fits are sampled by the cached fixed-OU sampler: the state
+            quadratic is built once and only the state NUTS step runs.
         site_amplitude_prior: Prior for inferred species/site amplitudes,
-            mutually exclusive with fixed amplitudes.
+            mutually exclusive with fixed amplitudes. Requires common channel units.
         sampler: Sampler configuration or ``"default"``; explicit ``None`` is invalid. Fixed OU requires and
-            defaults to PyMC; the fixed-error default uses NumPyro.
+            defaults to PyMC; the fixed-error default uses NumPyro. The default
+            ``target_accept`` is 0.95; with fixed OU amplitudes it (or a
+            supplied ``sample_kwargs['target_accept']``) tunes the cached state
+            step, and caller-supplied steps are rejected.
 
     Returns:
         Restored DataTree with observed concentrations in
         ``observed_data["y"]``, fixed independent standard deviations in
         ``constant_data["fixed_independent_error_sd"]`` (``error`` for fixed
-        OU), labelled coordinates,
+        OU; fixed OU amplitudes are ``constant_data["ou_site_amplitude"]``),
+        labelled coordinates,
         data-dependent concentration units, scientific-role annotations, and
         JSON model metadata.
 
@@ -440,18 +458,37 @@ def run_rhime_co2_o2_from_prepared_inputs(
     )
     if tau_hours is not None and sampler.nuts_sampler != "pymc":
         raise ValueError("Linked fixed-OU requires nuts_sampler='pymc'.")
+    if tau_hours is not None and site_amplitude_prior is None:
+        # Fixed OU amplitudes are the cached sampler's specialisation.
+        from .co2_o2_cached_sigma_runner import _sample_linked_cached
+
+        trace, _ = _sample_linked_cached(
+            prepared_inputs=prepared_inputs,
+            sampler=sampler,
+            independent_error_sd=independent_error_sd,
+            tau_hours=tau_hours,
+            fixed_site_amplitudes=fixed_site_amplitudes,
+            state_activity=state_activity,
+            boundary=boundary,
+            outer_flux=outer_flux,
+            offset_prior=offset_prior,
+            offset_args=offset_args,
+            recipe="co2_o2",
+        )
+        return trace
     built = build_rhime_co2_o2(
         prepared_inputs=prepared_inputs,
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
         boundary=boundary,
+        outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
         tau_hours=tau_hours,
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
     )
-    trace = sample_rhime_model(built, sampler)
+    trace = _sample_linked_rhime_model(built, sampler)
     return annotate_co2_o2_trace(trace, built=built)
 
 
@@ -460,19 +497,29 @@ def _annotate_linked_fixed_ou_trace(
     *,
     observations: xr.DataArray,
 ) -> xr.DataTree:
-    """Retain OU group identity, units, and joint likelihood semantics."""
-    units = str(observations.observation_units.values[0])
+    """Retain OU group identity, units, and joint likelihood semantics.
+
+    With mixed channel units, OU amplitudes carry an ``ou_units`` coordinate
+    and observation-aligned variables point at ``observation_units``.
+    """
+    channel_units = linked_channel_units(observations)
+    mixed = len(set(channel_units.values())) > 1
+    units = "mixed; see observation_units coordinate" if mixed else next(iter(channel_units.values()))
     for group_name, node in trace.children.items():
         group = node.to_dataset()
         if "ou_site" in group.coords:
             labels = group.ou_site.values.astype(str)
+            species = [label.split(":", 1)[0] for label in labels]
             group = group.assign_coords(
-                ou_species=("ou_site", [label.split(":", 1)[0] for label in labels]),
+                ou_species=("ou_site", species),
                 ou_station=("ou_site", [label.split(":", 1)[1] for label in labels]),
+                ou_units=("ou_site", [channel_units[name] for name in species]),
             )
-        for name in ("ou_site_amplitude", "Y", "error"):
+        for name in ("Y", "error"):
             if name in group:
                 group[name].attrs["units"] = units
+        if "ou_site_amplitude" in group:
+            group["ou_site_amplitude"].attrs["units"] = "mixed; see ou_units coordinate" if mixed else units
         if "ou_tau_hours" in group:
             group.ou_tau_hours.attrs.update(units="hours", dtype="timedelta64[ns]")
         if group_name == "log_likelihood" and "y" in group:
@@ -506,6 +553,13 @@ def annotate_co2_o2_trace(
     preparation provenance and used priors. Fixed-OU traces additionally retain
     species/site grouping and joint likelihood/predictive scope. The trace is
     updated and returned; no graph is constructed or inference performed.
+
+    Args:
+        trace: Trace with restored coordinates, updated in place.
+        built: Build result whose model produced ``trace``.
+
+    Returns:
+        The annotated ``trace``.
     """
     trace.attrs["rhime_boundary_format_version"] = BOUNDARY_FORMAT_VERSION
     restore_absolute_predictives(trace)

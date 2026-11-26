@@ -48,11 +48,11 @@ STATE_LEVELS = ("bc_curtain", "bc_period")
 
 
 def require_centered_precision() -> None:
-    """Require a process-wide PyTensor ``floatX`` of float64 for centered graphs.
+    """Require process-wide float64 for a boundary formulation that needs it.
 
-    ``pm.Data`` casts registered arrays to the global ``floatX``. Centered
-    operands rely on float64 to keep small anomalies after cancellation, so a
-    float32 process would silently round them. This only reads the global
+    ``pm.Data`` casts registered arrays to the global ``floatX``. Boundary
+    families use this check where they rely on float64 to preserve small
+    anomalies after cancellation. This only reads the global
     configuration; set ``PYTENSOR_FLAGS=floatX=float64`` before starting Python.
 
     Raises:
@@ -382,6 +382,7 @@ class BoundCenteredSensitivity(xr.Dataset):
         *,
         frequency: str | None = None,
         anchor_time: DatetimeLike | None = None,
+        require_float64: bool = True,
     ) -> BoundCenteredSensitivity:
         """Select one fit's observation rows and expand spatial states by period.
 
@@ -396,15 +397,18 @@ class BoundCenteredSensitivity(xr.Dataset):
                 axis first, as established by observation preparation.
             frequency: Optional frequency expanding spatial states by period.
             anchor_time: Optional origin for fixed-duration periods.
+            require_float64: Check process precision before binding. A model
+                that supports float32 for its centered terms may disable this.
 
         Returns:
             Bound sensitivity.
 
         Raises:
-            ValueError: If PyTensor is not configured for float64, or periods or
-                indexed timestamps conflict with the observations.
+            ValueError: If required float64 precision is unavailable, or periods
+                or indexed timestamps conflict with the observations.
         """
-        require_centered_precision()
+        if require_float64:
+            require_centered_precision()
         bound = bind_period_states(
             sensitivity[["H_bc_anomaly", "H_bc_mass"]], observations, frequency=frequency, anchor_time=anchor_time,
         )

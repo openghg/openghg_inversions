@@ -108,7 +108,7 @@ def test_output_requests_reject_unsupported_units_and_options_before_writing(tmp
     prepared, _ = _joint_fixture(o2_units="per meg")
     destination = tmp_path / "unopened"
     output = Co2O2OutputOptions(output_path=destination)
-    with pytest.raises(ValueError, match="OPE-86"):
+    with pytest.raises(ValueError, match="declaration"):
         validate_co2_o2_product_request(output, prepared)
     assert not destination.exists()
     with pytest.raises(ValueError, match="Unsupported linked output"):
@@ -251,6 +251,7 @@ def test_none_suppresses_products_and_writing(tmp_path):
     assert not (tmp_path / "unused").exists()
 
 
+@pytest.mark.fresh_process
 def test_importing_linked_paris_before_public_output_types_succeeds():
     import subprocess
     import sys

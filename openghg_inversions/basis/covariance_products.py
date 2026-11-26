@@ -33,12 +33,11 @@ from typing import assert_never, Literal, Protocol
 from dask.base import compute
 import numpy as np
 import pandas as pd
-from scipy.linalg import cho_factor, cho_solve
+from scipy.linalg import cho_solve
 from sparse import COO, SparseArray  # type: ignore[import-untyped]
-# scipy-stubs 1.15.3 omits the runtime LAPACK wrappers, including dpocon.
-from scipy.linalg.lapack import dpocon  # type: ignore[attr-defined]
 import xarray as xr
 
+from openghg_inversions._linalg import cholesky_with_condition as _cholesky_with_condition
 from openghg_inversions._labelled_matrices import (
     coordinates_on_dims,
     matrix_column_dim,
@@ -911,34 +910,6 @@ def _label(index: pd.Index, position: int) -> object:
     if isinstance(label, tuple):
         return tuple(value.item() if isinstance(value, np.generic) else value for value in label)
     return label.item() if isinstance(label, np.generic) else label
-
-
-def _cholesky_with_condition(matrix: np.ndarray) -> tuple[tuple[np.ndarray, bool], float]:
-    """Cholesky-factor a symmetric matrix and estimate its reciprocal condition.
-
-    A successful Cholesky factorization does not prove that a matrix is
-    numerically nonsingular: some LAPACK builds, such as Apple Accelerate,
-    accept an exactly singular matrix with a tiny positive last pivot. The
-    LAPACK ``dpocon`` estimate reuses the factor, so callers can reject such a
-    matrix without an eigendecomposition. See
-    ``docs/development/validation_and_xarray.rst``.
-
-    Args:
-        matrix: Real symmetric matrix expected to be positive definite.
-
-    Returns:
-        The lower Cholesky factor in :func:`scipy.linalg.cho_factor` form,
-        and the estimated reciprocal 1-norm condition number.
-
-    Raises:
-        numpy.linalg.LinAlgError: If the factorization or condition estimate
-            fails.
-    """
-    factor = cho_factor(matrix, lower=True, check_finite=True)
-    reciprocal_condition, condition_info = dpocon(factor[0], np.linalg.norm(matrix, ord=1), uplo="L")
-    if condition_info != 0:
-        raise np.linalg.LinAlgError(f"LAPACK condition estimation failed with info={condition_info}")
-    return factor, float(reciprocal_condition)
 
 
 def _derive_covariance_natural_prolongation(

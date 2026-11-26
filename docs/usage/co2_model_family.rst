@@ -9,8 +9,8 @@ are not alternative species settings for the complete standard runner.
 The experimental :doc:`surface preparation pilot <surface_preparation>` adds
 explicit source transport and centered stable-BC operands for additive-Gaussian
 recipes, ordinary fixed-OU likelihoods, and the matched cached fixed-OU samplers.
-Centered construction requires
-PyTensor ``floatX=float64``. Coherent-reduction construction remains explicit.
+:doc:`co2_boundary_corrections` lists the precision required by each
+centered boundary choice. Coherent-reduction construction remains explicit.
 
 Current support
 ---------------
@@ -51,11 +51,13 @@ Current support
      - A packaged TOML template configures linked saved phases. The direct
        Python runners retain their separate configuration resolver.
    * - Fixed-OU mismatch
-     - Fixed tau and fixed or inferred site amplitudes. Inferred amplitudes
-       automatically use the matched cached quadratic sampler.
+     - Fixed tau and fixed or inferred site amplitudes. Both automatically use
+       the matched cached quadratic sampler; fixed amplitudes build the
+       quadratic once and sample only the states.
      - Fixed tau and fixed or inferred amplitudes by species/site, preserving
        cross-channel aggregation covariance. The matched cached sampler
-       updates all active affine coefficients. Requires the same channel units.
+       updates all active affine coefficients; fixed amplitudes build its
+       quadratic once. Inferred amplitudes require the same channel units.
    * - Boundary conditions and offsets
      - Model configuration can select prepared ``H_bc``
        boundary sensitivity and add global, site, or site-by-period offsets.
@@ -203,8 +205,10 @@ counts, tuning length, chains and seed in ``sampling``; do not specify
 fixed-amplitude OU use PyMC. The :doc:`inference policy table <co2_models>`
 explains which choices are technical requirements and which are defaults.
 Inferred-OU tuning belongs to ``sampling.sigma_target_accept`` and
-``sampling.state_target_accept``. Saved Python sampling takes the same
-``sampling`` mapping as the full configuration.
+``sampling.state_target_accept``. Fixed-amplitude OU uses the same cached
+sampler without the amplitude step; ``sampling.state_target_accept`` or
+``sampling.target_accept`` tunes its state step. Saved Python sampling takes
+the same ``sampling`` mapping as the full configuration.
 
 The configured ``rhime run --model co2`` CLI route uses
 ``run_co2`` and writes requested products. Python
@@ -379,12 +383,37 @@ is:
    output_name = "linked"
    save_concentrations = true
 
-Both configured channel labels and the imported artifact must use the same
-concentration unit and numerical scale. Heterogeneous CO₂ ppm plus
-``delta(O2/N2)`` per-meg operation is unsupported until the scientific transform
-in `OPE-86 <https://linear.app/openghg-inversions/issue/OPE-86>`_ is defined.
-The existing numerical codec can retain mixed-unit metadata; that does not
-establish support for executing such an artifact through these phases.
+Configured channel labels must match the imported artifact. O2 mole fractions
+use the CO₂ unit and numerical scale. CO₂ ppm with ``delta(O2/N2)`` O2 in per
+meg is supported when the artifact declares that observable:
+
+A per-meg O2 channel is declared, not inferred from its unit label: preparation
+provenance must hold an ``o2_observable`` record from
+:class:`~openghg_inversions.inversion_data.o2n2.DeltaO2N2Declaration`, giving
+the reference O2/N2 ratio, its source and the per-meg unit label, and
+optionally the N2 policy and the observations' calibration scale. The same
+fields can instead be attributes on the O2 observations passed to
+``prepare_co2_o2_inputs``: ``observable = "delta_o2_n2"``,
+``delta_o2_n2_reference_ratio``, ``delta_o2_n2_reference_ratio_source``,
+``delta_o2_n2_n2_policy`` and ``delta_o2_n2_scale``. Preparation stores the
+declaration in provenance, so later steps do not depend on attributes
+surviving; when both routes are given they must agree. The reference ratio is
+never defaulted, and a declaration without one is rejected. The rows,
+errors and covariance blocks must already be in per meg; OpenGHG Inversions
+does not apply the transform. Configure ``channels.o2.observable =
+"delta_o2_n2"`` and ``channels.o2.units`` equal to the declared label. CO2
+stays a mole fraction. Undeclared per-meg or delta labels are rejected, because
+unit parsers otherwise read ``"per meg"`` as 1e-6 mol/mol. The shared
+mole-fraction parser used by surface preparation and reporting rejects
+ratio-anomaly labels (per meg, per mil, ``‰``) for the same reason.
+
+Mixed channel units (for example ppm CO2 with per-meg O2) support the
+fixed-error likelihood and fixed OU. Fixed OU amplitudes must then be a
+mapping keyed by species and site (``"co2:MHD"``, ``"o2:MHD"``), each value in
+its own channel's units; a nonzero scalar amplitude is rejected because it
+would mean different things on each channel. Inferred OU amplitudes and
+fitted linked boundary corrections still require common channel units, so a
+per-meg run uses fixed amplitudes and no linked boundaries.
 
 With the current PyMC 6/Numba backend, native multivariate-normal predictive
 draws require ``floatX=float64`` in ``PYTENSOR_FLAGS`` before starting Python or
@@ -404,9 +433,10 @@ joint aggregation covariance once. Alternatively configure
 ``likelihood.kind = "fixed_ou"`` with positive ``tau_hours`` and nonnegative
 ``fixed_site_amplitudes``. Linked OU mappings use ``"co2:MHD"`` and
 ``"o2:MHD"`` species/site keys. The installed route supports fixed OU
-amplitudes and requires PyMC for OU sampling. Inferred OU amplitude and cached
-sampler consolidation remain separate work; existing direct Python runners
-retain those interfaces.
+amplitudes, requires PyMC for OU sampling, and samples them with the cached
+fixed-OU sampler (quadratic built once, state NUTS only). Configured inferred
+OU amplitudes remain separate work; existing direct Python runners retain
+that interface.
 
 .. code-block:: bash
 

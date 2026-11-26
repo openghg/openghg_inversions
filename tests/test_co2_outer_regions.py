@@ -7,7 +7,7 @@ import pandas as pd
 import pymc as pm
 import xarray as xr
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
@@ -15,7 +15,7 @@ from openghg_inversions.rhime.co2 import build_co2_model
 from boundary_test_utils import bound_model_arguments
 
 
-def _grouped_inputs() -> tuple[xr.Dataset, CorrelatedLognormalPrior]:
+def _grouped_inputs() -> tuple[xr.Dataset, CorrelatedPrior]:
     state = ["inner-a", "outer-a", "inner-zero", "outer-b"]
     basis_group = ["inner", "outer", "inner", "outer"]
     basis_partition = ["inner-grid", "outer-grid", "inner-grid", "outer-grid"]
@@ -77,7 +77,7 @@ def _grouped_inputs() -> tuple[xr.Dataset, CorrelatedLognormalPrior]:
             "mf_error": error.rename("mf_error"),
         }
     )
-    return dataset, CorrelatedLognormalPrior(
+    return dataset, CorrelatedPrior(
         mean,
         covariance,
         covariance_dim="state_cov",
@@ -86,7 +86,7 @@ def _grouped_inputs() -> tuple[xr.Dataset, CorrelatedLognormalPrior]:
 
 def _build(
     dataset: xr.Dataset,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: CorrelatedPrior,
     **kwargs,
 ) -> pm.Model:
     return build_co2_model(
@@ -229,7 +229,7 @@ def test_grouped_state_order_is_label_invariant() -> None:
     permuted_dataset = dataset.isel(state=permutation)
     permuted_mean = retained_prior.mean.isel(state=permutation)
     covariance = retained_prior.arithmetic_covariance.values[np.ix_(permutation, permutation)]
-    permuted_prior = CorrelatedLognormalPrior(permuted_mean, covariance)
+    permuted_prior = CorrelatedPrior(permuted_mean, covariance)
     permuted = _build(
         permuted_dataset,
         permuted_prior,

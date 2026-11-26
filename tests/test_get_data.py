@@ -61,6 +61,18 @@ def test_mole_fraction_unit_scale_uses_openghg_registry(raw_units: str, expected
     assert mole_fraction_unit_scale(raw_units, context="test observations") == pytest.approx(expected)
 
 
+@pytest.mark.parametrize(
+    "raw_units",
+    ["per meg", "per_meg", "permeg", "Per Meg", "per mil", "permil", "per mille", "per mill",
+     "\u2030", "\u2031", "delta", "\u03b4 per meg", "\u0394 \u2030"],
+)
+def test_mole_fraction_unit_scale_rejects_ratio_anomaly_labels(raw_units: str) -> None:
+    """OpenGHG reads per meg as 1e-6 and per mil as 1e-3; the shared parser must refuse them."""
+    with pytest.raises(ValueError, match="ratio anomaly.*test observations") as exc_info:
+        mole_fraction_unit_scale(raw_units, context="test observations")
+    assert repr(raw_units) in str(exc_info.value)
+
+
 def test_acquire_merged_data(tac_ch4_data_args, merged_data_file_name, raw_data_path):
     """Check that `acquire_merged_data` produces the same output
     as v0.1, with test data frozen on 9 Feb 2024, or the same as v0.2, with test data frozen on
@@ -630,7 +642,7 @@ def test_merged_scenario_forwards_requested_output_units(
             merge_kwargs.update(kwargs)
             return expected
 
-    monkeypatch.setattr(scenario_module, "ModelScenario", FakeModelScenario)
+    monkeypatch.setattr("openghg.analyse.ModelScenario", FakeModelScenario)
 
     footprint = SimpleNamespace(data=xr.Dataset())
     result = scenario_module.merged_scenario_data(
@@ -663,7 +675,7 @@ def test_merged_scenario_preserves_footprint_max_level_provenance(
             """Return the simulated merged dataset."""
             return expected
 
-    monkeypatch.setattr(scenario_module, "ModelScenario", FakeModelScenario)
+    monkeypatch.setattr("openghg.analyse.ModelScenario", FakeModelScenario)
     footprint_attrs: dict[str, str | int] = {
         "model": "NAME",
         "transport_model_version": "FLEXPART IFS (version 9.1_Empa)",

@@ -239,7 +239,7 @@ def test_linked_choice_frontends_retain_channel_records_and_scientific_closure(
     choices = {channel: _choice(additive, shared) for channel in ("co2", "o2")}
     calls = _record_binding(monkeypatch)
     module = co2_o2_cached_sigma_runner if cached else co2_o2_runner
-    monkeypatch.setattr(module, "sample_rhime_model", _draws)
+    monkeypatch.setattr(module, "_sample_linked_rhime_model", _draws)
     if cached:
         monkeypatch.setattr(module, "_sampler_for_cached_graph", lambda sampler, **_: sampler)
         runner = module.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
@@ -352,7 +352,7 @@ def test_empty_linked_boundary_mapping_disables_available_boundaries(monkeypatch
     prepared = _linked(("co2", "o2"))
     calls = _record_binding(monkeypatch)
     module = co2_o2_cached_sigma_runner if cached else co2_o2_runner
-    monkeypatch.setattr(module, "sample_rhime_model", _draws)
+    monkeypatch.setattr(module, "_sample_linked_rhime_model", _draws)
     options = {}
     if cached:
         monkeypatch.setattr(module, "_sampler_for_cached_graph", lambda sampler, **_: sampler)

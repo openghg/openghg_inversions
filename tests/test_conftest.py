@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import os
 import subprocess
 import sys
 from threading import Event
@@ -305,3 +306,29 @@ def test_satellite_inputs_in_test_store(openghg_satellite_test_store, raw_data_p
 def test_flux_in_test_store(openghg_test_store):
     results = search(species="ch4", data_type="flux", store="inversions_tests")
     assert results
+
+
+@pytest.mark.parametrize(
+    ("flags", "expected"),
+    [
+        (None, "linker=py"),
+        ("floatX=float64", "floatX=float64,linker=py"),
+        ("floatX=float64, linker=numba", "floatX=float64, linker=numba"),
+    ],
+)
+def test_pytest_defaults_to_python_linker_unless_one_is_chosen(monkeypatch, flags, expected):
+    from tests._pytensor_defaults import _default_python_linker
+
+    if flags is None:
+        monkeypatch.delenv("PYTENSOR_FLAGS", raising=False)
+    else:
+        monkeypatch.setenv("PYTENSOR_FLAGS", flags)
+    _default_python_linker()
+    assert os.environ["PYTENSOR_FLAGS"] == expected
+
+
+def test_linker_default_is_set_before_pytensor_reads_its_flags():
+    import pytensor
+
+    flags = dict(flag.strip().partition("=")[::2] for flag in os.environ["PYTENSOR_FLAGS"].split(","))
+    assert pytensor.config.linker == flags["linker"]
