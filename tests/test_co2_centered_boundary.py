@@ -116,6 +116,49 @@ def _kwargs(inputs: xr.Dataset) -> dict[str, Any]:
     )
 
 
+def test_float32_default_multiplicative_boundary_preserves_nearby_fixed_ou_cost():
+    """Compile the real mixed active/fixed graph at an O₂-sized reference."""
+    inputs = _inputs()
+    options = _kwargs(inputs)
+    options.pop("bc_mean_shift_prior")
+    options.pop("bc_anomaly_scale")
+    options["bc_state_activity"] = StateActivity(active=[True, False, True], fixed_value=1.0)
+    operands = options["boundary_operands"]
+    reference = 209300.0021
+    reference_change = (reference - 400.0) * operands.H_bc_mass.sum("bc_region")
+    operands["bc_reference"] = operands.bc_reference.copy(data=reference).assign_attrs(units="per meg")
+    operands["H_bc_anomaly"] = operands.H_bc_anomaly.assign_attrs(units="per meg")
+    options["observations"] = (inputs.mf + reference_change).assign_attrs(units="per meg")
+    for name in ("observation_error", "fixed_prior_contribution"):
+        options[name] = options[name].assign_attrs(units="per meg")
+
+    def costs(float_x):
+        with pytensor.config.change_flags(floatX=float_x, warn_float64="ignore"):
+            cached = build_co2_cached_sigma_model(
+                inputs.H, **bound_model_arguments(options), tau_hours=4.0, fixed_site_amplitudes=0.4,
+            )
+            model = cached.model
+            native = model.logp(vars=model.observed_RVs)
+            quadratic, scales = model.replace_rvs_by_values([cached.cached_state_logp, model["bc"]])
+            (coordinate,) = model.value_vars
+            evaluate = model.compile_fn(
+                [native, quadratic, scales, pt.grad(native, coordinate), pt.grad(quadratic, coordinate)],
+                inputs=[coordinate], point_fn=False,
+            )
+            start = np.zeros(2, dtype=float_x)
+            before = evaluate(start)
+            after = evaluate(start + np.asarray([2.0, -1.0], dtype=float_x) / np.asarray(reference, dtype=float_x))
+        return np.subtract(after[:2], before[:2]), after[2], np.stack(after[3:])
+
+    expected_cost, expected_scales, expected_gradient = costs("float64")
+    actual_cost, actual_scales, actual_gradient = costs("float32")
+
+    np.testing.assert_allclose(actual_cost, expected_cost, atol=2e-5, rtol=0)
+    np.testing.assert_allclose(actual_gradient, expected_gradient, atol=0.2, rtol=2e-5)
+    np.testing.assert_allclose(actual_scales, expected_scales, atol=1e-7, rtol=0)
+    assert actual_scales[1] == 1.0
+
+
 def _anomaly_rv(model: pm.Model) -> Any:
     return next(rv for rv in model.free_RVs if rv.name != "bc_mean_shift" and "sigma" not in rv.name)
 

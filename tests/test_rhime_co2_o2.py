@@ -278,6 +278,78 @@ def test_model_uses_registered_explicit_arrays_and_joint_covariance() -> None:
     np.testing.assert_allclose(model["aggregation_error_covariance"].eval(), covariance)
 
 
+def _site_inputs() -> dict[str, object]:
+    """The ppm/per-meg fixture with one site and hourly times on both channels."""
+    inputs = _inputs()
+    for channel, dim in (("co2", "co2_measure"), ("o2", "o2_measure")):
+        for key in (f"{channel}_observations", f"{channel}_prior_forward_mean"):
+            value = inputs[key]
+            inputs[key] = value.assign_coords(
+                site=(dim, ["HFD"] * value.sizes[dim]),
+                time=(dim, pd.date_range("2021-07-01 12:00", periods=value.sizes[dim], freq="h")),
+            )
+    return inputs
+
+
+@pytest.mark.parametrize("per_site", [True, False])
+def test_channel_offsets_allow_mixed_ppm_and_per_meg_units(per_site: bool) -> None:
+    """OPE-86: each channel offset is in its own units and zero on the other channel."""
+    prepared = prepare_co2_o2_inputs(**_site_inputs())
+    assert sorted(set(prepared.observations["observation_units"].values.tolist())) == ["per meg", "ppm"]
+    model = build_co2_o2_model(
+        observations=prepared.observations,
+        fixed_prior_contribution=prepared.fixed_prior_contribution,
+        co2_sensitivity=prepared.co2_sensitivity,
+        o2_sensitivity=prepared.o2_sensitivity,
+        aggregation_error=prepared.aggregation_error,
+        retained_prior=prepared.retained_prior,
+        independent_error_sd=_independent_error(prepared),
+        offset_prior={
+            "co2": {"pdf": "normal", "mu": 0.0, "sigma": 3.0},
+            "o2": {"pdf": "normal", "mu": 0.0, "sigma": 15.0},
+        },
+        offset_args={channel: {"per_site": per_site} for channel in ("co2", "o2")},
+    )
+    scaling, co2_offset, o2_offset, modelled = pm.draw(
+        [model["flux_scaling"], model["co2_offset"], model["o2_offset"], model["modelled_concentration"]],
+        draws=3,
+        random_seed=86,
+    )
+    is_co2 = prepared.observations["species"].values == "co2"
+    np.testing.assert_array_equal(co2_offset[:, ~is_co2], 0.0)
+    np.testing.assert_array_equal(o2_offset[:, is_co2], 0.0)
+    # One constant per channel and draw, drawn from that channel's own prior.
+    np.testing.assert_allclose(co2_offset[:, is_co2], co2_offset[:, is_co2][:, :1] * np.ones((1, is_co2.sum())))
+    np.testing.assert_allclose(o2_offset[:, ~is_co2], o2_offset[:, ~is_co2][:, :1] * np.ones((1, (~is_co2).sum())))
+    assert np.all(co2_offset[:, is_co2] != 0) and np.all(o2_offset[:, ~is_co2] != 0)
+    expected = (
+        prepared.fixed_prior_contribution.values
+        + np.concatenate(
+            (
+                np.einsum("os,ds->do", prepared.co2_sensitivity.values, scaling),
+                np.einsum("os,ds->do", prepared.o2_sensitivity.values, scaling),
+            ),
+            axis=1,
+        )
+        + co2_offset
+        + o2_offset
+    )
+    np.testing.assert_allclose(modelled, expected, rtol=1e-6, atol=1e-6)
+
+
+def test_linked_boundaries_still_require_identical_units() -> None:
+    from openghg_inversions.rhime.co2.co2_o2_model import _add_co2_o2_baseline_components
+
+    prepared = prepare_co2_o2_inputs(**_site_inputs())
+    with pytest.raises(ValueError, match="boundary components currently require identical channel units"):
+        _add_co2_o2_baseline_components(
+            observations=prepared.observations,
+            co2_sensitivity=prepared.co2_sensitivity,
+            o2_sensitivity=prepared.o2_sensitivity,
+            boundary={"co2": object()},
+        )
+
+
 def test_fixed_state_changes_prior_closure_and_is_not_sampled() -> None:
     prepared = prepare_co2_o2_inputs(**_inputs())
     state_dim = prepared.retained_prior.state_dim

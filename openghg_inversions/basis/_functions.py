@@ -232,6 +232,7 @@ def basis_from_weights(
     *,
     landsea_classes: xr.DataArray | None = None,
     landsea_indices: np.ndarray | None = None,
+    seed: int | None = None,
     **region_kwargs: Any,
 ) -> xr.DataArray:
     """Dispatch resolved spatial weights to one eager basis-fitting algorithm.
@@ -240,16 +241,22 @@ def basis_from_weights(
     ``region_constrained``. Weighted fitting requires ``landsea_classes`` or
     a pre-aligned dense ``landsea_indices`` array; region-constrained fitting
     requires ``region_classes`` in ``region_kwargs``. Other region keywords
-    follow :func:`region_constrained_basis_from_weights`.
+    follow :func:`region_constrained_basis_from_weights`. ``seed`` fixes the
+    quadtree's ``scipy.optimize.dual_annealing`` search; the other algorithms
+    are deterministic, so a seed with them raises ValueError rather than
+    being ignored.
 
     Inputs are borrowed; the selected fitting boundary materializes weights.
     Returns integer region labels on the spatial grid with a singleton time
-    coordinate from ``start_date`` and domain metadata. Invalid algorithms or
-    missing required maps raise ValueError; no resource discovery occurs here.
+    coordinate from ``start_date`` and domain metadata. Invalid algorithms,
+    a seed for a deterministic algorithm, or missing required maps raise
+    ValueError; no resource discovery occurs here.
     """
     _validate_basis_algorithm(basis_algorithm)
+    if seed is not None and basis_algorithm != "quadtree":
+        raise ValueError(f"A basis seed applies only to the quadtree algorithm, not {basis_algorithm!r}.")
     if basis_algorithm == "quadtree":
-        return quadtree_basis_from_weights(weights, start_date, domain, nbasis=nbasis)
+        return quadtree_basis_from_weights(weights, start_date, domain, nbasis=nbasis, seed=seed)
     if basis_algorithm == "weighted":
         return bucket_basis_from_weights(
             weights, start_date, domain, nbasis=nbasis,
@@ -857,6 +864,7 @@ def fixed_outer_regions_basis_from_data(
     contrast_sigma_design: float | None = None,
     contrast_s_diag: xr.DataArray | None = None,
     allow_empty_inner_region: bool = False,
+    seed: int | None = None,
 ) -> xr.DataArray:
     """Use fixed InTEM outer regions and fit inner regions with an algorithm.
 
@@ -907,6 +915,8 @@ def fixed_outer_regions_basis_from_data(
         allow_empty_inner_region: If true, keep the inner label unsplit when
             its masked weights contain finite values but all are zero. Intended
             for nested outer-domain preparation.
+        seed: Optional seed for the inner quadtree fit; see
+            :func:`basis_from_weights`.
 
     Returns:
         Basis field with fixed outer labels and generated inner labels. When
@@ -982,7 +992,7 @@ def fixed_outer_regions_basis_from_data(
             }
         )
     inner_region = basis_from_weights(
-        weights, start_date, domain, basis_algorithm, nbasis, **algorithm_kwargs,
+        weights, start_date, domain, basis_algorithm, nbasis, seed=seed, **algorithm_kwargs,
     )
 
     basis = intem_regions.copy().rename("basis")

@@ -252,6 +252,23 @@ def test_compatible_flux_and_native_scaling_units_preserve_physical_outputs():
     )
 
 
+def test_country_sector_named_total_is_rejected_before_overwriting_grand_total():
+    """``total`` is reserved: as a sector it would replace the sum over all sources."""
+    bound, trace, countries = _fixture()
+    with pytest.raises(ValueError, match="reserved sector name"):
+        co2_country_flux_outputs(
+            trace, bound, countries, source_to_sector={"fossil": "total", "biosphere": "natural"}
+        )
+    result = co2_country_flux_outputs(
+        trace, bound, countries, source_to_sector={"fossil": "anthropogenic", "biosphere": "natural"}
+    )
+    for group in ("prior", "posterior"):
+        np.testing.assert_allclose(
+            result[f"country_total_{group}_mean"],
+            result[f"country_anthropogenic_{group}_mean"] + result[f"country_natural_{group}_mean"],
+        )
+
+
 @pytest.mark.parametrize("units", ["kg m-2 s-1", "mol s-1"])
 def test_incompatible_reference_flux_units_are_rejected(units):
     bound, trace, countries = _fixture()

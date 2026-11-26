@@ -17,6 +17,7 @@ from time import perf_counter
 
 from netCDF4 import Dataset as NetCDFDataset
 import numpy as np
+import pymc as pm
 import pytest
 import xarray as xr
 
@@ -97,7 +98,7 @@ def _configuration(directory: Path, likelihood_kind: str) -> Path:
     path.write_text(
         f'''format_version = 1
 recipe = "co2"
-[prepared_inputs]
+[data]
 path = "source-prepared.nc"
 start_date = "2020-01-01"
 end_date = "2020-02-01"
@@ -359,7 +360,7 @@ def test_saved_co2_product_adapter_preserves_in_memory_products_and_time_codecs(
     def forbidden(*args, **kwargs):
         pytest.fail("Saved-product adaptation must not construct a graph or sampler")
 
-    monkeypatch.setattr(handoffs.pm.Model, "__init__", forbidden)
+    monkeypatch.setattr(pm.Model, "__init__", forbidden)
     monkeypatch.setattr(handoffs, "build_co2_inference", forbidden)
     monkeypatch.setattr(inference, "build_co2_inference", forbidden)
     monkeypatch.setattr(inference, "sample_rhime_model", forbidden)
@@ -417,7 +418,7 @@ def test_co2_overrides_replace_sections_before_file_path_conversion(tmp_path, mo
     file_dir.mkdir()
     source = file_dir / "run.json"
     source.write_text(json.dumps({
-        "prepared_inputs": {"path": "prepared.nc"},
+        "data": {"path": "prepared.nc"},
         "outputs": {"country_file": None},
     }))
     monkeypatch.chdir(tmp_path)

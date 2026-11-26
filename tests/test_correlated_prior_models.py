@@ -114,13 +114,14 @@ def test_full_and_enhancement_ordinary_cached_prediction_and_density(full):
     np.testing.assert_allclose(x, physical_state(prior, point["flux_scaling_latent"]), rtol=1e-14)
 
 
-def test_linked_species_share_one_state_and_density():
+@pytest.mark.parametrize("wrap_prior", [False, True], ids=["lognormal", "wrapped"])
+def test_linked_species_share_one_state_and_density(wrap_prior):
     prepared = _prepared()
-    kwargs = _kwargs(prepared)
-    prior = CorrelatedPrior.from_lognormal(prepared.retained_prior)
+    prior = CorrelatedPrior.from_lognormal(prepared.retained_prior) if wrap_prior else prepared.retained_prior
+    kwargs = {**_kwargs(prepared), "retained_prior": prior}
     likelihood = dict(tau_hours=5, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75})
-    ordinary = build_co2_o2_model(**{**kwargs, "retained_prior": prior}, **likelihood)
-    cached = build_co2_o2_cached_sigma_model(**{**kwargs, "retained_prior": prior}, **likelihood)
+    ordinary = build_co2_o2_model(**kwargs, **likelihood)
+    cached = build_co2_o2_cached_sigma_model(**kwargs, **likelihood)
     point = ordinary.initial_point()
     point["flux_scaling_latent"] = np.array([0.1, -0.3, 0.2, -0.1, 0.4])
     x, mean = state_and_mean(ordinary, point)
@@ -176,9 +177,9 @@ def test_prior_draws_match_joint_moments():
     assert np.all(draws > 0)
 
 
-def test_correlated_prior_accepts_only_the_lognormal_marginal():
+def test_correlated_prior_rejects_unknown_or_misaligned_marginals():
     prior = correlated_prior()
-    marginal = prior.marginal.copy(data=["lognormal", "lognormal", "weibull", "lognormal", "lognormal"])
+    marginal = prior.marginal.copy(data=["lognormal", "lognormal", "beta", "lognormal", "lognormal"])
     with pytest.raises(ValueError, match="Unsupported state marginal"):
         CorrelatedPrior(prior.mean, prior.arithmetic_covariance, marginal=marginal)
     with pytest.raises(ValueError, match="same order"):
@@ -220,6 +221,9 @@ def test_partial_activity_samples_the_exact_active_lognormal_marginal():
 
 def physical_state(prior, z):
     """Independent NumPy arithmetic-moment map, with no model/cache expressions."""
+    if getattr(prior, "lognormal", True) is None:
+        # Copula marginals: SciPy quantiles of the correlated latent normal.
+        return prior.transform_latent(prior.latent_correlation_cholesky.to_numpy() @ z)
     m = prior.mean.to_numpy()
     b = prior.arithmetic_covariance.to_numpy()
     v = np.log1p(b / np.outer(m, m))

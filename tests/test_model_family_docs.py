@@ -138,8 +138,9 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert 'co2_units=model.co2_units' in recipes
     assert "A runnable CO2 configuration and resolver are\ntracked" not in recipes
     assert "``co2_o2``" in recipes
-    assert "heterogeneous ppm/per-meg" in recipes
-    assert "OPE-86" in recipes
+    assert "CO2 ppm with per-meg ``delta(O2/N2)`` O2 is configured" in recipes
+    assert "heterogeneous ppm/per-meg" not in recipes
+    assert '``channels.o2.observable =\n"delta_o2_n2"``' in recipes
     assert "idata = sample_rhime_model(" in recipes
     assert "materialize_co2_inputs" in recipes
     assert "build_co2_from_materialized" in recipes

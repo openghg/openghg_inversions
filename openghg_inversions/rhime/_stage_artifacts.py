@@ -95,13 +95,28 @@ def _validate_filename_component(name: str, value: Any) -> None:
 
 def read_manifest(
     path: str | Path, schema: str, required_keys: tuple[str, ...] = (),
-    *, schema_version: int = 1,
+    *, schema_version: int = 1, legacy_schema_versions: tuple[int, ...] = (),
 ) -> tuple[Path, dict[str, Any]]:
-    """Read the recipe's declared version and require its envelope fields."""
+    """Read a supported stage manifest and require its envelope fields.
+
+    Args:
+        path: Manifest file to read.
+        schema: Expected manifest identifier.
+        required_keys: Fields required by the reader.
+        schema_version: Version written by the current producer.
+        legacy_schema_versions: Earlier versions this reader can consume.
+
+    Returns:
+        Resolved manifest path and decoded record.
+
+    Raises:
+        ValueError: If the manifest identifier, version, or required fields are invalid.
+    """
     path = Path(path).resolve()
     record = json.loads(path.read_text(encoding="utf-8"))
     if (not isinstance(record, dict) or record.get("schema") != schema
-            or type(record.get("schema_version")) is not int or record["schema_version"] != schema_version):
+            or type(record.get("schema_version")) is not int
+            or record["schema_version"] not in (schema_version, *legacy_schema_versions)):
         raise ValueError(
             f"{path} is not a {schema} version-{schema_version} manifest. "
             "Use the software version that wrote it or prepare and sample again."

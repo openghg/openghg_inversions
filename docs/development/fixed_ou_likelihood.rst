@@ -112,6 +112,49 @@ follows from :math:`KZ=W^TB`; it does not make an inaccurate solve for
 estimate of residual-rounding error relative to column energies. Rejected
 cases use the general covariance solve and then form the Gram matrix.
 
+.. _fixed-ou-step-precision:
+
+Precision of the state and amplitude steps
+------------------------------------------
+
+The state sampler stores and evaluates the coefficients :math:`c`,
+:math:`h` and :math:`P` in float64, including in a float32 PyTensor process.
+With a large absolute boundary contribution, the terms in the expanded
+quadratic can be large even when the observation residual is small.
+Downcasting the coefficients can distort the log-density difference between
+nearby states enough to reverse their ordering. The float64 cache adds
+:math:`4(p^2+p+1)` bytes per stored copy compared with float32 for :math:`p`
+active affine coefficients. The cache dtype leaves the observation-sized
+model data and sampler coordinates at their existing precision.
+
+The inferred-amplitude step uses the model's transformed point dtype for its
+sampler coordinates. It evaluates its conditional likelihood and amplitude
+gradient in float64 after installing the observation residual. The physical
+amplitude transform and the forward mean can still contribute rounding
+before that evaluation.
+
+For a centered boundary, the model subtracts the fixed reference shift from
+the observations and computes the centered likelihood mean directly. In the
+multiplicative case the correction uses the deviation :math:`b-1`, where
+:math:`b` is the physical boundary scale. With the default multiplicative
+prior in a float32 process, the model computes this deviation directly
+as ``expm1(eta)`` in the log-scale coordinate :math:`\eta`. The shifted
+prior and its Jacobian describe the same prior on the physical scale.
+This avoids rounding a scale near one before subtracting one. Model data
+still follows the process dtype, so restored absolute concentrations
+can round at the absolute concentration scale. The state quadratic's
+float64 storage cannot recover rounding from model data registration or
+the forward mean. Other centered choices and priors use float64. See
+:doc:`../usage/co2_boundary_corrections` for configuration.
+
+When evaluating a precision change, compare nearby-state log-density
+differences and gradients through the compiled graph, and check that the
+saved reference shift restores absolute predictions. Compare local float64
+arithmetic with formulations that reduce cancellation before promoting
+large arrays. The
+`RHIME CO₂ precision audit <https://github.com/openghg/openghg_inversions/issues/1130>`_
+tracks the centered-boundary experiments and performance checks.
+
 Cache and evaluator routing
 ---------------------------
 

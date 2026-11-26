@@ -3,7 +3,7 @@
     "id": "sorted-partition-and-bc-files",
     "params": {"domain": "EUROPE", "fp_basis_case": "saved", "basis_directory": "basis", "bc_basis_case": "custom", "bc_basis_directory": "bc"},
     "files": {"basis/EUROPE/saved_EUROPE_2021.nc": "partition", "basis/EUROPE/saved_EUROPE_2020.nc": "partition", "basis/EUROPE/other_EUROPE_2020.nc": "partition", "bc/EUROPE/custom_EUROPE_2021.nc": "partition", "bc/EUROPE/custom_EUROPE_2020.nc": "partition"},
-    "expected": {"domain": "EUROPE", "basis_partition_paths": ["basis/EUROPE/saved_EUROPE_2020.nc", "basis/EUROPE/saved_EUROPE_2021.nc"], "bc_basis_paths": ["bc/EUROPE/custom_EUROPE_2020.nc", "bc/EUROPE/custom_EUROPE_2021.nc"]},
+    "expected": {"domain": "EUROPE", "basis_partition_paths": ["basis/EUROPE/saved_EUROPE_2020.nc", "basis/EUROPE/saved_EUROPE_2021.nc"], "bc_basis": {"paths": ["bc/EUROPE/custom_EUROPE_2020.nc", "bc/EUROPE/custom_EUROPE_2021.nc"]}},
     "justification": "devel adapt_resource_params explicitly sorts matching case_domain*.nc paths; v0.7.4 basis/_functions.py basis and basis_boundary_conditions use the same sorted glob."
   },
   {

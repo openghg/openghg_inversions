@@ -1,4 +1,4 @@
-"""Shared labelled square-matrix axis construction and diagnostics.
+"""Shared labelled square-matrix axis construction.
 
 Numerical kernels use distinct row and column dimensions so xarray never
 contracts a square matrix along both axes accidentally.  Column axes retain
@@ -172,66 +172,3 @@ def to_column_axis(
         name=ordered.name,
         attrs=ordered.attrs,
     )
-
-
-def with_square_matrix_diagnostics(
-    array: xr.DataArray,
-    *,
-    mathematical_name: str,
-    require_positive_definite: bool = False,
-    maximum_eigen_diagnostic_size: int = 512,
-) -> xr.DataArray:
-    """Validate a labelled square matrix once and attach numerical diagnostics.
-
-    Args:
-        array: Eager two-dimensional square matrix with distinct dimensions.
-        mathematical_name: Mathematical label stored in attributes and errors.
-        require_positive_definite: Whether to reject non-positive or
-            numerically rank-deficient matrices.
-        maximum_eigen_diagnostic_size: Largest matrix for which a full
-            eigendecomposition is performed when positivity is not required.
-
-    Returns:
-        ``array`` with symmetry and optional eigenvalue diagnostics attached.
-
-    Raises:
-        ValueError: If the layout is not square, values are complex or
-            non-finite, symmetry fails, or requested positive definiteness
-            fails.
-    """
-    if array.ndim != 2 or array.dims[0] == array.dims[1] or array.shape[0] != array.shape[1]:
-        raise ValueError(f"{mathematical_name} must be a square matrix on distinct labelled axes")
-    raw_values = np.asarray(array.values)
-    if np.iscomplexobj(raw_values) or not np.all(np.isfinite(raw_values)):
-        raise ValueError(f"{mathematical_name} must contain only finite real values")
-    values = np.asarray(raw_values, dtype=np.float64)
-    asymmetry = float(np.max(np.abs(values - values.T))) if values.size else 0.0
-    scale = max(1.0, float(np.max(np.abs(values))) if values.size else 1.0)
-    tolerance = 1e-10
-    if asymmetry > tolerance * scale:
-        raise ValueError(f"{mathematical_name} is not symmetric within tolerance {tolerance:g}")
-
-    attrs: dict[str, object] = {
-        **array.attrs,
-        "mathematical_name": mathematical_name,
-        "symmetry_absolute_error": asymmetry,
-        "diagnostic_tolerance": tolerance,
-    }
-    should_diagnose_eigenvalues = (
-        require_positive_definite or values.shape[0] <= maximum_eigen_diagnostic_size
-    )
-    if should_diagnose_eigenvalues:
-        eigenvalues = np.linalg.eigvalsh((values + values.T) * 0.5)
-        minimum = float(eigenvalues[0]) if eigenvalues.size else 0.0
-        maximum = float(eigenvalues[-1]) if eigenvalues.size else 0.0
-        if require_positive_definite and (
-            not eigenvalues.size or maximum <= 0.0 or minimum <= 1e-12 * maximum
-        ):
-            raise ValueError(f"{mathematical_name} must be positive definite and full rank")
-        attrs.update(minimum_eigenvalue=minimum, psd_diagnostic="full_eigendecomposition")
-    else:
-        attrs.update(
-            minimum_eigenvalue=np.nan,
-            psd_diagnostic=f"skipped_full_eigendecomposition_above_{maximum_eigen_diagnostic_size}",
-        )
-    return array.assign_attrs(attrs)
