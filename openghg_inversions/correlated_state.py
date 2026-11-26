@@ -1018,10 +1018,10 @@ class CorrelatedPrior:
             marginal: One family name for every state, or names on the state
                 dimension with the mean's labels.
             covariance_dim: Optional name for the covariance column dimension.
-            latent_correlation_floor: Opt-in repair for a copula prior whose
-                latent correlation is not positive definite, in ``(0, 0.1]``.
-                Eigenvalues below it are raised to it and the unit diagonal
-                is restored. A repair that would move an implied state
+            latent_correlation_floor: Opt-in eigenvalue floor for the
+                latent correlation, in ``(0, 0.1]``. Eigenvalues below the
+                floor are raised and the unit diagonal is restored. A repair
+                that would move an implied state
                 correlation by more than 0.01 is refused. ``None`` (the
                 default) rejects such priors. It does not apply when every
                 marginal is lognormal.
@@ -1038,7 +1038,7 @@ class CorrelatedPrior:
         """
         if latent_correlation_floor is not None and not 0.0 < float(latent_correlation_floor) <= 0.1:
             raise ValueError(f"latent_correlation_floor must be in (0, 0.1]; got {latent_correlation_floor!r}.")
-        names = marginal if isinstance(marginal, str) else np.asarray(marginal.values).astype(str)
+        names = marginal if isinstance(marginal, str) else np.asarray(marginal.values, dtype=object).astype(str)
         if np.all(np.asarray(names) == "lognormal"):
             self._set(CorrelatedLognormalPrior(mean, arithmetic_covariance, covariance_dim=covariance_dim), marginal)
             return
@@ -1207,7 +1207,8 @@ class CorrelatedPrior:
         unsupported = sorted(set(map(str, marginal.values)) - set(STATE_MARGINALS))
         if unsupported:
             raise ValueError(f"Unsupported state marginal(s) {unsupported!r}; available: {STATE_MARGINALS!r}.")
-        self.marginal = mean.copy(data=np.asarray(marginal.values).astype(str).astype(object)).rename("marginal")
+        names = np.asarray(marginal.values, dtype=object).astype(str)
+        self.marginal = mean.copy(data=names.astype(object)).rename("marginal")
         self.marginal.attrs = {}
 
     @property

@@ -360,8 +360,9 @@ def test_staged_replay_rejects_a_sector_named_total(tmp_path) -> None:
 
 
 def test_prepared_country_functionals_round_trip(tmp_path) -> None:
-    """Products survive NetCDF with their MultiIndex labels and the artifact's axes."""
-    _, reduction, prepared, _ = _case()
+    """Products survive netCDF4 with their MultiIndex labels and the artifact's axes."""
+    with xr.set_options(keep_attrs=True):
+        _, reduction, prepared, _ = _case()
     assert CO2_PREPARED_INPUTS_SCHEMA_VERSION == 4
     products = prepared.country_functionals
     assert products is not None
@@ -373,7 +374,7 @@ def test_prepared_country_functionals_round_trip(tmp_path) -> None:
     )
 
     path = tmp_path / "prepared.nc"
-    prepared.save(path)
+    prepared.to_datatree().to_netcdf(path, engine="netcdf4")
     loaded = Co2PreparedInputs.load(path).country_functionals
     assert loaded is not None
     for name in (
