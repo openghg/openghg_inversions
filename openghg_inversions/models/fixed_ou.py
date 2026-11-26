@@ -28,7 +28,7 @@ from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.models.components import add_model_data
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import (
-    AggregationError,
+    ObservationCovariance,
     aggregation_error_as_low_rank,
     validate_observation_error_arrays,
 )
@@ -879,7 +879,7 @@ def add_fixed_ou_gaussian_likelihood(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError | None = None,
+    aggregation_error: ObservationCovariance | None = None,
     mean: TensorVariable,
     tau_hours: float | Mapping[str, float],
     fixed_site_amplitudes: float | Mapping[str, float] | None = None,

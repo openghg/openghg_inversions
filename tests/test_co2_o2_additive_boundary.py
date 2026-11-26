@@ -249,7 +249,7 @@ def test_linked_additive_runner_restores_absolute_predictives_and_annotations(tm
 def test_standalone_co2_matches_linked_co2_boundary_equation_and_marginal_density(anomaly_scale):
     from scipy.stats import multivariate_normal
     from openghg_inversions.models import StateActivity
-    from openghg_inversions.observation_error import AggregationError
+    from openghg_inversions.observation_error import ObservationCovariance
     from openghg_inversions.rhime.co2.co2_model import build_co2_model
 
     with pytensor.config.change_flags(floatX="float64"):
@@ -265,7 +265,7 @@ def test_standalone_co2_matches_linked_co2_boundary_equation_and_marginal_densit
 
         observations = native(kwargs["observations"])
         covariance = kwargs["aggregation_error"].covariance.values[:2, :2]
-        aggregation = AggregationError(
+        aggregation = ObservationCovariance(
             mode="dense",
             marginal_variance=np.diag(covariance),
             covariance=xr.DataArray(

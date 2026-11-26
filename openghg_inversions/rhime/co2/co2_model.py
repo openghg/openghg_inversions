@@ -35,19 +35,21 @@ from openghg_inversions.models.components import (
     likelihood_representation,
     warn_constant_offset_confounding,
 )
-from openghg_inversions.models.coords import registered_model
+from openghg_inversions.models.coords import add_model_data, registered_model
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likelihood
 from openghg_inversions.models.state_activity import (
     StateActivity,
     prepare_linear_sensitivity,
     resolve_state_activity,
 )
-from openghg_inversions.observation_error import AggregationError
+from openghg_inversions.observation_error import ObservationCovariance
 from openghg_inversions.rhime._model_building import _call_custom_likelihood
 from openghg_inversions.rhime.builders import RhimeLikelihoodBuilder
 from openghg_inversions.sigma import SigmaAlignment
+from openghg_inversions.postprocessing.contracts import _MARGINALISED_OUTER_FLUX_MASK
 
 
 @dataclass(frozen=True)
@@ -152,6 +154,21 @@ def _check_co2_model_options(
         )
 
 
+def _check_outer_flux_likelihood(
+    outer_flux: OuterFluxChoice | None,
+    likelihood_builder: RhimeLikelihoodBuilder | None,
+) -> None:
+    """Reject a scalar-sigma eigenbasis that omits marginalised outer covariance."""
+    if (
+        outer_flux is not None and outer_flux.mode == "marginalise"
+        and likelihood_builder is add_scalar_sigma_eigen_likelihood
+    ):
+        raise ValueError(
+            'outer_flux mode = "marginalise" cannot use a scalar-sigma eigenbasis '
+            "prepared without the marginalised outer-flux covariance."
+        )
+
+
 def build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
@@ -159,7 +176,7 @@ def build_co2_model(
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     sigma_alignment: SigmaAlignment | None = None,
@@ -239,8 +256,10 @@ def build_co2_model(
             states.
         boundary: Resolved boundary component bound to this fit.
         outer_flux: Optional outer-flux choice, resolved here on
-            ``retained_prior``. Its fixed outer states are held at their prior
-            mean with zero uncertainty after exact-zero pruning. See
+            ``retained_prior``. The ``"fixed"`` mode uses the selected states'
+            prior means with zero uncertainty. The ``"marginalise"`` mode
+            integrates the selected states into the observation mean and
+            covariance. See
             :mod:`openghg_inversions.models.outer_flux`.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added. Site codes are derived from the ``site`` coordinate
@@ -256,9 +275,9 @@ def build_co2_model(
         ValueError: If shared preparation, prior construction, or registered
             coordinate alignment fails, or if ``sigma_prior`` is supplied
             without ``sigma_alignment``, or if a centered boundary is combined
-            with a custom likelihood callback or wrapper. Conflicting
-            likelihood and boundary options are rejected before any input is
-            computed.
+            with a custom likelihood callback or wrapper, or if marginalised
+            outer flux is combined with a scalar-sigma eigenbasis.
+            Conflicting model options fail before any input is computed.
     """
     # Cheap option conflicts fail before any lazy input is executed.
     _check_co2_model_options(
@@ -269,6 +288,7 @@ def build_co2_model(
         sigma_prior=sigma_prior,
         fixed_model_mismatch=fixed_model_mismatch,
     )
+    _check_outer_flux_likelihood(outer_flux, likelihood_builder)
     (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, priors = dask_compute(
         *to_dense_tree((
             (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary,
@@ -304,7 +324,7 @@ def _build_co2_model(
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     sigma_alignment: SigmaAlignment | None = None,
@@ -347,17 +367,25 @@ def _build_co2_model(
         offset_prior = dict(offset_prior)
     offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
-    prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
-    activity = resolve_state_activity(prepared_flux.removed, state_activity)
+    outer_states = None
     if outer_flux is not None:
         if gaussian_prior is not None:
             outer_states = outer_flux.resolve_state_moments(gaussian_prior.mean, gaussian_prior.covariance)
         else:
             assert retained_prior is not None
             outer_states = outer_flux.resolve_states(retained_prior)
+    if outer_states is not None:
+        flux_sensitivity, fixed_prior_contribution = outer_states.condition_sensitivity(
+            flux_sensitivity, fixed_prior_contribution, output_dim="nmeasure",
+        )
+    prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
+    activity = resolve_state_activity(prepared_flux.removed, state_activity)
+    if outer_states is not None:
         activity = outer_states.fix_states(activity)
 
     with registered_model() as model:
+        if outer_states is not None and outer_states.choice.mode == "marginalise":
+            add_model_data(outer_states.fixed, _MARGINALISED_OUTER_FLUX_MASK)
         if gaussian_prior is not None:
             flux_scaling = add_correlated_gaussian_state_with_activity(
                 activity, gaussian_prior.mean, gaussian_prior.factor, var_name="flux_scaling",
@@ -403,11 +431,17 @@ def _build_co2_model(
             observations,
             modelled_mean,
         )
+        outer_flux_factor = (
+            outer_states.marginal_error_factor(flux_sensitivity, output_dim="nmeasure")
+            if outer_states is not None and outer_states.choice.mode == "marginalise"
+            else None
+        )
+        fixed_covariance = aggregation_error.with_added_factor(outer_flux_factor)
         if likelihood_builder is None:
             add_additive_sigma_likelihood(
                 observations=likelihood_observations,
                 observation_error=observation_error,
-                aggregation_error=aggregation_error,
+                aggregation_error=fixed_covariance,
                 fixed_model_mismatch=fixed_mismatch,
                 mean=likelihood_mean,
                 additive_sigma_alignment=sigma_alignment,
@@ -419,7 +453,7 @@ def _build_co2_model(
                 likelihood_builder,
                 observations=likelihood_observations,
                 observation_error=observation_error,
-                aggregation_error=aggregation_error,
+                aggregation_error=fixed_covariance,
                 mean=likelihood_mean,
                 output_dim="nmeasure",
                 likelihood_kwargs=likelihood_kwargs,
