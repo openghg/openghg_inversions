@@ -134,7 +134,7 @@ def test_affine_routes_load_prepared_inputs_once(tmp_path, monkeypatch, route):
         with pytest.raises(RuntimeError, match="model boundary reached"):
             execution.run_co2(params={
                 "format_version": 1, "recipe": "co2",
-                "prepared_inputs": {
+                "data": {
                     "path": str(preparation.payload),
                     "reconstruction_path": str(preparation.affine_payload), **FACTS,
                 },

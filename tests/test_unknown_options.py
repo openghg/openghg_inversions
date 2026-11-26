@@ -95,6 +95,8 @@ def test_co2_phases_reject_unknown_names_in_active_and_inactive_sections(tmp_pat
     from openghg_inversions.cli import main
 
     options = {UNKNOWN: None}
+    if family == "co2" and section == "prepared_inputs":
+        section = "data"
     if section is not None:
         options = {section: options}
     options_file = tmp_path / "choices.json"
@@ -112,6 +114,7 @@ def test_co2_phases_reject_unknown_names_in_active_and_inactive_sections(tmp_pat
 
 
 @pytest.mark.parametrize("family, section", [
+    ("co2", "data.acquisition"), ("co2", "data.preparation"), ("co2", "data.preparation.native_prior"),
     ("co2", "model"), ("co2", "model.boundary"), ("co2", "model.offset.prior"),
     ("co2_o2", "channels"), ("co2_o2", "channels.co2"),
     ("co2_o2", "channels.o2.boundary.activity"), ("co2_o2", "channels.co2.offset.prior"),
@@ -141,7 +144,8 @@ def test_co2_request_names_do_not_reinterpret_scientific_labels_or_inactive_valu
 
     loader = load_co2_params if family == "co2" else load_co2_o2_params
     options = {
-        "sampling": {"draws": "inactive-invalid"}, "prepared_inputs": {"path": 42},
+        "sampling": {"draws": "inactive-invalid"},
+        ("data" if family == "co2" else "prepared_inputs"): {"path": 42},
         "likelihood": {"fixed_site_amplitudes": {UNKNOWN: 0.5}},
         "outputs": {"output_format": "inactive-invalid"},
     }
@@ -162,7 +166,8 @@ def test_direct_co2_components_reject_unknown_names_in_their_own_sections(family
         model_options = {"channels": {"co2": {"units": "ppm", UNKNOWN: None}}}
         owners = (Co2O2PreparationConfig.from_params, Co2O2ModelConfig.from_params, resolve_co2_o2_output)
     for owner, options in zip(owners, (
-        {"prepared_inputs": {UNKNOWN: None}}, model_options, {"outputs": {UNKNOWN: None}},
+        {("data" if family == "co2" else "prepared_inputs"): {UNKNOWN: None}},
+        model_options, {"outputs": {UNKNOWN: None}},
     ), strict=True):
         with pytest.raises(ValueError, match=f"option.*{UNKNOWN}"):
             owner(options)

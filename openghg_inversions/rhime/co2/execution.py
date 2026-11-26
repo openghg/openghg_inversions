@@ -13,11 +13,8 @@ from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import MergedData, PreparedInputs
-from openghg_inversions.models.boundary import boundary_preparation
-from openghg_inversions.models.boundary.contracts import validate_centering_weights
 from openghg_inversions.observation_error import WhitenedRankRule
 from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
-from openghg_inversions.rhime.preparation import resolve_basis_inputs, resolve_bc_basis
 
 from .co2_affine_output import _bind_affine_flux_map, prepared_inputs_content_id
 from .co2_outputs import (
@@ -26,7 +23,7 @@ from .co2_outputs import (
 )
 from .co2_preparation import Co2PreparedInputs, check_prepared_boundary, prepare_co2_inputs, requested_co2_facts
 from .inference import sample_co2_inference
-from .prepare_from_merged_data import prepare_co2_from_merged_data
+from .prepare_from_merged_data import acquire_co2_data, prepare_co2_from_merged_data
 from .configuration import (
     load_co2_family_config, validate_co2_config, _validate_co2_option_names, Co2PreparationConfig,
     Co2ModelConfig, _resolve_co2_sampling,
@@ -55,11 +52,15 @@ def load_co2_params(
         options = dict(params or {})
     _validate_co2_option_names(options, overrides or {})
     for name, value in (overrides or {}).items():
-        if name in {"prepared_inputs", "model", "likelihood", "sampling", "outputs"} and isinstance(value, Mapping):
+        if name in {"data", "model", "likelihood", "sampling", "outputs"} and isinstance(value, Mapping):
             previous = options.get(name, {})
             if not isinstance(previous, Mapping):
                 raise ValueError(f"CO2 {name} must be a mapping.")
             merged = {**previous, **value}
+            if name == "data":
+                for phase in ("acquisition", "preparation"):
+                    if isinstance(previous.get(phase), Mapping) and isinstance(value.get(phase), Mapping):
+                        merged[phase] = {**previous[phase], **value[phase]}
             # A partial outer-flux override keeps the base table's other choices.
             outer = previous.get("outer_flux") if name == "model" else None
             if isinstance(outer, Mapping) and isinstance(value.get("outer_flux"), Mapping):
@@ -77,18 +78,6 @@ def resolve_co2_output(params: Mapping[str, Any]) -> dict[str, Any]:
     return {"output": Co2OutputOptions.from_params(choices), "source_to_sector": source_to_sector}
 
 
-def _load_centering_weights(path: Path | None) -> xr.DataArray | None:
-    """Load and check the one ``bc_centering_weights`` array before acquisition starts."""
-    if path is None:
-        return None
-    with xr.open_dataset(path) as dataset:
-        if "bc_centering_weights" not in dataset:
-            raise ValueError(f"{path} must contain a bc_centering_weights variable.")
-        weights = dataset["bc_centering_weights"].load()
-    validate_centering_weights(weights.transpose("bc_curtain", "bc_period"))
-    return weights
-
-
 def run_co2(
     *, config_file: str | Path | None = None, params_file: str | Path | None = None,
     params: Mapping[str, Any] | None = None, overrides: Mapping[str, Any] | None = None,
@@ -102,10 +91,10 @@ def run_co2(
 ) -> Co2Output:
     """Prepare or load CO2 inputs, sample and create requested products.
 
-    This configured product entry point consumes ``prepared_inputs``,
+    This configured product entry point consumes ``data``,
     ``model``, ``likelihood``, ``sampling`` and ``outputs`` without
     intermediate manifests. Trace-only callers use the model-selected inference
-    steps directly. Configured acquisition (``prepared_inputs.acquisition``)
+    steps directly. Configured acquisition (``data.acquisition``)
     acquires, or uses supplied ``merged_data``, and builds a new preparation
     with its affine companion. Supplied canonical inputs and their coherent
     reduction are prepared together; an existing preparation is reused
@@ -151,10 +140,10 @@ def run_co2(
     source = preparation.prepared_path
     supplied_prepared = prepared is not None
     if merged_data is not None and preparation.native is None:
-        raise ValueError("merged_data requires prepared_inputs.acquisition choices.")
+        raise ValueError("merged_data requires data.preparation choices.")
     if affine_path is not None:
         if affine_artifact is not None:
-            raise ValueError("Pass affine_artifact or prepared_inputs.reconstruction_path, not both.")
+            raise ValueError("Pass affine_artifact or data.reconstruction_path, not both.")
         if canonical_inputs is not None or supplied_prepared or source is None:
             raise ValueError("Supplied or new coherent preparation requires its matching affine_artifact.")
     consumed_paths = tuple(Path(path) for path in (config_file, params_file) if path is not None)
@@ -169,24 +158,11 @@ def run_co2(
         domain = cast(str, preparation.domain)
         window_start = cast(str, preparation.start_date)
         window_end = cast(str, preparation.end_date)
-        boundary = boundary_preparation(preparation.boundary, preparation.boundary_representation)
-        basis_inputs = resolve_basis_inputs(native.basis)
-        bc_basis = resolve_bc_basis(native.basis)
-        weights = _load_centering_weights(native.bc_centering_weights_path)
-        acquisition = native.acquisition
         if merged_data is None:
-            merged_data = MergedData.from_options(
-                species="co2", domain=domain, start_date=window_start, end_date=window_end, **acquisition,
-            )
+            merged_data = acquire_co2_data(native, domain=domain, start_date=window_start, end_date=window_end)
         prepared, affine_artifact = prepare_co2_from_merged_data(
-            merged_data, domain=domain, start_date=window_start, end_date=window_end,
-            flux_sources=acquisition["flux_sources"], use_bc=acquisition.get("use_bc", True),
-            boundary_representation=boundary.representation,
-            filters=native.filters, averaging_error=native.averaging_error,
-            basis_algorithm=native.basis.basis_algorithm, nbasis=native.basis.nbasis,
-            fix_outer_regions=native.basis.fix_basis_outer_regions, basis_inputs=basis_inputs, bc_basis=bc_basis,
-            prior=native.native_prior, aggregation_error_rank=native.aggregation_error_rank,
-            bc_centering_weights=weights,
+            merged_data, native, domain=domain, start_date=window_start, end_date=window_end,
+            boundary=preparation.boundary, boundary_representation=preparation.boundary_representation,
         )
         consumed_paths += native.resource_paths()
     elif canonical_inputs is not None and reduction is not None:
@@ -196,7 +172,7 @@ def run_co2(
         )
     elif prepared is None:
         if source is None:
-            raise ValueError("Pass prepared inputs or configure prepared_inputs.path.")
+            raise ValueError("Pass prepared inputs or configure data.path.")
         prepared = Co2PreparedInputs.load(source)
         consumed_paths += (source,)
     check_prepared_boundary(prepared.inv_inputs, preparation.boundary, preparation.boundary_representation)

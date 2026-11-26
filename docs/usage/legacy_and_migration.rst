@@ -434,6 +434,11 @@ selects the matched cached sampler automatically. Use a supported positive-prior
 table rather than ``site_amplitude_prior_scale``. The packaged example is now
 ``co2_fixed_ou.toml``.
 
+Move ordinary CO₂ input configuration from ``[prepared_inputs]`` to ``[data]``.
+Use ``data.path`` for a saved preparation. For a new preparation, put retrieval
+choices in ``[data.acquisition]`` and scientific preparation choices in
+``[data.preparation]``. See :ref:`co2-configured-preparation`.
+
 Replace linked ``Co2O2RunSetup`` and ``resolve_co2_family_config`` with
 ``Co2O2ModelConfig.from_params(config)`` and pass ``model.bind(prepared)`` as
 scientific keywords to ``run_rhime_co2_o2_from_prepared_inputs``. Remove linked

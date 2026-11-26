@@ -74,6 +74,16 @@ operations differ. For example, nested preparation owns domain alignment and
 overlap masking; cached CO2 inference keeps its matched graph, sampler and
 cache-update order together. State unsupported checkpoint routes explicitly.
 
+Ordinary CO₂ follows the standard recipe's acquisition and preparation boundary.
+The configured acquisition step uses the shared request facts in ``[data]``
+and retrieval choices in ``[data.acquisition]`` to produce ``MergedData``.
+The preparation step takes that handoff and the choices in
+``[data.preparation]`` to build the coherent inputs and affine companion.
+The full runner uses the pair in memory. Staged ``prepare`` calls the same
+steps and saves the pair. A caller supplying ``MergedData`` starts at the
+preparation step. File-backed acquisition remains tracked in
+`#829 <https://github.com/openghg/openghg_inversions/issues/829>`_.
+
 Current file-backed commands and their restrictions are documented in
 :doc:`../usage/staged_workflow` and :doc:`../usage/co2_model_family`.
 The reusable recipe execution and prepared/sample handoffs in `PR 802

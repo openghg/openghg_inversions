@@ -33,7 +33,7 @@ def _ordinary() -> dict[str, object]:
     return {
         "format_version": 1,
         "recipe": "co2",
-        "prepared_inputs": {"path": "prepared.zarr"},
+        "data": {"path": "prepared.zarr"},
         "likelihood": {
             "kind": "additive_sigma",
             "sigma_prior": {"pdf": "Half-Normal", "sigma": 0.75},
@@ -385,7 +385,7 @@ def test_global_offset_rejects_site_specific_options_during_resolution(
 
 def test_imported_preparation_facts_are_explicit_and_optional() -> None:
     config = _ordinary()
-    config["prepared_inputs"] = {
+    config["data"] = {
         "path": "prepared.zarr", "start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE",
         "reconstruction_path": "affine.nc",
     }
@@ -398,13 +398,13 @@ def test_imported_preparation_facts_are_explicit_and_optional() -> None:
         "prepared_path": None, "affine_path": None, "start_date": None, "end_date": None, "domain": None,
         "boundary_representation": None, "boundary": None, "native": None,
     }
-    with pytest.raises(ValueError, match="prepared_inputs.path"):
+    with pytest.raises(ValueError, match="data.path"):
         Co2PreparationConfig.from_params({}, require_source=True).preparation_arguments()
 
 
 def test_model_resolution_consumes_only_owned_choices_without_an_envelope() -> None:
     config = _ordinary()
-    for name in ("format_version", "recipe", "prepared_inputs"):
+    for name in ("format_version", "recipe", "data"):
         del config[name]
     config["outputs"] = object()
     config["sampling"] = object()
@@ -468,6 +468,11 @@ def test_prior_and_posterior_share_random_seed_validation(seed: object) -> None:
             resolve({"sampling": {"random_seed": seed}})
 
 
+def test_ordinary_config_uses_data_as_the_only_input_section() -> None:
+    with pytest.raises(ValueError, match=r"config\.prepared_inputs"):
+        validate_co2_config({"prepared_inputs": {"path": "prepared.nc"}})
+
+
 def test_envelope_validation_does_not_resolve_unowned_sections() -> None:
     config = {"model": object(), "sampling": object(), "outputs": object()}
     assert validate_co2_config(config) == config
@@ -478,8 +483,8 @@ def test_envelope_validation_does_not_resolve_unowned_sections() -> None:
 
 @pytest.mark.parametrize("prepared", [{"path": False}, {"path": ""}, {"reconstruction_path": []}, {"surprise": True}])
 def test_preparation_owner_rejects_invalid_or_unknown_options(prepared: object) -> None:
-    with pytest.raises((TypeError, ValueError), match="prepared_inputs"):
-        Co2PreparationConfig.from_params({"prepared_inputs": prepared}).preparation_arguments()
+    with pytest.raises((TypeError, ValueError), match="data"):
+        Co2PreparationConfig.from_params({"data": prepared}).preparation_arguments()
 
 
 @pytest.mark.parametrize("prior", [

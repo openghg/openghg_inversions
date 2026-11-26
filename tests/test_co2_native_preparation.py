@@ -48,24 +48,27 @@ def request(partition: Path, **prepared: object) -> dict:
     """A complete configured CO2 request with a build-route preparation."""
     return {
         "format_version": 1, "recipe": "co2",
-        "prepared_inputs": {
+        "data": {
             **WINDOW,
+            "flux_sources": ["biosphere", "fossil"],
             "acquisition": {
-                "sites": ["TOY"], "averaging_period": "3h", "flux_sources": ["biosphere", "fossil"],
+                "sites": ["TOY"], "averaging_period": "3h",
                 "surface_transport": {"biosphere": "integrated", "fossil": "integrated"},
                 "boundary_reference": 400.0, "boundary_reference_units": "ppm", "boundary_mass_tolerance": 1e-6,
             },
-            "observations": {"filters": ["daytime9to5"]},
-            "basis": {"partition_path": str(partition)},
-            "native_prior": {"sigma": 0.2, "correlation_length": 1.0},
-            "aggregation_error_rank": "exact",
-            **prepared,
+            "preparation": {
+                "filters": ["daytime9to5"],
+                "basis": {"partition_path": str(partition)},
+                "native_prior": {"stdev": 0.2, "correlation_length": 1.0},
+                "aggregation_error_rank": "exact",
+                **prepared,
+            },
         },
         "likelihood": {"kind": "additive_sigma", "no_model_error": True, "fixed_model_mismatch": 0.0},
     }
 
 
-def prepare(tmp_path: Path, config: dict, merged: MergedData, name: str) -> Co2PreparedInputs:
+def prepare(tmp_path: Path, config: dict, merged: MergedData | None, name: str) -> Co2PreparedInputs:
     """Run the configured prepare stage and reopen its artifact."""
     arguments = Co2PreparationConfig.from_params(load_co2_params(params=config), require_source=True)
     manifest = handoffs.prepare(
@@ -107,39 +110,55 @@ def test_configuration_resolves_representation_from_boundary_type(partition: Pat
     level_only = Co2PreparationConfig.from_params(config)
     assert level_only.native is not None and level_only.native.bc_centering_weights_path is None
     config["model"] = {"boundary": ADDITIVE}
-    with pytest.raises(ValueError, match="requires prepared_inputs.bc_centering_weights_path"):
+    with pytest.raises(ValueError, match="requires data.preparation.bc_centering_weights_path"):
         Co2PreparationConfig.from_params(config)
-    config["prepared_inputs"]["boundary_representation"] = "ordinary"
+    config["data"]["preparation"]["boundary_representation"] = "ordinary"
     with pytest.raises(ValueError, match="requires boundary_representation='centered'"):
         Co2PreparationConfig.from_params(config)
 
 
-@pytest.mark.parametrize("change,message", [
-    ({"path": "prepared.nc"}, "remove the build options"),
-    ({"reconstruction_path": "affine.nc"}, "produces its own affine companion"),
-    ({"native_prior": {"mean": 1.0}}, "native_prior.sigma"),
-    ({"bc_centering_weights_path": "weights.nc"}, "requires centered boundaries"),
-    ({"basis": {"algorithm": "voronoi"}}, "basis.algorithm"),
-    ({"acquisition": {"sites": ["TOY"], "averaging_period": "3h"}}, "flux_sources"),
-    ({"basis": {"algorithm": "region_constrained"}}, "basis.algorithm"),
-    ({"boundary_representation": "centered", "acquisition": {**request(Path("p"))["prepared_inputs"]["acquisition"],
-                                                             "use_bc": False}}, "use_bc = false"),
-    ({"acquisition": {**request(Path("p"))["prepared_inputs"]["acquisition"],
-                      "surface_transport": {"biosphere": "time_resolved", "fossil": "integrated"}}},
+@pytest.mark.parametrize("section,change,message", [
+    ("data", {"path": "prepared.nc"}, "remove the build options"),
+    ("data", {"reconstruction_path": "affine.nc"}, "produces its own affine companion"),
+    ("preparation", {"native_prior": {"mean": 1.0}}, "native_prior.stdev"),
+    ("preparation", {"bc_centering_weights_path": "weights.nc"}, "requires centered boundaries"),
+    ("preparation", {"basis": {"algorithm": "voronoi"}}, "basis.algorithm"),
+    ("data", {"flux_sources": []}, "flux_sources"),
+    ("preparation", {"basis": {"algorithm": "region_constrained"}}, "basis.algorithm"),
+    ("preparation", {"boundary_representation": "centered", "use_bc": False}, "use_bc = false"),
+    ("acquisition", {"surface_transport": {"biosphere": "time_resolved", "fossil": "integrated"}},
      "time_resolved=True site selectors"),
-    ({"acquisition": {key: value for key, value in request(Path("p"))["prepared_inputs"]["acquisition"].items()
-                      if key != "boundary_mass_tolerance"}}, "boundary_mass_tolerance"),
+    ("acquisition", {"boundary_mass_tolerance": None}, "boundary_mass_tolerance"),
 ])
-def test_build_route_rejects_inconsistent_options(partition: Path, change: dict, message: str) -> None:
+def test_build_route_rejects_inconsistent_options(partition: Path, section: str, change: dict, message: str) -> None:
     config = request(partition)
-    config["prepared_inputs"].update(change)
+    data = config["data"]
+    (data if section == "data" else data[section]).update(change)
     with pytest.raises((TypeError, ValueError), match=message):
         Co2PreparationConfig.from_params(config)
 
 
+def test_native_phase_override_keeps_other_choices(partition: Path) -> None:
+    options = load_co2_params(
+        params=request(partition), overrides={"data": {"preparation": {"averaging_error": False}}},
+    )
+    resolved = Co2PreparationConfig.from_params(options)
+    assert resolved.native is not None
+    assert resolved.native.averaging_error is False
+    assert resolved.native.native_prior.stdev == 0.2
+    assert resolved.native.basis.basis_partition_path == partition
+
+
+def test_fresh_prepare_requires_acquisition_selectors(tmp_path: Path, partition: Path) -> None:
+    config = request(partition)
+    del config["data"]["acquisition"]
+    with pytest.raises(ValueError, match="Pass merged_data or configure data.acquisition"):
+        prepare(tmp_path, config, None, "missing-acquisition")
+
+
 def test_disabled_boundary_allows_acquisition_without_boundaries(partition: Path) -> None:
     config = {**request(partition), "model": {"boundary": {"enabled": False}}}
-    config["prepared_inputs"]["acquisition"]["use_bc"] = False
+    config["data"]["preparation"]["use_bc"] = False
     assert Co2PreparationConfig.from_params(config).boundary is None
 
 
@@ -151,7 +170,7 @@ def test_native_prepare_rejects_a_supplied_affine_artifact(tmp_path: Path, parti
 
 def test_prepare_checks_a_native_build_before_saving(tmp_path: Path, merged: MergedData, partition: Path) -> None:
     config = request(partition)
-    config["prepared_inputs"]["acquisition"]["use_bc"] = False
+    config["data"]["preparation"]["use_bc"] = False
     prepared = prepare(tmp_path, config, merged, "no-boundary")
     assert not {"H_bc", "H_bc_anomaly", "H_bc_mass", "bc_reference"} & prepared.inv_inputs.variables.keys()
     assert merged.site_data["TOY"].attrs["boundary_representation"] == "centered-v1"
@@ -167,11 +186,11 @@ def test_prepare_checks_a_native_build_before_saving(tmp_path: Path, merged: Mer
 
 def test_build_route_requires_window_and_linked_route_rejects_it(partition: Path) -> None:
     config = request(partition)
-    del config["prepared_inputs"]["end_date"]
+    del config["data"]["end_date"]
     with pytest.raises(ValueError, match="end_date for a new preparation"):
         Co2PreparationConfig.from_params(config)
-    with pytest.raises(ValueError, match="configured linked preparation is not yet available"):
-        Co2O2PreparationConfig.from_params({"prepared_inputs": request(partition)["prepared_inputs"]})
+    with pytest.raises(ValueError, match="prepared_inputs.acquisition"):
+        Co2O2PreparationConfig.from_params({"prepared_inputs": {"acquisition": {}}})
 
 
 def test_one_merged_dataset_feeds_both_representations(tmp_path: Path, merged: MergedData, partition: Path) -> None:
@@ -262,8 +281,8 @@ def test_supplied_merged_data_pass_scientific_input_validation(
 
 def test_supplied_source_set_must_match_request(tmp_path: Path, merged: MergedData, partition: Path) -> None:
     config = request(partition)
-    acquisition = config["prepared_inputs"]["acquisition"]
-    acquisition["flux_sources"] = ["fossil"]
+    acquisition = config["data"]["acquisition"]
+    config["data"]["flux_sources"] = ["fossil"]
     acquisition["surface_transport"] = {"fossil": "integrated"}
     with pytest.raises(ValueError, match="flux sources must match the configured source set"):
         prepare(tmp_path, config, merged, "extra-source")
@@ -311,9 +330,14 @@ def test_native_response_is_read_once_and_masked_before_reduction(
         return response.to_numpy()
 
     lazy = response.copy(data=da.from_delayed(read_response(), shape=response.shape, dtype=response.dtype))
+    @dask.delayed
+    def read_diagnostic():
+        pytest.fail("preparation computed an unused native-grid coordinate")
+
+    diagnostic = da.from_delayed(read_diagnostic(), shape=response.shape, dtype=response.dtype)
     with_invalid_row = site.assign(
         fp_x_flux=lazy, mf_mod=lazy.sum(("lat", "lon"), skipna=False),
-    )
+    ).assign_coords(grid_diagnostic=(response.dims, diagnostic))
     supplied = replace(merged, site_data={"TOY": with_invalid_row})
     baseline = replace(merged, site_data={"TOY": site.drop_sel(time=invalid_time)})
     expected = prepare(tmp_path, request(partition), baseline, "without-invalid-row").inv_inputs
@@ -322,6 +346,7 @@ def test_native_response_is_read_once_and_masked_before_reduction(
 
     assert len(reads) == 1
     assert "mf_mod" not in actual and "mf_mod_sectoral" not in actual
+    assert "grid_diagnostic" not in actual.coords
     assert "mf_mod" in supplied.site_data["TOY"]
     assert actual.indexes["nmeasure"].equals(expected.indexes["nmeasure"])
     xr.testing.assert_allclose(actual.aggregation_error_covariance, expected.aggregation_error_covariance)
@@ -355,7 +380,7 @@ def test_staged_import_and_sampling_reject_an_inconsistent_preparation(
     arguments = Co2PreparationConfig.from_params(request(partition), require_source=True)
     manifest = handoffs.prepare(**arguments.preparation_arguments(), merged_data=merged, output_dir=tmp_path / "p")
     imported = {
-        **request(partition), "prepared_inputs": {"path": str(tmp_path / "p" / "prepared-inputs.nc"), **WINDOW},
+        **request(partition), "data": {"path": str(tmp_path / "p" / "prepared-inputs.nc"), **WINDOW},
         "model": {"boundary": dict(ADDITIVE)},
     }
     with pytest.raises(ValueError, match="centered is required"):
@@ -376,7 +401,7 @@ def test_staged_cli_checks_explicit_saved_boundary_representation(
     config["model"] = {"boundary": {"prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.01}}}
     prepare(tmp_path, config, merged, "centered")
     manifest = tmp_path / "centered" / "prepare-manifest.json"
-    config["prepared_inputs"] = {"boundary_representation": "ordinary", "path": 42}
+    config["data"] = {"preparation": {"boundary_representation": "ordinary"}, "path": 42}
     for command in ("sample", "prior-predictive"):
         destination = tmp_path / command
         with pytest.raises(ValueError, match="have centered boundary sensitivity, but ordinary is required"):
@@ -387,7 +412,6 @@ def test_staged_cli_checks_explicit_saved_boundary_representation(
         assert not destination.exists()
 
 
-@pytest.mark.usefixtures("double_precision")
 def test_full_runner_builds_from_configuration(
     tmp_path: Path, merged: MergedData, partition: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -402,11 +426,13 @@ def test_full_runner_builds_from_configuration(
     monkeypatch.setattr(MergedData, "from_options", staticmethod(acquire))
     config = request(partition)
     config["model"] = {"boundary": {"prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.01}}}
-    config["sampling"] = {"draws": 20, "tune": 20, "chains": 1, "progressbar": False, "random_seed": 3}
     config["outputs"] = {"output_format": "none"}
 
+    # This test checks preparation and reconstruction without running inference.
+    from openghg_inversions.rhime.co2 import execution
+
+    monkeypatch.setattr(execution, "sample_co2_inference", lambda *a, **kw: (xr.DataTree(), {}))
     result = run_co2(params=config)
-    assert result.idata["posterior"].sizes["draw"] == 20
     assert "H_bc" in result.prepared.inv_inputs
     (call,) = acquisition_calls
     assert call["boundary_representation"] == "centered"
@@ -414,9 +440,13 @@ def test_full_runner_builds_from_configuration(
     assert call["reference_units"] == "ppm"
     assert call["mass_tolerance"] == 1e-6
 
+    fresh = prepare(tmp_path, config, None, "fresh")
+    del config["data"]["acquisition"]
     staged = prepare(tmp_path, config, merged, "staged")
-    xr.testing.assert_allclose(result.prepared.inv_inputs, staged.inv_inputs)
-    assert len(acquisition_calls) == 1
+    supplied_run = run_co2(params=config, merged_data=merged)
+    for other in (result.prepared, fresh, supplied_run.prepared):
+        xr.testing.assert_identical(other.inv_inputs, staged.inv_inputs)
+    assert acquisition_calls == [call, call]
     checkpoint = handoffs.load_preparation(tmp_path / "staged" / "prepare-manifest.json")
     assert checkpoint.affine_payload is not None
     assert (checkpoint.start_date, checkpoint.end_date, checkpoint.domain) == (
@@ -443,8 +473,8 @@ def test_full_runner_builds_from_configuration(
     expected_flux = 1.25 * (merged.flux_data["biosphere"].flux + merged.flux_data["fossil"].flux)
     xr.testing.assert_allclose(saved_affine.state_to_flux(state), expected_flux)
     xr.testing.assert_allclose(result.bound.state_to_flux(state), expected_flux)
-    with pytest.raises(ValueError, match="merged_data requires prepared_inputs.acquisition"):
-        run_co2(params={**config, "prepared_inputs": {"path": "prepared.nc", **WINDOW}}, merged_data=merged)
+    with pytest.raises(ValueError, match="merged_data requires data.preparation"):
+        run_co2(params={**config, "data": {"path": "prepared.nc", **WINDOW}}, merged_data=merged)
 
 
 def test_native_outputs_cannot_overwrite_a_consumed_resource(
@@ -489,10 +519,10 @@ def test_template_build_block_is_a_valid_preparation(template: str) -> None:
         if not line.startswith("#"):
             break
         block.append(line.removeprefix("#").removeprefix(" "))
-    build = tomllib.loads("[prepared_inputs]\n" + "\n".join(block))
+    build = tomllib.loads("[data]\n" + "\n".join(block))
     config = tomllib.loads(source)
-    config["prepared_inputs"].pop("path")
-    config["prepared_inputs"].update(build["prepared_inputs"])
+    config["data"].pop("path")
+    config["data"].update(build["data"])
     config["model"] = build["model"]
     resolved = Co2PreparationConfig.from_params(config, require_source=True)
     assert resolved.native is not None and resolved.boundary_representation == "centered"

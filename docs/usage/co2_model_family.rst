@@ -42,7 +42,7 @@ Current support
        canonical RHIME observations and metadata with one coherent reduction
        in a dedicated
        :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact.
-       Configured ``[prepared_inputs.acquisition]`` instead acquires
+       Configured ``[data.acquisition]`` instead acquires
        continuous-surface data from OpenGHG and builds the preparation with its
        affine companion; see :ref:`co2-configured-preparation`.
      - :func:`openghg_inversions.rhime.co2.prepare_co2_o2_inputs` gathers
@@ -136,7 +136,7 @@ Staged CO₂ commands
 -------------------
 
 CO₂ starts from one of three inputs: configured acquisition
-(``[prepared_inputs.acquisition]``; see :ref:`co2-configured-preparation`);
+(``[data.acquisition]``; see :ref:`co2-configured-preparation`);
 canonical scientific inputs with a coherent reduction; or an existing
 :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact. Configured
 acquisition retrieves OpenGHG data and reduces the configured native prior; CO₂
@@ -150,7 +150,7 @@ Direct scientific callers can compose materialization, model construction,
 sampling and trace annotation explicitly; see :doc:`co2_models`.
 
 Saved phases call those same scientific operations. ``prepare`` either builds
-a new preparation from ``[prepared_inputs.acquisition]`` (see
+a new preparation from ``[data.acquisition]`` (see
 :ref:`co2-configured-preparation`) or references an existing numerical artifact
 and its optional affine companion in place; keep imported files available for
 later operations. Python callers can also prepare from canonical inputs and a
@@ -162,7 +162,7 @@ association. Both routes retain source labels, grids and projection meaning.
 Record original requested dates and domain explicitly. Filtering can remove
 observations at both edges, so retained observation extrema cannot supply the
 original request. Missing imported facts fail clearly; supply
-``prepared_inputs.start_date``, ``end_date`` and ``domain``, or retain those facts
+``data.start_date``, ``end_date`` and ``domain``, or retain those facts
 in preparation provenance. Sites and averaging periods come from the retained
 numerical preparation.
 
@@ -173,7 +173,7 @@ A TOML configuration can contain:
    format_version = 1
    recipe = "co2"
 
-   [prepared_inputs]
+   [data]
    path = "prepared-co2.nc"
    start_date = "2020-01-01"
    end_date = "2020-02-01"
@@ -225,9 +225,10 @@ the same ``sampling`` mapping as the full configuration.
 The configured ``rhime run --model co2`` CLI route uses
 ``run_co2`` and writes requested products. Python
 ``rhime.run(model="co2", config_file="co2.toml")`` selects the same configured
-runner and returns ``Co2Output``. Replace ``prepared_inputs.path`` with an
-``acquisition`` table to acquire and construct the defining native-resolution
-reduction in the same run; see :ref:`co2-configured-preparation`.
+runner and returns ``Co2Output``. Replace ``data.path`` with the shared input
+choices and the ``[data.acquisition]`` and ``[data.preparation]`` tables to
+retrieve and reduce native inputs in the same run. See
+:ref:`co2-configured-preparation`.
 
 Alternatively, save preparation and inference separately:
 

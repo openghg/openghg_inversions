@@ -210,12 +210,14 @@ def _prior_predictive_command(args: argparse.Namespace) -> None:
     elif args.model == "co2":
         from openghg_inversions.rhime.co2.handoffs import prior_predictive as prior_co2
 
-        from openghg_inversions.rhime.co2.configuration import Co2ModelConfig, resolve_co2_prior_seed
+        from openghg_inversions.rhime.co2.configuration import (
+            Co2ModelConfig, resolve_co2_boundary_representation, resolve_co2_prior_seed,
+        )
 
         params = _co2_params(args)
         result = prior_co2(args.preparation_manifest, model=Co2ModelConfig.from_params(params),
                            random_seed=resolve_co2_prior_seed(params),
-                           boundary_representation=params.get("prepared_inputs", {}).get("boundary_representation"),
+                           boundary_representation=resolve_co2_boundary_representation(params),
                            referenced=_request_files(args), **common)
     elif args.model in {"standard", "multisector"}:
         if args.model == "multisector":
@@ -248,12 +250,12 @@ def _sample_command(args: argparse.Namespace) -> None:
         from openghg_inversions.rhime.co2.handoffs import sample as sample_co2
 
 
-        from openghg_inversions.rhime.co2.configuration import Co2ModelConfig
+        from openghg_inversions.rhime.co2.configuration import Co2ModelConfig, resolve_co2_boundary_representation
 
         params = _co2_params(args)
         result = sample_co2(args.preparation_manifest, model=Co2ModelConfig.from_params(params),
                             sampling=params.get("sampling", {}), output_dir=_stage_output_dir(args),
-                            boundary_representation=params.get("prepared_inputs", {}).get("boundary_representation"),
+                            boundary_representation=resolve_co2_boundary_representation(params),
                             referenced=_request_files(args))
         print(result)
     elif args.model in {"standard", "multisector"}:

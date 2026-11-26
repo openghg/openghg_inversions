@@ -23,7 +23,7 @@ from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 from openghg_inversions.inference.sampling import sample_prior_predictive
 from openghg_inversions.inversion_data import MergedData, PreparedInputs
-from openghg_inversions.models.boundary import Choice, boundary_preparation
+from openghg_inversions.models.boundary import Choice
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.observation_error import WhitenedRankRule
 from openghg_inversions.rhime._stage_artifacts import (
@@ -33,7 +33,6 @@ from openghg_inversions.rhime._stage_artifacts import (
 from openghg_inversions.rhime._stage_checks import (
     PREPARATION_CHECK_NAME, _check_draws, _check_stage, _check_result,
 )
-from openghg_inversions.rhime.preparation import resolve_basis_inputs, resolve_bc_basis
 from openghg_inversions.serialization import load_trace, save_trace
 
 from .co2_affine_output import (
@@ -46,11 +45,11 @@ from .co2_outputs import (
 from .co2_preparation import (
     Co2PreparedInputs, check_prepared_boundary, prepare_co2_inputs, requested_co2_facts,
 )
-from .execution import _load_centering_weights, load_co2_params
+from .execution import load_co2_params
 from .inference import (
     annotate_co2_inference, build_co2_inference, sample_co2_inference, describe_co2_inference,
 )
-from .prepare_from_merged_data import prepare_co2_from_merged_data
+from .prepare_from_merged_data import acquire_co2_data, prepare_co2_from_merged_data
 from .configuration import Co2ModelConfig, Co2NativePreparationConfig, _resolve_co2_sampling
 
 
@@ -190,24 +189,11 @@ def prepare(
             )
         if start_date is None or end_date is None or domain is None:
             raise ValueError("Native preparation requires start_date, end_date and domain.")
-        representation = boundary_preparation(boundary, boundary_representation).representation
-        basis_inputs = resolve_basis_inputs(native.basis)
-        bc_basis = resolve_bc_basis(native.basis)
-        weights = _load_centering_weights(native.bc_centering_weights_path)
-        acquisition = native.acquisition
         if merged_data is None:
-            merged_data = MergedData.from_options(
-                species="co2", domain=domain, start_date=start_date, end_date=end_date, **acquisition,
-            )
+            merged_data = acquire_co2_data(native, domain=domain, start_date=start_date, end_date=end_date)
         prepared, affine = prepare_co2_from_merged_data(
-            merged_data, domain=domain, start_date=start_date, end_date=end_date,
-            flux_sources=acquisition["flux_sources"], use_bc=acquisition.get("use_bc", True),
-            boundary_representation=representation,
-            filters=native.filters, averaging_error=native.averaging_error,
-            basis_algorithm=native.basis.basis_algorithm, nbasis=native.basis.nbasis,
-            fix_outer_regions=native.basis.fix_basis_outer_regions, basis_inputs=basis_inputs, bc_basis=bc_basis,
-            prior=native.native_prior, aggregation_error_rank=native.aggregation_error_rank,
-            bc_centering_weights=weights,
+            merged_data, native, domain=domain, start_date=start_date, end_date=end_date,
+            boundary=boundary, boundary_representation=boundary_representation,
         )
         check_prepared_boundary(prepared.inv_inputs, boundary, boundary_representation)
         return save_preparation(

@@ -41,7 +41,7 @@ def test_preparation_defers_known_inactive_output_values(tmp_path, monkeypatch, 
     monkeypatch.chdir(tmp_path)
     rhime = model in {"standard", "multisector"}
     options = _params(flux_sources=["first", "second"] if model == "multisector" else ["first"]) if rhime else {
-        "prepared_inputs": {"path": "borrowed-inputs.nc"},
+        ("data" if model == "co2" else "prepared_inputs"): {"path": "borrowed-inputs.nc"},
     }
     options["output" if rhime else "outputs"] = {
         "output_format": "not-a-supported-format", "save_trace": 42,

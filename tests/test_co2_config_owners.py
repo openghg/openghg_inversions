@@ -30,7 +30,8 @@ def test_file_mapping_overrides_reach_same_owners(tmp_path, linked):
         loader, model_cls, prep_cls = load_co2_params, Co2ModelConfig, Co2PreparationConfig
         overrides = {"likelihood": {"sigma_prior": {"pdf": "halfnormal", "sigma": .4}}}
         toml = '[likelihood]\nkind="additive_sigma"\n'
-    overrides["prepared_inputs"] = {"path": "selected.nc", "domain": "EUROPE"}
+    data_section = "prepared_inputs" if linked else "data"
+    overrides[data_section] = {"path": "selected.nc", "domain": "EUROPE"}
     path = tmp_path / "config.json"
     path.write_text(json.dumps(config))
     toml_path = tmp_path / "config.toml"
@@ -40,7 +41,7 @@ def test_file_mapping_overrides_reach_same_owners(tmp_path, linked):
     assert all(model_cls.from_params(item) == model_cls.from_params(requests[0]) for item in requests)
     assert all(prep_cls.from_params(item) == prep_cls.from_params(requests[0]) for item in requests)
     assert prep_cls.from_params(requests[0]).prepared_path.name == "selected.nc"
-    assert "prepared_inputs" not in config
+    assert data_section not in config
 
 
 def test_construction_owns_containers_and_borrows_opaque_numerics():
@@ -61,7 +62,7 @@ def test_active_science_parse_never_constructs_sampler_or_computes(monkeypatch):
     monkeypatch.setattr(RhimeSampler, "__init__", forbidden)
     ordinary = {"likelihood": {"kind": "scalar_sigma", "eigenbasis_path": "missing.nc",
                                "sigma_prior": {"pdf": "halfnormal", "sigma": 1}},
-                "sampling": "invalid", "prepared_inputs": "invalid", "outputs": "invalid"}
+                "sampling": "invalid", "data": "invalid", "outputs": "invalid"}
     linked = {"channels": {"co2": {"units": "ppm"}, "o2": {"units": "ppm"}},
               "sampling": "invalid", "prepared_inputs": "invalid", "outputs": "invalid"}
     with Callback(pretask=forbidden):

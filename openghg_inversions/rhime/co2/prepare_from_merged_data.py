@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import asdict, replace
-from typing import Any
+from pathlib import Path
 
 import numpy as np
 import xarray as xr
@@ -12,67 +11,89 @@ import xarray as xr
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact
-from openghg_inversions.basis.boundary import BoundaryBasis
 from openghg_inversions.basis.covariance_products import PreserveBucketProlongation
 from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 from openghg_inversions.coherent_reduction import reduce_native_gaussian
 from openghg_inversions.inversion_data import MergedData, select_boundary_representation
 from openghg_inversions.inversion_data.observation_errors import prepare_observation_errors
+from openghg_inversions.models.boundary import Choice, boundary_preparation
+from openghg_inversions.models.boundary.contracts import validate_centering_weights
 from openghg_inversions.native_covariance import SeparableExponentialCovariance
 from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.rhime.preparation import (
     assemble_inputs,
     filter_observations,
+    resolve_basis_inputs,
+    resolve_bc_basis,
 )
 
 from .co2_affine_output import produce_bucket_affine_flux_map
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs
-from .configuration import Co2NativePrior
+from .configuration import Co2NativePreparationConfig
+
+
+def acquire_co2_data(
+    config: Co2NativePreparationConfig, *, domain: str, start_date: str, end_date: str,
+) -> MergedData:
+    """Retrieve native CO2 inputs before observation filtering or basis construction.
+
+    Args:
+        config: Resolved CO2 choices containing retrieval selectors.
+        domain: Requested transport domain.
+        start_date: Requested window start.
+        end_date: Requested window end.
+
+    Returns:
+        Acquired observations, transport and native flux.
+
+    Raises:
+        ValueError: If no acquisition selectors are configured.
+    """
+    if config.acquisition is None:
+        raise ValueError("Pass merged_data or configure data.acquisition for fresh retrieval.")
+    return MergedData.from_options(
+        species="co2", domain=domain, start_date=start_date, end_date=end_date,
+        flux_sources=config.flux_sources, use_bc=config.basis.use_bc, **config.acquisition,
+    )
+
+
+def _load_centering_weights(path: Path | None) -> xr.DataArray | None:
+    """Load and validate the optional weights for the prepared boundary states."""
+    if path is None:
+        return None
+    with xr.open_dataset(path) as dataset:
+        if "bc_centering_weights" not in dataset:
+            raise ValueError(f"{path} must contain a bc_centering_weights variable.")
+        weights = dataset["bc_centering_weights"].load()
+    validate_centering_weights(weights.transpose("bc_curtain", "bc_period"))
+    return weights
 
 
 def prepare_co2_from_merged_data(
     merged_data: MergedData,
+    config: Co2NativePreparationConfig,
     *,
     domain: str,
     start_date: str,
     end_date: str,
-    flux_sources: tuple[str, ...],
-    use_bc: bool,
-    boundary_representation: BoundaryRepresentation,
-    filters: Any,
-    averaging_error: bool,
-    basis_algorithm: str | None,
-    nbasis: int,
-    fix_outer_regions: bool,
-    basis_inputs: Mapping[str, Any],
-    bc_basis: BoundaryBasis,
-    prior: Co2NativePrior,
-    aggregation_error_rank: int | None,
-    bc_centering_weights: xr.DataArray | None,
+    boundary: Choice | None,
+    boundary_representation: BoundaryRepresentation | None,
 ) -> tuple[Co2PreparedInputs, AffineFluxMapArtifact]:
-    """Build a coherent CO2 preparation and affine companion from acquired data.
+    """Build coherent CO2 inputs and their affine companion from acquired data.
 
     All sources share a dimensionless native scaling field. Their summed
     response is the native sensitivity, and the first source weights basis design.
+    The same operation handles supplied and freshly acquired merged data.
 
     Args:
         merged_data: Borrowed observations, transport and native flux.
-        domain: Transport domain.
+        config: Resolved choices for native scientific preparation.
+        domain: Requested transport domain.
         start_date: Requested window start.
         end_date: Requested window end.
-        flux_sources: Ordered source identities used for preparation.
-        use_bc: Whether to construct boundary sensitivities.
-        boundary_representation: Ordinary or centered prepared boundary inputs.
-        filters: Observation filters applied before deriving errors.
-        averaging_error: Include variability when deriving errors.
-        basis_algorithm: Algorithm used to generate a flux partition.
-        nbasis: Target number of regions for a generated partition.
-        fix_outer_regions: Keep predefined outer regions fixed during generation.
-        basis_inputs: Resolved options and resources for the flux basis.
-        bc_basis: Resolved spatial boundary basis.
-        prior: Mean and covariance choices for native flux scaling.
-        aggregation_error_rank: Maximum stored rank, or None for exact covariance.
-        bc_centering_weights: Loaded weights for weighted additive boundaries.
+        boundary: Configured boundary correction, if any.
+        boundary_representation: Explicit representation, or None for the
+            default required by the boundary correction.
 
     Returns:
         Prepared CO2 inputs and their unsaved affine companion.
@@ -81,6 +102,14 @@ def prepare_co2_from_merged_data(
         ValueError: If acquisition facts or scientific inputs conflict with
             the request, or no usable observations remain.
     """
+    flux_sources = config.flux_sources
+    basis = config.basis
+    use_bc = basis.use_bc
+    representation = boundary_preparation(boundary, boundary_representation).representation
+    basis_inputs = resolve_basis_inputs(basis)
+    bc_basis = resolve_bc_basis(basis)
+    weights = _load_centering_weights(config.bc_centering_weights_path)
+
     merged_data.validate_for_preparation(
         species="co2", domain=domain, start_date=start_date, end_date=end_date, split_by_sectors=False,
     )
@@ -95,22 +124,26 @@ def prepare_co2_from_merged_data(
     )
     site_data = merged_data.site_data
     if use_bc:
-        site_data = select_boundary_representation(site_data, boundary_representation)
-    filtered, site_options = filter_observations(site_data, merged_data.site_options, filters=filters)
-    filtered = prepare_observation_errors(filtered, averaging_error=averaging_error)
+        site_data = select_boundary_representation(site_data, representation)
+    filtered, site_options = filter_observations(site_data, merged_data.site_options, filters=config.filters)
+    filtered = prepare_observation_errors(filtered, averaging_error=config.averaging_error)
 
     runtime_flux = resolve_runtime_flux(merged_data.flux_data, explicit_surface=True)
     basis_functions = prepare_basis(
         site_data=filtered, runtime_flux=runtime_flux,
         weighting_flux=merged_data.flux_data[flux_sources[0]]["flux"],
-        domain=domain, start_date=start_date, basis_algorithm=basis_algorithm,
-        nbasis=nbasis, fix_outer_regions=fix_outer_regions,
+        domain=domain, start_date=start_date, basis_algorithm=basis.basis_algorithm,
+        nbasis=basis.nbasis, fix_outer_regions=basis.fix_basis_outer_regions,
         **basis_inputs,
     )
-    sensitivities = {
-        site: dataset.drop_vars(("mf_mod", "mf_mod_sectoral"), errors="ignore")
-        for site, dataset in filtered.items()
-    }
+    sensitivities = {}
+    for site, dataset in filtered.items():
+        # Avoid gathering unused grid diagnostics with the native response.
+        grid_coordinates = [
+            name for name, coord in dataset.coords.items()
+            if name not in dataset.xindexes and {"lat", "lon"}.intersection(coord.dims)
+        ]
+        sensitivities[site] = dataset.drop_vars(("mf_mod", "mf_mod_sectoral", *grid_coordinates), errors="ignore")
     if use_bc:
         sensitivities = bc_sensitivity(sensitivities, bc_basis=bc_basis)
     else:
@@ -127,14 +160,16 @@ def prepare_co2_from_merged_data(
     if not inputs.sizes["nmeasure"]:
         raise ValueError("No usable observations remain for coherent CO2 reduction.")
 
-    native_sensitivity = inputs.fp_x_flux.rename(nmeasure="observation").assign_attrs(units=inputs.mf.attrs["units"])
+    native_sensitivity = inputs.fp_x_flux.reset_coords(drop=True).rename(nmeasure="observation")
+    native_sensitivity = native_sensitivity.assign_attrs(units=inputs.mf.attrs["units"])
+    prior = config.native_prior
     native_mean = xr.DataArray(
         np.full((native_sensitivity.sizes["lat"], native_sensitivity.sizes["lon"]), prior.mean),
         dims=("lat", "lon"), coords={"lat": native_sensitivity.lat, "lon": native_sensitivity.lon},
         attrs={"units": "1"},
     )
     covariance = SeparableExponentialCovariance(
-        native_sensitivity.lat, native_sensitivity.lon, sigma=prior.sigma,
+        native_sensitivity.lat, native_sensitivity.lon, sigma=prior.stdev,
         correlation_length=prior.correlation_length,
         latitude_correlation_length=prior.latitude_correlation_length,
         longitude_correlation_length=prior.longitude_correlation_length,
@@ -144,17 +179,17 @@ def prepare_co2_from_merged_data(
         state_dim=basis_functions.operator.meta.state_dim, native_mean=native_mean,
         native_sensitivity=native_sensitivity, observation_dim="observation",
     )
-    canonical = replace(canonical, inv_inputs=inputs.drop_vars("fp_x_flux"))
+    canonical = replace(canonical, inv_inputs=inputs.drop_dims(("lat", "lon")))
     prepared = prepare_co2_inputs(
-        canonical, reduction, aggregation_error_rank=aggregation_error_rank,
-        bc_centering_weights=bc_centering_weights,
+        canonical, reduction, aggregation_error_rank=config.aggregation_error_rank,
+        bc_centering_weights=weights,
         provenance={
             "domain": domain, "start_date": start_date, "end_date": end_date,
             "native_preparation": {
-                "boundary_representation": boundary_representation,
+                "boundary_representation": representation,
                 "native_prior": asdict(prior),
                 "flux_sources": list(flux_sources),
-                "basis_algorithm": basis_algorithm,
+                "basis_algorithm": basis.basis_algorithm,
             },
         },
     )
@@ -162,4 +197,4 @@ def prepare_co2_from_merged_data(
     return prepared, affine
 
 
-__all__ = ["prepare_co2_from_merged_data"]
+__all__ = ["acquire_co2_data", "prepare_co2_from_merged_data"]

@@ -19,7 +19,7 @@ def test_inference_phase_ignores_inactive_resources_and_uses_current_sampler(tmp
     choices.write_text(json.dumps({
         "likelihood": {"kind": "additive_sigma", "no_model_error": True},
         "sampling": {"draws": 7, "chains": 1},
-        "prepared_inputs": {"path": 42}, "outputs": {"output_path": 42},
+        "data": {"path": 42}, "outputs": {"output_path": 42},
     }))
     calls = []
 
@@ -99,7 +99,7 @@ def test_co2_current_manifest_rejects_wrong_family_before_config(tmp_path):
 def test_co2_file_and_override_paths_use_one_invocation_base(tmp_path, monkeypatch):
     source = tmp_path / "config" / "choices.json"
     source.parent.mkdir()
-    source.write_text(json.dumps({"prepared_inputs": {"path": "prepared.nc"},
+    source.write_text(json.dumps({"data": {"path": "prepared.nc"},
                                   "outputs": {"country_file": "countries.nc"}}))
     invocation = tmp_path / "invocation"
     invocation.mkdir()

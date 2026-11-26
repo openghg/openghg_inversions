@@ -1,7 +1,7 @@
 """Accurate centered boundary operands for stable CO2/O2 surface inversions."""
 
 from collections.abc import Mapping
-from typing import get_args
+from typing import cast, get_args
 
 import numpy as np
 import xarray as xr
@@ -229,6 +229,7 @@ def select_boundary_representation(
         reference_name = f"site_data[{site!r}].bc_reference"
         reference_units = reference.attrs.get("units")
         _check_unit_scale(reference_units, "mol/mol", name=reference_name, allow_scaled_units=True)
+        reference_units = cast(str, reference_units)
         if "mf" in dataset:
             _check_unit_scale(reference_units, dataset.mf.attrs.get("units"), name=reference_name)
         reference = reference.astype("float64", copy=False)

@@ -254,7 +254,7 @@ def test_co2_execution_adapters_forward_inference_and_preserve_trace(tmp_path, m
             )
         trace[name] = dataset
     params = {
-        "prepared_inputs": {"start_date": START_DATE, "end_date": END_DATE, "domain": "EUROPE"},
+        "data": {"start_date": START_DATE, "end_date": END_DATE, "domain": "EUROPE"},
         "likelihood": {"kind": likelihood_kind},
         "sampling": {"draws": 3, "tune": 2, "chains": 2, "random_seed": 17},
         "outputs": {"output_format": "none", "output_path": str(tmp_path / "unopened")},
@@ -301,7 +301,7 @@ def test_co2_execution_adapters_forward_inference_and_preserve_trace(tmp_path, m
         assert not list(tmp_path.glob("**/*manifest*"))
     else:
         preparation = handoffs.save_preparation(
-            prepared, output_dir=tmp_path / "prepared", **params["prepared_inputs"],
+            prepared, output_dir=tmp_path / "prepared", **params["data"],
         )
         before = preparation.read_bytes()
         monkeypatch.setattr(handoffs, "sample_co2_inference", sample)
@@ -421,9 +421,9 @@ def test_full_rejects_supplied_preparation_with_an_unrelated_saved_affine_pair(t
         prepared.aggregation_error_mode, prepared.provenance,
     )
     params = configuration(tmp_path / "rejected", countries)
-    params["prepared_inputs"]["path"] = str(source)
+    params["data"]["path"] = str(source)
     params["outputs"]["output_format"] = "none"
-    params["prepared_inputs"]["reconstruction_path"] = str(companion)
+    params["data"]["reconstruction_path"] = str(companion)
 
     def forbidden(*args, **kwargs):
         raise AssertionError("A conflicting prepared/affine pair must fail before inference")

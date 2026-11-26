@@ -620,7 +620,7 @@ def test_full_run_passes_the_supplied_reference(monkeypatch: pytest.MonkeyPatch)
     params = {
         "format_version": 1,
         "recipe": "co2",
-        "prepared_inputs": dict(FACTS),
+        "data": dict(FACTS),
         **_model(),
         "outputs": {"output_format": "none"},
     }
