@@ -90,9 +90,8 @@ _NATIVE_PRIOR_OPTION_NAMES = frozenset({
 # A ``sources`` table selects separate native fields per flux source.
 _MULTISOURCE_NATIVE_PRIOR_OPTION_NAMES = frozenset({
     "sources", "gpp_ter_correlation", "gpp_source", "ter_source", "restriction", "class_labels_path",
-    "retained_regions_path", "calibration",
+    "retained_regions_path", "calibration", "latent_correlation_floor",
 })
-_NATIVE_SOURCE_PRIOR_OPTION_NAMES = frozenset({"sigma", "geodesic_correlation_length_km"}) | (_NATIVE_PRIOR_OPTION_NAMES - {"stdev"})
 _NATIVE_CALIBRATION_OPTION_NAMES = frozenset({"targets_path", "statistic"})
 NATIVE_RESTRICTIONS = ("bucket", "absolute_flux_weighted_mean")
 _SAMPLING_OPTION_NAMES = frozenset({
@@ -262,7 +261,6 @@ def _validate_co2_option_names(*requests: Mapping[str, object]) -> None:
         "data.preparation.bc_basis": frozenset(field.name for field in fields(BcBasisOptions)),
         "data.preparation.native_prior": _NATIVE_PRIOR_OPTION_NAMES | _MULTISOURCE_NATIVE_PRIOR_OPTION_NAMES,
         "data.preparation.native_prior.calibration": _NATIVE_CALIBRATION_OPTION_NAMES,
-        "data.preparation.native_prior.sources.*": _NATIVE_SOURCE_PRIOR_OPTION_NAMES,
         "model": frozenset({"boundary", "offset", "outer_flux"}),
         **{f"model.{path}": names for path, names in _MODEL_SECTION_OPTION_NAMES.items()},
         "likelihood": _LIKELIHOOD_OPTION_NAMES,
@@ -385,6 +383,11 @@ class Co2NativeSourcePrior:
     geodesic. Without ``sigma`` the amplitude is calibrated against the
     configured functional SD targets.
 
+    ``marginal`` sets the distribution of this source's retained states in the
+    sampled model: a Gaussian copula with these arithmetic moments and the
+    named marginal (see :class:`~openghg_inversions.correlated_state.CorrelatedPrior`).
+    Unset means lognormal, and the preparation is then unchanged.
+
     Attributes:
         sigma: Native grid-cell standard deviation, or ``None`` to calibrate.
         mean: Constant native scaling mean.
@@ -393,6 +396,8 @@ class Co2NativeSourcePrior:
         longitude_correlation_length: Optional separable longitude length.
         geodesic_correlation_length_km: Geodesic length for every class, or a
             mapping from class label (as written in TOML) to length.
+        marginal: Retained-state marginal: ``"lognormal"``, ``"normal"``,
+            ``"weibull"`` or ``"gamma"``; ``None`` means lognormal.
     """
 
     sigma: float | None = None
@@ -401,6 +406,7 @@ class Co2NativeSourcePrior:
     latitude_correlation_length: float | None = None
     longitude_correlation_length: float | None = None
     geodesic_correlation_length_km: float | Mapping[str, float] | None = None
+    marginal: str | None = None
 
     @classmethod
     def from_params(cls, value: object, path: str) -> Co2NativeSourcePrior:
@@ -419,6 +425,13 @@ class Co2NativeSourcePrior:
                 options.pop("geodesic_correlation_length_km"), f"{path}.geodesic_correlation_length_km",
                 positive=True,
             )
+        if "marginal" in options:
+            from openghg_inversions.correlated_state import STATE_MARGINALS
+
+            marginal = _string(options.pop("marginal"), f"{path}.marginal")
+            if marginal not in STATE_MARGINALS:
+                raise ValueError(f"{path}.marginal must be one of {list(STATE_MARGINALS)!r}; got {marginal!r}.")
+            result["marginal"] = marginal
         _reject_unknown(options, path)
         return cls(**result)
 
@@ -517,6 +530,11 @@ class Co2MultiSourceNativePrior:
             region labels it retains.
         calibration: Optional amplitude calibration for sources without
             ``sigma``.
+        latent_correlation_floor: Opt-in eigenvalue floor that repairs a
+            copula prior whose latent correlation is not positive definite
+            (see :class:`~openghg_inversions.correlated_state.CorrelatedPrior`).
+            ``None`` rejects such priors. Requires a source with a
+            non-lognormal ``marginal``.
     """
 
     sources: Mapping[str, Co2NativeSourcePrior]
@@ -527,6 +545,7 @@ class Co2MultiSourceNativePrior:
     class_labels_path: Path | None = None
     retained_regions_path: Path | None = None
     calibration: Co2NativeBCalibration | None = None
+    latent_correlation_floor: float | None = None
 
     @classmethod
     def from_params(cls, value: object) -> Co2MultiSourceNativePrior:
@@ -568,6 +587,11 @@ class Co2MultiSourceNativePrior:
                 result[name] = _path(options.pop(name), f"{path}.{name}")
         if "calibration" in options:
             result["calibration"] = Co2NativeBCalibration.from_params(options.pop("calibration"))
+        if "latent_correlation_floor" in options:
+            floor = _number(options.pop("latent_correlation_floor"), f"{path}.latent_correlation_floor", positive=True)
+            if floor > 0.1:
+                raise ValueError(f"{path}.latent_correlation_floor must be in (0, 0.1].")
+            result["latent_correlation_floor"] = floor
         _reject_unknown(options, path)
         prior = cls(**result)
         prior._check(path)
@@ -614,6 +638,13 @@ class Co2MultiSourceNativePrior:
             raise ValueError(
                 f"{path}.retained_regions_path requires restriction = 'absolute_flux_weighted_mean'."
             )
+        if self.latent_correlation_floor is not None and all(
+            source.marginal in (None, "lognormal") for source in self.sources.values()
+        ):
+            raise ValueError(
+                f"{path}.latent_correlation_floor applies only to copula priors; set a non-lognormal "
+                f"marginal on a source in {path}.sources."
+            )
 
     def to_params(self) -> dict[str, Any]:
         """Return the table :meth:`from_params` reads back, omitting defaults left unset."""
@@ -629,6 +660,8 @@ class Co2MultiSourceNativePrior:
                 result[name] = str(getattr(self, name))
         if self.calibration is not None:
             result["calibration"] = self.calibration.to_params()
+        if self.latent_correlation_floor is not None:
+            result["latent_correlation_floor"] = self.latent_correlation_floor
         return result
 
 
