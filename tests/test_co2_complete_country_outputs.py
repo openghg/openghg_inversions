@@ -437,7 +437,7 @@ def test_additive_sigma_solve_uses_each_draws_independent_variance(rank) -> None
     _, _, prepared, _ = _case(functionals=rank is None, aggregation_error_rank=rank)
     trace = _fit_fixture(_case()[2], count=3)
     a = _stored_a(prepared)
-    variance = np.array([[0.1, 0.4, 0.9]])[..., None] * NOISE_DIAGONAL
+    variance = np.array([[1.1, 1.4, 1.9]])[..., None] * NOISE_DIAGONAL
     trace["posterior"]["epsilon"] = trace["posterior"]["epsilon"].copy(data=np.sqrt(np.diag(a) + variance))
     solve = _observation_solve(trace, prepared, json.loads(trace.attrs["rhime_variable_roles"]))
     assert solve.varies_by_draw
@@ -449,6 +449,34 @@ def test_additive_sigma_solve_uses_each_draws_independent_variance(rank) -> None
 
     constant = _fit_fixture(_case()[2], count=2)
     assert not _observation_solve(constant, prepared, json.loads(constant.attrs["rhime_variable_roles"])).varies_by_draw
+
+
+def test_float32_epsilon_roundoff_preserves_reported_error() -> None:
+    """Replay preserves positive reported variance when float32 epsilon loses it."""
+    from dataclasses import replace
+
+    _, _, prepared, _ = _case(functionals=False)
+    trace = _fit_fixture(prepared, count=2)
+    inputs = prepared.inv_inputs
+    a = np.ones((N_OBSERVATION, N_OBSERVATION))
+    a[-1, :] = a[:, -1] = 0.0
+    a[-1, -1] = 2.0
+    error = np.full(N_OBSERVATION, np.sqrt(1e-7), dtype=np.float32)
+    variance = error.astype(np.float64) ** 2
+    inputs = inputs.assign(
+        mf_error=inputs["mf_error"].copy(data=error),
+        aggregation_error_covariance=inputs["aggregation_error_covariance"].copy(data=a),
+    )
+    prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
+    trace["constant_data"]["error"] = inputs["mf_error"]
+    epsilon = np.sqrt(np.diag(a).astype(np.float32) + error**2)
+    trace["posterior"]["epsilon"] = trace["posterior"]["epsilon"].copy(
+        data=np.broadcast_to(epsilon, (1, 2, N_OBSERVATION))
+    )
+
+    solve = _observation_solve(trace, prepared, _roles(trace))
+    rhs = np.arange(N_OBSERVATION, dtype=np.float64)
+    np.testing.assert_allclose(solve.solve(rhs, 0, 0), np.linalg.solve(a + np.diag(variance), rhs), rtol=1e-8)
 
 
 def _stored_a(prepared: Co2PreparedInputs) -> np.ndarray:

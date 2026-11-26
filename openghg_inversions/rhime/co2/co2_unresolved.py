@@ -64,8 +64,7 @@ OU_SITE_DIM = "ou_site"
 _DIAGONAL_LIKELIHOODS = {
     ("openghg_inversions.models.site_sigma", "add_site_sigma_gaussian_likelihood"),
 }
-# Recorded independent variances may round below zero by this fraction of
-# the total marginal variance before the record is treated as inconsistent.
+# Minimum relative tolerance when recovering variance from a recorded scale.
 _VARIANCE_ROUNDOFF = 1e-8
 
 
@@ -95,7 +94,8 @@ def co2_unresolved_conditioning(
 
     Supported likelihoods are the default additive-sigma and the site-sigma
     likelihoods, whose covariance is ``A + diag(v)`` with ``v`` recovered per
-    draw as ``epsilon**2 - diag(A)``, and both fixed-OU likelihoods (fixed or
+    draw as ``epsilon**2 - diag(A)`` with the reported error variance as a
+    lower bound, and both fixed-OU likelihoods (fixed or
     inferred amplitudes, including the cached-sigma recipe), whose
     covariance is rebuilt from the recorded observation error, OU site
     index, time scales and each draw's site amplitudes. Other recorded
@@ -208,7 +208,7 @@ def _observation_solve(
                 f"Complete CO2 country outputs do not support the recorded likelihood {identity!r}; "
                 "supported likelihoods are additive_sigma, site_sigma and fixed_ou."
             )
-    return _diagonal_solve(trace, prepared, aggregation, roles)
+    return _diagonal_solve(trace, prepared, aggregation, roles, constant)
 
 
 def _fixed_ou_solve(
@@ -281,8 +281,9 @@ def _diagonal_solve(
     prepared: Co2PreparedInputs,
     aggregation: AggregationError,
     roles: dict[str, str],
+    constant: xr.Dataset,
 ) -> ObservationCovarianceSolve:
-    """Return ``(A + diag(v))^-1`` with ``v = epsilon**2 - diag(A)`` for each draw."""
+    """Recover each draw's diagonal variance, preserving the reported-error floor."""
     observations = prepared.inv_inputs["mf"]
     posterior = trace_group(trace, "posterior")
     name = roles.get("model_error")
@@ -292,18 +293,25 @@ def _diagonal_solve(
     epsilon = epsilon.transpose(*SAMPLE_DIMS, "nmeasure")
     total = np.square(np.asarray(epsilon.values, dtype=np.float64))
     independent = total - aggregation.marginal_variance[None, None, :]
-    if np.any(independent < -_VARIANCE_ROUNDOFF * total):
+    reported_error = constant.get("error", prepared.inv_inputs["mf_error"])
+    reported_error, _ = xr.align(reported_error, observations, join="exact", copy=False)
+    reported_variance = np.square(np.asarray(reported_error.transpose("nmeasure").values, dtype=np.float64))
+    # Squaring a saved float32 scale can lose a small but positive variance.
+    roundoff = max(_VARIANCE_ROUNDOFF, 4 * np.finfo(epsilon.dtype).eps) * total
+    if np.any(independent < reported_variance - roundoff):
         raise ValueError(
-            "Recorded epsilon is smaller than the prepared aggregation error; the trace was not generated "
-            "from this preparation's A."
+            "Recorded epsilon is smaller than the combined prepared aggregation and reported error; "
+            "the trace was not generated from this preparation's covariance."
         )
-    independent = np.clip(independent, 0.0, None)
+    independent = np.maximum(independent, reported_variance)
     chains = {label: position for position, label in enumerate(epsilon["chain"].values.tolist())}
     draws = {label: position for position, label in enumerate(epsilon["draw"].values.tolist())}
     index = observations.indexes["nmeasure"]
     varies = not np.all(independent == independent[:1, :1])
     description = _conditioning_record(
-        prepared, noise="diagonal independent variance epsilon**2 - diag(A)", varies_by_draw=bool(varies)
+        prepared,
+        noise="diagonal independent variance epsilon**2 - diag(A), bounded below by reported error variance",
+        varies_by_draw=bool(varies),
     )
     if not varies:
         factorized = _diagonal_update(aggregation, independent[0, 0])
