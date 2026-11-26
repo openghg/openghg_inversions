@@ -1287,7 +1287,7 @@ class ClassMixedExponentialCovariance:
         self._separable = separable
         self._class_kernels = MappingProxyType(canonical)
         self._blocks = tuple(blocks)
-        self._separable_boxes = _mixed_class_bounding_boxes(separable_masks)
+        self._separable_boxes = _class_bounding_boxes(separable_masks)
         self._separable_index = (
             np.flatnonzero(np.logical_or.reduce(separable_masks).reshape(-1))
             if separable_masks
@@ -1557,11 +1557,10 @@ class ClassMixedExponentialCovariance:
         result = np.zeros(matrix.shape, dtype=np.result_type(matrix.dtype, np.float64))
         for lat_slice, lon_slice, local_mask in self._separable_boxes:
             masked = matrix[lat_slice, lon_slice] * local_mask[..., np.newaxis]
-            n_lat, n_lon, n_rhs = masked.shape
-            lat_applied = latitude_factor[lat_slice, lat_slice] @ masked.reshape(n_lat, n_lon * n_rhs)
-            lat_applied = lat_applied.reshape(n_lat, n_lon, n_rhs)
-            applied = np.einsum(
-                "ikr,lk->ilr", lat_applied, longitude_factor[lon_slice, lon_slice], optimize=True
+            applied = _apply_factors(
+                masked,
+                latitude_factor[lat_slice, lat_slice],
+                longitude_factor[lon_slice, lon_slice],
             )
             result[lat_slice, lon_slice] += applied * local_mask[..., np.newaxis]
         return result
@@ -1645,31 +1644,6 @@ def _decode_class_kernels(
             correlation_length_km=float(length), earth_radius_km=float(radius)
         )
     return kernels
-
-
-def _mixed_class_bounding_boxes(
-    class_masks: list[np.ndarray],
-) -> tuple[tuple[slice, slice, np.ndarray], ...]:
-    """Return each class mask's latitude/longitude bounding box and local mask.
-
-    Args:
-        class_masks: Boolean native-grid masks, one per class.
-
-    Returns:
-        One ``(latitude_slice, longitude_slice, local_mask)`` triple per
-        non-empty class.
-    """
-    boxes = []
-    for mask in class_masks:
-        rows = np.flatnonzero(mask.any(axis=1))
-        columns = np.flatnonzero(mask.any(axis=0))
-        if rows.size == 0:  # pragma: no cover - masks come from present labels
-            continue
-        lat_slice = slice(int(rows[0]), int(rows[-1]) + 1)
-        lon_slice = slice(int(columns[0]), int(columns[-1]) + 1)
-        boxes.append((lat_slice, lon_slice, mask[lat_slice, lon_slice]))
-    return tuple(boxes)
-
 
 def same_unit_kernel(first: object, second: object) -> bool:
     """Return whether two covariance actions share the same unit-variance kernel.

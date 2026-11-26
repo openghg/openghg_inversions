@@ -640,7 +640,7 @@ def test_devel_version_1_dataset_still_loads_and_is_still_written() -> None:
     xr.testing.assert_identical(restored.to_dataset(), golden)
     assert restored.to_dataset().attrs["schema_version"] == 1
     assert IndependentSourceCovariance.schema_version == 2
-    np.testing.assert_allclose(restored.apply(rhs).values, _DEVEL_V1_APPLY, rtol=1e-13)
+    np.testing.assert_allclose(restored.apply(rhs).values, _DEVEL_V1_APPLY, rtol=1e-14, atol=0.0)
     np.testing.assert_allclose(restored.solve(rhs).values, _DEVEL_V1_SOLVE, rtol=1e-13)
 
 
