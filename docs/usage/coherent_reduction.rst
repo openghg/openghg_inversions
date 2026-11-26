@@ -346,7 +346,8 @@ products and the observations is consistent only with the exact :math:`A`.
 An artifact with products must therefore store dense :math:`A`, and the fit
 samples the same :math:`A` it is conditioned on. The solve follows the
 recorded likelihood. Additive-sigma and site-sigma fits use the stored
-:math:`A` plus ``epsilon**2 - diag(A)`` for each draw. Fixed-OU fits, with
+:math:`A` plus ``epsilon**2 - diag(A)`` for each draw, with the reported
+error variance as a lower bound. Fixed-OU fits, with
 fixed or inferred amplitudes, rebuild the fit's
 :class:`~openghg_inversions.models.fixed_ou.FixedOuLowRank` from the recorded
 observation error, OU site index and time scales (numeric hours, or a
