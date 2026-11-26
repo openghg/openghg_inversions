@@ -186,6 +186,19 @@ def test_backend_map_is_finite_with_finite_gradient_in_the_tails(family):
         assert np.isfinite(gradient).all()
 
 
+def test_narrow_gamma_requires_float64_before_graph_construction():
+    """Reject large Gamma shapes in float32 and keep them usable in float64."""
+    prior = wide_prior(["gamma"] * 5, cv=(0.001,) * 5, correlation=np.eye(5))
+    activity = resolve_state_activity(xr.zeros_like(prior.mean, dtype=bool), StateActivity(active=True))
+    with pytensor.config.change_flags(floatX="float32"), registered_model() as model:
+        with pytest.raises(ValueError, match="Gamma copula marginals.*require float64"):
+            add_correlated_state_with_activity(activity, prior, var_name="flux_scaling")
+        assert not model.free_RVs
+    with registered_model() as model:
+        add_correlated_state_with_activity(activity, prior, var_name="flux_scaling")
+    assert model["flux_scaling"].dtype == "float64"
+
+
 @pytest.mark.parametrize("family", STATE_MARGINALS)
 def test_copula_map_compiles_for_jax_samplers(family, jax_backend):
     jax_backend.config.update("jax_enable_x64", True)

@@ -942,7 +942,7 @@ class CorrelatedPrior:
                 under a non-lognormal marginal, or no positive-definite latent
                 correlation reproduces the arithmetic covariance.
         """
-        names = marginal if isinstance(marginal, str) else np.asarray(marginal.values).astype(str)
+        names = marginal if isinstance(marginal, str) else np.asarray(marginal.values, dtype=object).astype(str)
         if np.all(np.asarray(names) == "lognormal"):
             self._set(CorrelatedLognormalPrior(mean, arithmetic_covariance, covariance_dim=covariance_dim), marginal)
             return
@@ -1028,7 +1028,8 @@ class CorrelatedPrior:
         unsupported = sorted(set(map(str, marginal.values)) - set(STATE_MARGINALS))
         if unsupported:
             raise ValueError(f"Unsupported state marginal(s) {unsupported!r}; available: {STATE_MARGINALS!r}.")
-        self.marginal = mean.copy(data=np.asarray(marginal.values).astype(str).astype(object)).rename("marginal")
+        names = np.asarray(marginal.values, dtype=object).astype(str)
+        self.marginal = mean.copy(data=names.astype(object)).rename("marginal")
         self.marginal.attrs = {}
 
     @property

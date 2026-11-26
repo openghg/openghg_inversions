@@ -56,7 +56,9 @@ The other marginals have the same mean and SD with less right skew:
   states use the quantile at latent :math:`u=8` for larger values
   (standard-normal probability about :math:`6\times 10^{-16}`). The cap
   applies in NumPy, PyMC and NumPyro. Very small probabilities in the lower
-  tail can underflow at the sampler's working precision.
+  tail can underflow at the sampler's working precision. Gamma shapes above
+  1000 (CV below about 0.032) require float64 for accurate sampling gradients.
+  Set ``PYTENSOR_FLAGS=floatX=float64`` before starting Python.
 
 A pair with a normal state, or two lognormal states, has a closed-form latent
 correlation. For the remaining Weibull and gamma pairs, the solver matches the
