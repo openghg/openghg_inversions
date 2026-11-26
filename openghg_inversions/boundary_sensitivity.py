@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -12,8 +13,12 @@ import xarray as xr
 from openghg_inversions.array_ops import get_xr_dummies
 from openghg_inversions.inversion_inputs import DatetimeLike, make_period_calendar, normalise_frequency
 
+BoundaryRepresentation = Literal["ordinary", "centered"]
+"""Prepared boundary sensitivity: absolute ``H_bc`` or centered anomaly, mass and reference."""
+
 __all__ = [
     "BoundaryAlignment",
+    "BoundaryRepresentation",
     "bind_period_states",
     "validate_boundary_operands",
     "scale_satellite_boundary_sensitivity_to_column_signal",

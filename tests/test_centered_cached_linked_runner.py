@@ -154,7 +154,8 @@ def test_linked_cached_precision_guard_runs_after_selection_before_materializati
                 prepared_inputs=prepared, tau_hours=3.0,
                 site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.1},
                 boundary={
-                    channel: MultiplicativeChoice(dict(DEFAULT_BC_PRIOR)) if channel != "co2" or enabled else None
+                    channel: MultiplicativeChoice({**DEFAULT_BC_PRIOR, "sigma": 0.1})
+                    if channel != "co2" or enabled else None
                     for channel in ("co2", "o2")
                 },
             )

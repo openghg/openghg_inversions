@@ -219,8 +219,9 @@ CO₂ uses :func:`~openghg_inversions.rhime.co2.run_co2` or the Python/CLI model
 selector. Preparation, model, sampler and output values are resolved at their
 concrete owners; saved sampling accepts decoded model/likelihood choices and a
 separate ``sampling`` mapping. The model selects the backend and update.
-Native-resolution acquisition and coherent-reduction construction
-are separate from this configured prepared-input route.
+``[data]`` either imports a saved preparation with ``path`` or, for
+CO₂ only, builds one from configured acquisition; see
+:ref:`co2-configured-preparation`.
 
 Ordinary preparation and science use
 :class:`~openghg_inversions.rhime.co2.Co2PreparationConfig` and
@@ -246,7 +247,7 @@ For example, the CO2 TOML settings::
    format_version = 1
    recipe = "co2"
 
-   [prepared_inputs]
+   [data]
    path = "co2-coherent-dense.zarr"
    start_date = "2020-01-01"
    end_date = "2020-02-01"
@@ -337,7 +338,7 @@ numeric value. Product replay retains that record without constructing a sampler
 
 Equivalently, ``rhime.run(model="co2", config_file="my-co2.toml")`` selects the
 same runner. Output choices remain separate from the scientific trace.
-``prepared_inputs.path``, ``prepared_inputs.reconstruction_path`` and
+``data.path``, ``data.reconstruction_path`` and
 ``likelihood.eigenbasis_path`` become ordinary ``pathlib.Path`` values.
 Relative values are interpreted from the process working directory, not the
 directory containing the TOML file. Use absolute paths when the run
@@ -592,11 +593,10 @@ error still enter the single joint likelihood once.
 Standalone O2, arbitrary Python callables, and additional recipe or variant
 names are rejected. Linked likelihood selection supports the fixed-error
 default and ``fixed_ou``; it rejects ``additive_sigma``, ``site_sigma``,
-``scalar_sigma``, inferred OU amplitudes, and unequal CO2 and O2 unit labels. The lower-level
-linked fixed-error API continues to represent row-specific mixed units;
-configuring a heterogeneous ppm/per-meg
-run is deferred until the scaling contract tracked in `OPE-86
-<https://linear.app/openghg-inversions/issue/OPE-86>`_ is available. Use the
+``scalar_sigma``, inferred OU amplitudes, and unequal CO2 and O2 mole-fraction unit labels.
+CO2 ppm with per-meg ``delta(O2/N2)`` O2 is configured with ``channels.o2.observable =
+"delta_o2_n2"`` when the prepared artifact declares that observable (see
+:doc:`co2_model_family`). Use the
 direct Python interfaces for experimental combinations outside this matrix.
 The linked :class:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs` artifact
 supports NetCDF and Zarr save/load at the prepared-input Python boundary.
@@ -703,6 +703,140 @@ default additive-sigma likelihood; its scientific options belong in
 ``fixed_model_mismatch`` arguments. The returned trace records the selected
 callable identity and its explicit options using the ordinary likelihood
 provenance attributes.
+
+.. _co2-configured-preparation:
+
+Build a CO2 preparation from configured acquisition
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To build a preparation, replace ``data.path`` with the shared data choices
+and the ``[data.acquisition]`` and ``[data.preparation]`` tables below.
+Both the full runner and staged ``prepare`` first acquire continuous-surface
+CO₂ through explicit surface transport (see :doc:`surface_preparation`).
+Scientific preparation then filters the merged observations, derives missing
+errors, builds the flux and boundary bases, and coherently reduces the native
+Gaussian prior. ``run_co2`` uses the prepared inputs and affine companion in
+memory. Staged ``prepare`` saves the pair for later phases.
+
+.. code-block:: toml
+
+   [data]
+   start_date = "2020-01-01"
+   end_date = "2020-02-01"
+   domain = "EUROPE"
+   flux_sources = ["biosphere", "fossil"]
+
+   [data.acquisition]
+   sites = ["MHD", "TAC"]
+   averaging_period = "1h"
+   inlet = ["10m", "185m"]
+   time_resolved = true    # required by time_resolved surface transport
+   surface_transport = { biosphere = "time_resolved", fossil = "integrated" }
+   boundary_reference = 400.0
+   boundary_reference_units = "ppm"
+   boundary_mass_tolerance = 1e-4
+
+   [data.preparation]
+   # The boundary choice selects the representation when omitted.
+   # boundary_representation = "centered"
+   aggregation_error_rank = 512        # or "exact"
+   filters = ["daytime9to5"]
+
+   [data.preparation.basis]
+   algorithm = "weighted"
+   nbasis = 100
+
+   [data.preparation.bc_basis]
+   algorithm = "NESW"
+
+   [data.preparation.native_prior]
+   stdev = 0.5
+   correlation_length = 1.5
+
+   [model.boundary]
+   type = "multiplicative"
+
+The multiplicative boundary adds the transported background to the model of
+absolute CO₂ observations.
+
+``acquisition`` takes the site selectors of
+:class:`~openghg_inversions.inversion_data.SiteOptions` (``time_resolved = true``
+is required when any source uses ``time_resolved`` transport), one surface
+transport mode per configured flux source, and store and dataset selectors (``obs_store``,
+``footprint_store``, ``flux_store``, ``bc_store``, ``fp_model`` and so on) and,
+with boundaries, the reference and mass tolerance. ``boundary_reference`` is a
+value you choose, such as a typical background. ``bc_reference`` stores that
+physical reference converted to the observation concentration units (see
+:doc:`surface_preparation`). These options are checked when the configuration
+is read, before any retrieval. All sources share one dimensionless native
+scaling field. The first entry in ``data.flux_sources`` weights basis design.
+The requested window and domain also belong to ``[data]``.
+
+Under ``[data.preparation]``, ``filters`` selects observations and
+``averaging_error`` controls whether variability contributes to derived
+observation errors. Set ``use_bc = false`` for a preparation without boundary
+inputs. ``basis`` takes ``algorithm`` (``"weighted"`` or ``"quadtree"``), ``nbasis``,
+``path``, ``partition_path``, ``landsea_path``, ``outer_regions_path``,
+``fix_outer_regions``. The separate ``bc_basis`` table accepts ``paths`` for
+exact boundary basis files, or ``algorithm`` and ``split_height`` for the
+built-in bases. Exact files take precedence.
+``"region_constrained"`` is not available here yet because it needs a
+configured class map (`#454
+<https://github.com/openghg/openghg_inversions/issues/454>`_). ``native_prior`` gives
+the constant native mean (default 1), the dimensionless marginal standard
+deviation ``stdev``, and correlation lengths in degrees for the separable
+exponential covariance.
+
+Specify at most one flux basis file selector per request. An override of ``basis.path``
+or ``basis.partition_path`` replaces the inherited file selection and keeps
+independent basis settings. JSON and Python overrides can clear an inherited
+selector with ``null`` or ``None``, respectively.
+
+Boundary representation
+"""""""""""""""""""""""
+
+Configured CO₂ acquisition requests centered boundary operands when
+boundaries are enabled. One merged dataset can then feed either prepared
+representation. The configured ``[model.boundary]`` choice
+decides which one preparation produces: each choice class states which
+representations it can bind and which extra inputs it needs
+(:func:`~openghg_inversions.models.boundary.boundary_preparation`).
+
+.. list-table:: Prepared boundary representation
+   :header-rows: 1
+
+   * - ``[model.boundary] type``
+     - Omitted ``boundary_representation``
+     - Explicit choice
+   * - ``"multiplicative"`` (or no boundary)
+     - ``"ordinary"``
+     - ``"ordinary"`` or ``"centered"``
+   * - ``"additive"``
+     - ``"centered"``, with ``bc_centering_weights_path`` for weighted anomalies with a positive scale
+     - ``"centered"`` only
+   * - ``"anomaly_scaling"``
+     - ``"centered"``
+     - ``"centered"`` only
+
+Use ``"centered"`` with a multiplicative boundary where precision matters,
+for example for large absolute backgrounds. A saved preparation can serve
+several model configurations: prepare it as ``"centered"`` to keep every
+boundary family available.
+
+Every stage checks the preparation against the configured choice. Building a
+centered preparation from merged data without centered operands (the
+ModelScenario route) fails; importing or sampling a preparation whose
+representation the choice cannot bind fails before model construction, as does
+an explicit ``boundary_representation`` that differs from a saved artifact, or
+a weighted additive choice without stored weights.
+
+Python callers can supply in-memory merged data instead of acquiring:
+``run_co2(config_file=..., merged_data=merged)`` or
+``handoffs.prepare(**Co2PreparationConfig.from_params(params).preparation_arguments(),
+merged_data=merged, output_dir=...)``. Supplied data must match the requested
+species, domain, window and exact set of flux sources. Omit
+``[data.acquisition]`` when supplying ``MergedData``. Linked CO₂/O₂
+configurations still import a saved artifact.
 
 .. _co2-scalar-sigma-recipe:
 
@@ -860,8 +994,9 @@ boundary sensitivity :math:`H_{bc,c}`, and an observation-aligned offset
 
 An omitted channel term is zero. These boundary and offset contributions form
 the optional reporting baseline; they remain distinct from the coherent affine
-intercept and shared or tracer-specific flux states. Baseline terms currently
-require identical channel units.
+intercept and shared or tracer-specific flux states. Boundary terms currently
+require identical channel units; each channel's offset is in that channel's
+own units.
 
 Thus this is a row-stacked, block-sparse sensitivity acting on one state vector,
 not two independent block-diagonal models. Its fixed-error likelihood is
@@ -1037,12 +1172,17 @@ the staged linked route also exposes these products through
        idata, prepared, obs_avg_period="4h", output_path="paris",
    )
    co2_concentration = products["co2"]["concentration"]
-   o2_concentration = products["o2"]["concentration"]
+   # Absent for a declared delta(O2/N2) O2 channel (see below).
+   o2_concentration = products["o2"].get("concentration")
 
 Observations require site labels and datetime coordinates marking interval
-starts. Both channels must represent dry-air mole fractions convertible to
-``mol mol-1``. Delta(O2/N2) per-meg observations cannot faithfully use this
-variable meaning and raise an explicit error. Prior flux-scale draws and
+starts. Concentration products hold dry-air mole fractions convertible to
+``mol mol-1``. A declared ``delta(O2/N2)`` O2 channel therefore has no PARIS
+concentration product (``products["o2"]`` holds only a requested flux product);
+its per-meg values, residuals and offsets are in the linked basic products,
+labelled by the ``units``, ``observable`` and ``o2_n2_reference_ratio``
+attributes. Undeclared per-meg O2, or a declaration whose units do not match the
+O2 rows, raises an explicit error before any product is chosen. Prior flux-scale draws and
 prior draws for selected boundary/offset terms are required; keep the sampler's
 prior-predictive sampling enabled. Prior and posterior may have different
 numbers of draws or chains. Fixed states use their actual prior draws rather
@@ -1166,7 +1306,8 @@ remain separate.
 
 Centered multiplicative boundary operands are supported by the ordinary
 stock-PyMC fixed-OU likelihood and the matched cached sampler for CO₂ and linked
-CO₂/O₂, with PyTensor ``floatX=float64``. The single-channel runner selects the
+CO₂/O₂. See :doc:`co2_boundary_corrections` for the precision requirements.
+The single-channel runner selects the
 ordinary route with ``likelihood_builder=add_fixed_ou_gaussian_likelihood``. The likelihood and
 amplitude update use directly composed centered means, while public BC states,
 priors and concentration outputs retain their physical meaning. See the
@@ -1305,7 +1446,7 @@ For example::
 
    result = run_co2(params={
        "recipe": "co2",
-       "prepared_inputs": {
+       "data": {
            "path": "co2-coherent-low-rank.zarr",
            "start_date": "2020-01-01", "end_date": "2020-02-01",
            "domain": "EUROPE",

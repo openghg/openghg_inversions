@@ -12,13 +12,16 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.postprocessing.co2_flux_outputs import (
+    _check_complete_country_scope,
     co2_country_flux_outputs,
     co2_native_flux_outputs,
+    _reject_reserved_sector_names,
 )
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import _marginalises_outer_flux, trace_group
 from openghg_inversions.postprocessing.stats import calculate_stats
 from openghg_inversions.postprocessing.paris_options import ParisOptions
+from openghg_inversions.postprocessing.unresolved_functionals import UnresolvedFunctionalConditioning
 from openghg_inversions.rhime.outputs import (
     _define_output_filename,
     _resolve_output_path,
@@ -30,6 +33,7 @@ from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 from openghg_inversions.postprocessing.boundary_outputs import decode_saved_boundaries, reconstruct_boundary
 from .co2_affine_output import BoundCo2AffineFluxMap
 from .co2_preparation import Co2PreparedInputs, _require_equivalent_units
+from .co2_unresolved import co2_unresolved_conditioning
 
 
 @dataclass
@@ -199,6 +203,7 @@ def validate_co2_source_mapping(
             for key, value in mapping.items()
         ):
             raise ValueError("CO2 source_to_sector must map native sources to identifier sector names.")
+        _reject_reserved_sector_names(mapping)
         if bound is None or len(bound.affine_map.native_dims) != 3:
             raise ValueError("CO2 source_to_sector requires a source-resolved affine reconstruction.")
         labels = set(map(str, bound.affine_map.native_mean[bound.affine_map.native_dims[0]].values))
@@ -394,11 +399,23 @@ def _affine_products(
     bound: BoundCo2AffineFluxMap,
     countries: Countries | None,
     source_to_sector: Mapping[str, str] | None,
+    *,
+    unresolved: UnresolvedFunctionalConditioning | None = None,
 ) -> tuple[xr.Dataset | None, xr.Dataset | None]:
-    """Apply reporting source combinations before statistics, using signed draws."""
+    """Apply reporting source combinations before statistics, using signed draws.
+
+    Country sector totals are summed from the same (complete or
+    retained-state-conditional) country draws as the source and total values.
+    """
     native = None if _marginalises_outer_flux(trace) else co2_native_flux_outputs(trace, bound)
-    country = co2_country_flux_outputs(trace, bound, countries) if countries is not None else None
-    if source_to_sector and (native is not None or country is not None):
+    country = (
+        co2_country_flux_outputs(
+            trace, bound, countries, unresolved=unresolved, source_to_sector=source_to_sector or None
+        )
+        if countries is not None
+        else None
+    )
+    if source_to_sector and native is not None:
         source_dim = bound.affine_map.native_dims[0]
         for sector in sorted(set(source_to_sector.values())):
             sources = [source for source, mapped in source_to_sector.items() if mapped == sector]
@@ -407,35 +424,17 @@ def _affine_products(
             mapped = replace(
                 bound, artifact=replace(bound.artifact, affine_map=replace(bound.affine_map, flux=flux))
             )
-            if native is not None:
-                sector_native = co2_native_flux_outputs(trace, mapped)
-                native = native.merge(
-                    sector_native[[name for name in sector_native if str(name).startswith("flux_total_")]].rename(
-                        {
-                            name: str(name).replace("flux_total_", f"flux_{sector}_")
-                            for name in sector_native
-                            if str(name).startswith("flux_total_")
-                        }
-                    )
+            sector_native = co2_native_flux_outputs(trace, mapped)
+            native = native.merge(
+                sector_native[[name for name in sector_native if str(name).startswith("flux_total_")]].rename(
+                    {
+                        name: str(name).replace("flux_total_", f"flux_{sector}_")
+                        for name in sector_native
+                        if str(name).startswith("flux_total_")
+                    }
                 )
-            if countries is not None and country is not None:
-                sector_country = co2_country_flux_outputs(trace, mapped, countries)
-                country = country.merge(
-                    sector_country[
-                        [name for name in sector_country if str(name).startswith("country_total_")]
-                    ].rename(
-                        {
-                            name: str(name).replace("country_total_", f"country_{sector}_")
-                            for name in sector_country
-                            if str(name).startswith("country_total_")
-                        }
-                    )
-                )
-        source_mapping = json.dumps(dict(source_to_sector), sort_keys=True)
-        if native is not None:
-            native.attrs["source_to_sector"] = source_mapping
-        if country is not None:
-            country.attrs["source_to_sector"] = source_mapping
+            )
+        native.attrs["source_to_sector"] = json.dumps(dict(source_to_sector), sort_keys=True)
     return native, country
 
 
@@ -549,7 +548,11 @@ def _paris_products(
     attrs = _expand_sector_template_mapping(get_data_var_attrs(template.flux, "co2"), sectors)
     flux = add_variable_attrs(flux, attrs).compute()
     flux.attrs = make_global_attrs("flux", species="co2", domain=domain)
-    flux.attrs.update(native.attrs, paris_flux_template_version=template.flux_version)
+    flux.attrs.update(
+        native.attrs,
+        paris_flux_template_version=template.flux_version,
+        country_uncertainty_scope=str(country.attrs["uncertainty_scope"]),
+    )
     conc.attrs.update({key: value for key, value in components.attrs.items() if key != "has_offset"})
     flux = _prepare_latest_paris_netcdf_encoding(
         _cast_data_vars_to_template_dtypes(flux, template.flux, sector_names=sectors)
@@ -603,6 +606,9 @@ def calculate_co2_products(
 ) -> None:
     """Calculate and attach CO2 components and requested conditional products.
 
+    Pass reporting inputs from :func:`validate_co2_product_request`. All
+    products are constructed before any destination is opened.
+
     Args:
         result: Output object whose products will be replaced.
         prepared: Labelled inputs used to fit the saved trace.
@@ -617,23 +623,37 @@ def calculate_co2_products(
 
     Notes:
         Basic summaries preserve independent prior and posterior sample counts.
-        Flux products use the bound affine map and its conditional scope.
-        Full concentration draws remain in ``result.outputs['concentration_components']``.
+        For fits with persisted country functionals, country output uses
+        complete native conditioning. Fits with marginalised outer flux
+        require retained-state-conditional country totals with zero loading on
+        the selected states. Native maps use the bound affine map's conditional
+        scope. Concentration draws remain in ``result.outputs['concentration_components']``.
     """
     if output.output_format == "none":
         result.outputs.clear()
         return
-    _check_co2_paris_scope(output, _marginalises_outer_flux(result.idata))
+    marginalised_outer_flux = _marginalises_outer_flux(result.idata)
+    _check_co2_paris_scope(output, marginalised_outer_flux)
+    if bound is not None and countries is not None and prepared.country_functionals is not None:
+        _check_complete_country_scope(marginalised_outer_flux)
     if output.output_format == "paris" and "prior" not in result.idata.children:
         raise ValueError("CO2 PARIS outputs require prior draws; enable sample_prior_predictive.")
     components = reconstruct_co2_concentrations(result.idata, prepared)
     products = {"basic": _basic_product(components)}
     if bound is not None:
-        native, country = _affine_products(result.idata, bound, countries, source_to_sector)
+        unresolved = (
+            co2_unresolved_conditioning(result.idata, prepared, bound=bound, countries=countries)
+            if countries is not None and prepared.country_functionals is not None
+            else None
+        )
+        native, country = _affine_products(
+            result.idata, bound, countries, source_to_sector, unresolved=unresolved
+        )
         if native is not None:
             products["native_flux"] = native
         if country is not None:
             products["country_flux"] = country
+            result.output_metadata["country_uncertainty_scope"] = country.attrs["uncertainty_scope"]
         result.output_metadata["uncertainty_scope"] = bound.affine_map.uncertainty_scope
         if output.output_format == "paris":
             assert native is not None and country is not None and countries is not None, "PARIS needs native and country flux."

@@ -3,14 +3,16 @@ CO₂ model family
 
 The advanced CO₂ model family contains the **CO₂-only** and **linked CO₂/O₂**
 recipes. O₂ is a tracer in the linked recipe, not a standalone supported model.
-Both recipes begin from scientific arrays that have already been prepared; they
-are not alternative species settings for the complete standard runner.
+The linked recipe begins from scientific arrays that have already been
+prepared. The CO₂-only recipe accepts such arrays or builds its preparation from
+configured OpenGHG acquisition (see :ref:`co2-configured-preparation`). Neither
+recipe is an alternative species setting for the complete standard runner.
 
 The experimental :doc:`surface preparation pilot <surface_preparation>` adds
 explicit source transport and centered stable-BC operands for additive-Gaussian
 recipes, ordinary fixed-OU likelihoods, and the matched cached fixed-OU samplers.
-Centered construction requires
-PyTensor ``floatX=float64``. Coherent-reduction construction remains explicit.
+:doc:`co2_boundary_corrections` lists the precision required by each
+centered boundary choice. Coherent-reduction construction remains explicit.
 
 Current support
 ---------------
@@ -40,6 +42,9 @@ Current support
        canonical RHIME observations and metadata with one coherent reduction
        in a dedicated
        :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact.
+       Configured ``[data.acquisition]`` instead acquires
+       continuous-surface data from OpenGHG and builds the preparation with its
+       affine companion; see :ref:`co2-configured-preparation`.
      - :func:`openghg_inversions.rhime.co2.prepare_co2_o2_inputs` gathers
        caller-supplied, channel-native prepared arrays; it does not acquire
        OpenGHG data. :ref:`Save and replay linked prepared inputs
@@ -130,19 +135,26 @@ configure multiplicative or additive boundary corrections for them, follow
 Staged CO₂ commands
 -------------------
 
-CO₂ starts from canonical scientific inputs and a coherent reduction,
-or an existing :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact.
-It does not acquire OpenGHG data or infer a coherent reduction from a gas name.
+CO₂ starts from one of three inputs: configured acquisition
+(``[data.acquisition]``; see :ref:`co2-configured-preparation`);
+canonical scientific inputs with a coherent reduction; or an existing
+:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact. Configured
+acquisition retrieves OpenGHG data and reduces the configured native prior; CO₂
+never infers a coherent reduction from a gas name.
 ``run_co2`` prepares or loads inputs, explicitly materializes the
 selected scientific arrays, constructs the model, samples, then
-calculates and writes requested products. Full execution uses no manifests.
+calculates and writes requested products. Full execution uses no manifests and
+keeps a new preparation and its affine companion in memory; only staged
+``prepare`` saves a reusable pair.
 Direct scientific callers can compose materialization, model construction,
 sampling and trace annotation explicitly; see :doc:`co2_models`.
 
-Saved phases call those same scientific operations. ``prepare`` references an
-existing numerical artifact and its optional affine companion in place; keep
-those files available for later operations. Python callers
-can also prepare from canonical inputs and a coherent reduction. A new
+Saved phases call those same scientific operations. ``prepare`` either builds
+a new preparation from ``[data.acquisition]`` (see
+:ref:`co2-configured-preparation`) or references an existing numerical artifact
+and its optional affine companion in place; keep imported files available for
+later operations. Python callers can also prepare from canonical inputs and a
+coherent reduction. A new
 prepared/affine pair is saved with the existing codecs and checked by the affine
 loader before its manifest is written. Imported pairs retain their numerical
 association. Both routes retain source labels, grids and projection meaning.
@@ -150,7 +162,7 @@ association. Both routes retain source labels, grids and projection meaning.
 Record original requested dates and domain explicitly. Filtering can remove
 observations at both edges, so retained observation extrema cannot supply the
 original request. Missing imported facts fail clearly; supply
-``prepared_inputs.start_date``, ``end_date`` and ``domain``, or retain those facts
+``data.start_date``, ``end_date`` and ``domain``, or retain those facts
 in preparation provenance. Sites and averaging periods come from the retained
 numerical preparation.
 
@@ -161,7 +173,7 @@ A TOML configuration can contain:
    format_version = 1
    recipe = "co2"
 
-   [prepared_inputs]
+   [data]
    path = "prepared-co2.nc"
    start_date = "2020-01-01"
    end_date = "2020-02-01"
@@ -213,10 +225,10 @@ the same ``sampling`` mapping as the full configuration.
 The configured ``rhime run --model co2`` CLI route uses
 ``run_co2`` and writes requested products. Python
 ``rhime.run(model="co2", config_file="co2.toml")`` selects the same configured
-runner and returns ``Co2Output``. Acquisition and construction of the defining
-native-resolution reduction remain separate from this prepared-input route.
-That extension is tracked in
-`CO₂ native preparation #890 <https://github.com/openghg/openghg_inversions/issues/890>`_.
+runner and returns ``Co2Output``. Replace ``data.path`` with the shared input
+choices and the ``[data.acquisition]`` and ``[data.preparation]`` tables to
+retrieve and reduce native inputs in the same run. See
+:ref:`co2-configured-preparation`.
 
 Alternatively, save preparation and inference separately:
 
@@ -294,9 +306,52 @@ The affine artifact APIs are described under :ref:`co2-affine-flux-summaries`.
 Sample replay uses the saved companion; later output choices cannot replace its
 scientific meaning. Native sources retain their identities; when reporting
 sectors differ, supply an explicit ``outputs.source_to_sector`` mapping.
-Source sums and sector transforms precede uncertainty statistics. Native-flux
-and country products carry ``retained_state_conditional`` uncertainty scope;
-they exclude unresolved native-state posterior uncertainty tracked in OPE-68.
+Source sums and sector transforms precede uncertainty statistics. Every
+native-flux and country product records its ``uncertainty_scope``, which has
+one of two values:
+
+``retained_state_conditional``
+   The spread of ``Q m + D (alpha - Pi m)`` only. The unresolved native state
+   is left out, so country totals miss its mean update and most of its
+   variance where retained regions cross country borders. Native-grid flux
+   products always have this scope.
+``complete_native``
+   Country totals that add, for each posterior draw, the conditional mean
+   and one conditional draw of the unresolved native state (prior draws add
+   its prior variance). With a Gaussian retained state and the exact ``A``
+   they are the native-grid posterior of each country total for any
+   retained partition.
+
+Country products are ``complete_native`` only when the preparation saved the
+country functional products; otherwise they stay
+``retained_state_conditional``. ``Co2Output.output_metadata`` records
+``country_uncertainty_scope`` beside the native ``uncertainty_scope``.
+Complete country outputs require all of the following at preparation:
+
+- Reduce with country functionals:
+  ``reduce_native_gaussian(..., functionals=co2_flux_country_functionals(flux, countries),
+  functional_dim="country_functional")``. Use the signed reference flux the
+  affine companion will carry, and a country file that covers every country
+  you will report. Replay may report any subset of the prepared countries.
+- Prepare with ``aggregation_error_rank=None``. The products use the exact
+  unresolved covariance, so the artifact and the fit must use the exact dense
+  ``A``; a low-rank artifact with products is rejected.
+- Use the full-restriction reduction. Its ``alpha_prior_covariance`` and ``H``
+  must be the reduction's own ``C_alpha`` and ``H_alpha``. The artifact
+  records the reduction's native identity and recomputes its
+  ``reduction_identity`` from that and the stored ``C_alpha``, ``H_alpha``
+  and ``A``; the products' identity must equal it when the artifact is built
+  and again on load.
+
+At replay, the fit must use the additive-sigma, site-sigma or fixed-OU
+likelihood, and its trace must record the ``<flux_scale>_is_active`` mask
+(traces fitted before this was recorded for all-active fits must be fitted
+again). Other likelihoods raise an error rather than reporting complete
+totals. Country outputs record the ``A`` and noise model used in
+``unresolved_conditioning`` (JSON). Conditioning raises if it would have to
+clip a conditional-covariance eigenvalue beyond roundoff.
+Details are in the "Complete native functionals" section of the
+coherent-reduction guide.
 
 ``Co2Output`` borrows the preparation and complete annotated trace DataTree,
 retaining separate prior, posterior, predictive and diagnostic groups with
@@ -383,12 +438,37 @@ is:
    output_name = "linked"
    save_concentrations = true
 
-Both configured channel labels and the imported artifact must use the same
-concentration unit and numerical scale. Heterogeneous CO₂ ppm plus
-``delta(O2/N2)`` per-meg operation is unsupported until the scientific transform
-in `OPE-86 <https://linear.app/openghg-inversions/issue/OPE-86>`_ is defined.
-The existing numerical codec can retain mixed-unit metadata; that does not
-establish support for executing such an artifact through these phases.
+Configured channel labels must match the imported artifact. O2 mole fractions
+use the CO₂ unit and numerical scale. CO₂ ppm with ``delta(O2/N2)`` O2 in per
+meg is supported when the artifact declares that observable:
+
+A per-meg O2 channel is declared, not inferred from its unit label: preparation
+provenance must hold an ``o2_observable`` record from
+:class:`~openghg_inversions.inversion_data.o2n2.DeltaO2N2Declaration`, giving
+the reference O2/N2 ratio, its source and the per-meg unit label, and
+optionally the N2 policy and the observations' calibration scale. The same
+fields can instead be attributes on the O2 observations passed to
+``prepare_co2_o2_inputs``: ``observable = "delta_o2_n2"``,
+``delta_o2_n2_reference_ratio``, ``delta_o2_n2_reference_ratio_source``,
+``delta_o2_n2_n2_policy`` and ``delta_o2_n2_scale``. Preparation stores the
+declaration in provenance, so later steps do not depend on attributes
+surviving; when both routes are given they must agree. The reference ratio is
+never defaulted, and a declaration without one is rejected. The rows,
+errors and covariance blocks must already be in per meg; OpenGHG Inversions
+does not apply the transform. Configure ``channels.o2.observable =
+"delta_o2_n2"`` and ``channels.o2.units`` equal to the declared label. CO2
+stays a mole fraction. Undeclared per-meg or delta labels are rejected, because
+unit parsers otherwise read ``"per meg"`` as 1e-6 mol/mol. The shared
+mole-fraction parser used by surface preparation and reporting rejects
+ratio-anomaly labels (per meg, per mil, ``‰``) for the same reason.
+
+Mixed channel units (for example ppm CO2 with per-meg O2) support the
+fixed-error likelihood and fixed OU. Fixed OU amplitudes must then be a
+mapping keyed by species and site (``"co2:MHD"``, ``"o2:MHD"``), each value in
+its own channel's units; a nonzero scalar amplitude is rejected because it
+would mean different things on each channel. Inferred OU amplitudes and
+fitted linked boundary corrections still require common channel units, so a
+per-meg run uses fixed amplitudes and no linked boundaries.
 
 With the current PyMC 6/Numba backend, native multivariate-normal predictive
 draws require ``floatX=float64`` in ``PYTENSOR_FLAGS`` before starting Python or

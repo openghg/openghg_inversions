@@ -416,7 +416,7 @@ def test_saved_sampling_rejects_invalid_sampler_before_loading(tmp_path, sampler
 def test_cli_leaves_malformed_schema_to_manifest_loader(tmp_path, schema):
     manifest = tmp_path / "prepared.json"
     manifest.write_text(json.dumps({"schema": schema}))
-    with pytest.raises(ValueError, match="version-2 manifest"):
+    with pytest.raises(ValueError, match="version-3 manifest"):
         main(["sample", "--model", "multisector", "--preparation-manifest", str(manifest),
               "--output-dir", str(tmp_path / "sample")])
 
@@ -424,7 +424,7 @@ def test_cli_leaves_malformed_schema_to_manifest_loader(tmp_path, schema):
 def test_sample_version_rejects_retired_model_record_before_payload_loading(preparation, tmp_path, monkeypatch):
     sampled = _save_sample(tmp_path, preparation)
     record = json.loads(sampled.read_text())
-    assert json.loads(preparation[0].read_text())["schema_version"] == 2
+    assert json.loads(preparation[0].read_text())["schema_version"] == 3
     assert record["schema_version"] == 3
     assert stages.load_samples(sampled).trace["posterior"].sizes["draw"] == 3
     record["schema_version"] = 2

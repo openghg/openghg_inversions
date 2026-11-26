@@ -578,7 +578,7 @@ def run_multisector(
     # 1. Resolve resources, acquire or validate supplied data, then prepare.
     if prepared is None:
         basis_inputs = resolve_basis_inputs(config.data)
-        bc_basis = resolve_bc_basis(config.data)
+        bc_basis = resolve_bc_basis(config.data.bc_basis, use_bc=config.data.use_bc)
         if merged_data is None:
             merged_data = acquire_merged_data(config.data)
         else:

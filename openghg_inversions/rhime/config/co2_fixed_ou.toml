@@ -3,12 +3,45 @@
 format_version = 1
 recipe = "co2"
 
-[prepared_inputs]
+[data]
 path = "prepared-co2.zarr"
 # Preserve the original requested window after filtering.
 start_date = "2020-01-01"
 end_date = "2020-02-01"
 domain = "EUROPE"
+
+# To build a new preparation instead, replace `path` above with these tables
+# (CO2 only). Acquisition keeps centered boundary operands; the [model.boundary]
+# type selects the prepared representation unless it is set explicitly.
+# flux_sources = ["biosphere", "fossil"]
+#
+# [data.acquisition]
+# sites = ["MHD"]
+# averaging_period = "1h"
+# time_resolved = true                  # required by time_resolved surface transport
+# surface_transport = { biosphere = "time_resolved", fossil = "integrated" }
+# boundary_reference = 400.0
+# boundary_reference_units = "ppm"
+# boundary_mass_tolerance = 1e-4
+#
+# [data.preparation]
+# boundary_representation = "centered"   # optional: "ordinary" or "centered"
+# aggregation_error_rank = 512           # or "exact"
+# filters = ["daytime9to5"]
+#
+# [data.preparation.basis]
+# algorithm = "weighted"
+# nbasis = 100
+#
+# [data.preparation.bc_basis]
+# algorithm = "NESW"
+#
+# [data.preparation.native_prior]
+# stdev = 0.5
+# correlation_length = 1.5
+#
+# [model.boundary]
+# type = "multiplicative"
 
 [likelihood]
 kind = "fixed_ou"

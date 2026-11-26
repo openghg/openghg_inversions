@@ -13,7 +13,7 @@ def run(*, model: str = "standard", **kwargs: Any) -> Any:
             ``co2_o2`` or ``co2_o2_cached_sigma``.
         **kwargs: Forwarded unchanged to the selected recipe. Standard,
             multisector and nested accept their existing INI/Python inputs.
-            CO2 accepts its configured prepared-input product request.
+            CO2 accepts configured native or prepared inputs for its products.
             Linked CO2/O2 recipes require ``prepared_inputs``;
             selection does not add acquisition or checkpoint routes.
 

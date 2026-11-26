@@ -18,10 +18,15 @@ Prerequisites
   dimensionless ``H_bc_mass`` and scalar ``bc_reference``); see
   :doc:`surface_preparation`.
 * For centered operands, a PyTensor process configured with
-  ``floatX=float64``. Binding checks this once.
-* For weighted additive corrections, the complete averaging weights
-  ``bc_centering_weights``, stored when the artifact is prepared (see
-  :ref:`co2-boundary-weights`).
+  ``floatX=float64`` for additive corrections, anomaly scaling and custom
+  multiplicative priors. The default multiplicative prior supports
+  ``floatX=float32`` as well. Binding checks the selected prior and precision.
+  The :ref:`precision guide <fixed-ou-step-precision>` explains the dtype
+  choices and the rounding of absolute concentrations in float32.
+* For weighted additive corrections with a positive ``anomaly_scale``, the
+  complete averaging weights ``bc_centering_weights``, stored when the
+  artifact is prepared (see :ref:`co2-boundary-weights`). A level-only
+  boundary (``anomaly_scale = 0``) samples no anomalies and needs none.
 
 Choose a boundary
 -----------------
@@ -117,14 +122,19 @@ state partition. Binding stacks the weights once per channel and fit; exact
 labelled alignment rejects a different calendar before evaluating numerical
 payloads.
 
+A configured CO₂ preparation produces centered operands for an additive
+choice automatically and reads the weights from
+``prepared_inputs.bc_centering_weights_path`` (a netCDF file with one
+``bc_centering_weights`` variable); see :ref:`co2-configured-preparation`.
+
 Configure a CO₂ fit
 -------------------
 
 ``[model.boundary]`` without a ``type`` is multiplicative and uses the
 default scaling prior unless ``prior`` is configured. ``frequency`` and
 ``anchor_time`` select its periods. For additive corrections, use an artifact
-containing native centered operands and ``bc_centering_weights`` and
-configure:
+containing native centered operands, plus ``bc_centering_weights`` when weighted
+anomalies have a positive ``anomaly_scale``, and configure:
 
 .. code-block:: toml
 
