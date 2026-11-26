@@ -271,6 +271,26 @@ def test_attribute_and_provenance_declarations_must_agree():
         )
 
 
+def test_mole_fraction_attributes_conflict_with_delta_provenance():
+    """Reject delta provenance even when the O2 attributes name mole fractions without delta fields."""
+    inputs = _inputs_with_o2_attrs(
+        {"observable": "mole_fraction"},
+        {O2_OBSERVABLE_PROVENANCE_KEY: DECLARATION.to_provenance()},
+    )
+    with pytest.raises(ValueError, match="disagree"):
+        prepare_co2_o2_inputs(**inputs)
+
+
+def test_preparation_preserves_explicit_mole_fraction_observable():
+    """Carry explicit mole-fraction metadata into provenance and leave absent metadata unspecified."""
+    inputs = _inputs_with_o2_attrs({})
+    inputs["o2_units"] = "ppm"
+    assert O2_OBSERVABLE_PROVENANCE_KEY not in prepare_co2_o2_inputs(**inputs).provenance
+
+    inputs["o2_observations"] = inputs["o2_observations"].assign_attrs(observable="mole_fraction")
+    assert prepare_co2_o2_inputs(**inputs).provenance[O2_OBSERVABLE_PROVENANCE_KEY] == {"kind": "mole_fraction"}
+
+
 @pytest.mark.parametrize(
     ("attrs", "message"),
     [
