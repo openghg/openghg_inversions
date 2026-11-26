@@ -93,6 +93,7 @@ def synthetic_inputs(destination: Path) -> tuple:
         observation_intercept=(mean - xr.DataArray([.8, .7, .9], dims="observation")).assign_attrs(units="ppm"),
         unresolved_observation_covariance=covariance,
         projection_strategy="synthetic-coherent-restriction",
+        native_identity="sha256:synthetic-native-inputs",
     )
     prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=1)
     native_mean = flux.copy(data=[[.8, 1.4], [.8, 1.4]]).assign_attrs(units="1")

@@ -391,7 +391,11 @@ def test_boundary_components_are_optional_per_channel(
         _model_spec(primary_bc=primary_bc, tracer_bc=tracer_bc),
     )
 
-    present = {name for name in model.named_vars if name.startswith(("bc_", "mu_bc_"))}
+    present = {
+        name
+        for name in model.named_vars
+        if name.startswith(("bc_", "mu_bc_")) and not name.endswith("_is_active")
+    }
     assert present == expected
 
 
