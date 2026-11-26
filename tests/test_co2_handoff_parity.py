@@ -88,15 +88,18 @@ def test_ordinary_output_options_normalize_only_their_paths(tmp_path, monkeypatc
 
 
 @pytest.mark.parametrize("likelihood_kind", ["additive_sigma", "fixed_ou"])
-def test_saved_copula_prior_records_the_marginals_actually_used(tmp_path, likelihood_kind):
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_saved_copula_prior_records_the_marginals_actually_used(tmp_path, likelihood_kind, suffix):
     """Both ordinary and cached fits preserve the fitted prior in replay metadata."""
     from openghg_inversions.rhime.co2 import handoffs, prepare_co2_inputs
 
     canonical, reduction, _, _, countries = synthetic_inputs(tmp_path)
-    marginal = reduction.retained_mean.copy(data=["weibull", "gamma"])
+    marginal = reduction.retained_mean.copy(data=np.array(["weibull", "gamma"], dtype=np.dtypes.StringDType()))
     prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=1, prior_marginal=marginal)
-    manifest = handoffs.save_preparation(
-        prepared, output_dir=tmp_path / "prepare", start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
+    path = tmp_path / f"prepared{suffix}"
+    prepared.save(path)
+    manifest = handoffs.prepare(
+        prepared_path=path, output_dir=tmp_path / "prepare", start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
     )
     params = configuration(tmp_path / "reports", countries)
     params["sampling"].update(draws=4, tune=4, sample_prior_predictive=0, sample_posterior_predictive=False)
