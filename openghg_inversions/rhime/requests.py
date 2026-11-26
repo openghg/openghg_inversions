@@ -63,6 +63,34 @@ def load_params(
         params = read_rhime_ini(source)
     elif source is not None:
         params = json.loads(source.read_text(encoding="utf-8"))
+    return merge_params(params, overrides=overrides, phase_groups=phase_groups)
+
+
+def merge_params(
+    params: Mapping[str, Any],
+    *,
+    overrides: Mapping[str, Any] | None = None,
+    phase_groups: Collection[str] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Merge decoded file options and invocation overrides by configuration owner.
+
+    Keep the two sources separate so fields in a nested option group can be
+    overridden individually. Resolve filesystem paths for active groups only.
+
+    Args:
+        params: Decoded file options with recipe-specific options already consumed.
+        overrides: Invocation options, with the same flat or grouped forms as
+            :func:`load_params`.
+        phase_groups: Configuration owners to resolve. By default all are active.
+
+    Returns:
+        Merged and resolved choices by owner, with empty dictionaries for
+        inactive owners.
+
+    Raises:
+        ValueError: If either source is invalid, contains an unsupported option,
+            or supplies an override for an inactive owner.
+    """
     owners = option_groups()
     active = set(owners) if phase_groups is None else set(phase_groups)
     claims_owner = "data" if "data" in active else "model"

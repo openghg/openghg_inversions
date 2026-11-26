@@ -60,6 +60,7 @@ from .outputs import (
 )
 from .ini import read_rhime_ini
 from .params import DataConfig, RhimeConfig
+from .requests import merge_params
 from .preparation import (
     resolve_bc_basis,
     acquire_merged_data,
@@ -1385,9 +1386,13 @@ def run_nested(
     if config is not None and config_file is not None:
         raise ValueError("Pass either resolved `config` or `config_file`/run parameters, not both.")
     params = read_rhime_ini(config_file) if config_file is not None else {}
-    params.update(kwargs)
-    nested_options = {name: params.pop(name) for name in tuple(params) if name in _NESTED_PARAMETER_NAMES}
-    if config is not None and params:
+    nested_options = {
+        name: values.pop(name)
+        for values in (params, kwargs)
+        for name in tuple(values)
+        if name in _NESTED_PARAMETER_NAMES
+    }
+    if config is not None and kwargs:
         raise ValueError("Pass either resolved `config` or `config_file`/run parameters, not both.")
     inner_domain = nested_options.pop("inner_domain", None)
     inner_x_prior = nested_options.pop("inner_x_prior", None)
@@ -1400,7 +1405,7 @@ def run_nested(
     )["basis_output_path"]
 
     if config is None:
-        config = RhimeConfig.from_params(params, multisector=False)
+        config = RhimeConfig.from_params(merge_params(params, overrides=kwargs), multisector=False)
     if config.data.split_by_sectors or len(config.model.sectors) != 1:
         raise ValueError("Nested RHIME requires a single-source configuration.")
     if likelihood_builder is not None and config.model.likelihood is not None:

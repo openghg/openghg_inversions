@@ -34,7 +34,6 @@ from openghg_inversions.rhime import (
     filter_observations,
     prepare_observation_errors,
     validate_standard_output_resources,
-    read_rhime_ini,
     sample_rhime_model,
 )
 from openghg_inversions.rhime.standard import build_standard_model, materialize_standard_inputs
@@ -71,10 +70,9 @@ def run_custom_rhime(
         resolved RHIME options. Supported outputs are checked against the built
         model contract before posterior sampling.
     """
-    params = read_rhime_ini(config_file) if config_file is not None else {}
-    params.update(kwargs)
-    params["mismatch_model"] = None
-    config = RhimeConfig.from_params(load_params(overrides=params), multisector=False)
+    params = load_params(config_file=config_file, overrides=kwargs)
+    params["model"]["mismatch_model"] = None
+    config = RhimeConfig.from_params(params, multisector=False)
     validate_standard_output_resources(config.output)
 
     # Resolve selected support files before acquiring observations or flux.

@@ -1,6 +1,8 @@
 """Nested option groups and their deprecated flat spellings."""
 
 from dataclasses import dataclass
+from contextlib import nullcontext
+from importlib import import_module
 import json
 import warnings
 
@@ -93,6 +95,42 @@ def test_nested_override_updates_file_group_by_field(tmp_path):
     path.write_text("[RUN]\n" + "\n".join(f"{key} = {value!r}" for key, value in values.items()))
     loaded = load_params(config_file=path, overrides={"bc_basis": {"split_height": 4.0}})
     assert loaded["data"]["bc_basis"] == {"algorithm": "twelve-region", "split_height": 4.0}
+
+
+@pytest.mark.parametrize("runner", [
+    "openghg_inversions.rhime.nested",
+    "examples.rhime_customisation.runner",
+    "examples.rhime_customisation.custom_basis_runner",
+])
+@pytest.mark.parametrize("flat", [False, True], ids=["nested-override", "flat-override"])
+def test_runners_preserve_ini_basis_algorithm_when_overriding_height(tmp_path, monkeypatch, runner, flat):
+    """A split-height override preserves the matching algorithm through each entry point."""
+    path = tmp_path / "request.ini"
+    values = _params(
+        basis_algorithm="quadtree", bc_basis_algorithm="twelve-region",
+        bc_basis_split_height=3000.0, output_format="none", use_bc=True,
+    )
+    path.write_text("[RUN]\n" + "\n".join(f"{key} = {value!r}" for key, value in values.items()))
+    options = {"bc_basis_split_height": 2000.0} if flat else {"bc_basis": {"split_height": 2000.0}}
+    module = import_module(runner)
+    if runner == "openghg_inversions.rhime.nested":
+        run = module.run_nested
+        options["inner_domain"] = "6km"
+    else:
+        run = module.run_custom_rhime
+
+    class BasisSelected(Exception):
+        """Stop once the runner reaches boundary-basis resolution."""
+
+    def check_basis(data):
+        """Check the selection before the runner accesses any store."""
+        assert data.bc_basis == BcBasisOptions(algorithm="twelve-region", split_height=2000.0)
+        raise BasisSelected
+
+    monkeypatch.setattr(module, "resolve_bc_basis", check_basis)
+    warning = pytest.warns(DeprecationWarning, match="bc_basis_split_height") if flat else nullcontext()
+    with warning, pytest.raises(BasisSelected):
+        run(config_file=path, **options)
 
 
 def test_flat_json_request_is_deprecated(tmp_path):
