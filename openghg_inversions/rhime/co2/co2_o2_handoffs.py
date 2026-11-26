@@ -33,7 +33,7 @@ from openghg_inversions.rhime.sampling import _sample_linked_rhime_model
 from openghg_inversions.serialization import load_trace, save_trace
 
 from .co2_o2_configuration import (
-    Co2O2ModelConfig, load_co2_o2_params, resolve_co2_o2_sampler, validate_co2_o2_units,
+    Co2O2ModelConfig, load_co2_o2_params, resolve_co2_o2_sampler, validate_co2_o2_channel_units,
 )
 from .co2_o2_outputs import (
     Co2O2Output, Co2O2OutputOptions, calculate_co2_o2_products, make_co2_o2_output,
@@ -96,7 +96,7 @@ def save_preparation(
     facts = requested_co2_facts(prepared, start_date=start_date, end_date=end_date, domain=domain)
     lazy_units = isinstance(prepared.observations.observation_units.data, DaskArray)
     if not lazy_units:
-        validate_co2_o2_units(prepared)
+        validate_co2_o2_channel_units(prepared)
     destination = start_checkpoint(
         output_dir, "prepare", payloads=("prepared-inputs.nc",),
         referenced=tuple(Path(path).resolve() for path in referenced),
@@ -108,7 +108,7 @@ def save_preparation(
         with xr.open_datatree(payload) as stored:
             units = stored["joint"]["observation_units"].values
         observations = prepared.observations.assign_coords(observation_units=("observation", units))
-        validate_co2_o2_units(replace(prepared, observations=observations))
+        validate_co2_o2_channel_units(replace(prepared, observations=observations))
     return _finish_preparation(destination, payload=payload, facts=facts)
 
 
@@ -129,7 +129,7 @@ def prepare(
     """
     payload = Path(prepared_path).resolve()
     prepared = Co2O2PreparedInputs.load(payload)
-    validate_co2_o2_units(prepared)
+    validate_co2_o2_channel_units(prepared)
     facts = requested_co2_facts(prepared, start_date=start_date, end_date=end_date, domain=domain)
     destination = start_checkpoint(
         output_dir, "prepare", payloads=(), referenced=(payload, *(Path(path).resolve() for path in referenced)),
@@ -149,7 +149,7 @@ def load_preparation(manifest: str | Path, *, expected_generation: str | None = 
         raise ValueError(f"Linked preparation {path} was replaced; samples require generation {expected_generation!r}.")
     payload = reference(path, record["prepared_inputs"])
     prepared = Co2O2PreparedInputs.load(payload)
-    validate_co2_o2_units(prepared)
+    validate_co2_o2_channel_units(prepared)
     facts = requested_co2_facts(prepared, **{name: record[name] for name in ("start_date", "end_date", "domain")})
     return Co2O2Preparation(prepared=prepared, generation=record["generation"], payload=payload, **facts)
 
