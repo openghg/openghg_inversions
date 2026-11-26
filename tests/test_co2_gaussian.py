@@ -122,10 +122,12 @@ def test_gaussian_samples_round_trip_through_saved_handoffs(case, tmp_path, doub
         ({"likelihood": {"kind": "additive_sigma"}}, r"fixed_model_mismatch = \.\.\., e\.g\. the median R"),
         ({"model": {"boundary": {"enabled": True}}}, "Normal boundary prior"),
         ({"model": {"offset": {"prior": {"pdf": "lognormal", "mu": 0.0, "sigma": 0.1}}}}, "Normal offset prior"),
+        ({"model": {"outer_flux": {"mode": "marginalise", "outer_groups": ["outer"]}}},
+         r'model.outer_flux.mode = "marginalise"'),
         ({"sampling": {**GAUSSIAN_SAMPLING, "tune": 10}}, "NUTS-only option"),
         ({"sampling": {"method": "laplace"}}, "sampling.method"),
     ],
-    ids=["fixed-ou", "site-sigma", "sampled-sigma", "truncated-boundary", "lognormal-offset", "nuts-option",
+    ids=["fixed-ou", "site-sigma", "sampled-sigma", "truncated-boundary", "lognormal-offset", "marginalised-outer-flux", "nuts-option",
          "unknown-method"],
 )
 def test_non_gaussian_choices_are_refused_before_materialization(case, monkeypatch, double_precision, change, message):
@@ -860,22 +862,18 @@ def test_type2_ml_non_convergence_and_upper_bound_warnings(case, caplog, monkeyp
     assert actual["model_mismatch"]["type2_ml_ambiguous_starts"] == ["site rms"]
 
 
-def test_gaussian_estimator_builds_with_the_configured_outer_flux(case, double_precision, monkeypatch):
-    """The estimator solves the graph the runner builds, so it must forward the outer-flux option."""
+def test_gaussian_estimator_holds_the_configured_fixed_outer_flux(case, double_precision):
     prepared, _, params = case
-    outer_flux = object()
-    captured = {}
+    inputs = prepared.inv_inputs
+    covariance = np.diag(np.diag(inputs.alpha_prior_covariance))
+    inputs = inputs.assign_coords(basis_group=("region", ["inner", "outer"])).assign(
+        alpha_prior_covariance=inputs.alpha_prior_covariance.copy(data=covariance),
+    )
+    prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
+    params["model"]["outer_flux"] = {"mode": "fixed", "outer_groups": ["outer"]}
 
-    class Built(Exception):
-        pass
+    trace, _ = _run_gaussian(prepared, params)
 
-    def capture(*args, **kwargs):
-        captured.update(kwargs)
-        raise Built
-
-    monkeypatch.setattr(co2_gaussian, "build_co2_from_materialized", capture)
-    model = {**Co2ModelConfig.from_params(params).model_arguments(), "outer_flux": outer_flux}
-    sampling = _resolve_co2_sampling(params, model=model)
-    with pytest.raises(Built):
-        co2_inference.sample_co2_inference(prepared, model, sampling.sampler, method="gaussian")
-    assert captured["outer_flux"] is outer_flux
+    np.testing.assert_array_equal(trace.constant_data.flux_scaling_is_active, [True, False])
+    np.testing.assert_array_equal(trace.posterior.flux_scaling.isel(region=1), inputs.alpha_prior_mean.values[1])
+    np.testing.assert_array_equal(trace.gaussian_posterior.posterior_covariance.isel(state=1), 0.0)

@@ -51,6 +51,7 @@ from openghg_inversions.inference.gls import psd_factor
 from openghg_inversions.inference.sampling import RhimeSampler
 from openghg_inversions.models.boundary import AdditiveChoice, AnomalyScalingChoice, MultiplicativeChoice
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.observation_error import (
     aggregation_error_as_low_rank, prepare_low_rank_aggregation_error, resolve_aggregation_error,
 )
@@ -166,9 +167,15 @@ def check_co2_gaussian_model(model: Mapping[str, Any]) -> None:
     Raises:
         ValueError: For a fixed-OU or other non-additive likelihood, an
             inferred model-error scale, or a non-Normal boundary or offset
-            prior.
+            prior, or marginalised outer flux.
     """
     check_co2_gaussian_likelihood(model)
+    outer_flux = model.get("outer_flux")
+    if isinstance(outer_flux, OuterFluxChoice) and outer_flux.mode == "marginalise":
+        raise ValueError(
+            'method = "gaussian" does not include covariance from model.outer_flux.mode = "marginalise"; '
+            'use method = "nuts" to marginalise outer flux.'
+        )
     if not model.get("no_model_error", False):
         raise ValueError(
             'method = "gaussian" needs a fixed likelihood error, but this model samples the model-error '

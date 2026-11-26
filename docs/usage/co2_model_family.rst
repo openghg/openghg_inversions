@@ -362,8 +362,9 @@ An empirical-Bayes run logs one more warning with the mode and the per-site sigm
 
 The estimator refuses what it cannot solve exactly: an inferred model-error
 scale, fixed-OU or other replacement likelihoods, non-Normal boundary or offset
-priors, and NUTS-only
-``sampling`` options. It requires ``PYTENSOR_FLAGS=floatX=float64``.
+priors, and NUTS-only ``sampling`` options. It requires
+``PYTENSOR_FLAGS=floatX=float64``. Outer-flux marginalisation adds covariance
+to the likelihood and requires ``sampling.method = "nuts"``.
 
 The configured ``rhime run --model co2`` CLI route uses
 ``run_co2`` and writes requested products. Python
