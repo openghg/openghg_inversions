@@ -158,22 +158,52 @@ def co2_native_flux_outputs(trace: xr.DataTree, bound: BoundCo2AffineFluxMap) ->
     return _with_metadata(xr.merge(outputs), attrs, units="mol m-2 s-1")
 
 
-def _require_zero_outer_loading(
-    trace: xr.DataTree, response: xr.DataArray, state_dim: str,
-) -> None:
-    """Require zero loading on every fitted marginalised state."""
-    constants = trace.children.get("constant_data")
-    if constants is None or _MARGINALISED_OUTER_FLUX_MASK not in constants:
-        raise ValueError("Country flux with marginalised outer states requires the saved outer-state mask.")
-    mask = constants[_MARGINALISED_OUTER_FLUX_MASK]
+def _require_zero_outer_loading(mask: xr.DataArray, response: xr.DataArray, state_dim: str) -> None:
+    """Reject a country response with nonzero loading on any selected state."""
     if mask.dims != (state_dim,) or state_dim not in mask.indexes or mask.dtype.kind != "b":
-        raise ValueError("The saved marginalised outer-state mask must be Boolean on the labelled state axis.")
+        raise ValueError("The marginalised outer-state mask must be Boolean on the labelled state axis.")
     response, mask = xr.align(response, mask, join="exact", copy=False)
     selected = mask.to_numpy()
     if not selected.any():
-        raise ValueError("The saved marginalised outer-state mask selects no states.")
+        raise ValueError("The marginalised outer-state mask selects no states.")
     if (response.isel({state_dim: selected}) != 0).any().compute().item():
         raise ValueError("Requested country flux must have zero loading on every marginalised outer state.")
+
+
+def _country_weighted_flux(bound: BoundCo2AffineFluxMap, countries: Countries) -> xr.DataArray:
+    """Weight signed native flux by country membership and cell area in reporting units."""
+    affine = bound.affine_map
+    flux, matrix, area = xr.align(
+        affine.flux, countries.matrix, countries.area_grid, join="exact", copy=False
+    )
+    if set(matrix.dims) != {"country", "lat", "lon"} or set(area.dims) != {"lat", "lon"}:
+        raise ValueError("Country membership and area must use country/lat/lon and lat/lon dimensions.")
+    return (
+        flux.astype("float64")
+        * matrix
+        * area
+        * _flux_unit_scale(bound)
+        * (365 * 24 * 3600)
+        * molar_mass("co2")
+    )
+
+
+def _country_response(
+    weighted_flux: xr.DataArray, prolongation: xr.DataArray, state_dim: str,
+) -> xr.DataArray:
+    """Project each country's signed flux weights onto the retained states."""
+    response = to_dense(sparse_xr_dot(weighted_flux, prolongation, dim=["lat", "lon"]))
+    return _bounded_projection(response, [state_dim])
+
+
+def _validate_marginalised_country_flux(
+    bound: BoundCo2AffineFluxMap, countries: Countries, mask: xr.DataArray,
+) -> None:
+    """Check country projections against the selected states before sampling."""
+    affine = bound.affine_map
+    prolongation = _in_dimensionless_units(affine._prolongation_array(), name="prolongation")
+    response = _country_response(_country_weighted_flux(bound, countries), prolongation, affine.state_dim)
+    _require_zero_outer_loading(mask, response, affine.state_dim)
 
 
 def co2_country_flux_outputs(
@@ -221,19 +251,7 @@ def co2_country_flux_outputs(
     """
     samples, source_dim, attrs = _output_inputs(trace, bound)
     affine = bound.affine_map
-    flux, matrix, area = xr.align(
-        affine.flux, countries.matrix, countries.area_grid, join="exact", copy=False
-    )
-    if set(matrix.dims) != {"country", "lat", "lon"} or set(area.dims) != {"lat", "lon"}:
-        raise ValueError("Country membership and area must use country/lat/lon and lat/lon dimensions.")
-    weighted_flux = (
-        flux.astype("float64")
-        * matrix
-        * area
-        * _flux_unit_scale(bound)
-        * (365 * 24 * 3600)
-        * molar_mass("co2")
-    )
+    weighted_flux = _country_weighted_flux(bound, countries)
     # These package-internal affine helpers preserve exact state validation,
     # dimensionless conversion and lazy bucket/explicit prolongation. Reusing
     # them avoids introducing a second reconstruction or quantity-map API.
@@ -246,10 +264,12 @@ def co2_country_flux_outputs(
     for group, state in samples.items():
         centred, prolongation = affine._centred_state(state, bound.reference_state)
         if response is None:
-            response = to_dense(sparse_xr_dot(weighted_flux, prolongation, dim=["lat", "lon"]))
-            response = _bounded_projection(response, [affine.state_dim])
+            response = _country_response(weighted_flux, prolongation, affine.state_dim)
             if _marginalises_outer_flux(trace):
-                _require_zero_outer_loading(trace, response, affine.state_dim)
+                constants = trace.children.get("constant_data")
+                if constants is None or _MARGINALISED_OUTER_FLUX_MASK not in constants:
+                    raise ValueError("Country flux with marginalised outer states requires the saved outer-state mask.")
+                _require_zero_outer_loading(constants[_MARGINALISED_OUTER_FLUX_MASK], response, affine.state_dim)
                 attrs["outer_flux_scope"] = "zero_loading_on_marginalised_states"
             reference = _bounded_projection(reference, [])
         draws = reference + xr.dot(response, centred.astype("float64"), dim=affine.state_dim)

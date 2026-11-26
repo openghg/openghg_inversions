@@ -136,23 +136,7 @@ class OuterFluxChoice:
         """
         mean = flux_prior.mean
 
-        # Selector labels are small; materialise them once so lazy coordinates
-        # can be matched and masked.
-        groups = _state_labels(mean, self.group_coord).compute()
-        missing_groups = _missing(self.outer_groups, groups)
-        if missing_groups:
-            raise ValueError(f"No flux state has {self.group_coord} {missing_groups!r}.")
-        outer = groups.isin(self.outer_groups)
-        fixed = outer
-        if self.fixed_sources:
-            sources = _state_labels(mean, self.source_coord).compute()
-            missing_sources = _missing(self.fixed_sources, sources.where(outer, drop=True))
-            if missing_sources:
-                raise ValueError(
-                    f"No outer flux state (with {self.group_coord} in {self.outer_groups!r}) has "
-                    f"{self.source_coord} {missing_sources!r}."
-                )
-            fixed = outer & sources.isin(self.fixed_sources)
+        fixed = self._select_states(mean)
 
         covariance = flux_prior.arithmetic_covariance.to_numpy()
         fixed_positions = np.flatnonzero(fixed.to_numpy())
@@ -180,6 +164,27 @@ class OuterFluxChoice:
             prior_factor=prior_factor,
             regression=regression,
         )
+
+    def _select_states(self, mean: xr.DataArray) -> xr.DataArray:
+        """Select outer states from the labelled prior mean."""
+        # Selector labels are small; materialise them once so lazy coordinates
+        # can be matched and masked.
+        groups = _state_labels(mean, self.group_coord).compute()
+        missing_groups = _missing(self.outer_groups, groups)
+        if missing_groups:
+            raise ValueError(f"No flux state has {self.group_coord} {missing_groups!r}.")
+        outer = groups.isin(self.outer_groups)
+        fixed = outer
+        if self.fixed_sources:
+            sources = _state_labels(mean, self.source_coord).compute()
+            missing_sources = _missing(self.fixed_sources, sources.where(outer, drop=True))
+            if missing_sources:
+                raise ValueError(
+                    f"No outer flux state (with {self.group_coord} in {self.outer_groups!r}) has "
+                    f"{self.source_coord} {missing_sources!r}."
+                )
+            fixed = outer & sources.isin(self.fixed_sources)
+        return fixed
 
 
 def _missing(requested: tuple[str, ...], labels: xr.DataArray) -> list[str]:
@@ -219,12 +224,15 @@ def _psd_factor(covariance: np.ndarray) -> np.ndarray:
 def _regression(inner_covariance: np.ndarray, cross: np.ndarray) -> np.ndarray:
     """Return ``B = Sigma_OI Sigma_II^+``, the best linear predictor of ``O`` from ``I``.
 
-    A Hermitian pseudo-inverse with a scale-relative cutoff keeps
-    zero-variance or collinear other states from dominating.
+    Project onto the retained eigenvectors before dividing by their
+    eigenvalues to avoid cancellation from forming a dense pseudo-inverse.
     """
     inner_covariance = 0.5 * (inner_covariance + inner_covariance.T)
-    cutoff = inner_covariance.shape[0] * np.finfo(float).eps
-    return cross @ np.linalg.pinv(inner_covariance, rcond=cutoff, hermitian=True)
+    eigenvalues, eigenvectors = np.linalg.eigh(inner_covariance)
+    cutoff = inner_covariance.shape[0] * np.finfo(float).eps * eigenvalues[-1]
+    keep = eigenvalues > cutoff
+    directions = eigenvectors[:, keep]
+    return ((cross @ directions) / eigenvalues[keep]) @ directions.T
 
 
 @dataclass(frozen=True)

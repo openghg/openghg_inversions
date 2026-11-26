@@ -25,6 +25,7 @@ from openghg_inversions.models.components import add_model_data
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
     DIAGONAL_RESIDUAL_VARIANCE,
+    FIXED_OBSERVATION_COVARIANCE,
     LOW_RANK_FACTOR,
     ObservationCovariance,
 )
@@ -32,7 +33,7 @@ from openghg_inversions.observation_error import (
 
 @dataclass(frozen=True)
 class RegisteredAggregationError:
-    """Aggregation-error tensors registered with the active PyMC model."""
+    """Fixed observation covariance tensors registered with the active PyMC model."""
 
     mode: Literal["none", "dense", "low_rank"]
     marginal_variance: TensorVariable
@@ -47,11 +48,11 @@ def add_aggregation_error_data(
     *,
     output_dim: str,
 ) -> RegisteredAggregationError:
-    """Register labelled fixed aggregation-error data with the active model.
+    """Register labelled fixed observation covariance data with the active model.
 
     Args:
         aggregation_error: Validated backend-neutral covariance representation,
-            or ``None`` for no fixed aggregation covariance.
+            or ``None`` for no fixed covariance contribution.
         observations: Observation vector supplying labels for the marginal
             variance.
         output_dim: Observation dimension.
@@ -61,26 +62,30 @@ def add_aggregation_error_data(
     """
     if aggregation_error is None:
         return RegisteredAggregationError(mode="none", marginal_variance=pt.constant(floatX(0.0)))
+    combined = aggregation_error.includes_added_factor
     marginal = xr.DataArray(
         floatX(aggregation_error.marginal_variance),
         dims=(output_dim,),
         coords={output_dim: observations.coords[output_dim]},
-        name="aggregation_error_marginal_variance",
+        name="fixed_observation_marginal_variance" if combined else "aggregation_error_marginal_variance",
     )
     covariance = (
-        add_model_data(aggregation_error.covariance, AGGREGATION_ERROR_COVARIANCE)
+        add_model_data(
+            aggregation_error.covariance,
+            FIXED_OBSERVATION_COVARIANCE if combined else AGGREGATION_ERROR_COVARIANCE,
+        )
         if aggregation_error.covariance is not None
         else None
     )
     factor = (
-        add_model_data(aggregation_error.factor, LOW_RANK_FACTOR)
+        add_model_data(aggregation_error.factor, "fixed_observation_factor" if combined else LOW_RANK_FACTOR)
         if aggregation_error.factor is not None
         else None
     )
     diagonal_variance = (
         add_model_data(
             aggregation_error.diagonal_variance,
-            DIAGONAL_RESIDUAL_VARIANCE,
+            "fixed_observation_diagonal_variance" if combined else DIAGONAL_RESIDUAL_VARIANCE,
         )
         if aggregation_error.diagonal_variance is not None
         else None

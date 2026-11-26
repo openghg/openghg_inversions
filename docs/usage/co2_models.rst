@@ -50,8 +50,16 @@ mismatch ``sigma``, its covariance is
 
 .. math::
 
-   R = C_{agg} + \operatorname{diag}
+   R = C_{agg} + M + \operatorname{diag}
        (s_y^2 + s_{fixed}^2 + \sigma^2).
+
+The default is :math:`M=0`. With :doc:`outer-flux marginalisation
+<atmospheric_baseline>`, :math:`M` is the observation-space covariance from the
+selected outer states. With marginalisation, the additive-sigma trace records
+the combined fixed term :math:`C_{agg}+M` as ``fixed_observation_covariance`` or as
+``fixed_observation_factor`` and ``fixed_observation_diagonal_variance``.
+``fixed_observation_marginal_variance`` gives its diagonal. Custom CO2
+likelihoods receive the combined fixed term through the ``aggregation_error`` keyword.
 
 The lower-level builder adds inferred ``sigma`` only when the caller supplies a
 ``sigma_alignment``. The scientific construction operation
@@ -1416,14 +1424,16 @@ site. The complete joint covariance is
 
 .. math::
 
-   R = A_{joint} + D_{obs}
+   R = A_{joint} + M + D_{obs}
        + \operatorname{blockdiag}_{(species, site)}
          \left(\sigma_{species,site}^{2} T_{species,site}\right),
    \qquad T_{ij}=\exp(-|t_i-t_j|/\tau_{species,site}).
 
-``A_joint`` is the prepared aggregation covariance, including its nonzero
-cross-channel blocks. ``D_obs`` is the squared reported independent error.
-Each term enters exactly once. Rows may be irregular and interleaved; the
+``A_joint`` is the prepared aggregation covariance, including any cross-channel
+blocks. The default is :math:`M=0`. With :doc:`outer-flux marginalisation
+<atmospheric_baseline>`, :math:`M` is the joint covariance induced by the shared
+outer states, including their cross-channel contribution. ``D_obs`` is the
+squared reported independent error. Rows may be irregular and interleaved. The
 OU groups preserve their original row positions. Different channels at the
 same site have separate amplitudes and no cross-channel OU contribution.
 Inferred amplitudes require the same concentration units in both channels;

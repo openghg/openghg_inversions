@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import json
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from numbers import Real
 from typing import Any, Literal, TypeAlias
 import warnings
@@ -39,6 +39,7 @@ AGGREGATION_ERROR_SD = "aggregation_error_sd"
 AGGREGATION_ERROR_COVARIANCE = "aggregation_error_covariance"
 LOW_RANK_FACTOR = "low_rank_factor"
 DIAGONAL_RESIDUAL_VARIANCE = "diagonal_residual_variance"
+FIXED_OBSERVATION_COVARIANCE = "fixed_observation_covariance"
 OBSERVATION_ERROR_INPUT_NAMES = ("mf", "mf_error", "min_error")
 
 
@@ -58,6 +59,8 @@ class ObservationCovariance:
         factor: Optional low-rank covariance factor.
         diagonal_variance: Optional independent residual variance for a
             low-rank representation.
+        includes_added_factor: Whether an independent term has been added
+            to the original covariance.
     """
 
     mode: Literal["none", "dense", "low_rank"]
@@ -65,6 +68,7 @@ class ObservationCovariance:
     covariance: xr.DataArray | None = None
     factor: xr.DataArray | None = None
     diagonal_variance: xr.DataArray | None = None
+    includes_added_factor: bool = field(default=False, kw_only=True)
 
     def with_added_factor(self, factor: xr.DataArray | None) -> ObservationCovariance:
         """Add the independent covariance represented by a dense low-rank factor.
@@ -89,7 +93,9 @@ class ObservationCovariance:
         if self.mode == "dense":
             assert self.covariance is not None
             covariance = self.covariance + values @ values.T
-            return replace(self, covariance=covariance, marginal_variance=marginal_variance)
+            return replace(
+                self, covariance=covariance, marginal_variance=marginal_variance, includes_added_factor=True,
+            )
         if self.mode == "low_rank":
             assert self.factor is not None
             existing = self.factor.transpose(output_dim, ...)
@@ -101,13 +107,16 @@ class ObservationCovariance:
                 coords={output_dim: existing.coords[output_dim], rank_dim: np.arange(combined.shape[1])},
                 name=existing.name,
             )
-            return replace(self, factor=combined_factor, marginal_variance=marginal_variance)
+            return replace(
+                self, factor=combined_factor, marginal_variance=marginal_variance, includes_added_factor=True,
+            )
         diagonal = xr.DataArray(
             np.zeros(values.shape[0]), dims=output_dim,
             coords={output_dim: factor.coords[output_dim]}, name=DIAGONAL_RESIDUAL_VARIANCE,
         )
         return ObservationCovariance(
-            mode="low_rank", marginal_variance=marginal_variance, factor=factor, diagonal_variance=diagonal,
+            mode="low_rank", marginal_variance=marginal_variance, factor=factor,
+            diagonal_variance=diagonal, includes_added_factor=True,
         )
 
 

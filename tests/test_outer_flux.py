@@ -1,6 +1,9 @@
 """Outer-region flux option: state selection, fixed and marginalised outer states in the CO2 recipes."""
 
+from functools import partial
+
 import numpy as np
+import pymc as pm
 import pytensor
 import pytensor.tensor as pt
 import pytest
@@ -279,7 +282,8 @@ def test_outputs_record_the_mode_and_selectors():
     }
 
 
-def test_direct_co2_builder_rejects_marginalised_outer_flux_with_a_scalar_sigma_eigenbasis():
+@pytest.mark.parametrize("wrap", [False, True], ids=["direct", "partial"])
+def test_direct_co2_builder_rejects_marginalised_outer_flux_with_a_scalar_sigma_eigenbasis(wrap):
     """Reject a likelihood whose precomputed covariance omits the marginalised flux."""
     obs, flux_prior, h = inputs()
     options = model_inputs(obs, flux_prior)
@@ -289,14 +293,13 @@ def test_direct_co2_builder_rejects_marginalised_outer_flux_with_a_scalar_sigma_
         aggregation_error=options["aggregation_error"],
     )
 
-    with pytest.raises(ValueError, match="cannot use a scalar-sigma eigenbasis"):
-        build_co2_model(
-            h,
-            **options,
-            outer_flux=MARGINAL,
-            likelihood_builder=add_scalar_sigma_eigen_likelihood,
-            likelihood_kwargs={"eigenbasis": eigenbasis, "sigma_prior": {"pdf": "halfnormal", "sigma": 0.4}},
-        )
+    builder = add_scalar_sigma_eigen_likelihood
+    kwargs = {"eigenbasis": eigenbasis, "sigma_prior": {"pdf": "halfnormal", "sigma": 0.4}}
+    if wrap:
+        builder = partial(builder, **kwargs)
+        kwargs = {}
+    with pytest.raises(ValueError, match="[Cc]annot use a scalar-sigma eigenbasis"):
+        build_co2_model(h, **options, outer_flux=MARGINAL, likelihood_builder=builder, likelihood_kwargs=kwargs)
 
 
 def aggregation_forms(obs):
@@ -320,6 +323,44 @@ def aggregation_forms(obs):
         "low_rank": (resolve_aggregation_error(data, "low_rank"), dense),
         "dense": (resolve_aggregation_error(data, "dense"), dense),
     }
+
+
+def test_marginalise_with_nearly_collinear_inner_states():
+    """Resolving a valid prior retains the small positive conditional variance."""
+    mean = xr.DataArray(
+        [1., 1., 1.], dims="region",
+        coords={"region": [0, 1, 2], "basis_group": ("region", ["inner", "inner", "outer"])},
+    )
+    covariance = np.array([
+        [.1, .099999999999999, .095],
+        [.099999999999999, .1, .095],
+        [.095, .095, .09035000000000044],
+    ])
+    states = MARGINAL.resolve_states(CorrelatedPrior(mean, covariance))
+    np.testing.assert_allclose(states.prior_factor @ states.prior_factor.T, [[1e-4]], atol=1e-15)
+
+
+@pytest.mark.parametrize("form", ["dense", "low_rank"])
+def test_saved_covariance_names_describe_the_combined_term(form):
+    """The trace records the complete fixed covariance with neutral names."""
+    obs, flux_prior, h, states = resolved(MARGINAL)
+    options = model_inputs(obs, flux_prior)
+    options["aggregation_error"], aggregation = aggregation_forms(obs)[form]
+    model = build_co2_model(h, **options, outer_flux=MARGINAL)
+    outer_factor = states.marginal_error_factor(h, output_dim="nmeasure").values
+    expected = aggregation + outer_factor @ outer_factor.T
+    with model:
+        trace = pm.sample_prior_predictive(draws=1, var_names=["y"], random_seed=13)
+    constants = trace.constant_data
+    assert "aggregation_error_marginal_variance" not in constants
+    assert "aggregation_error_covariance" not in constants
+    np.testing.assert_allclose(constants.fixed_observation_marginal_variance, np.diag(expected))
+    if form == "dense":
+        actual = constants.fixed_observation_covariance
+    else:
+        factor = constants.fixed_observation_factor.values
+        actual = factor @ factor.T + np.diag(constants.fixed_observation_diagonal_variance.values)
+    np.testing.assert_allclose(actual, expected)
 
 
 def covariance_of(error: ObservationCovariance) -> np.ndarray:

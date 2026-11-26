@@ -465,6 +465,25 @@ def test_configured_full_uses_output_policy_before_sampling(tmp_path, monkeypatc
     assert not (tmp_path / "unsupported").exists()
 
 
+def test_marginalised_country_loading_is_checked_before_sampling(tmp_path, monkeypatch):
+    """An affected country mask cannot trigger a full fit or write its outputs."""
+    from openghg_inversions.rhime.co2 import execution
+
+    _, _, prepared, affine, countries = synthetic_inputs(tmp_path)
+    inputs = prepared.inv_inputs.assign_coords(basis_group=("region", ["inner", "outer"]))
+    prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
+    params = configuration(tmp_path / "rejected", countries)
+    params["model"]["outer_flux"] = {"mode": "marginalise", "outer_groups": ["outer"]}
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Country validation must precede sampling.")
+
+    monkeypatch.setattr(execution, "sample_co2_inference", forbidden)
+    with pytest.raises(ValueError, match="zero loading on every marginalised outer state"):
+        execution.run_co2(params=params, prepared=prepared, affine_artifact=affine)
+    assert not (tmp_path / "rejected").exists()
+
+
 @pytest.mark.parametrize("country_output", [False, True], ids=["native", "native-country"])
 def test_affine_basic_requires_prior_draws_before_materialization(tmp_path, monkeypatch, country_output):
     """Conditional native summaries require both prior and posterior states."""

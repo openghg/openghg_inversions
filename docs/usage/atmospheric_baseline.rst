@@ -152,14 +152,17 @@ adjustment for correlated outer states. The full native flux map and the
 combined PARIS concentration-and-flux export require posterior outer flux
 draws.
 
-To report an inner-domain total, supply an exact-grid country or reporting
-region mask in ``outputs.country_file``. Use
+To report an inner-domain total, supply the matching affine reconstruction
+artifact, enable ``sampling.sample_prior_predictive``, and give an exact-grid
+country or reporting region mask in ``outputs.country_file``. For a configured
+full run, set ``prepared_inputs.reconstruction_path``. For staged reporting,
+use a preparation saved with its affine artifact and samples with prior draws. Use
 ``outputs.paris_postprocessing_kwargs.country_selections`` to request specific
 names. Every requested quantity must have zero loading on each marginalised
 state through the bound affine map, whose prolongation can couple
-geographically separate regions. The same check runs on saved samples using
-the fitted state labels. These totals retain the affine map's
-retained-state-conditional uncertainty scope.
+geographically separate regions. The full runner checks the projection before
+sampling. Replay checks it against the fitted state labels saved in the trace.
+These totals retain the affine map's retained-state-conditional uncertainty scope.
 
 Linked CO2/O2
 -------------

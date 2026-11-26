@@ -14,6 +14,7 @@ from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, l
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.observation_error import WhitenedRankRule
+from openghg_inversions.postprocessing.co2_flux_outputs import _validate_marginalised_country_flux
 from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
 
 from .co2_affine_output import _bind_affine_flux_map, prepared_inputs_content_id
@@ -157,10 +158,11 @@ def run_co2(
     if affine_path is not None:
         consumed_paths += (affine_path,)
     has_reconstruction = affine_artifact is not None or affine_path is not None
+    outer_flux = model_config.outer_flux
     product_names = _co2_product_names(
         output, has_reconstruction=has_reconstruction,
         has_countries=has_reconstruction and output.country_file is not None,
-        marginalised_outer_flux=model_config.outer_flux is not None and model_config.outer_flux.mode == "marginalise",
+        marginalised_outer_flux=outer_flux is not None and outer_flux.mode == "marginalise",
     )
     protected = model_config.artifact_paths() + consumed_paths
     _checked_co2_output_paths(
@@ -179,6 +181,10 @@ def run_co2(
     )
     if {"native_flux", "country_flux"}.intersection(product_names) and not sampler.sample_prior_predictive:
         raise ValueError("CO2 affine products require prior draws; enable sample_prior_predictive.")
+    if countries is not None and outer_flux is not None and outer_flux.mode == "marginalise":
+        assert bound is not None
+        mask = outer_flux._select_states(prepared.inv_inputs["alpha_prior_mean"])
+        _validate_marginalised_country_flux(bound, countries, mask)
     model = model_config.model_arguments()
     trace, actual = sample_co2_inference(
         prepared, model, sampler, sigma_target_accept=sampling.sigma_target_accept,
