@@ -820,7 +820,7 @@ amplitude and kernel, reduced jointly so that the retained state is
    correlation_length = 3.0
    geodesic_correlation_length_km = { 1 = 200.0 }
 
-The sources must be exactly the acquisition ``flux_sources`` (here
+The sources must match the configured ``data.flux_sources`` (here
 ``["co2_BASE_GPP", "co2_BASE_TER", "co2_BASE_FF"]``). A basis partition
 with a ``source`` dimension gives each source its own regions; a shared
 partition or generated basis is repeated per source (``basis.path`` is not
@@ -831,17 +831,19 @@ great-circle kernel, a table ``{class = km}`` only those classes (a dense class
 of ``n`` cells holds ``8 n**2`` bytes, so name classes of up to about 10\ :sup:`4`
 cells). Classes come from ``class_labels_path`` and are uncorrelated.
 
-``marginal`` chooses the distribution of the source's retained states in the
-sampled model: ``"lognormal"`` (the default), ``"normal"``, ``"weibull"`` or
-``"gamma"``. The reduction, and so the retained mean and covariance, does not
-change; the states are joined by a Gaussian copula that reproduces those
-moments exactly (see :ref:`sampled-marginals`). A mean-one lognormal pulls a
-posterior constrained only in a sum of states, such as net biosphere flux,
-towards small gross terms; Weibull and gamma shrink less, and normal not at
-all but allows negative scalings. Preparation stores the choice as
-``alpha_prior_marginal`` only when a source sets ``marginal``, so other
-preparations are unchanged. Every marginal works with both PyMC's sampler
-and numpyro; under numpyro, gamma uses TensorFlow Probability.
+``marginal`` chooses the retained-state distribution for each source:
+``"lognormal"`` (the default), ``"normal"``, ``"weibull"`` or ``"gamma"``.
+The native reduction supplies the target arithmetic means and covariance.
+The sampled Gaussian copula preserves the marginal means and variances and
+matches covariances involving Weibull or gamma marginals approximately.
+Preparation records configured choices in ``alpha_prior_marginal``.
+Under numpyro, gamma uses TensorFlow Probability.
+
+Set ``data.preparation.native_prior.latent_correlation_floor`` to opt in to
+eigenvalue clipping when the latent correlation matrix needs repair. The
+default rejects a non-positive-definite latent correlation. Repair is
+accepted only when its largest change to an implied state correlation is at
+most 0.01. See :ref:`sampled-marginals` for the matching and repair details.
 
 ``gpp_ter_correlation`` is the correlation ``rho`` (``|rho| < 1``) of the GPP and
 TER *scaling* anomalies; positive ``rho`` makes their signed flux anomalies
