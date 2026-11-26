@@ -1422,8 +1422,9 @@ site. The complete joint covariance is
    \qquad T_{ij}=\exp(-|t_i-t_j|/\tau_{species,site}).
 
 ``A_joint`` is the prepared aggregation covariance, including its nonzero
-cross-channel blocks. ``D_obs`` is the squared reported independent error.
-Each term enters exactly once. Rows may be irregular and interleaved; the
+cross-channel blocks. ``D_obs`` is the squared reported independent error,
+plus the squared fixed model error when ``model_error_sd`` is given (see
+`Model error and its CO2–O2 correlation`_). Each term enters exactly once. Rows may be irregular and interleaved; the
 OU groups preserve their original row positions. Different channels at the
 same site have separate amplitudes and no cross-channel OU contribution.
 Inferred amplitudes require the same concentration units in both channels;
@@ -1438,41 +1439,6 @@ the observations and model mean leaves the residual unchanged:
 prior are unchanged. Public boundary and total concentration outputs remain
 absolute; trace annotation restores observed and predictive concentrations once.
 This composition is also supported by the cached fixed-OU route.
-
-Both linked likelihoods accept an optional fixed correlation between the
-independent errors of CO2 and O2 rows at the same site and time,
-``cross_species_error_correlation``: one value for every site or a table keyed
-by site, each strictly between -1 and 1. A matched pair then has cross
-covariance :math:`\rho\,\sigma_{CO_2}\,\sigma_{O_2}` from the independent
-error standard deviations, in CO2 units times O2 units, so ppm CO2 with per-meg
-δ(O2/N2) needs no conversion. Sites and times must match exactly; rows with a
-missing site or time, and rows without a partner, stay independent. Aggregation
-covariance and OU blocks are unchanged.
-
-:math:`\rho` is therefore the correlation of the *independent* error
-components only. It is not the correlation of the total residuals, which also
-includes the aggregation covariance (whose CO2–O2 blocks are already part of
-the likelihood) and any OU term. A correlation fitted from total residuals is
-not a value for this option, and an artifact whose aggregation covariance
-already contains a :math:`\rho` term must have that term removed before the
-option is enabled, or the correlation is counted twice.
-
-Pairs with :math:`\rho=0` leave the likelihood on its unpaired numerical path.
-Correlated pairs stay exact and cheap: without aggregation error or with
-diagonal or low-rank aggregation error, each pair is a 2×2 block of the
-diagonal term, so the cost is linear in the number of pairs and the low-rank
-width is unchanged; dense aggregation error gains the cross terms in place.
-Fixed OU splits each correlated pair into a smaller diagonal plus one rank-one
-column of its fixed base, so its preparation cost grows with the number of
-correlated pairs. Correlations that round to ±1 at the working precision
-(for example ``0.99999999`` under ``floatX="float32"``) are rejected. Traces
-save ``paired_error_correlation`` and ``paired_error_partner`` on the
-observation axis. In configuration:
-
-.. code-block:: toml
-
-   [likelihood]
-   cross_species_error_correlation = -0.9      # or { HFD = -0.97, WAO = -0.9 }
 
 Tau is fixed in hours. A scalar tau or fixed amplitude applies independently
 to every observed group. Mappings must cover labels such as ``co2:MHD`` and
@@ -1555,3 +1521,144 @@ recording path.
 Burn discards only post-tuning retained draws, including the corresponding
 sample statistics and log likelihood. Saved ``warmup_*`` groups retain their
 complete tuning support, even when burn exceeds the number of tuning draws.
+
+Model error and its CO2–O2 correlation
+--------------------------------------
+
+The linked residual covariance has named parts:
+
+.. math::
+
+   \Sigma = A + D_{obs} + \Sigma_{model}(\rho) \; [+\, \text{OU}],
+
+where :math:`A` is the fixed aggregation covariance (including its CO2–O2
+blocks), :math:`D_{obs}` the diagonal measurement (observation) variance from
+``independent_error_sd``, and :math:`\Sigma_{model}` a fixed model error. Each
+row has a model-error standard deviation :math:`m` from ``model_error_sd``, a
+mapping from channel (``co2``, ``o2``) or ``species:SITE`` to a value in that
+channel's units; a ``species:SITE`` key overrides its channel. Model error is
+an extra independent variance, saved as ``fixed_model_mismatch``.
+
+``cross_species_error_correlation`` correlates the model errors of CO2 and O2
+rows at the same site and time, and only those: one value for every site or a
+table keyed by site, each strictly between -1 and 1. It requires
+``model_error_sd``. A matched pair :math:`(c, o)` has the model-error block
+
+.. math::
+
+   \begin{pmatrix} m_c^2 & \rho\, m_c m_o \\ \rho\, m_c m_o & m_o^2 \end{pmatrix},
+
+in CO2 units times O2 units, so ppm CO2 with per-meg δ(O2/N2) needs no
+conversion. Measurement error and aggregation covariance stay uncorrelated by
+this option, and OU blocks stay independent between channels. Sites and times
+must match exactly; rows with a missing site or time, and rows without a
+partner, stay independent. The option works with the fixed-error likelihood,
+the fixed-OU likelihood (sampled by the cached fixed-OU sampler) and inferred
+OU.
+
+Estimating :math:`\rho`
+~~~~~~~~~~~~~~~~~~~~~~~
+
+:math:`\rho` is a correlation of the model error only, so it must be estimated
+conditional on the other parts. From same-site, same-time residual pairs
+:math:`r = (r_c, r_o)` of a reference run (for example truth minus modelled
+concentrations in a synthetic experiment), with sample covariance
+:math:`\hat C`, subtract the parts the likelihood already carries:
+
+.. math::
+
+   \hat\Sigma_{model} = \hat C - A_{pair} - D_{obs,pair} - \text{OU}_{pair}(0),
+   \qquad
+   \hat\rho = \frac{(\hat\Sigma_{model})_{co}}
+                   {\sqrt{(\hat\Sigma_{model})_{cc}\,(\hat\Sigma_{model})_{oo}}},
+
+with :math:`A_{pair}` the pairs' 2×2 aggregation blocks averaged over the
+pairs, and the diagonal :math:`(\hat\Sigma_{model})_{cc}`,
+:math:`(\hat\Sigma_{model})_{oo}` giving matching values for ``model_error_sd``.
+A correlation of the total residuals, :math:`\hat C_{co}/\sqrt{\hat C_{cc}\hat
+C_{oo}}`, is not a value for this option: it already contains :math:`A`'s
+CO2–O2 correlation, which would then be counted twice. Likewise, an artifact
+whose aggregation covariance already contains a :math:`\rho` term must have
+that term removed before the option is enabled.
+
+:func:`~openghg_inversions.rhime.co2.co2_o2_error_correlation.linked_pair_correlation_diagnostic`
+tabulates, pair by pair, the correlation :math:`A` alone implies,
+:math:`A_{co}/\sqrt{A_{cc}A_{oo}}`, and the zero-lag total correlation
+
+.. math::
+
+   r_{tot} = \frac{A_{co} + \rho\, m_c m_o}
+   {\sqrt{(A_{cc} + e_c^2 + m_c^2 + a_c^2)(A_{oo} + e_o^2 + m_o^2 + a_o^2)}},
+
+with measurement standard deviations :math:`e` and optional OU marginal
+variances :math:`a^2`. A run with :math:`\rho` records a by-site summary of the
+first and of :math:`r_{tot}` without OU in the model metadata
+(``cross_species_error_correlation.pair_correlation_by_site``). Compare an
+empirical total-residual correlation with :math:`r_{tot}`, not with
+:math:`\rho`.
+
+Cost
+~~~~
+
+Pairs with :math:`\rho=0` leave the likelihood on its unpaired numerical path.
+Correlated pairs stay exact and cheap: without aggregation error or with
+low-rank aggregation error, each pair is a 2×2 block of the diagonal term, so
+the cost is linear in the number of pairs and the low-rank width is unchanged;
+dense aggregation error gains the cross terms in place. Fixed OU splits each
+correlated model-error block exactly as
+
+.. math::
+
+   (1-|\rho|)\,\mathrm{diag}(m_c^2, m_o^2) + |\rho|\, v v^\top,
+   \qquad v = (m_c, \operatorname{sign}(\rho)\, m_o),
+
+a smaller diagonal plus one rank-one column of the fixed base per correlated
+pair. With fixed amplitudes the cached sampler factorises that base once, so
+the extra columns cost one larger preparation and nothing per state step; with
+inferred amplitudes every amplitude refresh pays for the wider base.
+Correlations that round to ±1 at the working precision (for example
+``0.99999999`` under ``floatX="float32"``) are rejected. Traces save
+``fixed_model_mismatch``, ``paired_error_correlation`` and
+``paired_error_partner`` on the observation axis. In configuration (both
+channels or neither):
+
+.. code-block:: toml
+
+   [channels.co2]
+   units = "ppm"
+   model_error_sd = 3.0
+
+   [channels.o2]
+   units = "ppm"
+   model_error_sd = 3.0
+
+   [likelihood]
+   cross_species_error_correlation = -0.9      # or { HFD = -0.97, WAO = -0.9 }
+
+Correlated OU, considered and not implemented
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+OU is model error too. A separable bivariate OU per site would correlate the
+channels' OU terms at every lag:
+
+.. math::
+
+   \text{OU}_{site} = K_\tau \otimes
+   \begin{pmatrix} a_c^2 & \rho\, a_c a_o \\ \rho\, a_c a_o & a_o^2 \end{pmatrix},
+   \qquad (K_\tau)_{ij} = e^{-|t_i - t_j|/\tau},
+
+which needs one :math:`\tau` for both channels at a site. The fixed-OU
+preparation diagonalises each (species, site) group against its own template
+once, so an inferred amplitude only rescales mode variances. A bivariate block
+has two amplitudes and :math:`\rho` in one group, so that shortcut is lost:
+each site becomes one dense block of size :math:`n_c + n_o` (about :math:`8\times`
+the factorisation work and :math:`4\times` the memory of two per-channel
+blocks), and inferred amplitudes would refactorise it at every refresh. With
+fixed amplitudes and the cached sampler it would be a one-off cost (a
+month of hourly pairs at one site is a 1440 × 1440 block; a year is 17 520 ×
+17 520, about 2.5 GB). It is not implemented; the zero-lag model-error
+:math:`\rho` above is the supported form.
+
+A later extension could scale the model error with the modelled enhancement,
+:math:`m_i = m_{0} + k\,|\mu_i - b_i|`, which makes the covariance depend on
+the state and so is outside the fixed-covariance likelihoods here.

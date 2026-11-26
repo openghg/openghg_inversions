@@ -19,7 +19,7 @@ from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, normalise_optional_mapping
 
-from .co2_o2_error_correlation import validate_cross_species_error_correlation
+from .co2_o2_error_correlation import validate_cross_species_error_correlation, validate_model_error_sd
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .configuration import (
     _validate_section_option_names, _PREPARATION_OPTION_NAMES, _SAMPLING_OPTION_NAMES,
@@ -93,7 +93,7 @@ def _validate_co2_o2_option_names(*requests: Mapping[str, object]) -> None:
     from .co2_o2_outputs import Co2O2OutputOptions
 
     channel_sections = {
-        "": frozenset({"units", "independent_error_sd", "boundary", "offset"}),
+        "": frozenset({"units", "independent_error_sd", "model_error_sd", "boundary", "offset"}),
         **{name: options for name, options in _MODEL_SECTION_OPTION_NAMES.items() if name != "outer_flux"},
         "boundary": _MODEL_SECTION_OPTION_NAMES["boundary"] | {"activity"},
         "boundary.activity": frozenset({"active", "fixed_value"}),
@@ -194,9 +194,14 @@ class Co2O2ModelConfig:
     be supplied for both channels or omitted for both to use saved errors.
     Fixed independent error and fixed-amplitude OU are supported; inferred OU
     and per-meg transformations remain separate work.
+    ``model_error_sd`` (``channels.<name>.model_error_sd``, both channels or
+    neither) is a fixed model-error standard deviation added to the
+    measurement error ``independent_error_sd``.
     ``cross_species_error_correlation`` (``likelihood.cross_species_error_correlation``)
-    optionally correlates the independent errors of same-site, same-time CO2
-    and O2 rows with one fixed value or a site-keyed table of values.
+    optionally correlates the model errors of same-site, same-time CO2 and O2
+    rows with one fixed value or a site-keyed table of values; it requires
+    ``model_error_sd`` and leaves measurement and aggregation errors
+    uncorrelated.
     ``boundary`` maps configured channels to a choice, or to ``None`` when
     that channel's boundary is explicitly disabled. Boundary frequency and
     anchor choices apply to every enabled channel; choices supplied under both
@@ -212,10 +217,18 @@ class Co2O2ModelConfig:
     offset_args: Mapping[str, Any] | None = None
     tau_hours: float | Mapping[str, float] | None = None
     fixed_site_amplitudes: float | Mapping[str, float] | None = None
+    model_error_sd: Mapping[str, float] | None = None
     cross_species_error_correlation: float | Mapping[str, float] | None = None
     outer_flux: OuterFluxChoice | None = None
 
     def __post_init__(self) -> None:
+        if self.model_error_sd is not None:
+            object.__setattr__(self, "model_error_sd", validate_model_error_sd(self.model_error_sd))
+        if self.cross_species_error_correlation is not None and self.model_error_sd is None:
+            raise ValueError(
+                "likelihood.cross_species_error_correlation acts only on the model error; "
+                "configure channels.co2.model_error_sd and channels.o2.model_error_sd."
+            )
         if self.cross_species_error_correlation is not None:
             object.__setattr__(
                 self,
@@ -237,6 +250,7 @@ class Co2O2ModelConfig:
         channels = _table(options.get("channels", {}), "channels")
         units: dict[str, str] = {}
         errors: dict[str, float] = {}
+        model_errors: dict[str, float] = {}
         model: dict[str, Any] = {}
         if "outer_flux" in options:
             model["outer_flux"] = _outer_flux_choice(options["outer_flux"], "outer_flux")
@@ -246,6 +260,8 @@ class Co2O2ModelConfig:
             mole_fraction_unit_scale(units[name], context=f"channels.{name}.units")
             if "independent_error_sd" in channel:
                 errors[name] = _number(channel.pop("independent_error_sd"), f"channels.{name}.independent_error_sd", positive=True)
+            if "model_error_sd" in channel:
+                model_errors[name] = _number(channel.pop("model_error_sd"), f"channels.{name}.model_error_sd")
             selected = {key: channel.pop(key) for key in ("boundary", "offset") if key in channel}
             activity = None
             if "boundary" in selected:
@@ -267,6 +283,10 @@ class Co2O2ModelConfig:
         _reject_unknown(channels, "channels")
         if errors and len(errors) != 2:
             raise ValueError("Configure independent_error_sd for both linked channels or omit it for both.")
+        if model_errors and len(model_errors) != 2:
+            raise ValueError("Configure model_error_sd for both linked channels or omit it for both.")
+        if model_errors:
+            model["model_error_sd"] = model_errors
         if units["co2"] != units["o2"]:
             raise ValueError("The linked configuration currently requires identical CO2 and O2 channel units.")
         likelihood_options = _table(options.get("likelihood", {}), "likelihood")

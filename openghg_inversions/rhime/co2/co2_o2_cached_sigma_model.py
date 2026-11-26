@@ -25,15 +25,16 @@ from openghg_inversions.models.components import (
     AffineBlock,
     AffineConcentrationTerm,
     _add_prepared_correlated_lognormal_state_with_activity,
+    add_model_data,
     likelihood_representation,
     prepare_active_correlated_prior,
 )
-from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
+from openghg_inversions.models.fixed_ou import fixed_ou_base, prepare_fixed_ou_low_rank
+from openghg_inversions.models.paired_error import add_paired_error_data
 from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.observation_error import (
     AggregationError,
-    aggregation_error_as_low_rank,
     validate_observation_error_arrays,
 )
 
@@ -43,6 +44,7 @@ from .co2_cached_sigma_model import (
     _materialize_cached_linear_projection,
     _resolve_amplitude_options,
 )
+from .co2_o2_error_correlation import CrossSpeciesCorrelation, ModelErrorSd, linked_model_error_terms
 from .co2_o2_fixed_ou import linked_fixed_ou_alignment, validate_linked_ou_amplitude_units
 from .co2_o2_model import (
     _add_co2_o2_baseline_components,
@@ -69,6 +71,8 @@ def build_co2_o2_cached_sigma_model(
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
+    model_error_sd: ModelErrorSd | None = None,
+    cross_species_error_correlation: CrossSpeciesCorrelation | None = None,
 ) -> Co2CachedSigmaModel:
     """Build one joint fixed-OU target and its matched cached affine graph.
 
@@ -136,6 +140,13 @@ def build_co2_o2_cached_sigma_model(
         fixed_site_amplitudes: Fixed non-negative species/site amplitudes in
             each group's channel units, as a scalar or species/site mapping,
             registered as ``ou_site_amplitude`` model data.
+        model_error_sd: Optional fixed model-error standard deviations by
+            channel or ``species:SITE``, in each channel's units; see
+            :func:`~openghg_inversions.rhime.co2.co2_o2_model.build_co2_o2_model`.
+        cross_species_error_correlation: Optional fixed correlation of the
+            same-site, same-time CO2/O2 model errors; requires
+            ``model_error_sd``. Each correlated pair adds one rank-one column
+            to the fixed covariance base, which is factorised once.
 
     Returns:
         A registered joint PyMC model, fixed-OU target, matched cache, affine
@@ -174,6 +185,8 @@ def build_co2_o2_cached_sigma_model(
         offset_prior=offset_prior,
         offset_args=offset_args,
         output_dim=output_dim,
+        model_error_sd=model_error_sd,
+        cross_species_error_correlation=cross_species_error_correlation,
     )
 
 
@@ -196,6 +209,8 @@ def _build_co2_o2_cached_sigma_model(
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
+    model_error_sd: ModelErrorSd | None = None,
+    cross_species_error_correlation: CrossSpeciesCorrelation | None = None,
 ) -> Co2CachedSigmaModel:
     """Construct the linked cached fixed-OU graph from eager inputs.
 
@@ -242,16 +257,29 @@ def _build_co2_o2_cached_sigma_model(
         retained_prior,
         var_name="flux_scaling",
     )
-    factor, diagonal = aggregation_error_as_low_rank(aggregation_error)
+    model_error, paired_error = linked_model_error_terms(
+        observations,
+        model_error_sd=model_error_sd,
+        cross_species_error_correlation=cross_species_error_correlation,
+    )
+    factor, diagonal = fixed_ou_base(
+        np.asarray(independent_error_sd.values, dtype=np.float64),
+        aggregation_error,
+        fixed_model_mismatch=None if model_error is None else model_error.values,
+        paired_error_correlation=paired_error,
+    )
     covariance = prepare_fixed_ou_low_rank(
         factor,
-        diagonal + np.square(independent_error_sd.values),
+        diagonal,
         observations.time.values,
         site_index.values,
         tau_hours,
         site_labels=tuple(str(label) for label in site_coord.values),
     )
     with registered_model():
+        if model_error is not None:
+            add_model_data(model_error.transpose(output_dim))
+        add_paired_error_data(paired_error, observations, output_dim=output_dim)
         state = _add_prepared_correlated_lognormal_state_with_activity(
             activity,
             active_prior,

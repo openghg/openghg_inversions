@@ -1,32 +1,39 @@
-"""Fixed correlation between the independent errors of paired observation rows.
+"""Fixed correlation between the model errors of paired observation rows.
 
-Some observations come in pairs whose independent errors are correlated, for
-example same-hour CO2 and delta(O2/N2) rows at one site. For a pair ``(a, b)``
-with standard deviations ``s_a`` and ``s_b`` and correlation ``rho``, the
-independent covariance block becomes::
+Some observations come in pairs whose model errors are correlated, for example
+same-hour CO2 and delta(O2/N2) rows at one site, where one transport or flux
+error moves both channels. The residual covariance is split into named parts::
 
-    [[s_a**2,          rho * s_a * s_b],
-     [rho * s_a * s_b, s_b**2         ]]
+    Sigma = A + D_obs + Sigma_model(rho) [+ OU]
 
-The cross term ``rho * s_a * s_b`` is in the product of the two rows' units, so
-pairs may mix units. Likelihoods use the exact split::
+``A`` is the fixed aggregation covariance and ``D_obs`` the diagonal
+measurement (observation) variance; neither is touched by ``rho``. The fixed
+model error has a known standard deviation ``m`` per row (the
+``fixed_model_mismatch`` term), and for a pair ``(a, b)`` its block is::
 
-    block = (1 - |rho|) * diag(s_a**2, s_b**2) + |rho| * v v^T,
-    v = (s_a, sign(rho) * s_b)
+    [[m_a**2,          rho * m_a * m_b],
+     [rho * m_a * m_b, m_b**2         ]]
 
-Generic Gaussian likelihoods keep each correlated pair as an exact 2x2 block:
-the second row is regressed on the first (see
+The cross term ``rho * m_a * m_b`` is in the product of the two rows' units, so
+pairs may mix units (for example ppm and per meg). Fixed-OU likelihoods use
+the exact split::
+
+    block = (1 - |rho|) * diag(m_a**2, m_b**2) + |rho| * v v^T,
+    v = (m_a, sign(rho) * m_b)
+
+a positive diagonal plus one rank-one column per correlated pair. Generic
+Gaussian likelihoods keep each correlated pair as an exact 2x2 block: the
+second row is regressed on the first (see
 :meth:`RegisteredPairedError.conditional`), so independent and low-rank
 likelihoods stay O(n) in the pairs and dense likelihoods add the cross terms
-in place. The fixed-OU preparation uses the exact split::
+in place. Pairs with ``rho = 0`` take no part in either form, so they leave
+the original numerical path unchanged. Recorded standard deviations and
+aggregation covariance stay unchanged.
 
-    block = (1 - |rho|) * diag(s_a**2, s_b**2) + |rho| * v v^T,
-    v = (s_a, sign(rho) * s_b)
-
-a positive diagonal plus one rank-one column per pair. Pairs with ``rho = 0``
-take no part in either form, so they leave the original numerical path
-unchanged. Recorded standard deviations and aggregation covariance stay
-unchanged.
+:func:`pair_correlation_diagnostic` reports, pair by pair, the correlation
+that ``A`` alone implies and the total correlation of the whole covariance, so
+a ``rho`` estimated from residuals can be checked against what ``A`` already
+carries.
 """
 
 from __future__ import annotations
@@ -43,6 +50,46 @@ from openghg_inversions.models.components import add_model_data
 
 PAIRED_ERROR_CORRELATION = "paired_error_correlation"
 PAIRED_ERROR_PARTNER = "paired_error_partner"
+FIXED_MODEL_MISMATCH = "fixed_model_mismatch"
+
+
+def validate_fixed_model_mismatch(
+    fixed_model_mismatch: xr.DataArray,
+    *,
+    output_dim: str,
+    owner: str,
+) -> np.ndarray:
+    """Check a known model-error standard deviation and return its float64 values.
+
+    Raises:
+        ValueError: If it is not a finite, non-negative numeric vector on ``output_dim``.
+    """
+    if fixed_model_mismatch.dims != (output_dim,):
+        raise ValueError(
+            f"{owner} input {FIXED_MODEL_MISMATCH!r} must have dims ({output_dim!r},); "
+            f"got {fixed_model_mismatch.dims!r}."
+        )
+    values = np.asarray(fixed_model_mismatch.values)
+    if not np.issubdtype(values.dtype, np.number):
+        raise ValueError(f"{FIXED_MODEL_MISMATCH!r} must be numeric.")
+    if not np.isfinite(values).all() or (values < 0).any():
+        raise ValueError(f"{FIXED_MODEL_MISMATCH!r} must contain only finite, non-negative values.")
+    return values.astype(np.float64)
+
+
+def require_model_error_for_pairs(
+    pairs: PairedErrorCorrelation | None,
+    fixed_model_mismatch: object | None,
+    *,
+    owner: str,
+) -> None:
+    """Reject pair correlations without the model error they correlate."""
+    if pairs is not None and fixed_model_mismatch is None:
+        raise ValueError(
+            f"{owner}: paired error correlations act only on the fixed model error, "
+            f"so they require {FIXED_MODEL_MISMATCH!r}; measurement and aggregation "
+            "errors stay uncorrelated."
+        )
 
 
 @dataclass(frozen=True)
@@ -52,7 +99,7 @@ class PairedErrorCorrelation:
     Attributes:
         first: Row position of the first member of each pair.
         second: Row position of the second member of each pair.
-        correlation: Correlation of each pair's independent errors, strictly
+        correlation: Correlation of each pair's model errors, strictly
             between -1 and 1.
     """
 
@@ -185,6 +232,60 @@ class RegisteredPairedError:
         return first, second, conditional, coefficient
 
 
+def pair_correlation_diagnostic(
+    pairs: PairedErrorCorrelation,
+    *,
+    aggregation_cross: np.ndarray,
+    aggregation_variance: np.ndarray,
+    observation_sd: np.ndarray,
+    model_error_sd: np.ndarray,
+    other_variance: np.ndarray | None = None,
+) -> dict[str, np.ndarray]:
+    """Return the per-pair correlations implied by each part of the covariance.
+
+    For a pair ``(p, q)`` with aggregation covariance ``A``, observation
+    standard deviations ``e``, model-error standard deviations ``m`` and
+    correlation ``rho``::
+
+        aggregation = A_pq / sqrt(A_pp * A_qq)
+        total = (A_pq + rho m_p m_q)
+                / sqrt((A_pp + e_p**2 + m_p**2 + o_p) * (A_qq + e_q**2 + m_q**2 + o_q))
+
+    where ``o`` is any other variance on the rows' diagonals (for example the
+    OU marginal variance, whose blocks are independent between channels). A
+    pair whose ``A_pp`` or ``A_qq`` is zero has a NaN aggregation correlation.
+
+    Args:
+        pairs: The paired rows and their model-error correlations.
+        aggregation_cross: ``A_pq`` for each pair, in pair order.
+        aggregation_variance: The row-aligned diagonal of ``A``.
+        observation_sd: Row-aligned observation (measurement) standard deviations.
+        model_error_sd: Row-aligned model-error standard deviations.
+        other_variance: Optional extra row-aligned variance.
+
+    Returns:
+        ``aggregation``, ``model`` (``rho``) and ``total`` correlations per pair.
+    """
+    first, second = pairs.first, pairs.second
+    variance = (
+        np.asarray(aggregation_variance, dtype=np.float64)
+        + np.square(np.asarray(observation_sd, dtype=np.float64))
+        + np.square(np.asarray(model_error_sd, dtype=np.float64))
+    )
+    if other_variance is not None:
+        variance = variance + np.asarray(other_variance, dtype=np.float64)
+    model = np.asarray(model_error_sd, dtype=np.float64)
+    cross = np.asarray(aggregation_cross, dtype=np.float64)
+    aggregation_variance = np.asarray(aggregation_variance, dtype=np.float64)
+    scale = np.sqrt(aggregation_variance[first] * aggregation_variance[second])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        aggregation = np.where(scale > 0.0, cross / scale, np.nan)
+    total = (cross + pairs.correlation * model[first] * model[second]) / np.sqrt(
+        variance[first] * variance[second]
+    )
+    return {"aggregation": aggregation, "model": pairs.correlation.copy(), "total": total}
+
+
 def add_paired_error_data(
     pairs: PairedErrorCorrelation | None,
     observations: xr.DataArray,
@@ -214,9 +315,13 @@ def add_paired_error_data(
 
 
 __all__ = [
+    "FIXED_MODEL_MISMATCH",
     "PAIRED_ERROR_CORRELATION",
     "PAIRED_ERROR_PARTNER",
     "PairedErrorCorrelation",
     "RegisteredPairedError",
     "add_paired_error_data",
+    "pair_correlation_diagnostic",
+    "require_model_error_for_pairs",
+    "validate_fixed_model_mismatch",
 ]

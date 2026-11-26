@@ -26,7 +26,13 @@ from openghg_inversions._linalg import cholesky_logdet, conditioned_cholesky
 from openghg_inversions.array_ops import expand_mapping, materialize_together
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.models.components import add_model_data
-from openghg_inversions.models.paired_error import PairedErrorCorrelation, add_paired_error_data
+from openghg_inversions.models.paired_error import (
+    FIXED_MODEL_MISMATCH,
+    PairedErrorCorrelation,
+    add_paired_error_data,
+    require_model_error_for_pairs,
+    validate_fixed_model_mismatch,
+)
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import (
     AggregationError,
@@ -876,6 +882,50 @@ def _json_site_values(value: float | Mapping[str, float]) -> float | dict[str, f
     return float(value)
 
 
+def fixed_ou_base(
+    observation_error: ArrayLike,
+    aggregation_error: AggregationError | None,
+    *,
+    fixed_model_mismatch: ArrayLike | None = None,
+    paired_error_correlation: PairedErrorCorrelation | None = None,
+) -> tuple[FloatArray, FloatArray]:
+    """Return the low-rank factor and diagonal of the fixed covariance under the OU blocks.
+
+    The fixed base is ``A + diag(e**2) + Sigma_model``: aggregation covariance
+    ``A`` (as its low-rank factor plus diagonal), observation standard
+    deviations ``e`` and the fixed model error ``m``. Pair correlations act on
+    ``m`` only; each correlated pair adds one exact rank-one column and
+    lowers its two diagonal entries (see
+    :meth:`~openghg_inversions.models.paired_error.PairedErrorCorrelation.split`).
+
+    Returns:
+        ``factor`` (observations by aggregation rank plus correlated pairs)
+        and the non-negative ``diagonal`` variance.
+    """
+    require_model_error_for_pairs(paired_error_correlation, fixed_model_mismatch, owner="Fixed-OU likelihood")
+    observation_variance = np.square(_vector(observation_error, "observation_error"))
+    n_observation = observation_variance.size
+    if aggregation_error is None:
+        factor = np.empty((n_observation, 0), dtype=np.float64)
+        diagonal = observation_variance
+    else:
+        aggregation_factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
+        factor = np.asarray(aggregation_factor, dtype=np.float64)
+        diagonal = observation_variance + np.asarray(aggregation_diagonal, dtype=np.float64)
+    if fixed_model_mismatch is None:
+        return factor, diagonal
+    model_sd = _vector(fixed_model_mismatch, FIXED_MODEL_MISMATCH)
+    if model_sd.shape != (n_observation,):
+        raise ValueError(f"{FIXED_MODEL_MISMATCH!r} must have one value per observation.")
+    diagonal = diagonal + np.square(model_sd)
+    # Pairs with rho = 0 add nothing, so the base stays on the unpaired path.
+    if paired_error_correlation is not None and paired_error_correlation.correlated().size:
+        reduction, paired_factor = paired_error_correlation.split(model_sd)
+        factor = np.concatenate([factor, paired_factor], axis=1)
+        diagonal = diagonal - reduction
+    return factor, diagonal
+
+
 def add_fixed_ou_gaussian_likelihood(
     *,
     observations: xr.DataArray,
@@ -887,6 +937,7 @@ def add_fixed_ou_gaussian_likelihood(
     site_amplitude_prior: Mapping[str, Any] | None = None,
     output_dim: str = "nmeasure",
     sigma_alignment: SigmaAlignment | None = None,
+    fixed_model_mismatch: xr.DataArray | None = None,
     paired_error_correlation: PairedErrorCorrelation | None = None,
 ) -> TensorVariable:
     """Add fixed-tau, within-site OU mismatch to a Gaussian observation model.
@@ -902,10 +953,13 @@ def add_fixed_ou_gaussian_likelihood(
     Site mappings must cover the retained labels. Every supplied amplitude
     must be numeric, finite and non-negative, and every supplied time scale
     must be numeric, finite and positive, including entries for dropped sites.
-    ``paired_error_correlation`` optionally correlates pairs of rows' reported
-    ``observation_error``; each pair with nonzero correlation adds one exact
-    rank-one column to the fixed base (see :mod:`openghg_inversions.models.paired_error`). OU blocks
-    stay independent between groups.
+    ``fixed_model_mismatch`` is an optional known observation-aligned model-error
+    standard deviation, recorded as ``fixed_model_mismatch`` data and added to
+    the fixed base. ``paired_error_correlation`` optionally correlates pairs of
+    rows' model errors and requires ``fixed_model_mismatch``; each pair with
+    nonzero correlation adds one exact rank-one column to the fixed base (see
+    :func:`fixed_ou_base`). Reported observation error and aggregation error
+    stay uncorrelated, and OU blocks stay independent between groups.
     """
     if fixed_site_amplitudes is not None and site_amplitude_prior is not None:
         raise ValueError("Pass either `fixed_site_amplitudes` or `site_amplitude_prior`, not both.")
@@ -931,23 +985,22 @@ def add_fixed_ou_gaussian_likelihood(
     site_index = alignment.site_index.rename("ou_site_index")
     site_coord = alignment.site_labels.rename({"nsigma_site": "ou_site"}).rename("ou_site")
     site_labels = tuple(str(label) for label in site_coord.values)
-    observation_variance = np.square(np.asarray(observation_error.values, dtype=np.float64))
-    if aggregation_error is None:
-        factor = np.empty((observations.sizes[output_dim], 0), dtype=np.float64)
-        aggregation_diagonal = np.zeros(observations.sizes[output_dim], dtype=np.float64)
-    else:
-        factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
     resolved_tau = _site_values(
         tau_hours, alignment.nsite, "tau_hours", positive=True, coordinate=site_coord
     )
-    base_variance = observation_variance + aggregation_diagonal
-    # Pairs with rho = 0 add nothing, so the base stays on the unpaired path.
-    if paired_error_correlation is not None and paired_error_correlation.correlated().size:
-        reduction, paired_factor = paired_error_correlation.split(
-            np.asarray(observation_error.values, dtype=np.float64)
+    model_error = (
+        None
+        if fixed_model_mismatch is None
+        else validate_fixed_model_mismatch(
+            fixed_model_mismatch.transpose(output_dim), output_dim=output_dim, owner="Fixed-OU likelihood"
         )
-        factor = np.concatenate([np.asarray(factor, dtype=np.float64), paired_factor], axis=1)
-        base_variance = base_variance - reduction
+    )
+    factor, base_variance = fixed_ou_base(
+        np.asarray(observation_error.values, dtype=np.float64),
+        aggregation_error,
+        fixed_model_mismatch=model_error,
+        paired_error_correlation=paired_error_correlation,
+    )
     prepared = prepare_fixed_ou_low_rank(
         factor,
         base_variance,
@@ -977,6 +1030,8 @@ def add_fixed_ou_gaussian_likelihood(
 
     observed = add_model_data(observations, "Y")
     add_model_data(observation_error, "error")
+    if fixed_model_mismatch is not None:
+        add_model_data(fixed_model_mismatch.transpose(output_dim), FIXED_MODEL_MISMATCH)
     add_paired_error_data(paired_error_correlation, observations, output_dim=output_dim)
     add_model_data(site_index)
     add_model_data(site_coord.copy(data=prepared.tau_hours_by_site).rename("ou_tau_hours"))

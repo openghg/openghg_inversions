@@ -1,4 +1,7 @@
-"""Fixed pair correlations of independent errors are exact in every Gaussian likelihood."""
+"""Fixed pair correlations of model errors are exact in every Gaussian likelihood.
+
+The correlation acts on ``fixed_model_mismatch`` only: measurement and aggregation errors stay uncorrelated.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +19,8 @@ from openghg_inversions.observation_error import AggregationError
 
 LABELS = ["a", "b", "c", "d", "e"]
 SD = np.array([0.5, 0.4, 6.0, 5.0, 0.3])
+# Model error, separate from the measurement error SD.
+MODEL = np.array([0.7, 0.3, 4.0, 6.0, 0.2])
 PAIRS = PairedErrorCorrelation(
     first=np.array([0, 1]), second=np.array([2, 3]), correlation=np.array([-0.9, 0.6])
 )
@@ -48,13 +53,18 @@ def _aggregation(mode: str) -> tuple[AggregationError | None, np.ndarray]:
     ), dense
 
 
-def _observations() -> tuple[xr.DataArray, xr.DataArray]:
+def _observations() -> tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
     times = np.datetime64("2021-07-01T00") + np.array([0, 1, 0, 1, 2]).astype("timedelta64[h]")
     # OU groups by site, so each channel is its own group here.
     sites = ["HFD-co2", "HFD-co2", "HFD-o2", "HFD-o2", "HFD-co2"]
     coords = {"nmeasure": LABELS, "site": ("nmeasure", sites), "time": ("nmeasure", times)}
     observations = xr.DataArray([400.0, 401.0, -700.0, -705.0, 402.0], dims="nmeasure", coords=coords)
-    return observations, observations.copy(data=SD)
+    return observations, observations.copy(data=SD), observations.copy(data=MODEL).rename("fixed_model_mismatch")
+
+
+def _paired_covariance(pairs: PairedErrorCorrelation) -> np.ndarray:
+    """Measurement plus model variance, with the pairs' cross terms on the model error only."""
+    return np.diag(SD**2 + MODEL**2) + pairs.covariance(MODEL)
 
 
 def test_split_reproduces_the_paired_block_and_validates_pairs():
@@ -108,7 +118,7 @@ def test_zero_correlation_pairs_add_no_factor_columns():
 @pytest.mark.parametrize("pairs", [PAIRS, ZERO_PAIR], ids=["correlated", "zero-pair"])
 @pytest.mark.parametrize("mode", ["none", "low_rank", "dense"])
 def test_additive_likelihood_matches_dense_paired_covariance(mode, pairs):
-    observations, error = _observations()
+    observations, error, model_error = _observations()
     aggregation, aggregation_covariance = _aggregation(mode)
     mean = observations.values + np.array([0.2, -0.1, 3.0, -2.0, 0.05])
     with registered_model() as model:
@@ -118,9 +128,10 @@ def test_additive_likelihood_matches_dense_paired_covariance(mode, pairs):
             aggregation_error=aggregation,
             mean=pm.math.constant(mean),
             output_dim="nmeasure",
+            fixed_model_mismatch=model_error,
             paired_error_correlation=pairs,
         )
-    covariance = aggregation_covariance + np.diag(SD**2) + pairs.covariance(SD)
+    covariance = aggregation_covariance + _paired_covariance(pairs)
     expected = multivariate_normal.logpdf(observations.values, mean=mean, cov=covariance)
     np.testing.assert_allclose(model.compile_logp()({}), expected, rtol=1e-10)
     epsilon = model.compile_fn(model["epsilon"])({})
@@ -131,7 +142,7 @@ def test_additive_likelihood_matches_dense_paired_covariance(mode, pairs):
 @pytest.mark.usefixtures("double_precision")
 @pytest.mark.parametrize("pairs", [PAIRS, ZERO_PAIR], ids=["correlated", "zero-pair"])
 def test_fixed_ou_likelihood_matches_dense_paired_covariance(pairs):
-    observations, error = _observations()
+    observations, error, model_error = _observations()
     aggregation, aggregation_covariance = _aggregation("dense")
     mean = observations.values + np.array([0.2, -0.1, 3.0, -2.0, 0.05])
     amplitude, tau = 0.7, 3.0
@@ -144,12 +155,13 @@ def test_fixed_ou_likelihood_matches_dense_paired_covariance(pairs):
             tau_hours=tau,
             fixed_site_amplitudes=amplitude,
             output_dim="nmeasure",
+            fixed_model_mismatch=model_error,
             paired_error_correlation=pairs,
         )
     hours = (observations.time.values - observations.time.values[0]) / np.timedelta64(1, "h")
     same_site = observations.site.values[:, None] == observations.site.values[None, :]
     ou = amplitude**2 * np.exp(-np.abs(hours[:, None] - hours[None, :]) / tau) * same_site
-    covariance = aggregation_covariance + np.diag(SD**2) + pairs.covariance(SD) + ou
+    covariance = aggregation_covariance + _paired_covariance(pairs) + ou
     expected = multivariate_normal.logpdf(observations.values, mean=mean, cov=covariance)
     np.testing.assert_allclose(model.compile_logp()({}), expected, rtol=1e-10)
     np.testing.assert_allclose(
@@ -161,7 +173,7 @@ ALL_ZERO = PairedErrorCorrelation(first=np.array([0, 1]), second=np.array([2, 3]
 
 
 def _additive_model(mode, pairs):
-    observations, error = _observations()
+    observations, error, model_error = _observations()
     aggregation, _ = _aggregation(mode)
     mean = observations.values + np.array([0.2, -0.1, 3.0, -2.0, 0.05])
     with registered_model() as model:
@@ -171,6 +183,7 @@ def _additive_model(mode, pairs):
             aggregation_error=aggregation,
             mean=pm.math.constant(mean),
             output_dim="nmeasure",
+            fixed_model_mismatch=model_error,
             paired_error_correlation=pairs,
         )
     return model
@@ -200,7 +213,7 @@ def test_correlated_pairs_stay_blockwise_and_sample_their_covariance(mode):
     matrices = [node for node in model["y"].owner.inputs if getattr(node, "ndim", None) == 2]
     assert [tuple(node.shape.eval()) for node in matrices] == ([(5, 1)] if mode == "low_rank" else [])
     _, aggregation_covariance = _aggregation(mode)
-    covariance = aggregation_covariance + np.diag(SD**2) + PAIRS.covariance(SD)
+    covariance = aggregation_covariance + _paired_covariance(PAIRS)
     draws = pm.draw(model["y"], draws=40_000, random_seed=1104)
     # Five standard errors of each sample covariance element.
     tolerance = 5 * np.sqrt((np.outer(np.diag(covariance), np.diag(covariance)) + covariance**2) / len(draws))
@@ -217,3 +230,46 @@ def test_correlations_that_round_to_one_in_float32_are_rejected():
         _additive_model("none", near_one)
     # A value that is still below one in float32 is accepted.
     _additive_model("none", PairedErrorCorrelation(np.array([0]), np.array([2]), np.array([0.999])))
+
+
+def test_pairs_require_the_model_error_they_correlate():
+    """Without fixed_model_mismatch there is nothing to correlate; measurement error is never paired."""
+    observations, error, _ = _observations()
+    with registered_model(), pytest.raises(ValueError, match="fixed_model_mismatch"):
+        add_additive_sigma_likelihood(
+            observations=observations,
+            observation_error=error,
+            mean=pm.math.constant(observations.values),
+            output_dim="nmeasure",
+            paired_error_correlation=PAIRS,
+        )
+    with registered_model(), pytest.raises(ValueError, match="fixed_model_mismatch"):
+        add_fixed_ou_gaussian_likelihood(
+            observations=observations,
+            observation_error=error,
+            mean=pm.math.constant(observations.values),
+            tau_hours=3.0,
+            fixed_site_amplitudes=0.7,
+            output_dim="nmeasure",
+            paired_error_correlation=PAIRS,
+        )
+
+
+@pytest.mark.usefixtures("double_precision")
+def test_fixed_ou_records_the_model_error_without_pairs():
+    """Model error alone is one more independent variance in the fixed-OU base."""
+    observations, error, model_error = _observations()
+    mean = observations.values + np.array([0.2, -0.1, 3.0, -2.0, 0.05])
+    with registered_model() as model:
+        add_fixed_ou_gaussian_likelihood(
+            observations=observations,
+            observation_error=error,
+            mean=pm.math.constant(mean),
+            tau_hours=3.0,
+            fixed_site_amplitudes=0.0,
+            output_dim="nmeasure",
+            fixed_model_mismatch=model_error,
+        )
+    np.testing.assert_allclose(model["fixed_model_mismatch"].get_value(), MODEL)
+    expected = multivariate_normal.logpdf(observations.values, mean=mean, cov=np.diag(SD**2 + MODEL**2))
+    np.testing.assert_allclose(model.compile_logp()({}), expected, rtol=1e-10)

@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-import numpy as np
 import pymc as pm
 from pymc.pytensorf import floatX
 import pytensor.tensor as pt
@@ -26,7 +25,13 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.models.components import add_model_data, add_sigma_component
-from openghg_inversions.models.paired_error import PairedErrorCorrelation, add_paired_error_data
+from openghg_inversions.models.paired_error import (
+    FIXED_MODEL_MISMATCH,
+    PairedErrorCorrelation,
+    add_paired_error_data,
+    require_model_error_for_pairs,
+    validate_fixed_model_mismatch,
+)
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models._gaussian_observation import (
     add_aggregation_error_data,
@@ -39,7 +44,6 @@ from openghg_inversions.observation_error import (
 from openghg_inversions.sigma import SigmaAlignment
 
 
-FIXED_MODEL_MISMATCH = "fixed_model_mismatch"
 DEFAULT_ADDITIVE_SIGMA_PRIOR: PriorArgs = {"pdf": "halfnormal", "sigma": 1.0}
 
 
@@ -86,10 +90,12 @@ def add_additive_sigma_likelihood(
         output_dim: Observation dimension used for named PyMC variables.
         observation_error_name: PyMC data name for the reported error.
         paired_error_correlation: Optional fixed correlations between pairs of
-            rows' reported ``observation_error``; see
-            :mod:`openghg_inversions.models.paired_error`. Other variance terms
-            stay independent. Row correlations and partners are recorded as
-            ``paired_error_correlation`` and ``paired_error_partner`` data.
+            rows' model errors, ``fixed_model_mismatch``, which is then
+            required; see :mod:`openghg_inversions.models.paired_error`.
+            Reported observation error, the inferred additive scale, the floor
+            and aggregation error stay uncorrelated. Row correlations and
+            partners are recorded as ``paired_error_correlation`` and
+            ``paired_error_partner`` data.
 
     Returns:
         The observed Gaussian variable, named ``y``. The total marginal error
@@ -97,8 +103,12 @@ def add_additive_sigma_likelihood(
 
     Raises:
         ValueError: If the observation or aggregation-error inputs are
-            inconsistent with ``output_dim``.
+            inconsistent with ``output_dim``, or pair correlations are given
+            without ``fixed_model_mismatch``.
     """
+    require_model_error_for_pairs(
+        paired_error_correlation, fixed_model_mismatch, owner="Additive-sigma likelihood"
+    )
     validate_observation_error_arrays(
         observations,
         observation_error,
@@ -118,17 +128,11 @@ def add_additive_sigma_likelihood(
     registered_pairs = add_paired_error_data(paired_error_correlation, observations, output_dim=output_dim)
 
     independent_variance = reported_error**2
+    fixed_mismatch_data = None
     if fixed_model_mismatch is not None:
-        if fixed_model_mismatch.dims != (output_dim,):
-            raise ValueError(
-                f"Additive-sigma likelihood input {FIXED_MODEL_MISMATCH!r} must "
-                f"have dims ({output_dim!r},); got {fixed_model_mismatch.dims!r}."
-            )
-        fixed_values = np.asarray(fixed_model_mismatch.values)
-        if not np.issubdtype(fixed_values.dtype, np.number):
-            raise ValueError(f"{FIXED_MODEL_MISMATCH!r} must be numeric.")
-        if not np.isfinite(fixed_values).all() or (fixed_values < 0).any():
-            raise ValueError(f"{FIXED_MODEL_MISMATCH!r} must contain only finite, non-negative values.")
+        validate_fixed_model_mismatch(
+            fixed_model_mismatch, output_dim=output_dim, owner="Additive-sigma likelihood"
+        )
         fixed_mismatch_data = add_model_data(
             fixed_model_mismatch.transpose(output_dim),
             FIXED_MODEL_MISMATCH,
@@ -169,7 +173,7 @@ def add_additive_sigma_likelihood(
         aggregation_error=registered_aggregation_error,
         output_dim=output_dim,
         paired_error=registered_pairs,
-        paired_error_sd=reported_error if registered_pairs is not None else None,
+        paired_error_sd=fixed_mismatch_data if registered_pairs is not None else None,
     )
 __all__ = [
     "DEFAULT_ADDITIVE_SIGMA_PRIOR",

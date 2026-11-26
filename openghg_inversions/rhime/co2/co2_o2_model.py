@@ -39,7 +39,7 @@ from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.observation_error import AggregationError
 
 from .co2_model import _normalise_offset_args
-from .co2_o2_error_correlation import CrossSpeciesCorrelation, linked_cross_species_pairs
+from .co2_o2_error_correlation import CrossSpeciesCorrelation, ModelErrorSd, linked_model_error_terms
 from .co2_o2_fixed_ou import linked_fixed_ou_alignment, validate_linked_ou_amplitude_units
 
 
@@ -297,6 +297,7 @@ def build_co2_o2_model(
     tau_hours: float | Mapping[str, float] | None = None,
     fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     site_amplitude_prior: Mapping[str, Any] | None = None,
+    model_error_sd: ModelErrorSd | None = None,
     cross_species_error_correlation: CrossSpeciesCorrelation | None = None,
 ) -> pm.Model:
     """Build the shared-state CO2/O2 affine model and fixed-error likelihood.
@@ -374,12 +375,18 @@ def build_co2_o2_model(
         site_amplitude_prior: Prior for inferred species/site OU amplitudes in
             concentration units, mutually exclusive with fixed amplitudes.
             Requires common channel units.
+        model_error_sd: Optional fixed model-error standard deviations, a
+            mapping from channel (``"co2"``, ``"o2"``) or ``species:SITE`` to a
+            value in that channel's units. It is added to
+            ``independent_error_sd`` (measurement error) as a separate variance
+            term, recorded as ``fixed_model_mismatch``.
         cross_species_error_correlation: Optional fixed correlation ``rho``
-            between the independent errors of CO2 and O2 rows at the same site
-            and time: one value, or a mapping from site to value. Their cross
-            covariance is ``rho * sd_co2 * sd_o2`` from ``independent_error_sd``,
+            between the model errors of CO2 and O2 rows at the same site and
+            time: one value, or a mapping from site to value. Requires
+            ``model_error_sd``. The cross covariance is ``rho * m_co2 * m_o2``,
             so mixed channel units (ppm and per meg) need no conversion.
-            Aggregation and OU terms are unchanged. Works with both likelihoods.
+            Measurement error, aggregation covariance and OU blocks are
+            unchanged. Works with both likelihoods.
 
     Returns:
         A registered PyMC model containing the shared state, gathered joint
@@ -414,6 +421,7 @@ def build_co2_o2_model(
         tau_hours=tau_hours,
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
+        model_error_sd=model_error_sd,
         cross_species_error_correlation=cross_species_error_correlation,
     )
 
@@ -436,6 +444,7 @@ def _build_co2_o2_model(
     tau_hours: float | Mapping[str, float] | None = None,
     fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     site_amplitude_prior: Mapping[str, Any] | None = None,
+    model_error_sd: ModelErrorSd | None = None,
     cross_species_error_correlation: CrossSpeciesCorrelation | None = None,
 ) -> pm.Model:
     """Construct the linked CO2/O2 graph from eager inputs.
@@ -491,10 +500,10 @@ def _build_co2_o2_model(
             dims=output_dim,
         )
 
-        paired_error = (
-            None
-            if cross_species_error_correlation is None
-            else linked_cross_species_pairs(observations, cross_species_error_correlation)
+        model_error, paired_error = linked_model_error_terms(
+            observations,
+            model_error_sd=model_error_sd,
+            cross_species_error_correlation=cross_species_error_correlation,
         )
         likelihood_mean, likelihood_observations = likelihood_representation(
             [ConcentrationTerm.absolute(fixed + joint_signal), *baseline_components],
@@ -511,6 +520,7 @@ def _build_co2_o2_model(
                 aggregation_error=aggregation_error,
                 output_dim=output_dim,
                 observation_error_name="fixed_independent_error_sd",
+                fixed_model_mismatch=model_error,
                 paired_error_correlation=paired_error,
             )
         else:
@@ -529,6 +539,7 @@ def _build_co2_o2_model(
                 fixed_site_amplitudes=fixed_site_amplitudes,
                 site_amplitude_prior=site_amplitude_prior,
                 sigma_alignment=linked_fixed_ou_alignment(observations),
+                fixed_model_mismatch=model_error,
                 paired_error_correlation=paired_error,
             )
     return model

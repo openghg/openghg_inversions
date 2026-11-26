@@ -23,7 +23,14 @@ from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, _sample_linked_rhime_model
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
-from .co2_o2_error_correlation import validate_cross_species_error_correlation
+from .co2_o2_error_correlation import (
+    ModelErrorSd,
+    linked_model_error_terms,
+    linked_pair_correlation_diagnostic,
+    summarise_pair_correlation,
+    validate_cross_species_error_correlation,
+    validate_model_error_sd,
+)
 from .co2_o2_fixed_ou import linked_channel_units
 from .co2_o2_model import _build_co2_o2_model, _validate_channel_offset_options
 from .co2_o2_preparation import Co2O2PreparedInputs
@@ -281,6 +288,86 @@ def _linked_boundary_contract(boundary: Mapping[str, Bound]) -> tuple[dict[str, 
     return roles, metadata
 
 
+def _normalise_model_error_options(
+    model_error_sd: ModelErrorSd | None,
+    cross_species_error_correlation: float | Mapping[str, float] | None,
+) -> tuple[dict[str, float] | None, float | dict[str, float] | None]:
+    """Validate the model-error options once so plain values feed the model and its JSON metadata."""
+    if cross_species_error_correlation is not None and model_error_sd is None:
+        raise ValueError(
+            "cross_species_error_correlation acts only on the model error, so it requires "
+            "model_error_sd; measurement (independent_error_sd) and aggregation errors stay "
+            "uncorrelated."
+        )
+    model = None if model_error_sd is None else validate_model_error_sd(model_error_sd)
+    correlation = (
+        None
+        if cross_species_error_correlation is None
+        else validate_cross_species_error_correlation(cross_species_error_correlation)
+    )
+    if isinstance(correlation, Mapping):
+        correlation = dict(correlation)
+    return model, correlation
+
+
+def _model_error_contract(
+    observations: xr.DataArray,
+    *,
+    aggregation_error: Any,
+    independent_error_sd: xr.DataArray,
+    model_error_sd: dict[str, float] | None,
+    cross_species_error_correlation: float | dict[str, float] | None,
+) -> tuple[dict[str, str], dict[str, Any]]:
+    """Return output roles and JSON metadata for the fixed model error and its CO2/O2 correlation.
+
+    With a correlation, the metadata summarises by site the CO2/O2 correlation
+    that the aggregation covariance alone implies and the zero-lag total
+    correlation without OU variance (see
+    :func:`~openghg_inversions.rhime.co2.co2_o2_error_correlation.linked_pair_correlation_diagnostic`).
+    """
+    roles: dict[str, str] = {}
+    metadata: dict[str, Any] = {}
+    if model_error_sd is None:
+        return roles, metadata
+    roles["fixed_model_error"] = "fixed_model_mismatch"
+    metadata["model_error_sd"] = {
+        "value": dict(model_error_sd),
+        "units": "each channel's observation_units",
+        "role": "fixed model error added to the measurement error independent_error_sd",
+    }
+    if cross_species_error_correlation is None:
+        return roles, metadata
+    roles.update(
+        {
+            "cross_species_error_correlation": "paired_error_correlation",
+            "cross_species_error_partner": "paired_error_partner",
+        }
+    )
+    model_error, pairs = linked_model_error_terms(
+        observations,
+        model_error_sd=model_error_sd,
+        cross_species_error_correlation=cross_species_error_correlation,
+    )
+    assert model_error is not None and pairs is not None
+    diagnostic = linked_pair_correlation_diagnostic(
+        observations,
+        pairs=pairs,
+        aggregation_error=aggregation_error,
+        independent_error_sd=independent_error_sd,
+        model_error_sd=model_error,
+    )
+    metadata["cross_species_error_correlation"] = {
+        "value": cross_species_error_correlation,
+        "pairs": "same site and time; cross covariance rho * m_co2 * m_o2 on the fixed model error only",
+        "pair_correlation_by_site": summarise_pair_correlation(diagnostic),
+        "pair_correlation_note": (
+            "aggregation: A_co / sqrt(A_cc A_oo); total: zero-lag correlation of A + measurement "
+            "+ model error, without OU variance"
+        ),
+    }
+    return roles, metadata
+
+
 def build_rhime_co2_o2(
     *,
     prepared_inputs: Co2O2PreparedInputs,
@@ -293,6 +380,7 @@ def build_rhime_co2_o2(
     tau_hours: float | Mapping[str, float] | None = None,
     fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     site_amplitude_prior: Mapping[str, Any] | None = None,
+    model_error_sd: ModelErrorSd | None = None,
     cross_species_error_correlation: float | Mapping[str, float] | None = None,
 ) -> RhimeModelBuildResult:
     """Materialize borrowed linked inputs and build their joint scientific graph.
@@ -321,11 +409,9 @@ def build_rhime_co2_o2(
     observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = (
         materialized
     )
-    if cross_species_error_correlation is not None:
-        # One normalized value (plain floats) feeds both the pairing and the JSON metadata.
-        cross_species_error_correlation = validate_cross_species_error_correlation(
-            cross_species_error_correlation
-        )
+    model_error_sd, cross_species_error_correlation = _normalise_model_error_options(
+        model_error_sd, cross_species_error_correlation
+    )
     model = _build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
@@ -338,6 +424,7 @@ def build_rhime_co2_o2(
         tau_hours=tau_hours,
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
+        model_error_sd=model_error_sd,
         cross_species_error_correlation=cross_species_error_correlation,
         boundary=bound,
         outer_flux=outer_flux,
@@ -365,19 +452,15 @@ def build_rhime_co2_o2(
             }
         )
         metadata["likelihood"] = "joint Gaussian with fixed OU blocks by (species, site)"
-    if cross_species_error_correlation is not None:
-        variable_roles.update(
-            {
-                "cross_species_error_correlation": "paired_error_correlation",
-                "cross_species_error_partner": "paired_error_partner",
-            }
-        )
-        metadata["cross_species_error_correlation"] = {
-            "value": cross_species_error_correlation
-            if not isinstance(cross_species_error_correlation, Mapping)
-            else dict(cross_species_error_correlation),
-            "pairs": "same site and time; cross covariance rho * sd_co2 * sd_o2 on independent errors",
-        }
+    error_roles, error_metadata = _model_error_contract(
+        observations,
+        aggregation_error=prepared.aggregation_error,
+        independent_error_sd=independent_error_sd,
+        model_error_sd=model_error_sd,
+        cross_species_error_correlation=cross_species_error_correlation,
+    )
+    variable_roles.update(error_roles)
+    metadata.update(error_metadata)
     return RhimeModelBuildResult(
         model=model,
         output_contract=OutputContract(
@@ -400,6 +483,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     tau_hours: float | Mapping[str, float] | None = None,
     fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     site_amplitude_prior: Mapping[str, Any] | None = None,
+    model_error_sd: ModelErrorSd | None = None,
     cross_species_error_correlation: float | Mapping[str, float] | None = None,
 ) -> xr.DataTree:
     """Build and sample the CO2/O2 model from prepared scientific inputs.
@@ -451,16 +535,23 @@ def run_rhime_co2_o2_from_prepared_inputs(
             quadratic is built once and only the state NUTS step runs.
         site_amplitude_prior: Prior for inferred species/site amplitudes,
             mutually exclusive with fixed amplitudes. Requires common channel units.
+        model_error_sd: Optional fixed model-error standard deviations, a
+            mapping from channel (``"co2"``, ``"o2"``) or ``species:SITE`` to a
+            value in that channel's units, added to the measurement error
+            ``independent_error_sd`` as a separate variance and saved as
+            ``fixed_model_mismatch``.
         cross_species_error_correlation: Optional fixed correlation between the
-            independent errors of same-site, same-time CO2 and O2 rows; one
-            value, or a mapping from site to value, each strictly between -1
-            and 1. The cross covariance is ``rho * sd_co2 * sd_o2`` in the
-            product of the channel units. ``rho`` correlates only the
-            independent error components: aggregation covariance (including
-            its CO2-O2 blocks) and OU terms are unchanged, so a correlation
-            fitted from total residuals is not this value. Row correlations
-            and partners are saved as ``paired_error_correlation`` and
-            ``paired_error_partner``.
+            model errors of same-site, same-time CO2 and O2 rows; one value,
+            or a mapping from site to value, each strictly between -1 and 1.
+            Requires ``model_error_sd``. The cross covariance is
+            ``rho * m_co2 * m_o2`` in the product of the channel units.
+            Measurement error, aggregation covariance (including its CO2-O2
+            blocks) and OU terms are unchanged, so a correlation fitted from
+            total residuals is not this value; the build metadata summarises
+            the correlation ``A`` alone implies. Row correlations and partners
+            are saved as ``paired_error_correlation`` and
+            ``paired_error_partner``. Works with the fixed-error, fixed-OU
+            (cached) and inferred-OU likelihoods.
         sampler: Sampler configuration or ``"default"``; explicit ``None`` is invalid. Fixed OU requires and
             defaults to PyMC; the fixed-error default uses NumPyro. The default
             ``target_accept`` is 0.95; with fixed OU amplitudes it (or a
@@ -505,6 +596,8 @@ def run_rhime_co2_o2_from_prepared_inputs(
             outer_flux=outer_flux,
             offset_prior=offset_prior,
             offset_args=offset_args,
+            model_error_sd=model_error_sd,
+            cross_species_error_correlation=cross_species_error_correlation,
             recipe="co2_o2",
         )
         return trace
@@ -519,6 +612,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
         tau_hours=tau_hours,
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
+        model_error_sd=model_error_sd,
         cross_species_error_correlation=cross_species_error_correlation,
     )
     trace = _sample_linked_rhime_model(built, sampler)

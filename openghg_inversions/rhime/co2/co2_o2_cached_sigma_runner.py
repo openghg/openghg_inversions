@@ -29,6 +29,7 @@ from .co2_cached_sigma_runner import (
     validate_cached_co2_sampler,
 )
 from .co2_o2_cached_sigma_model import _build_co2_o2_cached_sigma_model
+from .co2_o2_error_correlation import ModelErrorSd
 from .co2_o2_model import _validate_channel_offset_options
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .co2_o2_runner import (
@@ -37,6 +38,8 @@ from .co2_o2_runner import (
     _co2_o2_metadata,
     _linked_boundary_contract,
     _materialize_co2_o2_replay_inputs,
+    _model_error_contract,
+    _normalise_model_error_options,
     annotate_co2_o2_trace,
 )
 
@@ -83,6 +86,8 @@ def _sample_linked_cached(
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     sigma_target_accept: float | None = None,
     state_target_accept: float | None = None,
+    model_error_sd: ModelErrorSd | None = None,
+    cross_species_error_correlation: float | Mapping[str, float] | None = None,
     recipe: str = CACHED_FIXED_OU_RECIPE,
 ) -> tuple[xr.DataTree, dict[str, Any]]:
     """Build the linked cached graph, sample its matched CompoundStep and annotate it.
@@ -104,6 +109,9 @@ def _sample_linked_cached(
         state_target_accept=state_target_accept,
     )
     fixed = fixed_site_amplitudes is not None
+    model_error_sd, cross_species_error_correlation = _normalise_model_error_options(
+        model_error_sd, cross_species_error_correlation
+    )
     prepared = prepared_inputs
     _validate_channel_offset_options(offset_prior, offset_args)
     materialized, bound, eager_priors = _materialize_co2_o2_replay_inputs(
@@ -133,6 +141,8 @@ def _sample_linked_cached(
         outer_flux=outer_flux,
         offset_prior=offset_prior,
         offset_args=offset_args,
+        model_error_sd=model_error_sd,
+        cross_species_error_correlation=cross_species_error_correlation,
     )
     metadata = _co2_o2_metadata(prepared, observations=observations)
     metadata.update(likelihood="joint Gaussian with fixed OU blocks by (species, site)")
@@ -150,6 +160,15 @@ def _sample_linked_cached(
     boundary_roles, boundary_metadata = _linked_boundary_contract(bound)
     roles.update(boundary_roles)
     metadata.update(boundary_metadata)
+    error_roles, error_metadata = _model_error_contract(
+        observations,
+        aggregation_error=prepared.aggregation_error,
+        independent_error_sd=error,
+        model_error_sd=model_error_sd,
+        cross_species_error_correlation=cross_species_error_correlation,
+    )
+    roles.update(error_roles)
+    metadata.update(error_metadata)
     for channel in (offset_prior or {}):
         roles[f"{channel}_offset_concentration"] = f"{channel}_offset"
     if offset_prior:
@@ -208,6 +227,8 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     sampler: RhimeSampler | Literal["default"] = "default",
     sigma_target_accept: float | None = None,
     state_target_accept: float | None = None,
+    model_error_sd: ModelErrorSd | None = None,
+    cross_species_error_correlation: float | Mapping[str, float] | None = None,
 ) -> xr.DataTree:
     """Sample linked species/site OU amplitudes followed by affine states.
 
@@ -280,6 +301,13 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             NUTS step. Defaults to 0.9 with inferred amplitudes; with fixed
             amplitudes, to the top-level or nested NUTS ``target_accept``
             option if supplied, or else 0.8.
+        model_error_sd: Optional fixed model-error standard deviations by
+            channel or ``species:SITE``, in each channel's units, saved as
+            ``fixed_model_mismatch``.
+        cross_species_error_correlation: Optional fixed correlation of the
+            same-site, same-time CO2/O2 model errors; requires
+            ``model_error_sd``. See
+            :func:`~openghg_inversions.rhime.co2.co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs`.
 
     Returns:
         Restored DataTree with posterior samples, labelled observed data and
@@ -320,5 +348,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         offset_args=offset_args,
         sigma_target_accept=sigma_target_accept,
         state_target_accept=state_target_accept,
+        model_error_sd=model_error_sd,
+        cross_species_error_correlation=cross_species_error_correlation,
     )
     return trace
