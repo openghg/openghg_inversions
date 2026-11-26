@@ -1226,6 +1226,60 @@ def test_reduction_identity_binds_products_to_the_native_inputs() -> None:
     assert doubled.identity != seen.identity
 
 
+def test_reduction_identity_distinguishes_custom_covariance_actions() -> None:
+    """Changing an unresolved covariance block changes the identity of the products."""
+    class _DenseCellCovariance:
+        """Dense test action with no covariance serializer."""
+
+        native_dims = ("cell",)
+
+        def __init__(self, cross_covariance: float) -> None:
+            """Couple the observed and reported cells, independently of the retained cell."""
+            self.matrix = np.eye(3)
+            self.matrix[1, 2] = self.matrix[2, 1] = cross_covariance
+
+        def apply(self, rhs: xr.DataArray) -> xr.DataArray:
+            """Apply the covariance to columns on the labelled cell axis."""
+            cells_first = rhs.transpose("cell", ...)
+            return cells_first.copy(data=self.matrix @ cells_first.to_numpy()).transpose(*rhs.dims)
+
+        def solve(self, rhs: xr.DataArray) -> xr.DataArray:
+            """Solve the covariance system on the labelled cell axis."""
+            cells_first = rhs.transpose("cell", ...)
+            return cells_first.copy(data=np.linalg.solve(self.matrix, cells_first.to_numpy())).transpose(*rhs.dims)
+
+    cells = {"cell": ["retained", "observed", "reported"]}
+    restriction = xr.DataArray([[1.0, 0.0, 0.0]], dims=("state", "cell"), coords={"state": ["region"], **cells})
+    sensitivity = xr.DataArray(
+        [[0.0, 1.0, 0.0]],
+        dims=("observation", "cell"),
+        coords={"observation": ["obs-0"], **cells},
+        attrs={"units": "ppm"},
+    )
+    functionals = xr.DataArray(
+        [[0.0, 0.0, 1.0]], dims=("functional", "cell"), coords={"functional": ["total"], **cells}
+    )
+    positive, negative = (
+        reduce_native_gaussian(
+            covariance=_DenseCellCovariance(cross_covariance),
+            strategy=SuppliedRestriction(restriction),
+            state_dim="state",
+            native_mean=xr.DataArray(np.ones(3), dims="cell", coords=cells),
+            native_sensitivity=sensitivity,
+            observation_dim="observation",
+            functionals=functionals,
+        )
+        for cross_covariance in (0.5, -0.5)
+    )
+    for name in ("retained_covariance", "effective_observation_operator", "unresolved_observation_covariance"):
+        xr.testing.assert_identical(getattr(positive, name), getattr(negative, name))
+    assert positive.functional_products.unresolved_observation_covariance.item() == 0.5
+    assert negative.functional_products.unresolved_observation_covariance.item() == -0.5
+    assert positive.functional_products.reduction_identity == positive.identity
+    assert negative.functional_products.reduction_identity == negative.identity
+    assert positive.identity != negative.identity
+
+
 def test_fully_retained_functionals_reconstruct_without_clipping_errors() -> None:
     """With every cell retained Q B_perp Q.T is zero up to roundoff, which is not an error."""
     reduction = _two_cell_reduction(0, np.eye(2), ["cell-0", "cell-1"])

@@ -24,6 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from hashlib import sha256
 import json
+from uuid import uuid4
 
 from dask.base import compute
 import numpy as np
@@ -48,7 +49,8 @@ from openghg_inversions.basis.covariance_products import (
     RetainedProjectionStrategy,
     project_native_covariance,
 )
-from openghg_inversions.native_covariance import InvertibleNativeCovarianceAction
+from openghg_inversions.native_covariance import InvertibleNativeCovarianceAction, SeparableExponentialCovariance
+from openghg_inversions.source_covariance import IndependentSourceCovariance
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -223,13 +225,14 @@ def native_reduction_identity(
 ) -> str:
     """Return the identity of the native inputs of one coherent reduction.
 
-    It hashes the native sensitivity ``H``, the restriction ``Pi``, the
-    native mean ``m`` and the prolongation ``U_* = B Pi.T C_alpha^-1``, each
-    with its index labels. ``B`` enters through ``U_*`` and, when the
-    covariance action can describe itself with ``to_dataset()`` (as
-    :class:`~openghg_inversions.native_covariance.SeparableExponentialCovariance`
-    does), through that description. Sparse payloads are hashed by their
-    coordinates and values without densifying.
+    For the built-in separable covariance and independent combinations of
+    those covariances, this hashes the complete covariance description,
+    native sensitivity ``H``, restriction ``Pi``, native mean ``m``, and
+    prolongation ``U_*`` with their index labels. Sparse payloads stay sparse.
+    Other covariance actions receive a fresh identity on each call because
+    their unobserved covariance blocks cannot be inferred from the reduced
+    arrays. Keep the identity issued when the fit and its products are
+    reduced together.
 
     Args:
         covariance: The native covariance action ``B``.
@@ -240,15 +243,20 @@ def native_reduction_identity(
     Returns:
         ``"sha256:<hex digest>"``.
     """
-    native_dims = tuple(covariance.native_dims)
+    if type(covariance) is SeparableExponentialCovariance or (
+        type(covariance) is IndependentSourceCovariance
+        and all(type(block) is SeparableExponentialCovariance for block in covariance.source_covariances.values())
+    ):
+        description = covariance.to_dataset()
+    else:
+        return f"sha256:{sha256(uuid4().bytes).hexdigest()}"
+
     digest = sha256()
     digest.update(f"{type(covariance).__module__}.{type(covariance).__qualname__}".encode())
-    describe = getattr(covariance, "to_dataset", None)
-    if callable(describe):
-        description = describe()
-        digest.update(json.dumps(description.attrs, sort_keys=True, default=str).encode())
-        for name in sorted(map(str, description.variables)):
-            _update_digest(digest, f"B.{name}", description[name])
+    digest.update(json.dumps(description.attrs, sort_keys=True, default=str).encode())
+    for name in sorted(map(str, description.variables)):
+        _update_digest(digest, f"B.{name}", description[name])
+    native_dims = tuple(covariance.native_dims)
     observation_dim = next(str(dim) for dim in native_sensitivity.dims if dim not in native_dims)
     for name, array in (
         ("H", native_sensitivity.transpose(observation_dim, *native_dims)),
