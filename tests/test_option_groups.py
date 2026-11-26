@@ -59,6 +59,12 @@ def test_request_rejects_mixed_basis_spellings_across_locations(tmp_path, entrie
         load_params(params_file=source)
     with pytest.raises(ValueError, match="bc_basis.*both as a mapping and as flat"):
         load_params(overrides=options)
+    ini = tmp_path / "params.ini"
+    ini.write_text("[RUN]\n" + "\n".join(f"{name} = {value!r}" for name, value in options.items()))
+    with pytest.raises(ValueError, match="bc_basis.*both as a mapping and as flat"):
+        read_rhime_ini(ini)
+    with pytest.raises(ValueError, match="bc_basis.*both as a mapping and as flat"):
+        load_params(config_file=ini)
 
 
 def test_inactive_basis_fields_are_checked_without_resolving_values(tmp_path):

@@ -199,6 +199,20 @@ def nest_flat_options(
     return result
 
 
+def _nest_data_groups(values: Mapping[str, Any], *, deprecated: bool = False) -> dict[str, Any]:
+    """Reject mixed spellings in one source before nesting either location."""
+    data = values.get("data")
+    if isinstance(data, Mapping):
+        for group in DATA_OPTION_GROUPS:
+            flat = group.flat_names().keys()
+            if (group.key in data and flat & values.keys()) or (group.key in values and flat & data.keys()):
+                raise ValueError(f"`{group.key}` is given both as a mapping and as flat option(s); use one form.")
+    result = nest_flat_options(values, DATA_OPTION_GROUPS, deprecated=deprecated)
+    if isinstance(data, Mapping):
+        result["data"] = nest_flat_options(data, DATA_OPTION_GROUPS, deprecated=deprecated)
+    return result
+
+
 @dataclass(frozen=True, kw_only=True)
 class DataConfig:
     """Resolved acquisition and preparation choices, independent of inference.

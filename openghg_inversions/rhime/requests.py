@@ -13,7 +13,7 @@ from typing import Any, get_type_hints
 
 from ._resources import resolve_resource_paths
 from .ini import read_rhime_ini
-from .params import DATA_OPTION_GROUPS, REQUEST_CLAIM_NAMES, DataConfig, nest_flat_options, option_groups
+from .params import DATA_OPTION_GROUPS, REQUEST_CLAIM_NAMES, DataConfig, _nest_data_groups, option_groups
 from .specs import RhimeOutputSpec
 
 
@@ -101,7 +101,7 @@ def merge_params(
     for values, is_override in ((params, False), (overrides or {}, True)):
         if not isinstance(values, Mapping):
             raise ValueError(f"RHIME parameters must be a mapping; got {type(values).__name__}.")
-        values = _nest_data_groups(values)
+        values = _nest_data_groups(values, deprecated=True)
         for key, value in values.items():
             if key in owners and not isinstance(value, Mapping):
                 raise ValueError(f"`{key}` must be a mapping.")
@@ -132,18 +132,4 @@ def merge_params(
             groups[group],
             annotations=annotations, base_dir=Path.cwd(),
         )
-    return result
-
-
-def _nest_data_groups(values: Mapping[str, Any]) -> dict[str, Any]:
-    """Reject mixed spellings in one source, then nest its deprecated flat keys."""
-    data = values.get("data")
-    if isinstance(data, Mapping):
-        for group in DATA_OPTION_GROUPS:
-            flat = group.flat_names().keys()
-            if (group.key in data and flat & values.keys()) or (group.key in values and flat & data.keys()):
-                raise ValueError(f"`{group.key}` is given both as a mapping and as flat option(s); use one form.")
-    result = nest_flat_options(values, DATA_OPTION_GROUPS, deprecated=True)
-    if isinstance(data, Mapping):
-        result["data"] = nest_flat_options(data, DATA_OPTION_GROUPS, deprecated=True)
     return result

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from openghg_inversions.config import config
-from openghg_inversions.rhime.params import DATA_OPTION_GROUPS, nest_flat_options
+from openghg_inversions.rhime.params import _nest_data_groups
 
 
 def read_rhime_ini(path: str | Path) -> dict[str, Any]:
@@ -33,4 +33,4 @@ def read_rhime_ini(path: str | Path) -> dict[str, Any]:
         ValueError: If a file gives a data option group in both flat and nested form.
     """
     decoded = config.all_param(str(path), exclude_not_found=True, allow_new=True)
-    return nest_flat_options(decoded, DATA_OPTION_GROUPS)
+    return _nest_data_groups(decoded)
