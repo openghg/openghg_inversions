@@ -198,7 +198,7 @@ def test_configuration_parses_each_channel_and_source_state(partition_path: Path
     assert native.flux_sources("o2") == {"o2_gpp": "gpp", "o2_ter": "ter", "o2_ff": "ff", "o2_ocean": "o2_ocean"}
     assert native.source_states["o2_ocean"].tracer_scope == "o2"
     assert native.native_prior.sources["o2_ocean"].sigma == 0.8
-    assert native.acquisition["o2"]["boundary_reference"] == 5.0
+    assert native.acquisition["o2"]["reference"] == 5.0
 
 
 @pytest.mark.parametrize(
