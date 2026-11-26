@@ -141,14 +141,16 @@ def prepare(
     bc_centering_weights: xr.DataArray | None = None,
     affine_artifact: AffineFluxMapArtifact | None = None, affine_path: str | Path | None = None,
     boundary_representation: BoundaryRepresentation | None = None, boundary: Choice | None = None,
+    flux_sources: tuple[str, ...] = (), acquisition: Mapping[str, Any] | None = None,
     native: Co2NativePreparationConfig | None = None, merged_data: MergedData | None = None,
     referenced: tuple[str | Path, ...] = (),
 ) -> Path:
     """Build a preparation, prepare a coherent reduction, or import a saved pair.
 
-    Pass configured ``native`` choices (optionally with supplied
-    ``merged_data``), canonical inputs with their defining coherent reduction,
-    or one saved prepared path. Imported pairs are validated and referenced
+    Pass ``native`` scientific choices and ``flux_sources`` with either
+    ``acquisition`` arguments or supplied ``merged_data``. Other routes take
+    canonical inputs with their coherent reduction or a saved prepared path.
+    Imported pairs are validated and referenced
     directly; callers retain those files for later sampling/replay. New pairs
     use :func:`save_preparation` and the existing numerical codecs. Defining
     priors, covariance, operators and projections belong to the coherent
@@ -191,11 +193,16 @@ def prepare(
             )
         if start_date is None or end_date is None or domain is None:
             raise ValueError("Native preparation requires start_date, end_date and domain.")
+        if not flux_sources:
+            raise ValueError("Native preparation requires flux_sources.")
         resources = resolve_co2_preparation_resources(native)
         if merged_data is None:
-            merged_data = acquire_co2_data(native, domain=domain, start_date=start_date, end_date=end_date)
+            merged_data = acquire_co2_data(
+                acquisition, flux_sources=flux_sources, domain=domain, start_date=start_date, end_date=end_date,
+            )
         prepared, affine = prepare_co2_from_merged_data(
-            merged_data, native, resources=resources, domain=domain, start_date=start_date, end_date=end_date,
+            merged_data, native, flux_sources=flux_sources, resources=resources,
+            domain=domain, start_date=start_date, end_date=end_date,
             boundary=boundary, boundary_representation=boundary_representation,
         )
         check_prepared_boundary(prepared.inv_inputs, boundary, boundary_representation)

@@ -104,7 +104,9 @@ def test_configuration_resolves_representation_from_boundary_type(partition: Pat
     config = request(partition)
     resolved = Co2PreparationConfig.from_params(config, require_source=True)
     assert resolved.native is not None and resolved.boundary is None
-    assert resolved.native.acquisition["site_options"].sites == ("TOY",)
+    assert resolved.acquisition is not None
+    assert resolved.acquisition["site_options"].sites == ("TOY",)
+    assert resolved.flux_sources == ("biosphere", "fossil")
     assert resolved.native.aggregation_error_rank is None
     config["model"] = {"boundary": {**ADDITIVE, "anomaly_scale": 0.0}}
     level_only = Co2PreparationConfig.from_params(config)

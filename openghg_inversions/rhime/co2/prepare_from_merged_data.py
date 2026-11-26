@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -50,12 +51,14 @@ class Co2PreparationResources:
 
 
 def acquire_co2_data(
-    config: Co2NativePreparationConfig, *, domain: str, start_date: str, end_date: str,
+    acquisition: Mapping[str, Any] | None, *,
+    flux_sources: tuple[str, ...], domain: str, start_date: str, end_date: str,
 ) -> MergedData:
     """Retrieve native CO2 inputs before observation filtering or basis construction.
 
     Args:
-        config: Resolved CO2 choices containing retrieval selectors.
+        acquisition: Resolved arguments for surface retrieval.
+        flux_sources: Requested flux inventory names.
         domain: Requested transport domain.
         start_date: Requested window start.
         end_date: Requested window end.
@@ -66,11 +69,11 @@ def acquire_co2_data(
     Raises:
         ValueError: If no acquisition selectors are configured.
     """
-    if config.acquisition is None:
+    if acquisition is None:
         raise ValueError("Pass merged_data or configure data.acquisition for fresh retrieval.")
     return MergedData.from_options(
         species="co2", domain=domain, start_date=start_date, end_date=end_date,
-        flux_sources=config.flux_sources, use_bc=config.basis.use_bc, **config.acquisition,
+        flux_sources=flux_sources, **acquisition,
     )
 
 
@@ -113,6 +116,7 @@ def prepare_co2_from_merged_data(
     merged_data: MergedData,
     config: Co2NativePreparationConfig,
     *,
+    flux_sources: tuple[str, ...],
     resources: Co2PreparationResources,
     domain: str,
     start_date: str,
@@ -129,6 +133,7 @@ def prepare_co2_from_merged_data(
     Args:
         merged_data: Borrowed observations, transport and native flux.
         config: Resolved choices for native scientific preparation.
+        flux_sources: Requested inventories in basis-weighting order.
         resources: Basis and centering resources resolved for these choices.
         domain: Requested transport domain.
         start_date: Requested window start.
@@ -144,7 +149,6 @@ def prepare_co2_from_merged_data(
         ValueError: If acquisition facts or scientific inputs conflict with
             the request, or no usable observations remain.
     """
-    flux_sources = config.flux_sources
     basis = config.basis
     use_bc = basis.use_bc
     representation = boundary_preparation(boundary, boundary_representation).representation

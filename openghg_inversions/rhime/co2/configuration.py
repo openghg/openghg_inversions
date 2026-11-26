@@ -63,21 +63,14 @@ def _reject_unknown(options: Mapping[str, object], path: str) -> None:
 
 
 
-# Names are checked for every phase; their values remain owned by the consuming parser.
+# The request reader catches typos even in inactive sections and overridden values.
 _CO2_REQUEST_OPTION_NAMES = frozenset({
     "format_version", "recipe", "data", "model", "likelihood", "sampling", "outputs",
 })
 _DATA_OPTION_NAMES = frozenset({
     "path", "reconstruction_path", "start_date", "end_date", "domain", "flux_sources", "acquisition", "preparation",
 })
-_PREPARATION_OPTION_NAMES = frozenset({
-    "filters", "averaging_error", "basis", "native_prior", "aggregation_error_rank",
-    "use_bc", "boundary_representation", "bc_centering_weights_path",
-})
-_SITE_OPTION_NAMES = frozenset({
-    "sites", "averaging_period", "inlet", "fp_height", "instrument", "platform", "obs_data_level",
-    "met_model", "max_level", "time_resolved",
-})
+_SITE_OPTION_NAMES = frozenset(field.name for field in fields(SiteOptions))
 _ACQUISITION_STRING_NAMES = frozenset({
     "bc_store", "obs_store", "footprint_store", "flux_store", "flux_domain", "fp_model", "fp_species",
     "calibration_scale", "bc_input", "flux_non_finite_check", "boundary_reference_units",
@@ -88,9 +81,6 @@ _ACQUISITION_OPTION_NAMES = _SITE_OPTION_NAMES | _ACQUISITION_STRING_NAMES | {
 _BASIS_OPTION_NAMES = frozenset({
     "algorithm", "nbasis", "path", "partition_path", "landsea_path", "outer_regions_path",
     "fix_outer_regions", "bc_algorithm", "bc_split_height", "bc_paths",
-})
-_NATIVE_PRIOR_OPTION_NAMES = frozenset({
-    "mean", "stdev", "correlation_length", "latitude_correlation_length", "longitude_correlation_length",
 })
 _SAMPLING_OPTION_NAMES = frozenset({
     "draws", "burn", "tune", "chains", "nuts_sampler", "progressbar", "sample_prior_predictive",
@@ -250,9 +240,10 @@ def _validate_co2_option_names(*requests: Mapping[str, object]) -> None:
         "": _CO2_REQUEST_OPTION_NAMES,
         "data": _DATA_OPTION_NAMES,
         "data.acquisition": _ACQUISITION_OPTION_NAMES,
-        "data.preparation": _PREPARATION_OPTION_NAMES,
+        "data.preparation": frozenset(field.name for field in fields(Co2NativePreparationConfig))
+        | {"use_bc", "boundary_representation"},
         "data.preparation.basis": _BASIS_OPTION_NAMES,
-        "data.preparation.native_prior": _NATIVE_PRIOR_OPTION_NAMES,
+        "data.preparation.native_prior": frozenset(field.name for field in fields(Co2NativePrior)),
         "model": frozenset({"boundary", "offset", "outer_flux"}),
         **{f"model.{path}": names for path, names in _MODEL_SECTION_OPTION_NAMES.items()},
         "likelihood": _LIKELIHOOD_OPTION_NAMES,
@@ -281,11 +272,11 @@ def _positive_int(value: object, path: str) -> int:
 
 @dataclass(frozen=True)
 class Co2BasisSelection:
-    """Flux and boundary basis choices for a new CO2 preparation.
+    """Select flux regions and boundary basis functions for CO2 preparation.
 
-    Attribute names match the basis resolvers in
-    :mod:`openghg_inversions.rhime.preparation`, which read them directly.
-    Configured paths resolve from the invocation directory.
+    Flux regions come from a saved basis operator, a labelled grid partition,
+    or a generated basis. Boundary functions come from explicit files or a
+    built-in algorithm. Resolve file paths from the invocation directory.
     """
 
     domain: str
@@ -402,11 +393,9 @@ class Co2NativePrior:
 
 @dataclass(frozen=True)
 class Co2NativePreparationConfig:
-    """Choices for acquiring or preparing native inputs for one CO2 request.
+    """Scientific choices for reducing merged surface CO2 data to model inputs.
 
     Attributes:
-        flux_sources: Requested source identities in basis-weighting order.
-        acquisition: Resolved retrieval selectors, absent for supplied merged data.
         filters: Observation filters applied before deriving errors.
         averaging_error: Include variability when deriving observation errors.
         basis: Flux and boundary basis choices, including whether to use BCs.
@@ -415,10 +404,8 @@ class Co2NativePreparationConfig:
         bc_centering_weights_path: Optional netCDF weights for weighted boundaries.
     """
 
-    flux_sources: tuple[str, ...]
     basis: Co2BasisSelection
     native_prior: Co2NativePrior
-    acquisition: Mapping[str, Any] | None = None
     filters: Any = None
     averaging_error: bool = True
     aggregation_error_rank: int | None = 512
@@ -426,37 +413,25 @@ class Co2NativePreparationConfig:
 
     @classmethod
     def from_params(
-        cls, preparation: dict[str, object], *, data: dict[str, object], domain: str,
+        cls, preparation: dict[str, object], *, domain: str, use_bc: bool,
     ) -> Co2NativePreparationConfig:
-        """Resolve a new preparation and any supplied retrieval selectors.
+        """Resolve scientific choices for preparing merged CO2 data.
 
         Args:
             preparation: Scientific preparation options remaining after the
                 boundary representation has been resolved.
-            data: Shared data options. Consumed options are removed during parsing.
             domain: Requested transport domain.
+            use_bc: Whether to prepare boundary sensitivities.
 
         Returns:
-            Validated options for acquiring or preparing native inputs.
+            Validated options for scientific preparation.
 
         Raises:
             ValueError: If required options are absent or choices are invalid.
             TypeError: If an option has an invalid type.
         """
         path = "data.preparation"
-        use_bc = _bool(preparation.pop("use_bc", True), f"{path}.use_bc")
-        sources = _take(data, "flux_sources", "data")
-        if isinstance(sources, str):
-            sources = [sources]
-        if not isinstance(sources, list) or not sources:
-            raise TypeError("data.flux_sources must be a non-empty list of source names.")
-        flux_sources = tuple(_string(item, "data.flux_sources item") for item in sources)
-        acquisition = None
-        if "acquisition" in data:
-            acquisition = _frozen(_acquisition(data.pop("acquisition"), flux_sources=flux_sources, use_bc=use_bc))
         result: dict[str, Any] = {
-            "flux_sources": flux_sources,
-            "acquisition": acquisition,
             "basis": Co2BasisSelection.from_params(preparation.pop("basis", {}), domain=domain, use_bc=use_bc),
             "native_prior": Co2NativePrior.from_params(_take(preparation, "native_prior", path)),
         }
@@ -502,7 +477,7 @@ def _acquisition(value: object, *, flux_sources: tuple[str, ...], use_bc: bool) 
             raise ValueError(f"Missing required option {path}.{name}.")
     if isinstance(sites["sites"], str):
         sites["sites"] = [sites["sites"]]
-    result: dict[str, Any] = {"site_options": SiteOptions.from_inputs(**sites)}
+    result: dict[str, Any] = {"site_options": SiteOptions.from_inputs(**sites), "use_bc": use_bc}
     transport = _table(_take(options, "surface_transport", path), f"{path}.surface_transport")
     result["surface_transport"] = {
         source: _string(mode, f"{path}.surface_transport.{source}") for source, mode in transport.items()
@@ -537,12 +512,13 @@ def _acquisition(value: object, *, flux_sources: tuple[str, ...], use_bc: bool) 
 
 @dataclass(frozen=True)
 class Co2PreparationConfig:
-    """Choices for importing a saved CO2 preparation or building a new one.
+    """Resolved data request for the configured CO2 entry points.
 
     ``[data]`` either names a saved artifact with ``path`` or describes a
-    new native preparation. The acquisition table is needed only for fresh
-    retrieval. Paths resolve from the invocation directory. The affine companion is an
-    association of the preparation, independent of current output choices.
+    new preparation from merged surface data. ``flux_sources`` supplies the
+    ordered inventory names to both steps. ``acquisition`` has the retrieval
+    arguments, and ``native`` has the scientific preparation choices. Paths
+    resolve from the invocation directory.
 
     The prepared boundary representation is resolved by the configured
     ``[model.boundary]`` choice: ``boundary_representation`` may select one it
@@ -559,6 +535,8 @@ class Co2PreparationConfig:
     domain: str | None = None
     boundary_representation: BoundaryRepresentation | None = None
     boundary: Choice | None = None
+    flux_sources: tuple[str, ...] = ()
+    acquisition: Mapping[str, Any] | None = None
     native: Co2NativePreparationConfig | None = None
 
     @classmethod
@@ -600,13 +578,27 @@ class Co2PreparationConfig:
             for name in ("start_date", "end_date", "domain"):
                 if name not in result:
                     raise ValueError(f"Missing required option data.{name} for a new preparation.")
-            result["native"] = Co2NativePreparationConfig.from_params(preparation, data=data, domain=result["domain"])
+            sources = _take(data, "flux_sources", "data")
+            if isinstance(sources, str):
+                sources = [sources]
+            if not isinstance(sources, list) or not sources:
+                raise TypeError("data.flux_sources must be a non-empty list of source names.")
+            flux_sources = tuple(_string(item, "data.flux_sources item") for item in sources)
+            use_bc = _bool(preparation.pop("use_bc", True), "data.preparation.use_bc")
+            result["flux_sources"] = flux_sources
+            if "acquisition" in data:
+                result["acquisition"] = _frozen(
+                    _acquisition(data.pop("acquisition"), flux_sources=flux_sources, use_bc=use_bc),
+                )
+            result["native"] = Co2NativePreparationConfig.from_params(
+                preparation, domain=result["domain"], use_bc=use_bc,
+            )
             weights = result["native"].bc_centering_weights_path
             if needs.centering_weights and weights is None:
                 raise ValueError("The weighted additive boundary requires data.preparation.bc_centering_weights_path.")
             if weights is not None and needs.representation != "centered":
                 raise ValueError("data.preparation.bc_centering_weights_path requires centered boundaries.")
-            if not result["native"].basis.use_bc and (
+            if not use_bc and (
                 result.get("boundary") is not None or "boundary_representation" in result
             ):
                 raise ValueError(

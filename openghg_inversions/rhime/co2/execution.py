@@ -162,9 +162,13 @@ def run_co2(
         window_end = cast(str, preparation.end_date)
         resources = resolve_co2_preparation_resources(native)
         if merged_data is None:
-            merged_data = acquire_co2_data(native, domain=domain, start_date=window_start, end_date=window_end)
+            merged_data = acquire_co2_data(
+                preparation.acquisition, flux_sources=preparation.flux_sources,
+                domain=domain, start_date=window_start, end_date=window_end,
+            )
         prepared, affine_artifact = prepare_co2_from_merged_data(
-            merged_data, native, resources=resources, domain=domain, start_date=window_start, end_date=window_end,
+            merged_data, native, flux_sources=preparation.flux_sources, resources=resources,
+            domain=domain, start_date=window_start, end_date=window_end,
             boundary=preparation.boundary, boundary_representation=preparation.boundary_representation,
         )
         consumed_paths += native.resource_paths()
