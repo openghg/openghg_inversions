@@ -307,8 +307,9 @@ without it is rejected.
 Staged CO2 outputs
 ~~~~~~~~~~~~~~~~~~
 
-The staged CO2 pipeline reports complete country totals when the prepared
-artifact carries the country products:
+Complete country totals require a supported fit and a prepared artifact with
+country products. See :doc:`atmospheric_baseline` for the
+retained-state-conditional totals available with outer-flux marginalisation.
 
 1. Build :math:`Q` from the signed reference flux the affine reconstruction
    will carry with
