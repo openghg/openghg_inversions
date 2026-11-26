@@ -39,7 +39,7 @@ from openghg_inversions.models.components import add_model_data
 from openghg_inversions.models.coords import add_coords
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import (
-    AggregationError,
+    ObservationCovariance,
     validate_observation_error_arrays,
 )
 from openghg_inversions.sigma import SigmaAlignment
@@ -55,7 +55,7 @@ def add_site_sigma_gaussian_likelihood(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError | None = None,
+    aggregation_error: ObservationCovariance | None = None,
     mean: TensorVariable,
     fixed_site_amplitudes: Mapping[str, float] | None = None,
     site_amplitude_prior: Mapping[str, Any] | None = None,

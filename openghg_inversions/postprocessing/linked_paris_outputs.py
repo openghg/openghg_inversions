@@ -21,7 +21,7 @@ from openghg_inversions.postprocessing.boundary_outputs import decode_saved_boun
 from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
-from .inversion_output import InversionOutput, trace_group
+from .inversion_output import InversionOutput, _marginalises_outer_flux, trace_group
 from .make_paris_outputs import (
     PARIS_LATEST_COUNTRIES,
     _add_observation_time_bounds,
@@ -86,12 +86,15 @@ def reconstruct_co2_o2_concentrations(
 
     Raises:
         ValueError: If roles/prior baseline draws are missing, independently
-            supplied posterior and preparation labels differ, or the channel
-            units do not match the declared O2 observable (see
+            supplied posterior and preparation labels differ, outer flux
+            states were marginalised, or the channel units do not match the
+            declared O2 observable (see
             :func:`~openghg_inversions.rhime.co2.co2_o2_configuration.validate_co2_o2_channel_units`).
     """
     if trace.attrs.get("rhime_recipe") not in {"co2_o2", "co2_o2_cached_sigma_fixed_ou"}:
         raise ValueError("Linked PARIS outputs require one joint co2_o2 posterior.")
+    if _marginalises_outer_flux(trace):
+        raise ValueError("Linked output reconstruction does not yet support marginalised outer flux. Use the saved predictions.")
     # Same per-channel unit/observable check as the configured and handoff paths,
     # so a declaration cannot relabel mole-fraction rows (or vice versa). Each
     # mole-fraction channel is reported with its own scale, so ppm CO2 with

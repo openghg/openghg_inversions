@@ -1424,7 +1424,7 @@ def run_nested(
         )
         outer_basis_inputs = resolve_basis_inputs(outer_data)
         inner_basis_inputs = resolve_basis_inputs(inner_data)
-        bc_basis = resolve_bc_basis(outer_data)
+        bc_basis = resolve_bc_basis(outer_data.bc_basis, use_bc=outer_data.use_bc)
         outer_merged = acquire_merged_data(outer_data)
         inner_merged = acquire_merged_data(inner_data)
         prepared = prepare_nested_rhime_inputs(

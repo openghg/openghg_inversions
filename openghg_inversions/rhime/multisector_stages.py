@@ -170,7 +170,7 @@ def prepare(
     """
     _require_multisector(data_config)
     basis_inputs = resolve_basis_inputs(data_config)
-    bc_basis = resolve_bc_basis(data_config)
+    bc_basis = resolve_bc_basis(data_config.bc_basis, use_bc=data_config.use_bc)
 
     if merged_data is None:
         merged_data = acquire_merged_data(data_config)

@@ -54,11 +54,12 @@ from openghg_inversions.models.state_activity import (
     resolve_state_activity,
 )
 from openghg_inversions.observation_error import (
-    AggregationError,
+    ObservationCovariance,
     aggregation_error_as_low_rank,
     validate_observation_error_arrays,
 )
 from openghg_inversions.sigma import SigmaAlignment
+from openghg_inversions.postprocessing.contracts import _MARGINALISED_OUTER_FLUX_MASK
 
 
 OU_SITE_DIM = "ou_site"
@@ -428,7 +429,7 @@ def build_co2_cached_sigma_model(
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior: PriorArgs | None = None,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
@@ -492,8 +493,9 @@ def build_co2_cached_sigma_model(
             states. Fixed values are dimensionless flux scalings.
         boundary: Resolved boundary component bound to this fit.
         outer_flux: Optional outer-flux choice, resolved here on
-            ``retained_prior``; its fixed outer states are held at their prior
-            mean. See
+            ``retained_prior``. The ``"fixed"`` mode uses the selected states'
+            prior means with zero uncertainty. The ``"marginalise"`` mode
+            integrates them into the observation mean and covariance. See
             :func:`~openghg_inversions.rhime.co2.co2_model.build_co2_model`.
         offset_prior: Optional prior for additive offsets. Its location and
             scale parameters use the observations' concentration units. When
@@ -558,7 +560,7 @@ def _build_co2_cached_sigma_model(
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior: PriorArgs | None = None,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
@@ -599,15 +601,18 @@ def _build_co2_cached_sigma_model(
         initial_site_amplitudes=initial_site_amplitudes,
         site_coord=site_coord,
     )
+    outer_states = outer_flux.resolve_states(retained_prior) if outer_flux is not None else None
+    if outer_states is not None:
+        flux_sensitivity, fixed_prior_contribution = outer_states.condition_sensitivity(
+            flux_sensitivity, fixed_prior_contribution, output_dim=output_dim,
+        )
     prepared_flux = prepare_linear_sensitivity(
         flux_sensitivity,
         output_dim=output_dim,
     )
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
-    if outer_flux is not None:
-        # Resolve the choice on the prior this model samples, so the held
-        # states and the covariance check always refer to it.
-        activity = outer_flux.resolve_states(retained_prior).fix_states(activity)
+    if outer_states is not None:
+        activity = outer_states.fix_states(activity)
     (
         prepared_flux,
         flux_active_design,
@@ -624,7 +629,13 @@ def _build_co2_cached_sigma_model(
     )
 
     fixed_prior_data = fixed_prior_contribution.transpose(output_dim).compute()
-    factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
+    outer_flux_factor = (
+        outer_states.marginal_error_factor(flux_sensitivity, output_dim=output_dim)
+        if outer_states is not None and outer_states.choice.mode == "marginalise"
+        else None
+    )
+    fixed_covariance = aggregation_error.with_added_factor(outer_flux_factor)
+    factor, aggregation_diagonal = aggregation_error_as_low_rank(fixed_covariance)
     covariance = prepare_fixed_ou_low_rank(
         factor,
         np.square(
@@ -646,6 +657,8 @@ def _build_co2_cached_sigma_model(
         site_labels=site_labels,
     )
     with registered_model():
+        if outer_states is not None and outer_states.choice.mode == "marginalise":
+            add_model_data(outer_states.fixed, _MARGINALISED_OUTER_FLUX_MASK)
         state_result = _add_prepared_correlated_lognormal_state_with_activity(
             activity,
             active_state_prior,

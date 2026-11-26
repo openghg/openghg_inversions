@@ -28,7 +28,7 @@ from openghg_inversions._linalg import check_symmetric, roundoff_tolerance
 from openghg_inversions.array_ops import materialize_together, validate_covariance_coordinates
 from openghg_inversions.models.components import add_model_data
 from openghg_inversions.models.priors import parse_prior
-from openghg_inversions.observation_error import AggregationError
+from openghg_inversions.observation_error import ObservationCovariance
 from openghg_inversions.serialization import decode_cf_multiindexes, encode_cf_multiindexes
 
 
@@ -82,7 +82,7 @@ def _base_covariance_sha256(covariance: NDArray[np.float64]) -> str:
 def scalar_sigma_base_covariance(
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
     *,
     output_dim: str = "nmeasure",
     covariance_dim: str = "nmeasure_cov",
@@ -376,7 +376,7 @@ def prepare_scalar_sigma_eigenbasis(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
     output_dim: str = "nmeasure",
 ) -> ScalarSigmaEigenbasis:
     """Prepare the labelled eigenbasis for one fixed CO2 covariance.
@@ -463,7 +463,7 @@ def load_scalar_sigma_eigenbasis(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
 ) -> ScalarSigmaEigenbasis:
     """Load and align a versioned scalar-sigma eigenbasis cache.
 
@@ -594,7 +594,7 @@ def add_scalar_sigma_eigen_likelihood(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
     mean: TensorVariable,
     eigenbasis: ScalarSigmaEigenbasis,
     sigma_prior: Mapping[str, Any],
@@ -608,7 +608,7 @@ def add_scalar_sigma_eigen_likelihood(
             labels, units, and values used to prepare ``eigenbasis``. Their
             variance is already represented in the eigenvalues; they are also
             registered as model data and contribute to ``epsilon``.
-        aggregation_error: Validated fixed aggregation error. Its marginal
+        aggregation_error: Validated fixed observation covariance. Its marginal
             variance contributes to ``epsilon``; its full covariance is already
             represented by ``eigenbasis``.
         mean: Completed modelled concentration on ``output_dim``.
@@ -623,8 +623,15 @@ def add_scalar_sigma_eigen_likelihood(
         Observed custom Gaussian variable named ``y``.
 
     Raises:
-        ValueError: If ``sigma_prior`` does not have non-negative support.
+        ValueError: If the eigenbasis omits an added fixed covariance term or
+            ``sigma_prior`` does not have non-negative support.
     """
+    if aggregation_error.includes_added_factor:
+        covariance = scalar_sigma_base_covariance(
+            observations, observation_error, aggregation_error, output_dim=output_dim,
+        )
+        if eigenbasis.base_covariance_sha256 != _base_covariance_sha256(covariance):
+            raise ValueError("Cannot use a scalar-sigma eigenbasis prepared for a different fixed observation covariance.")
     observed = add_model_data(observations.transpose(output_dim), "Y")
     reported_error = add_model_data(observation_error.transpose(output_dim), "error")
     sigma = parse_prior("sigma_global", sigma_prior, positive=True)

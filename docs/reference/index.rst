@@ -150,6 +150,7 @@ operands and supported model routes.
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
    openghg_inversions.inversion_data.prepare_surface_site
    openghg_inversions.inversion_data.acquire_surface_data
+   openghg_inversions.inversion_data.select_boundary_representation
    openghg_inversions.inversion_data.MergedData.from_options
    openghg_inversions.inversion_data.MergedData.validate_for_preparation
    openghg_inversions.inversion_data.MergedData.with_site_data
@@ -278,7 +279,7 @@ mathematical contracts and eager-computation boundaries.
    openghg_inversions.coherent_reduction.NativeFunctionalProducts
    openghg_inversions.coherent_reduction.project_native_functionals
    openghg_inversions.coherent_reduction.marginalise_functional_states
-   openghg_inversions.observation_error.AggregationError
+   openghg_inversions.observation_error.ObservationCovariance
    openghg_inversions.observation_error.prepare_low_rank_aggregation_error
    openghg_inversions.observation_error.resolve_aggregation_error
    openghg_inversions.observation_error.WhitenedRankRule
@@ -364,6 +365,8 @@ and samples; it does not write products. See
    openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs
    openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs
    openghg_inversions.postprocessing.co2_flux_outputs.co2_country_functionals
+   openghg_inversions.postprocessing.co2_flux_outputs.co2_flux_country_functionals
+   openghg_inversions.rhime.co2.co2_unresolved.co2_unresolved_conditioning
    openghg_inversions.postprocessing.unresolved_functionals.UnresolvedFunctionalConditioning
    openghg_inversions.postprocessing.unresolved_functionals.ObservationCovarianceSolve
    openghg_inversions.postprocessing.unresolved_functionals.complete_functional_draws

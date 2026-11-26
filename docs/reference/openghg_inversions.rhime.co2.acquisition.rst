@@ -1,0 +1,5 @@
+openghg\_inversions.rhime.co2.acquisition
+=========================================
+
+.. automodule:: openghg_inversions.rhime.co2.acquisition
+   :members:

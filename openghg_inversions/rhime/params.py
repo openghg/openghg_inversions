@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, get_args, get_type_hints
 
 from openghg_inversions.basis.boundary import BOUNDARY_BASIS_ALGORITHMS, boundary_basis
+from openghg_inversions.basis.options import FluxBasisOptions
 from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.filters import validate_filter_options
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
@@ -214,7 +215,7 @@ def _nest_data_groups(values: Mapping[str, Any], *, deprecated: bool = False) ->
 
 
 @dataclass(frozen=True, kw_only=True)
-class DataConfig:
+class DataConfig(FluxBasisOptions):
     """Resolved acquisition and preparation choices, independent of inference.
 
     External options enter through ``from_params``. Ordinary option containers
@@ -227,7 +228,6 @@ class DataConfig:
     Attributes:
         site_options: Per-site observation and footprint selectors.
         species: Species name used for OpenGHG searches.
-        domain: Footprint domain.
         start_date: Inclusive start of the inversion period.
         end_date: Exclusive end of the inversion period.
         flux_sources: OpenGHG flux ``source`` values, in model order.
@@ -242,28 +242,13 @@ class DataConfig:
         fp_species: Footprint species, when it differs from ``species``.
         calibration_scale: Observation calibration scale to convert to.
         use_bc: Whether boundary-condition inputs are acquired and prepared.
-        basis_path: Exact retained ``BasisFunctions`` artifact.
-        basis_partition_path: Exact labelled flux basis partition file.
-        landsea_path: Land/sea class map used by basis preparation.
-        basis_partition_paths: Exact labelled partition files, sorted before
-            loading; mutually exclusive with the two singular basis paths.
         bc_basis: Boundary-condition basis selection, used when ``use_bc`` is true.
-        outer_regions_path: Fixed outer-region map used by basis preparation.
         bc_input: OpenGHG boundary-condition input name, when selecting among several.
-        basis_algorithm: Flux basis algorithm used when no basis file is
-            selected: ``"quadtree"``, ``"weighted"`` or ``"region_constrained"``.
-        nbasis: Requested number of flux basis regions.
         filters: Filter names, or per-site filter names, applied before
             observation errors and basis construction.
         filter_options: Keyword options for named filters, such as
             ``{"local_influence": {"window_size": 5, "threshold": 0.15}}``.
             Omitted options keep each filter's defaults.
-        basis_seed: Non-negative integer seed for a generated quadtree basis.
-            Without it, the quadtree search is random and each run fits a
-            different basis. Rejected when another algorithm is generated;
-            inactive when a saved basis or partition is selected.
-        fix_basis_outer_regions: Whether outer regions are fixed from
-            ``outer_regions_path`` during basis preparation.
         averaging_error: Whether observation averaging variability is added
             to the observation uncertainty.
         basis_output_path: Optional file at which the prepared basis is saved.
@@ -273,7 +258,6 @@ class DataConfig:
 
     site_options: SiteOptions
     species: str
-    domain: str
     start_date: str
     end_date: str
     flux_sources: tuple[str, ...]
@@ -287,19 +271,10 @@ class DataConfig:
     fp_species: str | None = None
     calibration_scale: str | None = None
     use_bc: bool = True
-    basis_path: Path | None = None
-    basis_partition_path: Path | None = None
-    landsea_path: Path | None = None
-    basis_partition_paths: tuple[Path, ...] | None = None
     bc_basis: BcBasisOptions = BcBasisOptions()
-    outer_regions_path: Path | None = None
     bc_input: str | None = None
-    basis_algorithm: str | None = "weighted"
-    nbasis: int = 100
-    basis_seed: int | None = None
     filters: str | list[str | None] | dict[str, str | None | list[str | None]] | None = None
     filter_options: dict[str, dict[str, Any]] | None = None
-    fix_basis_outer_regions: bool = False
     averaging_error: bool = True
     basis_output_path: Path | None = None
     flux_non_finite_check: FluxNonFiniteCheck = "lazy"

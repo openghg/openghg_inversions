@@ -20,8 +20,10 @@ import xarray as xr
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine, save as save_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
+from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 from openghg_inversions.inference.sampling import sample_prior_predictive
-from openghg_inversions.inversion_data import PreparedInputs
+from openghg_inversions.inversion_data import MergedData, PreparedInputs
+from openghg_inversions.models.boundary import Choice
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.observation_error import WhitenedRankRule
 from openghg_inversions.rhime._stage_artifacts import (
@@ -33,8 +35,7 @@ from openghg_inversions.rhime._stage_checks import (
 )
 from openghg_inversions.serialization import load_trace, save_trace
 
-from .execution import load_co2_params
-
+from .acquisition import acquire_co2_data
 from .co2_affine_output import (
     _bind_affine_flux_map, load_and_bind_affine_flux_map, prepared_inputs_content_id,
 )
@@ -43,12 +44,14 @@ from .co2_outputs import (
     validate_co2_trace, validate_co2_product_request,
 )
 from .co2_preparation import (
-    Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts,
+    Co2PreparedInputs, check_prepared_boundary, prepare_co2_inputs, requested_co2_facts,
 )
+from .execution import load_co2_params
 from .inference import (
     annotate_co2_inference, build_co2_inference, sample_co2_inference, describe_co2_inference,
 )
-from .configuration import Co2ModelConfig, _resolve_co2_sampling
+from .prepare_from_merged_data import prepare_co2_from_merged_data, resolve_co2_preparation_resources
+from .configuration import Co2ModelConfig, Co2NativePreparationConfig, _resolve_co2_sampling
 
 
 @dataclass(frozen=True)
@@ -107,8 +110,8 @@ def save_preparation(
     is rebound to the saved numerical bytes and checked by the existing loader,
     including prepared projection, source/grid labels, signed flux and operator.
     A successful replacement assigns a new generation and invalidates old samples.
-    ``referenced`` names consumed request files, such as the CLI parameters
-    file, which the preparation outputs must not overwrite.
+    ``referenced`` names input files the preparation read, including consumed
+    request files such as the CLI parameters file; no target may alias them.
     """
     facts = requested_co2_facts(prepared, start_date=start_date, end_date=end_date, domain=domain)
     payloads = ("prepared-inputs.nc",) + (("affine-flux-map.nc",) if affine_artifact is not None else ())
@@ -136,18 +139,31 @@ def prepare(
     reference_covariance: xr.DataArray | None = None,
     bc_centering_weights: xr.DataArray | None = None,
     affine_artifact: AffineFluxMapArtifact | None = None, affine_path: str | Path | None = None,
+    boundary_representation: BoundaryRepresentation | None = None, boundary: Choice | None = None,
+    flux_sources: tuple[str, ...] = (), acquisition: Mapping[str, Any] | None = None,
+    native: Co2NativePreparationConfig | None = None, merged_data: MergedData | None = None,
     referenced: tuple[str | Path, ...] = (),
 ) -> Path:
-    """Prepare a coherent reduction or import a saved prepared/affine pair.
+    """Build a preparation, prepare a coherent reduction, or import a saved pair.
 
-    Pass canonical inputs and their defining coherent reduction together, or one
-    saved prepared path. Imported pairs are validated and referenced directly;
-    callers retain those files for later sampling/replay. New pairs use
-    :func:`save_preparation` and the existing numerical codecs. Defining priors, covariance, operators and
-    projections belong to the coherent preparation, never an inference override.
-    ``bc_centering_weights`` is stored with new centered preparations, as in
+    Pass ``native`` scientific choices and ``flux_sources`` with either
+    ``acquisition`` arguments or supplied ``merged_data``. Other routes take
+    canonical inputs with their coherent reduction or a saved prepared path.
+    Imported pairs are validated and referenced
+    directly; callers retain those files for later sampling/replay. New pairs
+    use :func:`save_preparation` and the existing numerical codecs. Defining
+    priors, covariance, operators and projections belong to the coherent
+    preparation, never an inference override.
+
+    ``boundary`` is the configured boundary choice: a new native preparation
+    produces the representation it needs (or the explicit
+    ``boundary_representation``), and other routes are checked with
+    :func:`~openghg_inversions.rhime.co2.co2_preparation.check_prepared_boundary`.
+    ``bc_centering_weights`` is stored with new centered preparations from
+    canonical inputs, as in
     :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`;
-    weighted additive boundaries require it. ``aggregation_error_rank``
+    weighted additive boundaries with a positive ``anomaly_scale`` require it.
+    ``aggregation_error_rank``
     applies only when creating a preparation from ``canonical_inputs`` and
     ``reduction``, with the rank contract of
     :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`:
@@ -161,14 +177,42 @@ def prepare(
     """
     if (canonical_inputs is None) != (reduction is None):
         raise ValueError("Pass canonical_inputs and reduction together.")
-    if (prepared_path is None) == (canonical_inputs is None):
-        raise ValueError("Pass either prepared_path or canonical_inputs with reduction.")
-    if affine_artifact is not None and affine_path is not None:
-        raise ValueError("Pass either affine_artifact or affine_path.")
+    if merged_data is not None and native is None:
+        raise ValueError("merged_data requires configured native preparation choices.")
     if bc_centering_weights is not None and canonical_inputs is None:
         raise ValueError("bc_centering_weights apply only to a new preparation from canonical_inputs.")
     if reference_covariance is not None and canonical_inputs is None:
         raise ValueError("reference_covariance applies only to a new preparation from canonical_inputs.")
+    if native is not None:
+        if (prepared_path is not None or canonical_inputs is not None or affine_path is not None
+                or affine_artifact is not None):
+            raise ValueError(
+                "Native preparation builds its own artifact and affine companion; "
+                "do not pass saved or canonical inputs or an affine artifact."
+            )
+        if start_date is None or end_date is None or domain is None:
+            raise ValueError("Native preparation requires start_date, end_date and domain.")
+        if not flux_sources:
+            raise ValueError("Native preparation requires flux_sources.")
+        resources = resolve_co2_preparation_resources(native)
+        if merged_data is None:
+            merged_data = acquire_co2_data(
+                acquisition, flux_sources=flux_sources, domain=domain, start_date=start_date, end_date=end_date,
+            )
+        prepared, affine = prepare_co2_from_merged_data(
+            merged_data, native, flux_sources=flux_sources, resources=resources,
+            domain=domain, start_date=start_date, end_date=end_date,
+            boundary=boundary, boundary_representation=boundary_representation,
+        )
+        check_prepared_boundary(prepared.inv_inputs, boundary, boundary_representation)
+        return save_preparation(
+            prepared, output_dir=output_dir, start_date=start_date, end_date=end_date, domain=domain,
+            affine_artifact=affine, referenced=(*native.resource_paths(), *referenced),
+        )
+    if (prepared_path is None) == (canonical_inputs is None):
+        raise ValueError("Pass either prepared_path or canonical_inputs with reduction.")
+    if affine_artifact is not None and affine_path is not None:
+        raise ValueError("Pass either affine_artifact or affine_path.")
     if canonical_inputs is not None:
         if affine_path is not None:
             raise ValueError("A new preparation requires affine_artifact, not an imported companion path.")
@@ -177,12 +221,14 @@ def prepare(
             aggregation_error_rank=aggregation_error_rank, reference_covariance=reference_covariance,
             bc_centering_weights=bc_centering_weights,
         )
+        check_prepared_boundary(prepared.inv_inputs, boundary, boundary_representation)
         return save_preparation(
             prepared, output_dir=output_dir, start_date=start_date, end_date=end_date, domain=domain,
             affine_artifact=affine_artifact, referenced=referenced,
         )
     source = Path(cast(str | Path, prepared_path)).resolve()
     prepared = Co2PreparedInputs.load(source)
+    check_prepared_boundary(prepared.inv_inputs, boundary, boundary_representation)
     if affine_artifact is not None:
         raise ValueError("Imported preparation requires affine_path; use save_preparation for a new pair.")
     facts = requested_co2_facts(prepared, start_date=start_date, end_date=end_date, domain=domain)
@@ -259,7 +305,8 @@ def save_samples(
 
 def sample(
     preparation_manifest: str | Path, *, model: Co2ModelConfig | Mapping[str, Any], output_dir: str | Path,
-    sampling: Mapping[str, Any] | None = None, referenced: tuple[str | Path, ...] = (),
+    sampling: Mapping[str, Any] | None = None,
+    boundary_representation: BoundaryRepresentation | None = None, referenced: tuple[str | Path, ...] = (),
 ) -> Path:
     """Build and sample CO2 using current science and its resolved sampler.
 
@@ -267,6 +314,7 @@ def sample(
     reuse preparation; the defining coherent native reduction stays unchanged.
     Full execution and saved sampling share the explicit build and sample owners.
     Current sampling choices select fresh model-matched defaults and tuning.
+    An explicit ``boundary_representation`` must match the saved inputs.
     ``referenced`` names consumed request files, such as the CLI configuration,
     that this stage's outputs must not overwrite or enclose.
     """
@@ -281,6 +329,7 @@ def sample(
         referenced=(Path(preparation_manifest).resolve(), preparation.payload)
         + ((preparation.affine_payload,) if preparation.affine_payload else ()) + protected,
     )
+    check_prepared_boundary(preparation.prepared.inv_inputs, model_config.boundary, boundary_representation)
     model_options = model_config.model_arguments()
     trace, actual = sample_co2_inference(
         preparation.prepared, model_options, choices.sampler,
@@ -370,13 +419,15 @@ def postprocess(
 def prior_predictive(
     preparation_manifest: str | Path, *, model: Co2ModelConfig | Mapping[str, Any], output_dir: str | Path,
     draws: int = 100, check_output: str | Path | None = None, stage: str = "prior-predictive",
-    random_seed: int | None = None, referenced: tuple[str | Path, ...] = (),
+    random_seed: int | None = None, boundary_representation: BoundaryRepresentation | None = None,
+    referenced: tuple[str | Path, ...] = (),
 ) -> dict[str, Any]:
     """Check exact graph prior predictions without posterior inference.
 
     Construction/inference errors propagate before creating a destination. Only
     evaluated missing, empty or non-finite predictive evidence becomes a failed
     report. The check never repairs absent posterior/replay evidence.
+    An explicit ``boundary_representation`` must match the saved inputs.
     ``referenced`` names consumed request files, such as the CLI configuration,
     that this stage's outputs must not overwrite or enclose.
     """
@@ -392,6 +443,7 @@ def prior_predictive(
         + ((preparation.affine_payload,) if preparation.affine_payload else ()) + model_config.artifact_paths()
         + tuple(Path(path).resolve() for path in referenced),
     )
+    check_prepared_boundary(preparation.prepared.inv_inputs, model_config.boundary, boundary_representation)
     model_options = model_config.model_arguments()
     report.unlink(missing_ok=True)
     built, cached = build_co2_inference(preparation.prepared, model_options)
