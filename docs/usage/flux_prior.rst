@@ -111,8 +111,11 @@ Pass ``prior_marginal`` to
 array of family names on the retained state axis. CO₂ preparations store it as
 ``alpha_prior_marginal``. Linked CO₂/O₂ preparations store it as
 ``retained_prior_marginal`` and take the optional floor as a separate
-``latent_correlation_floor`` argument. Preparations without a marginal
-choice use the lognormal prior. Gamma uses TensorFlow Probability for the
+``latent_correlation_floor`` argument. Linked preparation requires retained
+moments in a validated ``CorrelatedLognormalPrior``, so the input moments must
+also define a valid multivariate lognormal distribution when other marginals
+are requested. Preparations without a marginal choice use the lognormal
+prior. Gamma uses TensorFlow Probability for the
 central quantile in NumPyro and a survival-probability solve in the upper
 tail.
 
