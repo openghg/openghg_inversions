@@ -79,10 +79,11 @@ _ACQUISITION_STRING_NAMES = frozenset({
 _ACQUISITION_OPTION_NAMES = _SITE_OPTION_NAMES | _ACQUISITION_STRING_NAMES | {
     "surface_transport", "boundary_reference", "boundary_mass_tolerance",
 }
+_BASIS_FILE_FIELDS = {"path": "basis_path", "partition_path": "basis_partition_path"}
 _BASIS_OPTION_NAMES = frozenset({
-    "algorithm", "nbasis", "path", "partition_path", "landsea_path", "outer_regions_path",
+    "algorithm", "nbasis", "landsea_path", "outer_regions_path",
     "fix_outer_regions", "bc_algorithm", "bc_split_height", "bc_paths",
-})
+}) | frozenset(_BASIS_FILE_FIELDS)
 _SAMPLING_OPTION_NAMES = frozenset({
     "draws", "burn", "tune", "chains", "nuts_sampler", "progressbar", "sample_prior_predictive",
     "sample_posterior_predictive", "target_accept", "random_seed",
@@ -233,7 +234,7 @@ def validate_co2_config(config: Mapping[str, object]) -> dict[str, Any]:
 
 
 def _validate_co2_option_names(*requests: Mapping[str, object]) -> None:
-    """Check request names independently of header values and winning overrides."""
+    """Check names and exclusive basis selectors in each unmerged request."""
     from .co2_outputs import Co2OutputOptions
     from openghg_inversions.postprocessing.paris_options import ParisOptions
 
@@ -256,6 +257,12 @@ def _validate_co2_option_names(*requests: Mapping[str, object]) -> None:
         "outputs": frozenset(Co2OutputOptions.__dataclass_fields__) | {"source_to_sector"},
         "outputs.paris_postprocessing_kwargs": frozenset(ParisOptions.__dataclass_fields__),
     })
+    for request in requests:
+        basis: object = request
+        for section in ("data", "preparation", "basis"):
+            basis = basis.get(section) if isinstance(basis, Mapping) else None
+        if isinstance(basis, Mapping):
+            _validate_basis_file_selection(basis)
 
 
 def _path(value: object, path: str) -> Path:
@@ -273,22 +280,32 @@ def _positive_int(value: object, path: str) -> int:
     return value
 
 
+def _validate_basis_file_selection(options: Mapping[str, object]) -> None:
+    """Require at most one selected flux basis file."""
+    if sum(options.get(name) is not None for name in _BASIS_FILE_FIELDS) > 1:
+        raise ValueError("Select either data.preparation.basis.path or data.preparation.basis.partition_path.")
+
+
 def _basis_options(
     value: object, *, domain: str, use_bc: bool,
 ) -> tuple[FluxBasisOptions, BoundaryBasisOptions]:
     """Translate the CO2 basis table to the choices used by each basis resolver."""
     path = "data.preparation.basis"
     options = _table(value, path)
+    _validate_basis_file_selection(options)
     flux: dict[str, Any] = {}
     boundary: dict[str, Any] = {}
     if "algorithm" in options:
         flux["basis_algorithm"] = _string(options.pop("algorithm"), f"{path}.algorithm")
     if "nbasis" in options:
         flux["nbasis"] = _positive_int(options.pop("nbasis"), f"{path}.nbasis")
-    for name, field in (("path", "basis_path"), ("partition_path", "basis_partition_path"),
-                        ("landsea_path", "landsea_path"), ("outer_regions_path", "outer_regions_path")):
+    for name, field in _BASIS_FILE_FIELDS.items():
+        selected = options.pop(name, None)
+        if selected is not None:
+            flux[field] = _path(selected, f"{path}.{name}")
+    for name in ("landsea_path", "outer_regions_path"):
         if name in options:
-            flux[field] = _path(options.pop(name), f"{path}.{name}")
+            flux[name] = _path(options.pop(name), f"{path}.{name}")
     if "fix_outer_regions" in options:
         flux["fix_basis_outer_regions"] = _bool(options.pop("fix_outer_regions"), f"{path}.fix_outer_regions")
     if "bc_algorithm" in options:

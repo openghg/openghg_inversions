@@ -775,6 +775,11 @@ the constant native mean (default 1), the dimensionless marginal standard
 deviation ``stdev``, and correlation lengths in degrees for the separable
 exponential covariance.
 
+Specify at most one flux basis file selector per request. An override of ``basis.path``
+or ``basis.partition_path`` replaces the inherited file selection and keeps
+independent basis settings. JSON and Python overrides can clear an inherited
+selector with ``null`` or ``None``, respectively.
+
 Boundary representation
 """""""""""""""""""""""
 

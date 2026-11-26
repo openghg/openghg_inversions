@@ -28,7 +28,7 @@ from .prepare_from_merged_data import (
 )
 from .configuration import (
     load_co2_family_config, validate_co2_config, _validate_co2_option_names, Co2PreparationConfig,
-    Co2ModelConfig, _resolve_co2_sampling,
+    Co2ModelConfig, _BASIS_FILE_FIELDS, _resolve_co2_sampling,
 )
 
 
@@ -73,6 +73,12 @@ def load_co2_params(
                         base_choice = base_phase.get(choice)
                         override_choice = override_phase.get(choice)
                         if isinstance(base_choice, Mapping) and isinstance(override_choice, Mapping):
+                            if choice == "basis" and any(
+                                override_choice.get(name) is not None for name in _BASIS_FILE_FIELDS
+                            ):
+                                base_choice = {
+                                    key: item for key, item in base_choice.items() if key not in _BASIS_FILE_FIELDS
+                                }
                             merged_phase[choice] = {**base_choice, **override_choice}
                 merged[phase] = merged_phase
         # A partial outer-flux override keeps the base table's other choices.

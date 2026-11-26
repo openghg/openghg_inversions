@@ -20,6 +20,7 @@ from openghg_inversions.rhime.co2.co2_o2_configuration import Co2O2PreparationCo
 from openghg_inversions.rhime.co2.co2_preparation import check_prepared_boundary
 from openghg_inversions.rhime.co2.configuration import Co2PreparationConfig
 from openghg_inversions.rhime.co2.execution import load_co2_params, run_co2
+from openghg_inversions.rhime.preparation import resolve_basis_inputs
 
 WINDOW = {"start_date": "2020-01-16", "end_date": "2020-01-17", "domain": "TOY"}
 ADDITIVE = {"type": "additive", "anomaly_scale": 0.2, "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.5}}
@@ -127,6 +128,7 @@ def test_configuration_resolves_representation_from_boundary_type(partition: Pat
     ("preparation", {"basis": {"algorithm": "voronoi"}}, "basis.algorithm"),
     ("data", {"flux_sources": []}, "flux_sources"),
     ("preparation", {"basis": {"algorithm": "region_constrained"}}, "basis.algorithm"),
+    ("preparation", {"basis": {"path": "operator.nc", "partition_path": "partition.nc"}}, "Select either"),
     ("preparation", {"boundary_representation": "centered", "use_bc": False}, "use_bc = false"),
     ("acquisition", {"surface_transport": {"biosphere": "time_resolved", "fossil": "integrated"}},
      "time_resolved=True site selectors"),
@@ -161,6 +163,47 @@ def test_basis_override_preserves_selected_partition(partition: Path) -> None:
     assert resolved.native is not None
     assert resolved.native.basis.basis_partition_path == partition
     assert resolved.native.bc_basis.bc_basis_split_height == 2000.0
+
+
+@pytest.mark.parametrize(("old", "new"), [("partition_path", "path"), ("path", "partition_path")])
+@pytest.mark.parametrize("clear_old", [False, True])
+def test_basis_override_switches_file_selector(
+    tmp_path: Path, partition: Path, old: str, new: str, clear_old: bool,
+) -> None:
+    """Switch basis file forms while retaining independent basis settings."""
+    operator = tmp_path / "operator.nc"
+    operator.touch()
+    paths = {"path": str(operator), "partition_path": str(partition)}
+    config = request(partition, basis={old: paths[old], "bc_split_height": 2000.0})
+    choice = {new: paths[new]}
+    if clear_old:
+        choice[old] = None
+    options = load_co2_params(params=config, overrides={"data": {"preparation": {"basis": choice}}})
+    resolved = Co2PreparationConfig.from_params(options)
+    assert resolved.native is not None
+    assert resolved.native.bc_basis.bc_basis_split_height == 2000.0
+    resources = resolve_basis_inputs(resolved.native.basis)
+    if new == "path":
+        assert resources["basis_path"] == operator
+        assert "basis_partition" not in resources
+    else:
+        assert "basis_path" not in resources
+        with xr.open_dataset(partition) as dataset:
+            xr.testing.assert_identical(resources["basis_partition"], dataset["basis"])
+
+
+def test_basis_selectors_are_exclusive_in_each_request_source(partition: Path) -> None:
+    """An override cannot hide conflicting selectors from one request source."""
+    both = {"path": "operator.nc", "partition_path": str(partition)}
+    with pytest.raises(ValueError, match="Select either"):
+        load_co2_params(
+            params=request(partition, basis=both),
+            overrides={"data": {"preparation": {"basis": {"path": "replacement.nc"}}}},
+        )
+    with pytest.raises(ValueError, match="Select either"):
+        load_co2_params(
+            params=request(partition), overrides={"data": {"preparation": {"basis": both}}},
+        )
 
 
 def test_native_prior_override_preserves_stdev(partition: Path) -> None:
