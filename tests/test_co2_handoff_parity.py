@@ -87,8 +87,48 @@ def test_ordinary_output_options_normalize_only_their_paths(tmp_path, monkeypatc
     assert options.output_name == "rhime"
 
 
+def _marginalised_outer_trace(inputs):
+    """Make float32 draws and fitted constants for a two-state marginalised replay."""
+    scale = xr.DataArray(
+        np.array([[[.27, .9], [.28, .9], [.31, .9]]], dtype="float32"),
+        dims=("chain", "draw", "region"),
+        coords={"chain": [0], "draw": [0, 1, 2], "region": inputs.region},
+        attrs={"units": "1"},
+    )
+    inner, outer = (inputs.H.isel(region=i, drop=True) for i in (0, 1))
+    intercept = inputs.fixed_prior_contribution - outer * (.03 / .2) * 1.1
+    mean = (
+        intercept + (inner + outer * (.03 / .2)) * scale.isel(region=0, drop=True)
+    ).assign_attrs(units=inputs.mf.attrs["units"])
+    draws = xr.Dataset({"flux_scaling": scale, "modelled": mean})
+    return xr.DataTree.from_dict({
+        "/": xr.Dataset(attrs={
+            "rhime_model_metadata": json.dumps({"recipe": "co2", "outer_flux_mode": "marginalise"}),
+            "rhime_variable_roles": json.dumps({
+                "flux_scale": "flux_scaling",
+                "model_mean": "modelled",
+                "pollution_concentration": "modelled",
+                "concentration": "y",
+                "coherent_prior_contribution": "intercept",
+            }),
+        }),
+        "constant_data": xr.Dataset({
+            "intercept": intercept,
+            "marginalised_outer_flux": ("region", [False, True]),
+        }, coords={"region": inputs.region}),
+        "prior": draws,
+        "posterior": draws,
+        "posterior_predictive": xr.Dataset({"y": mean}),
+    })
+
+
 @pytest.mark.parametrize(
-    "likelihood_kind,backend", [("additive_sigma", "numpyro"), ("fixed_ou", "pymc")],
+    "likelihood_kind,backend",
+    [
+        pytest.param(None, None, id="saved-trace"),
+        pytest.param("additive_sigma", "numpyro", marks=pytest.mark.slow),
+        pytest.param("fixed_ou", "pymc", marks=pytest.mark.slow),
+    ],
 )
 def test_saved_marginalised_outer_flux_reports_only_verified_inner_totals(tmp_path, likelihood_kind, backend):
     """Replay accepts a country functional with zero loading on the fitted outer state."""
@@ -111,31 +151,40 @@ def test_saved_marginalised_outer_flux_reports_only_verified_inner_totals(tmp_pa
         prepared, output_dir=tmp_path / "prepared", start_date=START_DATE, end_date=END_DATE,
         domain="EUROPE", affine_artifact=affine,
     )
-    params = configuration(tmp_path / "reports", country_path)
-    params["model"]["outer_flux"] = {"mode": "marginalise", "outer_groups": ["outer"]}
-    if likelihood_kind == "fixed_ou":
-        params["likelihood"] = {
-            "kind": "fixed_ou", "tau_hours": 24.0,
-            "site_amplitude_prior": {"pdf": "gamma", "alpha": 2.0, "beta": 3.0},
-        }
-    samples = handoffs.sample(
-        preparation, model=Co2ModelConfig.from_params(params),
-        sampling=params["sampling"], output_dir=tmp_path / "samples",
-    )
+    if likelihood_kind is None:
+        samples = handoffs.save_samples(
+            preparation, _marginalised_outer_trace(inputs),
+            actual_inference={"algorithm": "fixture"},
+            preparation_generation=handoffs.load_preparation(preparation).generation,
+            output_dir=tmp_path / "samples",
+        )
+    else:
+        params = configuration(tmp_path / "reports", country_path)
+        params["model"]["outer_flux"] = {"mode": "marginalise", "outer_groups": ["outer"]}
+        if likelihood_kind == "fixed_ou":
+            params["likelihood"] = {
+                "kind": "fixed_ou", "tau_hours": 24.0,
+                "site_amplitude_prior": {"pdf": "gamma", "alpha": 2.0, "beta": 3.0},
+            }
+        samples = handoffs.sample(
+            preparation, model=Co2ModelConfig.from_params(params),
+            sampling=params["sampling"], output_dir=tmp_path / "samples",
+        )
 
     output = Co2OutputOptions(
         output_format="basic", country_file=country_path,
         paris_postprocessing_kwargs={"country_selections": ["FRANCE"]},
     )
     result = handoffs.postprocess(samples, output=output)
-    assert json.loads(result.idata.attrs["rhime_actual_inference"])["nuts_sampler"] == backend
+    if backend is not None:
+        assert json.loads(result.idata.attrs["rhime_actual_inference"])["nuts_sampler"] == backend
     assert set(result.outputs) == {"basic", "country_flux", "concentration_components"}
     components = result.outputs["concentration_components"]
     shift = inputs.H.isel(region=1, drop=True) * (.03 / .2) * 1.1
     np.testing.assert_allclose(components.affine, inputs.fixed_prior_contribution - shift, rtol=0, atol=3e-5)
     np.testing.assert_allclose(components.predictive_posterior, result.idata.posterior_predictive.y)
     assert "flux_scale_posterior" not in components
-    scale = result.idata.posterior.flux_scaling.isel(region=0).mean()
+    scale = result.idata.posterior.flux_scaling.isel(region=0).astype("float64").mean()
     inner_countries = Countries.from_file(country_path, country_selections=["FRANCE"])
     area = inner_countries.area_grid.sel(lon=-2.0)
     flux = affine.affine_map.flux.sel(lon=-2.0)
