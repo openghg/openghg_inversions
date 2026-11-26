@@ -222,7 +222,7 @@ def test_sampling_routes_forward_bound_period_choices(tmp_path, monkeypatch, rou
 
     if route == "full":
         monkeypatch.setattr(execution, "sample_co2_inference", sample)
-        config.update(prepared_inputs=facts, outputs={"output_format": "none"})
+        config.update(data=facts, outputs={"output_format": "none"})
         with pytest.raises(ReachedSampling):
             execution.run_co2(params=config, prepared=prepared)
     else:
