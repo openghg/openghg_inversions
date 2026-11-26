@@ -402,6 +402,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.o2n2.html">openghg_inversions.inversion_data.o2n2</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.observation_errors.html">openghg_inversions.inversion_data.observation_errors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
@@ -656,16 +657,20 @@ Paths belong to their consuming phase and use the invocation directory.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">fixed_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">o2_observable</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'mole_fraction'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">outer_flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2ModelConfig" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Linked channel science independent of prepared arrays and sampling.</p>
-<p>Both channels require identical mole-fraction units. Error overrides must
+<p>CO2 uses mole-fraction units. <code class="docutils literal notranslate"><span class="pre">o2_observable</span></code> is <code class="docutils literal notranslate"><span class="pre">&quot;mole_fraction&quot;</span></code>
+(O2 in the CO2 unit) or <code class="docutils literal notranslate"><span class="pre">&quot;delta_o2_n2&quot;</span></code> (O2 in per meg, which the
+prepared artifact must declare with its reference ratio). Error overrides must
 be supplied for both channels or omitted for both to use saved errors.
 Fixed independent error and fixed-amplitude OU are supported; inferred OU
-and per-meg transformations remain separate work.
+remains separate work. The transform to delta(O2/N2) is applied before
+the artifact is prepared, not by this configuration.
 <code class="docutils literal notranslate"><span class="pre">boundary</span></code> maps configured channels to a choice, or to <code class="docutils literal notranslate"><span class="pre">None</span></code> when
 that channel’s boundary is explicitly disabled. Boundary frequency and
 anchor choices apply to every enabled channel; choices supplied under both
@@ -727,22 +732,36 @@ choices remain unused.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_configuration.validate_co2_o2_units">
-<span class="sig-name descname"><span class="pre">validate_co2_o2_units</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_configuration.validate_co2_o2_units" title="Link to this definition">#</a></dt>
-<dd><p>Require both prepared channels to use one supported mole-fraction unit.</p>
-<p>Reads the observation-aligned species and unit coordinates, leaving the
-borrowed artifact unchanged. This staged contract excludes heterogeneous
-ppm/per-meg operation until its scientific transform is defined.</p>
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_configuration.validate_co2_o2_channel_units">
+<span class="sig-name descname"><span class="pre">validate_co2_o2_channel_units</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">identical_mole_fraction_units</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_configuration.validate_co2_o2_channel_units" title="Link to this definition">#</a></dt>
+<dd><p>Check each prepared channel’s units against its declared observable.</p>
+<p>CO2 rows are always mole fractions. O2 rows are either mole fractions, or
+delta(O2/N2) in per meg when preparation provenance declares that
+observable (see
+<a class="reference internal" href="openghg_inversions.inversion_data.o2n2.html#openghg_inversions.inversion_data.o2n2.DeltaO2N2Declaration" title="openghg_inversions.inversion_data.o2n2.DeltaO2N2Declaration"><code class="xref py py-class docutils literal notranslate"><span class="pre">DeltaO2N2Declaration</span></code></a>).
+Reads the observation-aligned species and unit coordinates, leaving the
+borrowed artifact unchanged.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p>The common channel unit label.</p>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>prepared</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs" title="openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs"><em>Co2O2PreparedInputs</em></a>) – Linked prepared inputs.</p></li>
+<li><p><strong>identical_mole_fraction_units</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Require O2 mole fractions to use the
+CO2 unit label. The configured and handoff boundaries keep this
+on. Direct reporting turns it off, because it converts each
+channel to mol/mol with that channel’s own scale.</p></li>
+</ul>
 </dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If either channel or coordinate is missing, unit labels
-    differ, or the common unit cannot be converted to mol/mol.</p>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Unit labels keyed by <code class="docutils literal notranslate"><span class="pre">co2</span></code> and <code class="docutils literal notranslate"><span class="pre">o2</span></code>.</p>
 </dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a></p>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If either channel or coordinate is missing, a channel has
+    several unit labels, CO2 is not a mole fraction, O2 mole fractions
+    differ from CO2 when identical units are required, or per-meg O2
+    lacks a matching declaration.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -809,7 +828,7 @@ ppm/per-meg operation until its scientific transform is defined.</p>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_sampler"><code class="docutils literal notranslate"><span class="pre">resolve_co2_o2_sampler()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_prior_seed"><code class="docutils literal notranslate"><span class="pre">resolve_co2_o2_prior_seed()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_configuration.validate_co2_o2_units"><code class="docutils literal notranslate"><span class="pre">validate_co2_o2_units()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_configuration.validate_co2_o2_channel_units"><code class="docutils literal notranslate"><span class="pre">validate_co2_o2_channel_units()</span></code></a></li>
 </ul>
   </nav></div>
 

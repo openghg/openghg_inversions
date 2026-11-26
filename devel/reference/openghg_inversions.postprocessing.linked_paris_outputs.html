@@ -402,6 +402,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.o2n2.html">openghg_inversions.inversion_data.o2n2</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.observation_errors.html">openghg_inversions.inversion_data.observation_errors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
@@ -621,7 +622,11 @@ is never split or modified; covariance remains in this artifact.</p></li>
 <li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Domain label for both products.</p></li>
 <li><p><strong>obs_avg_period</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Averaging interval; observation timestamps mark starts.</p></li>
 <li><p><strong>template_version</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Only <code class="docutils literal notranslate"><span class="pre">latest</span></code> (concentration v04, flux v03).
-Delta O2/N2 per-meg concentrations are unsupported.</p></li>
+The v04 concentration template holds dry-air mole fractions, so a
+declared delta(O2/N2) O2 channel gets no PARIS concentration
+product; its per-meg values stay in the linked basic products.
+Undeclared per-meg O2, and a declaration whose units do not
+match the O2 rows, are rejected before any product is chosen.</p></li>
 <li><p><strong>native_flux_bases</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a><em>] </em><em>| </em><em>None</em>) – Optional species-to-basis mapping for total native
 flux. Each single-source bucket basis uses the full retained state labels
 and zero flux response for the other tracer’s private states.
@@ -638,8 +643,9 @@ supported here. Native uncertainty is conditional on retained state.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Mapping keyed by <code class="docutils literal notranslate"><span class="pre">co2</span></code> and <code class="docutils literal notranslate"><span class="pre">o2</span></code>, containing <code class="docutils literal notranslate"><span class="pre">concentration</span></code> and,
-when requested, <code class="docutils literal notranslate"><span class="pre">flux</span></code> datasets. Products are eager marginals of one
+<dd class="field-even"><p>Mapping keyed by <code class="docutils literal notranslate"><span class="pre">co2</span></code> and <code class="docutils literal notranslate"><span class="pre">o2</span></code>, containing <code class="docutils literal notranslate"><span class="pre">concentration</span></code> (except
+for declared delta(O2/N2) O2) and, when requested, <code class="docutils literal notranslate"><span class="pre">flux</span></code> datasets.
+Products are eager marginals of one
 joint posterior. Cross-channel covariance and joint likelihood remain
 in the linked artifact. Serialization does not change input objects.</p>
 </dd>
@@ -672,7 +678,10 @@ Set false for posterior-only basic products.</p></li>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>CO2 and O2 datasets with observations, posterior model means, residuals
 (observed minus modelled), affine, boundary, offset, and per-source
-contributions in channel units. Chain/draw labels remain shared. Prior
+contributions in channel units. Each dataset’s <code class="docutils literal notranslate"><span class="pre">units</span></code> and
+<code class="docutils literal notranslate"><span class="pre">observable</span></code> attributes label its channel; a declared delta(O2/N2)
+O2 channel also records <code class="docutils literal notranslate"><span class="pre">o2_n2_reference_ratio</span></code> and
+<code class="docutils literal notranslate"><span class="pre">o2_observable_declaration</span></code>. Chain/draw labels remain shared. Prior
 draws, when present, preserve fixed-state activity. Their sample
 dimensions are named <code class="docutils literal notranslate"><span class="pre">prior_chain</span></code> and <code class="docutils literal notranslate"><span class="pre">prior_draw</span></code>.
 Boundary mean-shift and anomaly coefficients retain their own labelled
@@ -680,8 +689,10 @@ dimensions and declared units as <code class="docutils literal notranslate"><spa
 Inputs remain borrowed; computation is deferred to product creation.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If roles/prior baseline draws are missing or independently
-    supplied posterior and preparation labels differ.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If roles/prior baseline draws are missing, independently
+    supplied posterior and preparation labels differ, or the channel
+    units do not match the declared O2 observable (see
+    <a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_configuration.html#openghg_inversions.rhime.co2.co2_o2_configuration.validate_co2_o2_channel_units" title="openghg_inversions.rhime.co2.co2_o2_configuration.validate_co2_o2_channel_units"><code class="xref py py-func docutils literal notranslate"><span class="pre">validate_co2_o2_channel_units()</span></code></a>).</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>]</p>

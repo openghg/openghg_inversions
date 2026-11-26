@@ -1064,10 +1064,10 @@ error still enter the single joint likelihood once.</p>
 <p>Standalone O2, arbitrary Python callables, and additional recipe or variant
 names are rejected. Linked likelihood selection supports the fixed-error
 default and <code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code>; it rejects <code class="docutils literal notranslate"><span class="pre">additive_sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">site_sigma</span></code>,
-<code class="docutils literal notranslate"><span class="pre">scalar_sigma</span></code>, inferred OU amplitudes, and unequal CO2 and O2 unit labels. The lower-level
-linked fixed-error API continues to represent row-specific mixed units;
-configuring a heterogeneous ppm/per-meg
-run is deferred until the scaling contract tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-86">OPE-86</a> is available. Use the
+<code class="docutils literal notranslate"><span class="pre">scalar_sigma</span></code>, inferred OU amplitudes, and unequal CO2 and O2 mole-fraction unit labels.
+CO2 ppm with per-meg <code class="docutils literal notranslate"><span class="pre">delta(O2/N2)</span></code> O2 is configured with <code class="docutils literal notranslate"><span class="pre">channels.o2.observable</span> <span class="pre">=</span>
+<span class="pre">&quot;delta_o2_n2&quot;</span></code> when the prepared artifact declares that observable (see
+<a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a>). Use the
 direct Python interfaces for experimental combinations outside this matrix.
 The linked <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs" title="openghg_inversions.rhime.co2.Co2O2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2O2PreparedInputs</span></code></a> artifact
 supports NetCDF and Zarr save/load at the prepared-input Python boundary.
@@ -1301,8 +1301,9 @@ boundary sensitivity <span class="math notranslate nohighlight">\(H_{bc,c}\)</sp
 + \begin{bmatrix} o_{CO_2} \\ o_{O_2} \end{bmatrix}.\end{split}\]</div>
 <p>An omitted channel term is zero. These boundary and offset contributions form
 the optional reporting baseline; they remain distinct from the coherent affine
-intercept and shared or tracer-specific flux states. Baseline terms currently
-require identical channel units.</p>
+intercept and shared or tracer-specific flux states. Boundary terms currently
+require identical channel units; each channel’s offset is in that channel’s
+own units.</p>
 <p>Thus this is a row-stacked, block-sparse sensitivity acting on one state vector,
 not two independent block-diagonal models. Its fixed-error likelihood is</p>
 <div class="math notranslate nohighlight">
@@ -1455,13 +1456,18 @@ the staged linked route also exposes these products through
     <span class="n">idata</span><span class="p">,</span> <span class="n">prepared</span><span class="p">,</span> <span class="n">obs_avg_period</span><span class="o">=</span><span class="s2">"4h"</span><span class="p">,</span> <span class="n">output_path</span><span class="o">=</span><span class="s2">"paris"</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="n">co2_concentration</span> <span class="o">=</span> <span class="n">products</span><span class="p">[</span><span class="s2">"co2"</span><span class="p">][</span><span class="s2">"concentration"</span><span class="p">]</span>
-<span class="n">o2_concentration</span> <span class="o">=</span> <span class="n">products</span><span class="p">[</span><span class="s2">"o2"</span><span class="p">][</span><span class="s2">"concentration"</span><span class="p">]</span>
+<span class="c1"># Absent for a declared delta(O2/N2) O2 channel (see below).</span>
+<span class="n">o2_concentration</span> <span class="o">=</span> <span class="n">products</span><span class="p">[</span><span class="s2">"o2"</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"concentration"</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>Observations require site labels and datetime coordinates marking interval
-starts. Both channels must represent dry-air mole fractions convertible to
-<code class="docutils literal notranslate"><span class="pre">mol</span> <span class="pre">mol-1</span></code>. Delta(O2/N2) per-meg observations cannot faithfully use this
-variable meaning and raise an explicit error. Prior flux-scale draws and
+starts. Concentration products hold dry-air mole fractions convertible to
+<code class="docutils literal notranslate"><span class="pre">mol</span> <span class="pre">mol-1</span></code>. A declared <code class="docutils literal notranslate"><span class="pre">delta(O2/N2)</span></code> O2 channel therefore has no PARIS
+concentration product (<code class="docutils literal notranslate"><span class="pre">products[&quot;o2&quot;]</span></code> holds only a requested flux product);
+its per-meg values, residuals and offsets are in the linked basic products,
+labelled by the <code class="docutils literal notranslate"><span class="pre">units</span></code>, <code class="docutils literal notranslate"><span class="pre">observable</span></code> and <code class="docutils literal notranslate"><span class="pre">o2_n2_reference_ratio</span></code>
+attributes. Undeclared per-meg O2, or a declaration whose units do not match the
+O2 rows, raises an explicit error before any product is chosen. Prior flux-scale draws and
 prior draws for selected boundary/offset terms are required; keep the sampler’s
 prior-predictive sampling enabled. Prior and posterior may have different
 numbers of draws or chains. Fixed states use their actual prior draws rather

@@ -402,6 +402,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.o2n2.html">openghg_inversions.inversion_data.o2n2</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.observation_errors.html">openghg_inversions.inversion_data.observation_errors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
@@ -703,7 +704,7 @@ baselines. Optional predictive draws are checked against observation labels.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_outputs.validate_co2_o2_product_request">
 <span class="sig-name descname"><span class="pre">validate_co2_o2_product_request</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_outputs.validate_co2_o2_product_request" title="Link to this definition">#</a></dt>
-<dd><p>Validate common-unit reporting and load requested native reporting bases.</p>
+<dd><p>Validate per-channel units and load requested native reporting bases.</p>
 <p>This boundary creates no model and opens no output destination. Native
 products retain the existing single-source bucket representation; the PARIS
 owner checks signed private-tracer exclusions when constructing products.</p>
