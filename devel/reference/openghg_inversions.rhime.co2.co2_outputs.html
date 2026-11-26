@@ -475,6 +475,7 @@
 <li class="toctree-l4 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.co2.co2_outputs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html">openghg_inversions.rhime.co2.co2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_unresolved.html">openghg_inversions.rhime.co2.co2_unresolved</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
@@ -707,6 +708,13 @@ any destination is opened. Basic
 summaries preserve independent prior and posterior counts. Native/country
 products use the supplied exact affine map; PARIS reports their conditional
 scope. Full component draws remain available in <code class="docutils literal notranslate"><span class="pre">result.outputs['concentration_components']</span></code>.</p>
+<p>When <code class="docutils literal notranslate"><span class="pre">prepared</span></code> carries country functional products, country totals are
+complete native functionals (<code class="docutils literal notranslate"><span class="pre">uncertainty_scope=&quot;complete_native&quot;</span></code>):
+each posterior draw is conditioned on its residual with the fit’s own
+<code class="docutils literal notranslate"><span class="pre">A</span></code> and noise (see <a class="reference internal" href="openghg_inversions.rhime.co2.co2_unresolved.html#openghg_inversions.rhime.co2.co2_unresolved.co2_unresolved_conditioning" title="openghg_inversions.rhime.co2.co2_unresolved.co2_unresolved_conditioning"><code class="xref py py-func docutils literal notranslate"><span class="pre">co2_unresolved_conditioning()</span></code></a>).
+Otherwise they remain <code class="docutils literal notranslate"><span class="pre">&quot;retained_state_conditional&quot;</span></code>. Native-grid flux
+stays retained-state-conditional either way. <code class="docutils literal notranslate"><span class="pre">output_metadata</span></code> records
+both scopes.</p>
 <dl class="field-list simple">
 </dl>
 </dd></dl>

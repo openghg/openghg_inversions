@@ -754,9 +754,52 @@ companion belongs to preparation; country masks are current reporting choices:</
 Sample replay uses the saved companion; later output choices cannot replace its
 scientific meaning. Native sources retain their identities; when reporting
 sectors differ, supply an explicit <code class="docutils literal notranslate"><span class="pre">outputs.source_to_sector</span></code> mapping.
-Source sums and sector transforms precede uncertainty statistics. Native-flux
-and country products carry <code class="docutils literal notranslate"><span class="pre">retained_state_conditional</span></code> uncertainty scope;
-they exclude unresolved native-state posterior uncertainty tracked in OPE-68.</p>
+Source sums and sector transforms precede uncertainty statistics. Every
+native-flux and country product records its <code class="docutils literal notranslate"><span class="pre">uncertainty_scope</span></code>, which has
+one of two values:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">retained_state_conditional</span></code></dt><dd><p>The spread of <code class="docutils literal notranslate"><span class="pre">Q</span> <span class="pre">m</span> <span class="pre">+</span> <span class="pre">D</span> <span class="pre">(alpha</span> <span class="pre">-</span> <span class="pre">Pi</span> <span class="pre">m)</span></code> only. The unresolved native state
+is left out, so country totals miss its mean update and most of its
+variance where retained regions cross country borders. Native-grid flux
+products always have this scope.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">complete_native</span></code></dt><dd><p>Country totals that add, for each posterior draw, the conditional mean
+and one conditional draw of the unresolved native state (prior draws add
+its prior variance). With a Gaussian retained state and the exact <code class="docutils literal notranslate"><span class="pre">A</span></code>
+they are the native-grid posterior of each country total for any
+retained partition.</p>
+</dd>
+</dl>
+<p>Country products are <code class="docutils literal notranslate"><span class="pre">complete_native</span></code> only when the preparation saved the
+country functional products; otherwise they stay
+<code class="docutils literal notranslate"><span class="pre">retained_state_conditional</span></code>. <code class="docutils literal notranslate"><span class="pre">Co2Output.output_metadata</span></code> records
+<code class="docutils literal notranslate"><span class="pre">country_uncertainty_scope</span></code> beside the native <code class="docutils literal notranslate"><span class="pre">uncertainty_scope</span></code>.
+Complete country outputs require all of the following at preparation:</p>
+<ul class="simple">
+<li><p>Reduce with country functionals:
+<code class="docutils literal notranslate"><span class="pre">reduce_native_gaussian(...,</span> <span class="pre">functionals=co2_flux_country_functionals(flux,</span> <span class="pre">countries),</span>
+<span class="pre">functional_dim=&quot;country_functional&quot;)</span></code>. Use the signed reference flux the
+affine companion will carry, and a country file that covers every country
+you will report. Replay may report any subset of the prepared countries.</p></li>
+<li><p>Prepare with <code class="docutils literal notranslate"><span class="pre">aggregation_error_rank=None</span></code>. The products use the exact
+unresolved covariance, so the artifact and the fit must use the exact dense
+<code class="docutils literal notranslate"><span class="pre">A</span></code>; a low-rank artifact with products is rejected.</p></li>
+<li><p>Use the full-restriction reduction. Its <code class="docutils literal notranslate"><span class="pre">alpha_prior_covariance</span></code> and <code class="docutils literal notranslate"><span class="pre">H</span></code>
+must be the reduction’s own <code class="docutils literal notranslate"><span class="pre">C_alpha</span></code> and <code class="docutils literal notranslate"><span class="pre">H_alpha</span></code>. The artifact
+records the reduction’s native identity and recomputes its
+<code class="docutils literal notranslate"><span class="pre">reduction_identity</span></code> from that and the stored <code class="docutils literal notranslate"><span class="pre">C_alpha</span></code>, <code class="docutils literal notranslate"><span class="pre">H_alpha</span></code>
+and <code class="docutils literal notranslate"><span class="pre">A</span></code>; the products’ identity must equal it when the artifact is built
+and again on load.</p></li>
+</ul>
+<p>At replay, the fit must use the additive-sigma, site-sigma or fixed-OU
+likelihood, and its trace must record the <code class="docutils literal notranslate"><span class="pre">&lt;flux_scale&gt;_is_active</span></code> mask
+(traces fitted before this was recorded for all-active fits must be fitted
+again). Other likelihoods raise an error rather than reporting complete
+totals. Country outputs record the <code class="docutils literal notranslate"><span class="pre">A</span></code> and noise model used in
+<code class="docutils literal notranslate"><span class="pre">unresolved_conditioning</span></code> (JSON). Conditioning raises if it would have to
+clip a conditional-covariance eigenvalue beyond roundoff.
+Details are in the “Complete native functionals” section of the
+coherent-reduction guide.</p>
 <p><code class="docutils literal notranslate"><span class="pre">Co2Output</span></code> borrows the preparation and complete annotated trace DataTree,
 retaining separate prior, posterior, predictive and diagnostic groups with
 their own coordinates. CO2 retains the original requested window, optional

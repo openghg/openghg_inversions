@@ -747,6 +747,61 @@ otherwise held fixed without their variance and make complete uncertainty
 undefined. Activity is read from the <code class="docutils literal notranslate"><span class="pre">&lt;flux_scale&gt;_is_active</span></code> mask that the
 fitted model records for every activity policy, including all-active; a trace
 without it is rejected.</p>
+<section id="staged-co2-outputs">
+<h3>Staged CO2 outputs<a class="headerlink" href="#staged-co2-outputs" title="Link to this heading">#</a></h3>
+<p>The staged CO2 pipeline reports complete country totals when the prepared
+artifact carries the country products:</p>
+<ol class="arabic simple">
+<li><p>Build <span class="math notranslate nohighlight">\(Q\)</span> from the signed reference flux the affine reconstruction
+will carry with
+<a class="reference internal" href="../reference/openghg_inversions.postprocessing.co2_flux_outputs.html#openghg_inversions.postprocessing.co2_flux_outputs.co2_flux_country_functionals" title="openghg_inversions.postprocessing.co2_flux_outputs.co2_flux_country_functionals"><code class="xref py py-func docutils literal notranslate"><span class="pre">co2_flux_country_functionals()</span></code></a>
+and the reporting country file, and pass it to
+<a class="reference internal" href="../reference/openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.reduce_native_gaussian" title="openghg_inversions.coherent_reduction.reduce_native_gaussian"><code class="xref py py-func docutils literal notranslate"><span class="pre">reduce_native_gaussian()</span></code></a> with
+<code class="docutils literal notranslate"><span class="pre">functional_dim=&quot;country_functional&quot;</span></code>.</p></li>
+<li><p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs" title="openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_co2_inputs()</span></code></a>
+with <code class="docutils literal notranslate"><span class="pre">aggregation_error_rank=None</span></code> saves <code class="docutils literal notranslate"><span class="pre">reduction.functional_products</span></code>
+in the prepared artifact’s <code class="docutils literal notranslate"><span class="pre">country_functionals</span></code> node (schema version 4)
+and summarizes them under <code class="docutils literal notranslate"><span class="pre">provenance[&quot;country_functionals&quot;]</span></code>. Only
+full-restriction products on the <code class="docutils literal notranslate"><span class="pre">country_functional</span></code> axis are accepted,
+and their <code class="docutils literal notranslate"><span class="pre">reduction_identity</span></code> must equal the artifact’s
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.reduction_identity" title="openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.reduction_identity"><code class="xref py py-attr docutils literal notranslate"><span class="pre">reduction_identity</span></code></a>.
+The artifact records the reduction’s <code class="docutils literal notranslate"><span class="pre">native_reduction_identity</span></code> and
+recomputes the reduction identity from it and its stored
+<code class="docutils literal notranslate"><span class="pre">alpha_prior_covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">H</span></code> and dense <span class="math notranslate nohighlight">\(A\)</span>. This ties the
+products to the native observation operator, which the <span class="math notranslate nohighlight">\(Q m\)</span> and
+<span class="math notranslate nohighlight">\(D\)</span> checks cannot, and to the stored <span class="math notranslate nohighlight">\(A\)</span>. The node stores the
+products’ identity, and load requires the restored artifact to reproduce
+it, so an operator or <span class="math notranslate nohighlight">\(A\)</span> changed after preparation is rejected. The unresolved
+covariance must be symmetric positive semidefinite.</p></li>
+<li><p>Replay (<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.postprocess" title="openghg_inversions.rhime.co2.handoffs.postprocess"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.handoffs.postprocess()</span></code></a>, or
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.execution.html#openghg_inversions.rhime.co2.execution.run_co2" title="openghg_inversions.rhime.co2.execution.run_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_co2()</span></code></a>) rebuilds each
+posterior draw’s residual <code class="docutils literal notranslate"><span class="pre">mf</span> <span class="pre">-</span> <span class="pre">model_mean</span></code> and the fit’s own
+<span class="math notranslate nohighlight">\((A + R)^{-1}\)</span> with
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.co2_unresolved.html#openghg_inversions.rhime.co2.co2_unresolved.co2_unresolved_conditioning" title="openghg_inversions.rhime.co2.co2_unresolved.co2_unresolved_conditioning"><code class="xref py py-func docutils literal notranslate"><span class="pre">co2_unresolved_conditioning()</span></code></a>,
+restricts the products to the requested countries, passes the artifact’s
+reduction identity, and labels country outputs <code class="docutils literal notranslate"><span class="pre">&quot;complete_native&quot;</span></code>. The
+trace must carry the fitted model’s <code class="docutils literal notranslate"><span class="pre">&lt;flux_scale&gt;_is_active</span></code> mask. Without products they stay
+<code class="docutils literal notranslate"><span class="pre">&quot;retained_state_conditional&quot;</span></code>. Native-grid flux is unchanged.</p></li>
+</ol>
+<p>The products use the exact <span class="math notranslate nohighlight">\(B_\perp\)</span>, so the joint covariance of the
+products and the observations is consistent only with the exact <span class="math notranslate nohighlight">\(A\)</span>.
+An artifact with products must therefore store dense <span class="math notranslate nohighlight">\(A\)</span>, and the fit
+samples the same <span class="math notranslate nohighlight">\(A\)</span> it is conditioned on. The solve follows the
+recorded likelihood. Additive-sigma and site-sigma fits use the stored
+<span class="math notranslate nohighlight">\(A\)</span> plus <code class="docutils literal notranslate"><span class="pre">epsilon**2</span> <span class="pre">-</span> <span class="pre">diag(A)</span></code> for each draw, with the reported
+error variance as a lower bound. Fixed-OU fits, with
+fixed or inferred amplitudes, rebuild the fit’s
+<a class="reference internal" href="../reference/openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.FixedOuLowRank" title="openghg_inversions.models.fixed_ou.FixedOuLowRank"><code class="xref py py-class docutils literal notranslate"><span class="pre">FixedOuLowRank</span></code></a> from the recorded
+observation error, OU site index and time scales (numeric hours, or a
+timedelta), with each draw’s amplitudes. Other likelihoods raise an error
+rather than claiming complete outputs. <code class="docutils literal notranslate"><span class="pre">unresolved_conditioning</span></code> records
+the <span class="math notranslate nohighlight">\(A\)</span> and noise model as JSON. A conditional-covariance eigenvalue
+below the clipping tolerance raises (see above), so no complete label is
+reported.
+Country sector totals are summed from the same complete (country, source)
+draws. States marginalised at preparation are declared from
+<code class="docutils literal notranslate"><span class="pre">state_information_marginalised</span></code> when the artifact records it.</p>
+</section>
 </section>
 <section id="assumptions-and-limitations">
 <h2>Assumptions and limitations<a class="headerlink" href="#assumptions-and-limitations" title="Link to this heading">#</a></h2>
@@ -846,7 +901,10 @@ are included explicitly.</p>
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#preparing-the-exact-result">Preparing the exact result</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#preparing-co2-model-inputs">Preparing CO2 model inputs</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#complete-native-functionals">Complete native functionals</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#complete-native-functionals">Complete native functionals</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#staged-co2-outputs">Staged CO2 outputs</a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#assumptions-and-limitations">Assumptions and limitations</a></li>
 </ul>
   </nav></div>

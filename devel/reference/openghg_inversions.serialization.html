@@ -475,6 +475,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html">openghg_inversions.rhime.co2.co2_outputs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html">openghg_inversions.rhime.co2.co2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_unresolved.html">openghg_inversions.rhime.co2.co2_unresolved</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
@@ -716,6 +717,12 @@ suffixes retain their requested spelling.</p></li>
 rest of the default data-loading path. Loading happens while the file
 context is open, so the returned tree owns its data and does not retain
 references to closed file handles.</p>
+<p>Only variables that xarray wrote as timedeltas (a <code class="docutils literal notranslate"><span class="pre">dtype</span></code> attribute of
+<code class="docutils literal notranslate"><span class="pre">timedelta64[...]</span></code>) are decoded to <code class="docutils literal notranslate"><span class="pre">timedelta64</span></code>. A numeric variable
+that merely carries a time unit, such as <code class="docutils literal notranslate"><span class="pre">units=&quot;hours&quot;</span></code> on a fixed-OU
+time scale, keeps its saved numeric values. This is xarray’s announced
+future default; without it, a float <code class="docutils literal notranslate"><span class="pre">4.0</span></code> in hours would be decoded to a
+timedelta whose integer nanosecond count is easily misread as hours.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>file_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a>) – NetCDF or Zarr DataTree artifact to load.</p>

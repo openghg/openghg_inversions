@@ -304,6 +304,62 @@ undefined. Activity is read from the ``<flux_scale>_is_active`` mask that the
 fitted model records for every activity policy, including all-active; a trace
 without it is rejected.
 
+Staged CO2 outputs
+~~~~~~~~~~~~~~~~~~
+
+The staged CO2 pipeline reports complete country totals when the prepared
+artifact carries the country products:
+
+1. Build :math:`Q` from the signed reference flux the affine reconstruction
+   will carry with
+   :func:`~openghg_inversions.postprocessing.co2_flux_outputs.co2_flux_country_functionals`
+   and the reporting country file, and pass it to
+   :func:`~openghg_inversions.coherent_reduction.reduce_native_gaussian` with
+   ``functional_dim="country_functional"``.
+2. :func:`~openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs`
+   with ``aggregation_error_rank=None`` saves ``reduction.functional_products``
+   in the prepared artifact's ``country_functionals`` node (schema version 4)
+   and summarizes them under ``provenance["country_functionals"]``. Only
+   full-restriction products on the ``country_functional`` axis are accepted,
+   and their ``reduction_identity`` must equal the artifact's
+   :attr:`~openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.reduction_identity`.
+   The artifact records the reduction's ``native_reduction_identity`` and
+   recomputes the reduction identity from it and its stored
+   ``alpha_prior_covariance``, ``H`` and dense :math:`A`. This ties the
+   products to the native observation operator, which the :math:`Q m` and
+   :math:`D` checks cannot, and to the stored :math:`A`. The node stores the
+   products' identity, and load requires the restored artifact to reproduce
+   it, so an operator or :math:`A` changed after preparation is rejected. The unresolved
+   covariance must be symmetric positive semidefinite.
+3. Replay (:func:`openghg_inversions.rhime.co2.handoffs.postprocess`, or
+   :func:`~openghg_inversions.rhime.co2.execution.run_co2`) rebuilds each
+   posterior draw's residual ``mf - model_mean`` and the fit's own
+   :math:`(A + R)^{-1}` with
+   :func:`~openghg_inversions.rhime.co2.co2_unresolved.co2_unresolved_conditioning`,
+   restricts the products to the requested countries, passes the artifact's
+   reduction identity, and labels country outputs ``"complete_native"``. The
+   trace must carry the fitted model's ``<flux_scale>_is_active`` mask. Without products they stay
+   ``"retained_state_conditional"``. Native-grid flux is unchanged.
+
+The products use the exact :math:`B_\perp`, so the joint covariance of the
+products and the observations is consistent only with the exact :math:`A`.
+An artifact with products must therefore store dense :math:`A`, and the fit
+samples the same :math:`A` it is conditioned on. The solve follows the
+recorded likelihood. Additive-sigma and site-sigma fits use the stored
+:math:`A` plus ``epsilon**2 - diag(A)`` for each draw, with the reported
+error variance as a lower bound. Fixed-OU fits, with
+fixed or inferred amplitudes, rebuild the fit's
+:class:`~openghg_inversions.models.fixed_ou.FixedOuLowRank` from the recorded
+observation error, OU site index and time scales (numeric hours, or a
+timedelta), with each draw's amplitudes. Other likelihoods raise an error
+rather than claiming complete outputs. ``unresolved_conditioning`` records
+the :math:`A` and noise model as JSON. A conditional-covariance eigenvalue
+below the clipping tolerance raises (see above), so no complete label is
+reported.
+Country sector totals are summed from the same complete (country, source)
+draws. States marginalised at preparation are declared from
+``state_information_marginalised`` when the artifact records it.
+
 Assumptions and limitations
 ---------------------------
 
