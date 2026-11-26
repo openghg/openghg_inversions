@@ -19,7 +19,12 @@ SHA256 `c9553085e14e0aa8d8ac04614e5349f6a21d252c0e0ffeafebe1617b90bb0bdb`),
 with multi-site selection and independent OU noise by species/site. It retains
 projection shapes rather than correctness-only float64 matrix copies.
 
-Run from the repository root with its interpreter and `PYTHONPATH=.`. These are
+Run from the recorded experiment revision `3dfc2b96`, using that checkout's
+interpreter and `PYTHONPATH=.`. The private component hooks in
+`precision_probe.py` belong to that frozen experiment and are not a current
+Python API; the bound-boundary architecture does not retain compatibility hooks.
+Use `analyse.py` to reproduce the recorded summary from its pinned source
+revisions without migrating the original experiment. These are
 private-data research scripts: the archive paths are explicit in preparation.
 The MHD workload contains 129 rows/channel; MHD/BIR/BSD/TAC contains 618
 rows/channel, retaining the same 304-state flux prior and selected full joint

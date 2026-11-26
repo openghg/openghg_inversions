@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 import json
 from pathlib import Path
@@ -23,10 +23,11 @@ from openghg_inversions.rhime.outputs import (
     _define_output_filename,
     _resolve_output_path,
 )
-from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
+from openghg_inversions.rhime._stage_artifacts import _validate_filename_component, check_checkpoint_targets
 from openghg_inversions.serialization import reset_serialisation_multiindexes, save_datatree, save_trace
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
+from openghg_inversions.postprocessing.boundary_outputs import decode_saved_boundaries, reconstruct_boundary
 from .co2_affine_output import BoundCo2AffineFluxMap
 from .co2_preparation import Co2PreparedInputs, _require_equivalent_units
 
@@ -65,10 +66,13 @@ def validate_co2_trace(trace: xr.DataTree, prepared: Co2PreparedInputs | None = 
         raise ValueError(f"CO2 trace lacks scientific role(s): {sorted(missing)!r}.")
     if "posterior" not in trace.children:
         raise ValueError("CO2 samples require posterior draws.")
+    boundary_facts = decode_saved_boundaries(trace, roles=roles)
     for group in ("prior", "posterior"):
         if group not in trace.children:
             continue
-        dataset = trace[group].to_dataset()
+        dataset = trace_group(trace, group)
+        if "" in boundary_facts:
+            reconstruct_boundary(boundary_facts[""], dataset)
         for role in required | ({"boundary_concentration", "offset_concentration", "model_error"} & roles.keys()):
             if roles[role] not in dataset:
                 raise ValueError(f"CO2 scientific outputs require role {role!r} in {group}.")
@@ -247,6 +251,8 @@ def validate_co2_product_request(
     returned country matrix. Saved prior-draw availability is checked separately
     when products consume the completed trace.
     """
+    if output.output_format == "none":
+        return None
     validate_co2_outputs(output, bound=bound, source_to_sector=source_to_sector)
     return validate_co2_reporting_inputs(output, prepared, bound)
 
@@ -265,16 +271,22 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
     observations = prepared.inv_inputs["mf"]
     fixed = prepared.inv_inputs["fixed_prior_contribution"]
     result = {"observed": observations, "affine": fixed}
+    boundary_facts = decode_saved_boundaries(trace, roles=roles)
     component_roles = {
         "modelled": "model_mean",
         "pollution": "pollution_concentration",
-        "boundary": "boundary_concentration",
         "offset": "offset_concentration",
         "flux_scale": "flux_scale",
         "active_flux_scale": "active_flux_scale",
-        "boundary_scale": "boundary_scale",
         "offset_coefficient": "offset_coefficient",
         "total_error": "model_error",
+    }
+    boundary_quantities = {
+        "concentration": "boundary", "scale": "boundary_scale",
+        "mean_shift": "boundary_mean_shift", "anomaly": "boundary_anomaly",
+        "correction": "boundary_correction", "reference": "boundary_reference",
+        "mean_contribution": "boundary_mean_contribution",
+        "anomaly_contribution": "boundary_anomaly_contribution",
     }
     for group in ("prior", "posterior"):
         if group not in trace.children:
@@ -286,7 +298,7 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
             name = roles.get(role)
             if name in dataset:
                 value = dataset[name]
-            elif component_name in {"boundary", "offset"} and role not in roles:
+            elif component_name == "offset" and role not in roles:
                 value = xr.zeros_like(dataset[roles["model_mean"]])
             elif component_name in {"modelled", "pollution", "flux_scale"} or role in roles:
                 raise ValueError(f"CO2 scientific outputs require role {role!r} in {group}.")
@@ -296,6 +308,15 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
             if group == "prior":
                 value = value.rename({dim: f"prior_{dim}" for dim in ("chain", "draw") if dim in value.dims})
             result[f"{component_name}_{group}"] = value
+        quantities = (
+            reconstruct_boundary(boundary_facts[""], dataset) if "" in boundary_facts
+            else {"concentration": xr.zeros_like(dataset[roles["model_mean"]])}
+        )
+        for quantity, value in quantities.items():
+            value, _ = xr.align(value, observations, join="exact", copy=False)
+            if group == "prior":
+                value = value.rename({dim: f"prior_{dim}" for dim in ("chain", "draw") if dim in value.dims})
+            result[f"{boundary_quantities[quantity]}_{group}"] = value
         result[f"residual_{group}"] = observations - result[f"modelled_{group}"]
         predictive_group = f"{group}_predictive"
         if predictive_group in trace.children:
@@ -320,7 +341,8 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
     for name, value in output.data_vars.items():
         value.attrs = dict(value.attrs)
         value.attrs["units"] = (
-            "1" if "flux_scale" in name or "boundary_scale" in name else observations.attrs["units"]
+            "1" if "flux_scale" in name or "boundary_scale" in name
+            else value.attrs.get("units", observations.attrs["units"])
         )
     return output
 
@@ -347,7 +369,12 @@ def _basic_product(components: xr.Dataset) -> xr.Dataset:
     return result
 
 
-def _affine_products(trace, bound, countries, source_to_sector):
+def _affine_products(
+    trace: xr.DataTree,
+    bound: BoundCo2AffineFluxMap,
+    countries: Countries | None,
+    source_to_sector: Mapping[str, str] | None,
+) -> tuple[xr.Dataset, xr.Dataset | None]:
     """Apply reporting source combinations before statistics, using signed draws."""
     native = co2_native_flux_outputs(trace, bound)
     country = co2_country_flux_outputs(trace, bound, countries) if countries is not None else None
@@ -370,7 +397,7 @@ def _affine_products(trace, bound, countries, source_to_sector):
                     }
                 )
             )
-            if countries is not None:
+            if countries is not None and country is not None:
                 sector_country = co2_country_flux_outputs(trace, mapped, countries)
                 country = country.merge(
                     sector_country[
@@ -389,7 +416,16 @@ def _affine_products(trace, bound, countries, source_to_sector):
     return native, country
 
 
-def _paris_products(components, native, country, countries, result, source_to_sector, *, output):
+def _paris_products(
+    components: xr.Dataset,
+    native: xr.Dataset,
+    country: xr.Dataset,
+    countries: Countries,
+    result: Co2Output,
+    source_to_sector: Mapping[str, str] | None,
+    *,
+    output: Co2OutputOptions,
+) -> tuple[xr.Dataset, xr.Dataset]:
     """Adapt conditional signed summaries directly to latest PARIS templates."""
     from openghg_inversions.postprocessing.linked_paris_outputs import _concentration_product
     from openghg_inversions.postprocessing.make_paris_outputs import (
@@ -421,6 +457,8 @@ def _paris_products(components, native, country, countries, result, source_to_se
             or "pollution" in str(name)
         ]
     )
+    # Boundary diagnostics are distinct from the one coherent emission component.
+    concentration.attrs["source_components"] = json.dumps(["emissions"])
     concentration["total_error"] = concentration.total_error_posterior
     concentration = concentration.drop_vars(["total_error_prior", "total_error_posterior", "residual_prior"])
     domain = result.domain
@@ -505,6 +543,20 @@ def prepared_period(result: Co2Output) -> str:
     return averaging_period[0] or "0h"
 
 
+def _co2_product_names(output: Co2OutputOptions, *, has_reconstruction: bool, has_countries: bool) -> tuple[str, ...]:
+    """Predict the products :func:`calculate_co2_products` attaches, for early output-path preflight."""
+    if output.output_format == "none":
+        return ()
+    names = ["basic"]
+    if has_reconstruction:
+        names.append("native_flux")
+        if has_countries:
+            names.append("country_flux")
+        if output.output_format == "paris":
+            names.extend(("paris_concentration", "paris_flux"))
+    return tuple(names)
+
+
 def calculate_co2_products(
     *,
     result: Co2Output,
@@ -538,31 +590,72 @@ def calculate_co2_products(
             products["country_flux"] = country
         result.output_metadata["uncertainty_scope"] = bound.affine_map.uncertainty_scope
         if output.output_format == "paris":
+            assert country is not None and countries is not None, "PARIS reporting requires preflight countries."
             conc, flux = _paris_products(components, native, country, countries, result, source_to_sector, output=output)
             products.update(paris_concentration=conc, paris_flux=flux)
     result.outputs.clear()
     result.outputs.update(products, concentration_components=components)
 
 
-def save_co2_products(
-    result: Co2Output, *, output: Co2OutputOptions,
-) -> None:
-    """Export configured products and the optional trace.
-
-    Full concentration-component draws remain available in memory. Product
-    filenames follow the configured RHIME naming convention.
-    """
+def _co2_output_paths(
+    output: Co2OutputOptions, *, domain: str, start_date: str, product_names: Iterable[str],
+) -> tuple[dict[str, Path], Path | None]:
+    """Resolve the writer's concrete product and trace paths before inference."""
     if output.output_format == "none":
-        return
-    domain = result.domain
-    start_date = result.start_date
+        return {}, None
     product_paths = {
         name: _define_output_filename(
             output.output_path, "co2", domain, f"{output.output_name}_{name}", start_date,
             filename_convention="rhime",
         )
-        for name in result.outputs if name != "concentration_components"
+        for name in product_names if name != "concentration_components"
     } if output.output_path is not None else {}
+    trace_path = _resolve_output_path(output.save_trace, output.output_path,
+                                      f"{output.output_name}{start_date}_trace.nc")
+    return product_paths, trace_path
+
+
+def _checked_co2_output_paths(
+    output: Co2OutputOptions, *, domain: str, start_date: str,
+    product_names: Iterable[str], referenced: tuple[Path, ...] = (),
+) -> tuple[dict[str, Path], Path | None]:
+    """Check every actual target before any writer opens a destination."""
+    product_names = tuple(product_names)
+    paths, trace_path = _co2_output_paths(
+        output, domain=domain, start_date=start_date, product_names=product_names,
+    )
+    reporting = (Path(output.country_file),) if output.country_file is not None and "country_flux" in product_names else ()
+    protected = referenced + reporting
+    for path in (*paths.values(), *((trace_path,) if trace_path is not None else ())):
+        check_checkpoint_targets(path.parent, stage=None, payloads=(path.name,), referenced=protected)
+        protected += (path,)
+    return paths, trace_path
+
+
+def save_co2_products(
+    result: Co2Output, *, output: Co2OutputOptions, referenced: tuple[Path, ...] = (),
+) -> None:
+    """Export configured products and the optional trace.
+
+    Full concentration-component draws remain available in memory. Product
+    filenames follow the configured RHIME naming convention.
+
+    Args:
+        result: Calculated products, trace and original requested domain/window.
+        output: Product and trace destination choices.
+        referenced: Input artifacts consumed by this execution, protected from
+            aliases and overlapping output paths alongside active country data.
+
+    Returns:
+        None. Writes products only after every destination passes protection.
+    """
+    if output.output_format == "none":
+        return
+    domain = result.domain
+    start_date = result.start_date
+    product_paths, trace_path = _checked_co2_output_paths(
+        output, domain=domain, start_date=start_date, product_names=result.outputs, referenced=referenced,
+    )
     for name, path in product_paths.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         product = result.outputs[name]
@@ -571,8 +664,6 @@ def save_co2_products(
         else:
             write_netcdf_preserving_bounds_attrs(product, path)
         result.output_metadata[f"{name}_path"] = str(path)
-    trace_path = _resolve_output_path(output.save_trace, output.output_path,
-                                      f"{output.output_name}{start_date}_trace.nc")
     if trace_path is not None:
         trace_path.parent.mkdir(parents=True, exist_ok=True)
         save_trace(result.idata, trace_path)

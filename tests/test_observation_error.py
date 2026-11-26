@@ -72,7 +72,7 @@ def test_low_rank_covariance_uses_factor_and_residual_diagonal() -> None:
     np.testing.assert_allclose(result.marginal_variance, np.sum(factor**2, axis=1) + residual)
 
 
-@pytest.mark.parametrize("mode", ["dense", "low_rank", "diagonal", "none"])
+@pytest.mark.parametrize("mode", ["dense", "low_rank", "none"])
 def test_aggregation_error_low_rank_conversion_preserves_covariance(mode: str) -> None:
     """The model-owned conversion retains each validated covariance exactly."""
     factor = np.array([[0.3], [0.1], [0.2]])
@@ -84,16 +84,10 @@ def test_aggregation_error_low_rank_conversion_preserves_covariance(mode: str) -
     elif mode == "low_rank":
         data["low_rank_factor"] = (("nmeasure", "agg_rank"), factor)
         data["diagonal_residual_variance"] = ("nmeasure", diagonal)
-    elif mode == "diagonal":
-        data["aggregation_error_sd"] = ("nmeasure", np.sqrt(diagonal))
 
     result = resolve_aggregation_error(data, mode)
     converted_factor, converted_diagonal = aggregation_error_as_low_rank(result)
-    expected = (
-        covariance
-        if mode in ("dense", "low_rank")
-        else np.diag(diagonal if mode == "diagonal" else np.zeros(3))
-    )
+    expected = np.zeros_like(covariance) if mode == "none" else covariance
     np.testing.assert_allclose(converted_factor @ converted_factor.T + np.diag(converted_diagonal), expected)
 
 
@@ -192,6 +186,25 @@ def test_structured_covariance_rejects_inconsistent_sd_diagnostic() -> None:
 
     with pytest.raises(ValueError, match="diagnostic.*square root"):
         resolve_aggregation_error(data)
+
+
+@pytest.mark.parametrize(
+    ("mode", "message"),
+    [("auto", "without an aggregation-error covariance"), ("diagonal", "must be one of")],
+)
+def test_standalone_aggregation_error_sd_requires_explicit_selection(mode: str, message: str) -> None:
+    """Reject legacy inputs instead of silently discarding their variance."""
+    data = _inputs()
+    data["aggregation_error_sd"] = ("nmeasure", np.array([0.1, 0.2, 0.3]))
+
+    with pytest.raises(ValueError, match=message):
+        resolve_aggregation_error(data, mode)
+
+    variance = data["aggregation_error_sd"].values**2
+    data["aggregation_error_covariance"] = (("nmeasure", "nmeasure_cov"), np.diag(variance))
+    migrated = resolve_aggregation_error(data, "dense")
+    assert migrated.covariance is not None
+    np.testing.assert_allclose(migrated.covariance, np.diag(variance))
 
 
 def test_explicit_none_ignores_available_diagnostic() -> None:

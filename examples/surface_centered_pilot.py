@@ -16,7 +16,7 @@ import pymc as pm
 import pytensor
 import xarray as xr
 
-from openghg_inversions.basis import BasisFunctions
+from openghg_inversions.basis import BasisFunctions, PreserveBucketProlongation
 from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.coherent_reduction import reduce_native_gaussian
 from openghg_inversions.inversion_data import SiteOptions, prepare_rhime_inputs_from_xarray, prepare_surface_site
@@ -24,7 +24,8 @@ from openghg_inversions.inversion_data.observation_errors import prepare_observa
 from openghg_inversions.models import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.native_covariance import SeparableExponentialCovariance
 from openghg_inversions.rhime.co2 import Co2PreparedInputs, prepare_co2_inputs
-from openghg_inversions.rhime.co2.centered_boundary import restore_absolute_predictives
+from openghg_inversions.models.boundary import MultiplicativeChoice
+from openghg_inversions.postprocessing.boundary_outputs import restore_absolute_predictives
 from openghg_inversions.rhime.co2.co2_runner import (
     annotate_co2_trace,
     build_co2_from_materialized,
@@ -128,7 +129,7 @@ def prepare_pilot(site, fluxes):
     native_mean = total_flux.copy(data=[[.9, 1.1]]).assign_attrs(units="1")
     reduction = reduce_native_gaussian(
         covariance=covariance,
-        basis_prolongation=basis.operator.basis_matrix,
+        strategy=PreserveBucketProlongation(basis.operator.basis_matrix),
         state_dim="region", native_mean=native_mean, native_sensitivity=native_h, observation_dim="observation",
     )
     prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=None)
@@ -137,9 +138,11 @@ def prepare_pilot(site, fluxes):
 
 def prior_prediction(prepared):
     """Bind saved centered operands and return absolute concentration draws."""
-    options = dict(use_bc=True, no_model_error=True, bc_prior={"pdf": "normal", "mu": 1., "sigma": .01})
-    inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **options)
-    built = build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, **options)
+    choice = MultiplicativeChoice({"pdf": "normal", "mu": 1., "sigma": .01})
+    inputs, priors, boundary = materialize_co2_inputs(prepared_inputs=prepared, boundary=choice, no_model_error=True)
+    built = build_co2_from_materialized(
+        inputs, boundary=boundary, prepared_inputs=prepared, priors=priors, no_model_error=True,
+    )
     with built.model:
         trace = pm.sample_prior_predictive(draws=2, random_seed=957)
     trace = restore_inferencedata_coords(trace, get_coord_registry(built.model))

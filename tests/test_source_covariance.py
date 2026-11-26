@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.basis.covariance_products import project_native_covariance
+from openghg_inversions.basis.covariance_products import PreserveBucketProlongation, project_native_covariance
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.array_ops import to_dense
 from openghg_inversions.native_covariance import SeparableExponentialCovariance
@@ -361,7 +361,7 @@ def test_gathered_source_products_match_block_diagonal_dense_oracle() -> None:
     ).compute()
     products = project_native_covariance(
         covariance=covariance,
-        basis_prolongation=basis_prolongation,
+        strategy=PreserveBucketProlongation(basis_prolongation),
         state_dim=basis.meta.state_dim,
         native_sensitivity=native_sensitivity,
         observation_dim="observation",

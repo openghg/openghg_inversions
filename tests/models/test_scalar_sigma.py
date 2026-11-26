@@ -130,7 +130,7 @@ def test_positive_sigma_rescues_a_zero_base_mode() -> None:
     assert float(evaluate(np.array([0.2, -0.3, 0.1]), 0.0)) == -np.inf
 
 
-@pytest.mark.parametrize("mode", ["none", "diagonal", "low_rank", "dense"])
+@pytest.mark.parametrize("mode", ["none", "low_rank", "dense"])
 def test_base_covariance_materializes_aligned_payloads_once(
     monkeypatch: pytest.MonkeyPatch,
     mode: str,
@@ -168,24 +168,13 @@ def test_base_covariance_materializes_aligned_payloads_once(
             ),
         )
         expected_aggregation = dense
-    elif mode == "diagonal":
-        aggregation = AggregationError(
-            mode="diagonal",
-            marginal_variance=diagonal,
-            diagonal_variance=xr.DataArray(
-                da.from_array(diagonal, chunks=2),
-                dims="nmeasure",
-                coords={"nmeasure": LABELS},
-            ),
-        )
-        expected_aggregation = np.diag(diagonal)
     else:
         aggregation = AggregationError(mode="none", marginal_variance=np.zeros(3))
         expected_aggregation = np.zeros((3, 3))
 
-    import openghg_inversions.models.scalar_sigma as scalar_sigma
+    import openghg_inversions.array_ops as array_ops
 
-    real_compute = scalar_sigma.dask_compute
+    real_compute = array_ops.dask_compute
     calls = 0
 
     def recording_compute(*arrays: object) -> tuple[object, ...]:
@@ -193,7 +182,7 @@ def test_base_covariance_materializes_aligned_payloads_once(
         calls += 1
         return real_compute(*arrays)
 
-    monkeypatch.setattr(scalar_sigma, "dask_compute", recording_compute)
+    monkeypatch.setattr(array_ops, "dask_compute", recording_compute)
     actual = scalar_sigma_base_covariance(observations, error, aggregation)
 
     assert calls == 1
@@ -320,6 +309,18 @@ def test_cache_round_trip_checks_schema_labels_units_and_covariance(tmp_path: Pa
     assert not loaded.eigenvalues.values.flags.writeable
     assert loaded.base_covariance_sha256 == basis.base_covariance_sha256
     assert loaded.aggregation_error_mode == basis.aggregation_error_mode
+
+    with xr.open_dataset(path) as dataset:
+        legacy = dataset.load().assign_attrs(aggregation_error_mode="diagonal")
+    legacy_path = tmp_path / "legacy-diagonal.nc"
+    legacy.to_netcdf(legacy_path)
+    with pytest.raises(ValueError, match="requires a concrete aggregation-error mode"):
+        load_scalar_sigma_eigenbasis(
+            legacy_path,
+            observations=observations,
+            observation_error=error,
+            aggregation_error=aggregation,
+        )
 
     with pytest.raises(ValueError, match="exact ordered observation coordinate"):
         load_scalar_sigma_eigenbasis(

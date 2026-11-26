@@ -13,9 +13,13 @@ def _load_stage_manifest(path: str | Path, *, stage: str) -> tuple[Path, dict[st
     loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(loaded, dict):
         raise ValueError(f"Stage manifest {manifest_path} must contain one JSON object.")
-    version = 3 if loaded.get("schema") in {
-        "openghg_inversions.standard.sample", "openghg_inversions.multisector.sample",
-    } else 1
+    schema = loaded.get("schema")
+    if schema in {"openghg_inversions.standard.sample", "openghg_inversions.multisector.sample"}:
+        version = 3
+    elif schema in {"openghg_inversions.co2.sample", "openghg_inversions.co2_o2.sample"}:
+        version = 2
+    else:
+        version = 1
     if type(loaded.get("schema_version")) is not int or loaded["schema_version"] != version:
         raise ValueError(
             f"Stage manifest {manifest_path} has an unsupported schema_version; expected {version}. "

@@ -26,7 +26,10 @@ guarantees consumers may assume: applicable variables, dimensions, coordinates,
 units and relationships, and any numerical properties with their tolerance
 policies. Producer and input-boundary documentation SHALL explain how their
 operations establish those guarantees from their own preconditions. Each
-documented guarantee SHALL be established before code relies on it.
+documented guarantee SHALL be established before code relies on it. A
+structural-only lazy-stage contract MAY document additional requirements of a
+later numerical operation, but SHALL identify them as requirements of that
+operation rather than established properties of the contracted value.
 
 Consumers SHALL be able to interpret the guarantees from the contract and the
 value without access to historical validator arguments. Parameter-dependent
@@ -184,3 +187,64 @@ validation coverage.
 - **AND** every declared contract is checked for its validator and identity-preserving validation
 - **AND** validation leaves lazy example payloads unexecuted
 - **AND** a declared contract missing its required examples fails the suite
+
+### Requirement: Raw centered boundary transport has a contract
+
+Prepared or loaded centered boundary transport SHALL be established as a raw
+centered transport contract before binding. The contract SHALL describe the
+concentration anomaly, dimensionless mass and scalar reference on raw spatial
+boundary states and one raw observation axis, their unit relationships, and
+optional additive centering weights on boundary curtains and periods. The
+contract SHALL establish structure only; finite and positive values remain
+requirements of the later numerical operation that uses them.
+
+#### Scenario: Accept supplied centered transport
+
+- **WHEN** independently supplied or loaded centered transport satisfies the raw layout
+- **THEN** the accepting preparation or loading boundary returns it unchanged with the raw contract type
+- **AND** no numerical payload or auxiliary coordinate is computed
+
+#### Scenario: Reject malformed centered transport
+
+- **WHEN** a required variable, attribute, dimension, index, unit or weight layout is missing or inconsistent
+- **THEN** the accepting boundary reports the affected element before binding
+
+### Requirement: Bound centered boundary transport has a shared contract
+
+Binding raw centered transport to one fit SHALL produce a bound centered
+transport contract, consumed by every centered boundary family, whose states
+cover every boundary curtain in every boundary period. Binding SHALL establish
+the contract by construction without computing numerical payloads. Weighted
+additive anomalies SHALL use an extension that adds centering weights aligned
+exactly to the bound states.
+
+Graph construction SHALL check the numerical requirements of the jointly
+materialized bound values once, without hiding materialization in that check.
+
+#### Scenario: Reject an incomplete state grid
+
+- **WHEN** a supplied bound state index omits a combination of its curtain and period labels
+- **THEN** structural validation reports incomplete coverage without computing payloads
+
+#### Scenario: Apply numerical requirements to selected values
+
+- **WHEN** structurally valid bound transport has all-zero mass after selecting fit rows
+- **THEN** graph construction rejects that numerical input
+
+#### Scenario: Bind raw transport
+
+- **WHEN** a centered family binds raw transport to observations and a boundary calendar
+- **THEN** the result passes the bound contract validator
+- **AND** payloads that were lazy remain lazy
+
+#### Scenario: Bind weighted additive anomalies
+
+- **WHEN** weighted additive anomalies bind raw transport whose weights label exactly the bound curtains and periods
+- **THEN** the result passes the additive extension validator
+- **AND** weights prepared with a different calendar are rejected at binding
+
+### Requirement: Absolute multiplicative transport keeps its own layout
+
+Absolute transport, accepted only by the multiplicative family, SHALL keep its
+supported state layouts without centered assumptions and SHALL NOT require a
+contract in this pilot.

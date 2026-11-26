@@ -1,0 +1,1 @@
+`project_native_covariance` and `reduce_native_gaussian` no longer take `basis_prolongation`, and `strategy` is now required. Each retained projection strategy owns its inputs: pass `strategy=PreserveBucketProlongation(basis_prolongation)` for the previous default behavior. `RetainedProjectionStrategy.projection` no longer receives the basis prolongation.

@@ -20,9 +20,10 @@ so consumers need not repeat checks of established guarantees.
 - Make parameter-dependent roles recoverable by consumers, and specify
   mechanical contract discovery, shared conformance coverage and extension of
   shared contracts.
-- Describe the recommended static-marker pattern in developer guidance; leave
-  validator-library selection and concrete scientific schemas to application
-  work.
+- Describe the static-marker pattern in developer guidance and implement the
+  centered-boundary pilot with class-owned metadata schemas and operations.
+  Lazy-stage contracts establish structure; explicit numerical operations own
+  their additional finite-value, mass and weight requirements.
 
 ## Capabilities
 
@@ -39,14 +40,17 @@ describes how those guarantees become explicit in selected static interfaces.
 
 ## Impact
 
-This PR proposes the contract and adds developer guidance; it does not implement
-contract classes, change runtime behavior or add dependencies. The centered
-boundary handoffs are the first intended application, tracked by
-[#1031](https://github.com/openghg/openghg_inversions/issues/1031) and its children.
-The proposal contributes the general principles to
-[#1032](https://github.com/openghg/openghg_inversions/issues/1032); concrete
-boundary schemas and executable checker probes remain application work.
-Concrete covariance and numerical-contract cases are recorded in
+The declaration mechanism and the first centered-boundary application are
+implemented: `RawCenteredSensitivity`, `BoundCenteredSensitivity` and
+`BoundAdditiveSensitivity` retain ordinary Dataset runtime values and own
+class-level validation and scientific operations. Their inspectable metadata
+schemas use `xarray_validate` 0.0.5; library choice remains an application
+decision rather than a general contract requirement. Shared conformance tests
+and executable checker probes cover this pilot, tracked by
+[#1033](https://github.com/openghg/openghg_inversions/issues/1033) and
+[#1034](https://github.com/openghg/openghg_inversions/issues/1034).
+The proposal remains active pending promotion. Concrete covariance and
+numerical-contract cases remain follow-up work in
 [#1036](https://github.com/openghg/openghg_inversions/issues/1036).
 
 ## Non-goals

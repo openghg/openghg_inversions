@@ -13,6 +13,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import MISSING, dataclass, fields
+from numbers import Integral
 from pathlib import Path
 from typing import Any, get_args, get_type_hints
 
@@ -38,6 +39,18 @@ from openghg_inversions.rhime.specs import (
     make_likelihood_settings as _make_likelihood_settings,
     normalise_optional_mapping,
 )
+
+
+def _resolve_basis_seed(seed: Any, basis_algorithm: str | None, *, generated: bool) -> int:
+    """Check a quadtree basis seed against the selected basis source and algorithm."""
+    # SciPy seeds dual_annealing through a legacy RandomState, which takes [0, 2**32).
+    if isinstance(seed, bool) or not isinstance(seed, Integral) or not 0 <= int(seed) < 2**32:
+        raise ValueError(f"`basis_seed` must be an integer in [0, 2**32); got {seed!r}.")
+    if generated and basis_algorithm != "quadtree":
+        raise ValueError(
+            f"`basis_seed` applies only to `basis_algorithm = \"quadtree\"`; got {basis_algorithm!r}."
+        )
+    return int(seed)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -231,6 +244,10 @@ class DataConfig:
         filter_options: Keyword options for named filters, such as
             ``{"local_influence": {"window_size": 5, "threshold": 0.15}}``.
             Omitted options keep each filter's defaults.
+        basis_seed: Non-negative integer seed for a generated quadtree basis.
+            Without it, the quadtree search is random and each run fits a
+            different basis. Rejected when another algorithm is generated;
+            inactive when a saved basis or partition is selected.
         fix_basis_outer_regions: Whether outer regions are fixed from
             ``outer_regions_path`` during basis preparation.
         averaging_error: Whether observation averaging variability is added
@@ -265,6 +282,7 @@ class DataConfig:
     bc_input: str | None = None
     basis_algorithm: str | None = "weighted"
     nbasis: int = 100
+    basis_seed: int | None = None
     filters: str | list[str | None] | dict[str, str | None | list[str | None]] | None = None
     filter_options: dict[str, dict[str, Any]] | None = None
     fix_basis_outer_regions: bool = False
@@ -337,6 +355,11 @@ class DataConfig:
         if (remaining.get("basis_path") is None and remaining.get("basis_partition_path") is None
                 and remaining.get("basis_partition_paths") is None and basis_algorithm not in allowed):
             raise ValueError(f"`basis_algorithm` must be one of {allowed!r}; got {basis_algorithm!r}.")
+        if (basis_seed := remaining.get("basis_seed")) is not None:
+            remaining["basis_seed"] = _resolve_basis_seed(basis_seed, basis_algorithm, generated=(
+                remaining.get("basis_path") is None and remaining.get("basis_partition_path") is None
+                and remaining.get("basis_partition_paths") is None
+            ))
         remaining["bc_basis"] = BcBasisOptions.from_params(
             remaining.get("bc_basis", {}), active=remaining.get("use_bc", cls.use_bc))
         remaining["sites"] = as_list(remaining["sites"])

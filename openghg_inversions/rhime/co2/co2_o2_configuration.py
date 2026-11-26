@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 import json
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
 from openghg_inversions.models import StateActivity
+from openghg_inversions.models.boundary import Choice, MultiplicativeChoice
+from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.inversion_inputs import normalise_frequency
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.rhime.sampling import RhimeSampler
-from openghg_inversions.rhime.specs import normalise_optional_mapping
+from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, normalise_optional_mapping
 
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .configuration import (
@@ -25,8 +28,7 @@ from .configuration import (
     Co2PreparationConfig,
     _sampling,
     _string,
-    _table,
-    _validate_boundary_periods,
+    _table, _outer_flux_choice,
     load_co2_family_config,
     resolve_co2_prior_seed,
 )
@@ -59,7 +61,7 @@ def load_co2_o2_params(
         options = _table(params, "config")
     _validate_co2_o2_option_names(options, overrides or {})
     for name, value in (overrides or {}).items():
-        if name in {"prepared_inputs", "channels", "likelihood", "sampling", "outputs"} and isinstance(value, Mapping):
+        if name in {"prepared_inputs", "channels", "outer_flux", "likelihood", "sampling", "outputs"} and isinstance(value, Mapping):
             previous = _table(options.get(name, {}), name)
             if name == "channels":
                 for channel, choices in value.items():
@@ -83,18 +85,22 @@ def load_co2_o2_params(
 
 def _validate_co2_o2_option_names(*requests: Mapping[str, object]) -> None:
     """Check request names while deferring scientific and inactive values."""
-    allowed = {"format_version", "recipe", "variant", "prepared_inputs", "channels", "likelihood", "sampling", "outputs"}
+    allowed = {
+        "format_version", "recipe", "variant", "prepared_inputs", "channels", "outer_flux", "likelihood",
+        "sampling", "outputs",
+    }
     from .co2_o2_outputs import Co2O2OutputOptions
 
     channel_sections = {
         "": frozenset({"units", "independent_error_sd", "boundary", "offset"}),
-        **_MODEL_SECTION_OPTION_NAMES,
+        **{name: options for name, options in _MODEL_SECTION_OPTION_NAMES.items() if name != "outer_flux"},
         "boundary": _MODEL_SECTION_OPTION_NAMES["boundary"] | {"activity"},
         "boundary.activity": frozenset({"active", "fixed_value"}),
     }
     _validate_section_option_names(requests, {
         "": frozenset(allowed),
         "prepared_inputs": _PREPARATION_OPTION_NAMES,
+        "outer_flux": _MODEL_SECTION_OPTION_NAMES["outer_flux"],
         "channels": frozenset({"co2", "o2"}),
         **{f"channels.{channel}" + (f".{path}" if path else ""): names
            for channel in ("co2", "o2") for path, names in channel_sections.items()},
@@ -187,29 +193,31 @@ class Co2O2ModelConfig:
     be supplied for both channels or omitted for both to use saved errors.
     Fixed independent error and fixed-amplitude OU are supported; inferred OU
     and per-meg transformations remain separate work.
-    Boundary frequency and anchor choices apply to all enabled raw boundary
-    channels; choices supplied under both channels must agree.
+    ``boundary`` maps configured channels to a choice, or to ``None`` when
+    that channel's boundary is explicitly disabled. Boundary frequency and
+    anchor choices apply to every enabled channel; choices supplied under both
+    channels must agree. :meth:`bind` gives channels without a boundary table
+    the default multiplicative prior when the preparation has their transport.
     """
 
     co2_units: str
     o2_units: str
     independent_error_sd: Mapping[str, float]
-    use_bc: Mapping[str, bool] | None = None
-    bc_prior: Mapping[str, Any] | None = None
-    bc_state_activity: Mapping[str, StateActivity] | None = None
+    boundary: Mapping[str, Choice | None] | None = None
     offset_prior: Mapping[str, Any] | None = None
     offset_args: Mapping[str, Any] | None = None
     tau_hours: float | Mapping[str, float] | None = None
     fixed_site_amplitudes: float | Mapping[str, float] | None = None
-    bc_freq: str | None = None
-    bc_anchor_time: str | None = None
+    outer_flux: OuterFluxChoice | None = None
 
     def __post_init__(self) -> None:
-        _validate_boundary_periods(self.bc_freq, self.bc_anchor_time)
         for item in fields(self):
             value = getattr(self, item.name)
             if isinstance(value, Mapping):
                 object.__setattr__(self, item.name, normalise_optional_mapping(value))
+        if self.boundary is not None:
+            # The single owner of the one-calendar rule for parsed and direct construction.
+            object.__setattr__(self, "boundary", normalise_optional_mapping(_shared_boundary_periods(self.boundary)))
 
     @classmethod
     def from_params(cls, config: Mapping[str, object]) -> Co2O2ModelConfig:
@@ -219,6 +227,8 @@ class Co2O2ModelConfig:
         units: dict[str, str] = {}
         errors: dict[str, float] = {}
         model: dict[str, Any] = {}
+        if "outer_flux" in options:
+            model["outer_flux"] = _outer_flux_choice(options["outer_flux"], "outer_flux")
         for name in ("co2", "o2"):
             channel = _table(_take(channels, name, "channels"), f"channels.{name}")
             units[name] = _string(_take(channel, "units", f"channels.{name}"), f"channels.{name}.units")
@@ -226,27 +236,22 @@ class Co2O2ModelConfig:
             if "independent_error_sd" in channel:
                 errors[name] = _number(channel.pop("independent_error_sd"), f"channels.{name}.independent_error_sd", positive=True)
             selected = {key: channel.pop(key) for key in ("boundary", "offset") if key in channel}
+            activity = None
             if "boundary" in selected:
                 boundary = _table(selected["boundary"], f"channels.{name}.boundary")
                 if "activity" in boundary:
-                    activity = _table(boundary.pop("activity"), f"channels.{name}.boundary.activity")
-                    active = _bool(activity.pop("active", True), f"channels.{name}.boundary.activity.active")
-                    fixed = _number(activity.pop("fixed_value", 1.0), f"channels.{name}.boundary.activity.fixed_value")
-                    _reject_unknown(activity, f"channels.{name}.boundary.activity")
-                    if boundary.get("enabled", True) is False:
-                        raise ValueError("Boundary activity requires enabled=true.")
-                    model.setdefault("bc_state_activity", {})[name] = StateActivity(active=active, fixed_value=fixed)
+                    table = _table(boundary.pop("activity"), f"channels.{name}.boundary.activity")
+                    active = _bool(table.pop("active", True), f"channels.{name}.boundary.activity.active")
+                    fixed = _number(table.pop("fixed_value", 1.0), f"channels.{name}.boundary.activity.fixed_value")
+                    _reject_unknown(table, f"channels.{name}.boundary.activity")
+                    activity = StateActivity(active=active, fixed_value=fixed)
                 selected["boundary"] = boundary
-            for key, value in _model(selected).items():
-                if key in {"bc_freq", "bc_anchor_time"}:
-                    previous = model.get(key)
-                    same = (normalise_frequency(previous) == normalise_frequency(value)
-                            if key == "bc_freq" else previous == value)
-                    if key in model and not same:
-                        raise ValueError("Linked boundary frequency and anchor_time must agree across channels.")
-                    model[key] = value
-                else:
-                    model.setdefault(key, {})[name] = value
+            for key, value in _model(selected, f"channels.{name}").items():
+                if key == "boundary" and activity is not None:
+                    if not isinstance(value, MultiplicativeChoice):
+                        raise ValueError("Boundary activity requires an enabled multiplicative boundary.")
+                    value = replace(value, activity=activity)
+                model.setdefault(key, {})[name] = value
             _reject_unknown(channel, f"channels.{name}")
         _reject_unknown(channels, "channels")
         if errors and len(errors) != 2:
@@ -280,15 +285,58 @@ class Co2O2ModelConfig:
             if independent is None:
                 raise ValueError("Omitted channel independent_error_sd requires errors in the prepared artifact.")
         result = {item.name: getattr(self, item.name) for item in fields(self)
-                  if item.name not in {"co2_units", "o2_units", "independent_error_sd"} and getattr(self, item.name) is not None}
-        return {**result, "independent_error_sd": independent}
+                  if item.name not in {"co2_units", "o2_units", "independent_error_sd", "boundary"}
+                  and getattr(self, item.name) is not None}
+        return {**result, "independent_error_sd": independent, "boundary": self._channel_boundaries(prepared)}
+
+    def _channel_boundaries(self, prepared: Co2O2PreparedInputs) -> dict[str, Choice | None]:
+        """Resolve configured choices and default prepared channels to choices.
+
+        Explicitly disabled channels stay in the result as ``None`` so the
+        runner can tell a deliberate omission from an unconfigured channel.
+        """
+        configured = dict(self.boundary or {})
+        enabled = [choice for choice in configured.values() if choice is not None]
+        default = MultiplicativeChoice(
+            dict(DEFAULT_BC_PRIOR),
+            frequency=enabled[0].frequency if enabled else None,
+            anchor_time=enabled[0].anchor_time if enabled else None,
+        )
+        available = set(prepared.boundary_operands) | set(prepared.boundary_sensitivity)
+        result: dict[str, Choice | None] = {}
+        for channel in ("co2", "o2"):
+            if channel in configured:
+                result[channel] = configured[channel]
+            elif channel in available:
+                result[channel] = default
+        return result
+
+
+def _shared_boundary_periods(
+    choices: Mapping[str, Choice | None],
+) -> dict[str, Choice | None]:
+    """Apply one boundary calendar to every enabled linked channel."""
+    enabled = [choice for choice in choices.values() if choice is not None]
+    frequencies = {normalise_frequency(choice.frequency) for choice in enabled if choice.frequency is not None}
+    # Anchors are compared as instants, so equivalent spellings agree.
+    anchors = {pd.Timestamp(choice.anchor_time) for choice in enabled if choice.anchor_time is not None}
+    if len(frequencies) > 1 or len(anchors) > 1:
+        raise ValueError("Linked boundary frequency and anchor_time must agree across channels.")
+    frequency = next((choice.frequency for choice in enabled if choice.frequency is not None), None)
+    anchor_time = next((choice.anchor_time for choice in enabled if choice.anchor_time is not None), None)
+    return {
+        channel: None if choice is None else replace(choice, frequency=frequency, anchor_time=anchor_time)
+        for channel, choice in choices.items()
+    }
 
 
 def resolve_co2_o2_sampler(config: Mapping[str, object], *, model: Co2O2ModelConfig) -> RhimeSampler:
     """Resolve live sampling controls and the backend required by the likelihood.
 
     Fixed OU requires PyMC; fixed independent error defaults to NumPyro.
-    Channel, prepared-input and output choices remain unused.
+    ``target_accept`` defaults to 0.95; for fixed OU it tunes the state NUTS
+    step of the cached fixed-OU sampler. Channel, prepared-input and output
+    choices remain unused.
     """
     options = _table(config, "config")
     fixed_ou = model.tau_hours is not None

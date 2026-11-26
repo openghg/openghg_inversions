@@ -56,17 +56,16 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
         raise AssertionError("Building a staged graph must not sample the posterior")
 
     for module in (co2_runner, co2_cached_sigma_runner):
-        if module is co2_runner:
-            monkeypatch.setattr(module, "_materialize_pymc_inputs_and_priors",
-                                lambda prepared, *, variable_names, prior_parameters: (
-                                    materialize(prepared, variable_names=variable_names), prior_parameters,
-                                ))
-        else:
-            monkeypatch.setattr(module, "materialize_pymc_inputs", materialize)
+        monkeypatch.setattr(
+            module, "_materialize_co2_inputs",
+            lambda prepared, names, priors, boundary: (
+                materialize(prepared, variable_names=names), priors, boundary,
+            ),
+        )
     monkeypatch.setattr(pm, "sample", unexpected_sampling)
     prepared = cast(Any, Prepared())
-    inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, no_model_error=True)
-    ordinary = build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, no_model_error=True)
+    inputs, priors, boundary = materialize_co2_inputs(prepared_inputs=prepared, no_model_error=True)
+    ordinary = build_co2_from_materialized(inputs, boundary=boundary, prepared_inputs=prepared, priors=priors, no_model_error=True)
     assert ordinary.output_contract.variable_roles["model_mean"] == "modelled_concentration"
     options = Co2ModelConfig.from_params({"likelihood": {
         "kind": "fixed_ou", "tau_hours": 4.0,

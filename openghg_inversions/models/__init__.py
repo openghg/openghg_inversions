@@ -15,6 +15,9 @@ from openghg_inversions._pymc_config import configure_pytensor
 configure_pytensor()
 
 from openghg_inversions.models.components import (
+    AffineBlock,
+    AffineConcentrationTerm,
+    ConcentrationTerm,
     CorrelatedStateResult,
     LinearComponentResult,
     apply_linear_sensitivity,
@@ -25,7 +28,9 @@ from openghg_inversions.models.components import (
     add_offset_component,
     add_correlated_lognormal_state,
     add_correlated_lognormal_state_with_activity,
+    add_correlated_state_with_activity,
     add_sigma_component,
+    likelihood_representation,
 )
 from openghg_inversions.models.cached_sigma import (
     FixedOuCachedSigmaTarget,
@@ -48,7 +53,7 @@ from openghg_inversions.models.scalar_sigma import (
     save_scalar_sigma_eigenbasis,
 )
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
 from openghg_inversions.models.state_activity import (
     PreparedLinearSensitivity,
     ResolvedStateActivity,
@@ -63,6 +68,7 @@ from openghg_inversions.observation_error import AggregationErrorMode
 __all__ = [
     "CoordRegistry",
     "CorrelatedLognormalPrior",
+    "CorrelatedPrior",
     "CorrelatedStateResult",
     "LinearComponentResult",
     "AggregationErrorMode",
@@ -85,7 +91,12 @@ __all__ = [
     "add_model_data",
     "add_correlated_lognormal_state",
     "add_correlated_lognormal_state_with_activity",
+    "add_correlated_state_with_activity",
+    "AffineBlock",
+    "AffineConcentrationTerm",
+    "ConcentrationTerm",
     "add_coherent_affine_component",
+    "likelihood_representation",
     "add_linked_linear_component",
     "add_linear_component",
     "apply_linear_sensitivity",
