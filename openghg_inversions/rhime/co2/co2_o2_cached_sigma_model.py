@@ -32,7 +32,7 @@ from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
 from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.observation_error import (
-    AggregationError,
+    ObservationCovariance,
     aggregation_error_as_low_rank,
     validate_observation_error_arrays,
 )
@@ -56,7 +56,7 @@ def build_co2_o2_cached_sigma_model(
     fixed_prior_contribution: xr.DataArray,
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
     retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
     independent_error_sd: xr.DataArray,
     tau_hours: float | Mapping[str, float],
@@ -183,7 +183,7 @@ def _build_co2_o2_cached_sigma_model(
     fixed_prior_contribution: xr.DataArray,
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: ObservationCovariance,
     retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
     independent_error_sd: xr.DataArray,
     tau_hours: float | Mapping[str, float],
@@ -227,11 +227,15 @@ def _build_co2_o2_cached_sigma_model(
     )
     joint = _gather_co2_o2_sensitivity(co2_sensitivity, o2_sensitivity, output_dim=output_dim)
     joint = joint.sel({output_dim: observations[output_dim]})
+    outer_states = outer_flux.resolve_states(retained_prior) if outer_flux is not None else None
+    if outer_states is not None:
+        joint, fixed_prior_contribution = outer_states.condition_sensitivity(
+            joint, fixed_prior_contribution, output_dim=output_dim,
+        )
     prepared_flux = prepare_linear_sensitivity(joint, output_dim=output_dim)
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
-    if outer_flux is not None:
-        # Resolve the choice once on the shared prior the model samples.
-        activity = outer_flux.resolve_states(retained_prior).fix_states(activity)
+    if outer_states is not None:
+        activity = outer_states.fix_states(activity)
     prepared_flux, active_design, fixed_flux = _materialize_cached_linear_projection(
         prepared_flux,
         activity,
@@ -242,7 +246,13 @@ def _build_co2_o2_cached_sigma_model(
         retained_prior,
         var_name="flux_scaling",
     )
-    factor, diagonal = aggregation_error_as_low_rank(aggregation_error)
+    outer_flux_factor = (
+        outer_states.marginal_error_factor(joint, output_dim=output_dim)
+        if outer_states is not None and outer_states.choice.mode == "marginalise"
+        else None
+    )
+    fixed_covariance = aggregation_error.with_added_factor(outer_flux_factor)
+    factor, diagonal = aggregation_error_as_low_rank(fixed_covariance)
     covariance = prepare_fixed_ou_low_rank(
         factor,
         diagonal + np.square(independent_error_sd.values),

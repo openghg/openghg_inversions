@@ -79,7 +79,7 @@ def test_full_co2_validates_reporting_inputs_before_inference(tmp_path, monkeypa
     monkeypatch.setattr(execution, "sample_co2_inference", forbidden)
     with pytest.raises(ValueError, match=message):
         run_co2(prepared=prepared, affine_artifact=affine, params={
-            "prepared_inputs": FACTS, "likelihood": {"kind": "additive_sigma", "no_model_error": True},
+            "data": FACTS, "likelihood": {"kind": "additive_sigma", "no_model_error": True},
             "sampling": {"sample_prior_predictive": 4}, "outputs": outputs,
         }, output_path=tmp_path / "unopened")
     assert not (tmp_path / "unopened").exists()
@@ -178,7 +178,7 @@ def test_full_run_protects_consumed_files(full_run_files, tmp_path, monkeypatch,
     monkeypatch.setattr(execution, "sample_co2_inference", lambda *a, **kw: pytest.fail("sampling reached"))
     with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         run_co2(params={
-            "prepared_inputs": {**FACTS, "path": str(source), "reconstruction_path": str(reconstruction)},
+            "data": {**FACTS, "path": str(source), "reconstruction_path": str(reconstruction)},
             "likelihood": {"kind": "additive_sigma"},
             "sampling": {"sample_prior_predictive": 2},
             "outputs": {"output_format": "basic", "output_path": str(tmp_path),
@@ -221,7 +221,7 @@ def test_full_run_protects_consumed_directories(full_run_files, tmp_path, monkey
     monkeypatch.setattr(execution, "sample_co2_inference", lambda *a, **kw: pytest.fail("sampling reached"))
     with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         run_co2(params={
-            "prepared_inputs": {**FACTS, "path": str(source), "reconstruction_path": str(reconstruction)},
+            "data": {**FACTS, "path": str(source), "reconstruction_path": str(reconstruction)},
             "likelihood": {"kind": "additive_sigma"},
             "sampling": {"sample_prior_predictive": 2}, "outputs": {"save_trace": str(trace)},
         })
@@ -233,7 +233,7 @@ def test_full_run_guards_only_consumed_files_and_written_targets(full_run_files,
     from openghg_inversions.rhime.co2 import execution
 
     prepared, source, _, _ = full_run_files
-    request = {"prepared_inputs": {**FACTS, "path": str(source)},
+    request = {"data": {**FACTS, "path": str(source)},
                "likelihood": {"kind": "additive_sigma"},
                "outputs": {"save_trace": str(source), "output_format": "none" if route == "no_output" else "basic"}}
     kwargs = {}
@@ -333,7 +333,7 @@ def test_consumed_eigenbasis_is_protected_before_construction(full_run_files, tm
     before = eigenbasis.read_bytes()
     with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         if stage == "full":
-            execution.run_co2(params={**model, "prepared_inputs": {**FACTS, "path": str(source),
+            execution.run_co2(params={**model, "data": {**FACTS, "path": str(source),
                 "reconstruction_path": str(reconstruction)}, "sampling": {"sample_prior_predictive": 2},
                 "outputs": {"save_trace": str(eigenbasis)}})
         else:
@@ -358,7 +358,7 @@ def test_full_run_protects_active_country_file(tmp_path, monkeypatch):
     monkeypatch.setattr(execution, "sample_co2_inference", lambda *a, **kw: pytest.fail("sampling reached"))
     with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         execution.run_co2(prepared=prepared, affine_artifact=affine, params={
-            "prepared_inputs": FACTS, "likelihood": {"kind": "additive_sigma"},
+            "data": FACTS, "likelihood": {"kind": "additive_sigma"},
             "sampling": {"sample_prior_predictive": 2},
             "outputs": {"output_format": "basic", "country_file": str(country), "save_trace": str(country)},
         })
@@ -392,7 +392,7 @@ def test_full_run_ignores_unused_source_and_inactive_country(full_run_files, mon
     monkeypatch.setattr(execution, "sample_co2_inference", reached)
     with pytest.raises(RuntimeError, match="sampling reached with unused paths"):
         execution.run_co2(prepared=prepared, params={
-            "prepared_inputs": {**FACTS, "path": str(source)},
+            "data": {**FACTS, "path": str(source)},
             "likelihood": {"kind": "additive_sigma"},
             "outputs": {"output_format": "none", "save_trace": str(reconstruction), "country_file": str(reconstruction)},
         })
@@ -427,7 +427,7 @@ def test_staged_prepare_protects_its_request_file(full_run_files, tmp_path, mode
 
     if model == "co2":
         _, source, _, _ = full_run_files
-        params = {"prepared_inputs": {**FACTS, "path": str(source)}}
+        params = {"data": {**FACTS, "path": str(source)}}
     else:
         source = tmp_path / "linked.nc"
         synthetic_inputs().save(source)

@@ -693,11 +693,9 @@ def _reduce_native_covariance_products(
     effective_operator = products.effective_observation_operator
     native_observation_covariance = products.native_observation_covariance
 
-    retained_mean = xr.dot(restriction, native_mean, dim=list(native_dims)).transpose(state_dim)
-    retained_mean = retained_mean.rename("retained_mean").assign_attrs(
-        mathematical_name="Pi m",
-        units="1",
-    )
+    retained_mean = xr.dot(restriction, native_mean, dim=list(native_dims)).transpose(state_dim).rename("retained_mean")
+    # Restriction diagnostics describe Pi, not the derived retained mean.
+    retained_mean.attrs = {"mathematical_name": "Pi m", "units": "1"}
     native_observation_mean = xr.dot(
         native_sensitivity,
         native_mean,

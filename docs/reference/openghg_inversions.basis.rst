@@ -24,5 +24,6 @@ openghg\_inversions.basis
    openghg_inversions.basis.covariance_products
    openghg_inversions.basis.layout
    openghg_inversions.basis.operators
+   openghg_inversions.basis.options
    openghg_inversions.basis.prior_uncertainty
    openghg_inversions.basis.support

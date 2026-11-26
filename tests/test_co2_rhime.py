@@ -29,7 +29,7 @@ from openghg_inversions.models.scalar_sigma import (
 )
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.models.state_activity import StateActivity
-from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
+from openghg_inversions.observation_error import ObservationCovariance, resolve_aggregation_error
 from openghg_inversions.rhime.co2 import (
     build_co2_model,
 )
@@ -896,7 +896,7 @@ def test_co2_operations_resolves_scalar_sigma_cache_before_model(
         *,
         observations: xr.DataArray,
         observation_error: xr.DataArray,
-        aggregation_error: AggregationError,
+        aggregation_error: ObservationCovariance,
     ) -> Any:
         load_contexts.append(pm.Model.get_context(error_if_none=False))
         return load_scalar_sigma_eigenbasis(

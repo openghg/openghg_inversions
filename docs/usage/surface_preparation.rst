@@ -96,9 +96,16 @@ With existing OpenGHG data wrappers or xarray datasets:
 Ordinary preparation is the default. Omit ``boundary_representation`` and the
 reference arguments to obtain absolute ``bc_n/e/s/w`` contributions. Supply
 ``boundary_representation="centered"`` plus the reference to retain accurate
-anomaly/mass operands instead. A reference alone never selects centered preparation;
-Centered preparation requires a justified mass tolerance; ordinary preparation
-uses OpenGHG’s existing baseline arithmetic without joint mass normalization.
+anomaly/mass operands instead. A reference alone never selects centered preparation.
+Centered preparation requires a justified mass tolerance. The ordinary
+producer uses OpenGHG’s existing baseline arithmetic without joint mass normalization.
+
+Configured CO₂ acquires centered operands when boundaries are enabled. During
+scientific preparation it can reuse those operands directly, or reconstruct
+absolute contributions with
+:func:`~openghg_inversions.inversion_data.select_boundary_representation`.
+Reconstructed absolute contributions retain the joint mass normalization of
+the centered acquisition.
 
 Each source and boundary contribution is calculated at native footprint release
 times, then averaged to the chosen observation cadence. Each source is convolved
@@ -209,9 +216,8 @@ reporting. Standard/multisector scientific preparation of a supplied surface
 stacking or summing. Mixed-cadence observation-space responses can be calculated
 with ``prepare_surface_site``; they do not yet define a common native reporting
 axis or an affine flux companion. Supply an independently justified native
-representation before using such products. This pilot does not construct the
-ordinary CO₂ coherent reduction automatically; see :doc:`coherent_reduction` and
-:doc:`co2_model_family`.
+representation before using such products. For a full CO₂ preparation on a
+common native grid, see :ref:`co2-configured-preparation`.
 
 .. _surface-centered-boundary-contract:
 
@@ -228,7 +234,9 @@ existing errors remain unchanged. Project the native ``bc_anomaly_*`` and
 ``bc_mass_*`` arrays through the same chosen BC basis using ``bc_sensitivity`` or
 ``build_sensitivities``. Their outputs are ``H_bc_anomaly`` (A), ``H_bc_mass`` (M)
 and scalar ``bc_reference`` (c). They retain spatial BC labels through gathering.
-The reference must agree across sites within a tracer.
+``bc_reference`` stores the supplied physical reference converted to the
+observation concentration units, or to ``output_units`` when specified in
+``prepare_surface_site``. The reference must agree across sites within a tracer.
 
 The source-neutral adapter accepts these projected operands (choose the summed
 response for a shared source-scaling field, or a compatible source-resolved
@@ -350,6 +358,6 @@ saves/reopens preparation and restores absolute prior predictions:
    python -m examples.surface_centered_pilot /tmp/surface-pilot
 
 The pilot is tracked in `issue 957
-<https://github.com/openghg/openghg_inversions/issues/957>`_. Wider adoption,
-automatic coherent preparation, public provider APIs, alternative O₂ observables
+<https://github.com/openghg/openghg_inversions/issues/957>`_. Wider adoption of
+configured coherent preparation, public provider APIs, alternative O₂ observables
 and native mixed-cadence reporting remain separate work.
