@@ -333,8 +333,8 @@ deviations for same-time model-error covariance. The observation diagonal
 must already include those standard deviations squared. For persistent
 cross-tracer covariance, supply a separate mapping of group pairs to
 stationary correlations and use the same OU decay time for both groups in
-each pair. For amplitudes :math:`a_i, a_j` and time lag :math:`\\Delta t`, this
-adds :math:`\\rho a_i a_j \\exp(-|\\Delta t|/\\tau)` to the cross-tracer OU covariance.
+each pair. For amplitudes :math:`a_i, a_j` and time lag :math:`\Delta t`, this
+adds :math:`\rho a_i a_j \exp(-|\Delta t|/\tau)` to the cross-tracer OU covariance.
 Both terms can be active at the same site.
 
 ``likelihood`` returns the normalized density and its derivative in physical
