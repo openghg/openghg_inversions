@@ -467,8 +467,8 @@ def _canonicalize_rhime_inv_inputs(
         Inversion inputs with regenerated ``site_indicator`` and ``site_names``
         plus site metadata selected into the observed-site order. For
         multi-source bases, variables are also reordered to the basis source
-        order, whether sources form a dimension or a level of the gathered
-        state index.
+        order, using projected H or the native source response during coherent
+        preparation. Sources can form a dimension or a gathered state level.
 
     Raises:
         ValueError: If measurement indexes, site labels, or source labels do
@@ -522,9 +522,12 @@ def _canonicalize_rhime_inv_inputs(
         return result, site_metadata
     if len(set(expected_sources)) != len(expected_sources):
         raise ValueError("PreparedInputs multi-source basis labels must be unique.")
-    if "H" not in result:
-        raise ValueError("PreparedInputs inv_inputs must contain H for a multi-source basis.")
-    sensitivity = result["H"]
+    if "H" in result:
+        sensitivity = result["H"]
+    elif "fp_x_flux_sectoral" in result and "source" in result["fp_x_flux_sectoral"].dims:
+        sensitivity = result["fp_x_flux_sectoral"]
+    else:
+        raise ValueError("PreparedInputs inv_inputs must contain H or fp_x_flux_sectoral for a multi-source basis.")
     state_dim: str | None = None
     if "source" in sensitivity.dims:
         actual_sources = tuple(str(source) for source in sensitivity["source"].values)

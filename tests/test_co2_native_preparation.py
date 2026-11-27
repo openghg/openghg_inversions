@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from pathlib import Path
 
@@ -12,7 +13,7 @@ import xarray as xr
 
 from examples.surface_centered_pilot import acquire_supplied, surface_inputs
 from openghg_inversions.cli import main
-from openghg_inversions.inversion_data import MergedData, SiteOptions
+from openghg_inversions.inversion_data import MergedData, SiteOptions, select_boundary_representation
 from openghg_inversions.models.boundary import AdditiveChoice, MultiplicativeChoice, boundary_preparation
 from openghg_inversions.rhime.co2 import Co2PreparedInputs, handoffs
 from openghg_inversions.rhime.co2.co2_affine_output import load_and_bind_affine_flux_map
@@ -346,8 +347,6 @@ def test_prepare_rejects_wrong_centering_weight_period_before_writing(
 
 
 def test_absolute_merged_data_cannot_produce_centered(tmp_path: Path, merged: MergedData, partition: Path) -> None:
-    from openghg_inversions.inversion_data import select_boundary_representation
-
     absolute = MergedData(
         site_data=select_boundary_representation(merged.site_data, "ordinary"),
         flux_data=merged.flux_data, boundary_data=merged.boundary_data, site_options=merged.site_options,
@@ -588,6 +587,96 @@ def test_full_runner_builds_from_configuration(
     xr.testing.assert_allclose(result.bound.state_to_flux(state), expected_flux)
     with pytest.raises(ValueError, match="merged_data requires data.preparation"):
         run_co2(params={**config, "data": {"path": "prepared.nc", **WINDOW}}, merged_data=merged)
+
+
+@pytest.mark.parametrize("split_by_sectors", [False, True], ids=["shared", "sector-resolved"])
+def test_configured_co2_satellite_preparation(
+    tmp_path: Path, merged: MergedData, partition: Path, monkeypatch: pytest.MonkeyPatch,
+    split_by_sectors: bool,
+) -> None:
+    """Keep the column signal, boundary scale and coherent covariance aligned."""
+    site = "OCO2-TOY"
+    config = request(partition, filters=[])
+    config["data"]["acquisition"] = {
+        "sites": [site], "platform": ["satellite"], "inlet": ["column"],
+        "averaging_period": "3h", "fp_height": ["column"], "time_resolved": [True], "max_level": [17],
+    }
+    config["model"] = {"boundary": {"type": "multiplicative"}}
+    sigmas = {"biosphere": 0.2, "fossil": 0.1}
+    if split_by_sectors:
+        config["data"]["preparation"]["native_prior"]["stdev"] = sigmas
+
+    raw = select_boundary_representation(merged.site_data, "ordinary")["TOY"]
+    raw = raw.drop_vars("fp_x_flux") if split_by_sectors else raw.drop_vars("fp_x_flux_sectoral")
+    raw = raw.assign(
+        mf_prior_factor=xr.full_like(raw.mf, 15),
+        mf_prior_upper_level_factor=xr.full_like(raw.mf, 35),
+    )
+    raw = raw.assign_attrs(footprint_max_level=17)
+    raw.attrs.pop("surface_transport", None)
+
+    def acquire(**kwargs):
+        assert kwargs["site_options"].platform == ("satellite",)
+        assert kwargs["site_options"].max_level == (17,)
+        assert kwargs["site_options"].time_resolved == (True,)
+        assert kwargs.get("split_by_sectors", False) == split_by_sectors
+        assert "surface_transport" not in kwargs
+        assert kwargs.get("boundary_representation", "ordinary") == "ordinary"
+        return replace(
+            merged, site_data={site: raw}, site_options=kwargs["site_options"], split_by_sectors=split_by_sectors,
+            provenance=type(merged.provenance)(),
+        )
+
+    monkeypatch.setattr(MergedData, "from_options", staticmethod(acquire))
+    output_dir = tmp_path / "satellite"
+    params = tmp_path / "satellite.json"
+    params.write_text(json.dumps(config))
+    assert main([
+        "prepare", "--model", "co2", "--output-dir", str(output_dir), "--params-file", str(params),
+    ]) in (None, 0)
+    checkpoint = handoffs.load_preparation(output_dir / "prepare-manifest.json")
+    inputs = checkpoint.prepared.inv_inputs
+    times = inputs.time.values
+    np.testing.assert_allclose(inputs.mf, raw.mf.sel(time=times))
+    np.testing.assert_allclose(inputs.mf_prior_factor, 15)
+    np.testing.assert_allclose(inputs.mf_prior_upper_level_factor, 35)
+    assert "satellite_column_bc_scale" not in inputs.H_bc.attrs
+
+    if split_by_sectors:
+        sources = inputs.source.values.tolist()
+        response = raw.fp_x_flux_sectoral.sel(time=times, source=sources).transpose("time", "source", "lat", "lon")
+        sd = np.array([sigmas[source] for source in sources])
+    else:
+        response = raw.fp_x_flux.sel(time=times).expand_dims(source=["shared"]).transpose("time", "source", "lat", "lon")
+        sd = np.array([0.2])
+    h = response.to_numpy().reshape(len(times), len(sd), 2)
+    rho = np.exp(-1.0)
+    np.testing.assert_allclose(inputs.H, h.sum(axis=2), rtol=1e-12)
+    np.testing.assert_allclose(inputs.alpha_prior_covariance, np.diag(sd**2 * (1 + rho) / 2), atol=1e-15)
+    contrast = h[:, :, 0] - h[:, :, 1]
+    np.testing.assert_allclose(
+        inputs.aggregation_error_covariance, (contrast * (sd**2 * (1 - rho) / 2)) @ contrast.T, atol=1e-15,
+    )
+    bound = load_and_bind_affine_flux_map(checkpoint.affine_payload, checkpoint.payload)
+    prior_flux = bound.state_to_flux(inputs.alpha_prior_mean)
+    if split_by_sectors:
+        for source in sources:
+            xr.testing.assert_allclose(prior_flux.sel(native_source=source, drop=True), merged.flux_data[source].flux)
+
+
+def test_satellite_incompatible_options_fail_before_retrieval(partition: Path) -> None:
+    config = request(partition)
+    config["data"]["acquisition"] = {
+        "sites": ["OCO2-TOY"], "platform": ["satellite"], "inlet": ["column"], "averaging_period": "1h",
+    }
+    config["model"] = {"boundary": {**ADDITIVE, "anomaly_scale": 0.0}}
+    with pytest.raises(ValueError, match="satellite acquisition requires ordinary boundary"):
+        Co2PreparationConfig.from_params(config)
+
+    del config["model"]
+    config["data"]["preparation"]["native_prior"]["stdev"] = {"biosphere": 0.2}
+    with pytest.raises(ValueError, match="exactly one value per flux source"):
+        Co2PreparationConfig.from_params(config)
 
 
 def test_native_outputs_cannot_overwrite_a_consumed_resource(

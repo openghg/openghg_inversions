@@ -43,8 +43,8 @@ Current support
        in a dedicated
        :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact.
        Configured ``[data.acquisition]`` instead acquires
-       continuous-surface data from OpenGHG and builds the preparation with its
-       affine companion; see :ref:`co2-configured-preparation`.
+       continuous-surface or satellite column data from OpenGHG and builds
+       the preparation with its affine companion. See :ref:`co2-configured-preparation`.
      - :func:`openghg_inversions.rhime.co2.prepare_co2_o2_inputs` gathers
        caller-supplied, channel-native prepared arrays; it does not acquire
        OpenGHG data. :ref:`Save and replay linked prepared inputs

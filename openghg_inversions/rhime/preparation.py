@@ -209,7 +209,7 @@ def assemble_inputs(
     domain: str,
     start_date: str,
     use_bc: bool = True,
-    flux_response: Literal["H", "fp_x_flux"] = "H",
+    flux_response: Literal["H", "fp_x_flux", "fp_x_flux_sectoral"] = "H",
 ) -> PreparedInputs:
     """Construct and validate durable, backend-neutral RHIME model inputs.
 

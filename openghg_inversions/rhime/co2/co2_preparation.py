@@ -1119,6 +1119,9 @@ def prepare_co2_inputs(
             "require the exact dense A: prepare with aggregation_error_rank=None."
         )
     target_representation_dim = "nmeasure_cov" if rank_rule is None else "agg_rank"
+    if "H" not in inputs and "fp_x_flux_sectoral" in inputs:
+        # Release the native axes before the retained state reuses "source" as a MultiIndex level.
+        inputs = inputs.drop_dims(("lat", "lon", "source"))
     mapped = _without_aggregation_payload(
         inputs,
         target_dim=target_representation_dim,
@@ -1139,16 +1142,20 @@ def prepare_co2_inputs(
         ),
         "nmeasure",
     )
-    mapped["alpha_prior_mean"] = _renamed(
-        reduced_mean,
-        {reduced_state_dim: state_dim},
-        name="alpha_prior_mean",
+    # H has already installed the validated retained-state axis. Reuse it
+    # so xarray does not try to replace individual levels of its MultiIndex.
+    mapped["alpha_prior_mean"] = _borrow_without_axis_coordinates(
+        _renamed(reduced_mean, {reduced_state_dim: state_dim}, name="alpha_prior_mean"),
+        state_dim,
     )
     state_covariance_dim = f"{state_dim}_cov"
-    mapped["alpha_prior_covariance"] = _renamed(
-        retained_covariance,
-        {reduced_state_dim: state_dim, reduced_covariance_dim: state_covariance_dim},
-        name="alpha_prior_covariance",
+    mapped["alpha_prior_covariance"] = _borrow_without_axis_coordinates(
+        _renamed(
+            retained_covariance,
+            {reduced_state_dim: state_dim, reduced_covariance_dim: state_covariance_dim},
+            name="alpha_prior_covariance",
+        ),
+        state_dim,
     )
     mapped["fixed_prior_contribution"] = _borrow_without_axis_coordinates(
         _renamed(

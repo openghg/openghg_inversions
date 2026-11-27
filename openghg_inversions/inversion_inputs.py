@@ -371,7 +371,7 @@ def make_inv_inputs(
     fp_data: dict[str, Any],
     sites: list[str] | None = None,
     missing_data_vars: Literal["error", "drop"] = "drop",
-    *, flux_response: Literal["H", "fp_x_flux"] = "H",
+    *, flux_response: Literal["H", "fp_x_flux", "fp_x_flux_sectoral"] = "H",
 ) -> xr.Dataset:
     """Create backend-neutral observation-aligned inversion inputs.
 
@@ -497,5 +497,5 @@ def make_inv_inputs(
         )
 
     return _drop_nan_and_compute(
-        ds, (flux_response, "H_bc", "mf", "mf_error"), require_finite=flux_response == "fp_x_flux",
+        ds, (flux_response, "H_bc", "mf", "mf_error"), require_finite=flux_response != "H",
     )

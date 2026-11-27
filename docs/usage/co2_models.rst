@@ -711,10 +711,11 @@ Build a CO2 preparation from configured acquisition
 
 To build a preparation, replace ``data.path`` with the shared data choices
 and the ``[data.acquisition]`` and ``[data.preparation]`` tables below.
-Both the full runner and staged ``prepare`` first acquire continuous-surface
-CO₂ through explicit surface transport (see :doc:`surface_preparation`).
-Scientific preparation then filters the merged observations, derives missing
-errors, builds the flux and boundary bases, and coherently reduces the native
+Both the full runner and staged ``prepare`` can acquire continuous-surface
+CO₂ through explicit surface transport or satellite CO₂ through OpenGHG
+column processing. Scientific preparation then filters the merged
+observations, derives missing errors, builds the flux and boundary bases,
+and coherently reduces the native
 Gaussian prior. ``run_co2`` uses the prepared inputs and affine companion in
 memory. Staged ``prepare`` saves the pair for later phases.
 
@@ -759,7 +760,7 @@ memory. Staged ``prepare`` saves the pair for later phases.
 The multiplicative boundary adds the transported background to the model of
 absolute CO₂ observations.
 
-``acquisition`` takes the site selectors of
+For surface CO₂, ``acquisition`` takes the site selectors of
 :class:`~openghg_inversions.inversion_data.SiteOptions` (``time_resolved = true``
 is required when any source uses ``time_resolved`` transport), one surface
 transport mode per configured flux source, and store and dataset selectors (``obs_store``,
@@ -768,9 +769,39 @@ with boundaries, the reference and mass tolerance. ``boundary_reference`` is a
 value you choose, such as a typical background. ``bc_reference`` stores that
 physical reference converted to the observation concentration units (see
 :doc:`surface_preparation`). These options are checked when the configuration
-is read, before any retrieval. All sources share one dimensionless native
-scaling field. The first entry in ``data.flux_sources`` weights basis design.
-The requested window and domain also belong to ``[data]``.
+is read, before any retrieval. The first entry in ``data.flux_sources``
+weights generated basis design. The requested window and domain also belong
+to ``[data]``.
+
+For satellite CO₂, select the OpenGHG column data using satellite site names
+and the matching observation and footprint selectors. For example, the
+following acquisition table selects time-resolved OCO-2 footprints. Set the
+store names and maximum level to match your products.
+
+.. code-block:: toml
+
+   [data.acquisition]
+   sites = ["OCO2-EASTASIA"]
+   platform = ["satellite"]
+   averaging_period = ["1h"]
+   inlet = ["column"]
+   fp_height = ["column"]
+   fp_species = "co2"
+   time_resolved = [true]
+   max_level = [17]
+   obs_store = "satellite_observations"
+   footprint_store = "satellite_footprints"
+   flux_store = "regional_inventories"
+   bc_store = "regional_boundaries"
+   bc_input = "cams"
+
+Omit the surface transport and reference options for satellite acquisition.
+Use a window with enough inventory coverage for the footprint look-back.
+The model fits the column signal after OpenGHG's retrieval-prior corrections.
+The preparation keeps the two prior terms alongside that signal. Fitted
+concentration residuals are on the corrected scale. Adding both saved terms
+to observed and modeled concentrations gives the full-column scale and
+leaves their difference unchanged.
 
 Under ``[data.preparation]``, ``filters`` selects observations and
 ``averaging_error`` controls whether variability contributes to derived
@@ -785,7 +816,14 @@ configured class map (`#454
 <https://github.com/openghg/openghg_inversions/issues/454>`_). ``native_prior`` gives
 the constant native mean (default 1), the dimensionless marginal standard
 deviation ``stdev``, and correlation lengths in degrees for the separable
-exponential covariance.
+exponential covariance. A scalar ``stdev`` uses one shared native scaling
+field with the summed flux response. A table such as
+``stdev = { biosphere = 0.6, fossil = 0.4 }`` must cover
+``data.flux_sources`` and uses independently scaled inventories with
+separate spatial covariance blocks. Each source has its own retained
+coefficients. Source fluxes must use a common grid and inventory time axis.
+The same partition is used for all sources when a single partition is
+supplied or generated.
 
 Specify at most one flux basis file selector per request. An override of ``basis.path``
 or ``basis.partition_path`` replaces the inherited file selection and keeps
@@ -795,9 +833,9 @@ selector with ``null`` or ``None``, respectively.
 Boundary representation
 """""""""""""""""""""""
 
-Configured CO₂ acquisition requests centered boundary operands when
-boundaries are enabled. One merged dataset can then feed either prepared
-representation. The configured ``[model.boundary]`` choice
+Configured surface CO₂ acquisition requests centered boundary operands
+when boundaries are enabled. One merged surface dataset can then feed either
+prepared representation. The configured ``[model.boundary]`` choice
 decides which one preparation produces: each choice class states which
 representations it can bind and which extra inputs it needs
 (:func:`~openghg_inversions.models.boundary.boundary_preparation`).
@@ -822,6 +860,14 @@ Use ``"centered"`` with a multiplicative boundary where precision matters,
 for example for large absolute backgrounds. A saved preparation can serve
 several model configurations: prepare it as ``"centered"`` to keep every
 boundary family available.
+
+Configured satellite acquisition supports ordinary boundary sensitivities
+and a multiplicative correction. It uses the standard OpenGHG column
+boundary calculation. To use directional boundary contributions evaluated
+at particle exit age, supply them with the merged data to the Python
+preparation API. For a custom retained state or native flux covariance,
+pass canonical inputs and the matching coherent reduction. Once saved,
+either preparation can be imported via ``data.path``.
 
 Every stage checks the preparation against the configured choice. Building a
 centered preparation from merged data without centered operands (the

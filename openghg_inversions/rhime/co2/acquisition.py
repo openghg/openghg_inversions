@@ -1,4 +1,4 @@
-"""Acquire the observations and transport inputs for the surface CO2 recipe."""
+"""Acquire the observations and transport inputs for the CO2 recipe."""
 
 from collections.abc import Mapping
 from typing import Any
@@ -13,7 +13,7 @@ def acquire_co2_data(
     """Retrieve native CO2 inputs before observation filtering or basis construction.
 
     Args:
-        acquisition: Resolved arguments for surface retrieval.
+        acquisition: Resolved arguments for surface or satellite retrieval.
         flux_sources: Requested flux inventory names.
         domain: Requested transport domain.
         start_date: Requested window start.
