@@ -23,10 +23,13 @@ class RhimeModelBuildResult:
         output_contract: Semantic variable roles, supported output formats and
             construction metadata. Custom models default to sampling-only
             capability when constructing an ordinary ``OutputContract``.
+        fixed_log_likelihood: Optional observed variable name and exact scalar
+            likelihood expression for posterior replay at fixed model data.
     """
 
     model: pm.Model
     output_contract: OutputContract
+    fixed_log_likelihood: tuple[str, TensorVariable] | None = None
 
 
 def callable_metadata(builder: Callable[..., Any]) -> dict[str, str]:

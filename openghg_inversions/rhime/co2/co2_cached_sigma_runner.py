@@ -457,6 +457,7 @@ def co2_cached_sigma_build_result(
             variable_roles[role] = name
     built = RhimeModelBuildResult(
         model=cached_model.model,
+        fixed_log_likelihood=("y", cached_model.cached_state_logp) if cached_model.fixed_amplitudes else None,
         output_contract=OutputContract(
             variable_roles=variable_roles,
             metadata=metadata,

@@ -21,6 +21,7 @@ import pytest
 import xarray as xr
 from pymc.blocking import DictToArrayBijection
 from pymc.step_methods import CompoundStep
+from pytensor.compile.mode import Mode
 from scipy.stats import multivariate_normal
 
 from boundary_test_utils import bound_linked_model_arguments
@@ -167,6 +168,16 @@ def test_single_species_fixed_state_cost_matches_plain_model_and_dense_oracle():
         for value in ([0.0, 0.0], [0.7, -0.4], [-1.3, 0.9])
     ]
     _assert_state_cost_matches(cached, plain, dense_logp, points)
+
+    alternate = pt.dvector("alternate_observations")
+    model = cached.model
+    evaluate = model.compile_fn(
+        model.replace_rvs_by_values([pm.logp(model["y"], alternate), cached.modelled_mean]),
+        inputs=[alternate, *model.value_vars], point_fn=False,
+    )
+    value = inputs["mf"].values + np.linspace(-0.4, 0.7, cached.target.n_obs)
+    actual, mean = evaluate(value, points[1]["flux_scaling_latent"])
+    np.testing.assert_allclose(actual, multivariate_normal.logpdf(value, mean=mean, cov=covariance), atol=1e-10)
 
 
 @pytest.mark.usefixtures("double_precision")
@@ -411,10 +422,43 @@ def captured_steps(monkeypatch):
     return calls
 
 
-def _short_sampler(**sample_kwargs):
+@pytest.fixture
+def direct_log_likelihood(monkeypatch):
+    """Keep the direct reference available and reject its use during sampling."""
+    original = pm.compute_log_likelihood
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Fixed-amplitude likelihood replay must use the state quadratic.")
+
+    monkeypatch.setattr(pm, "compute_log_likelihood", forbidden)
+    return original
+
+
+def _assert_replayed_log_likelihood(trace, model, direct_log_likelihood):
+    """Compare the stored scalar and its axes against the observed distribution."""
+    expected = direct_log_likelihood(
+        trace,
+        model=model,
+        extend_inferencedata=False,
+        progressbar=False,
+        compile_kwargs={"mode": Mode(linker="cvm", optimizer="fast_run")},
+    )
+    assert trace.log_likelihood.y.dims == ("chain", "draw")
+    assert all(
+        trace.log_likelihood.y.indexes[dim].equals(trace.posterior.indexes[dim])
+        for dim in ("chain", "draw")
+    )
+    # Direct float32 evaluation rounds the observation-space mean before
+    # subtracting it from the observations. The state quadratic uses float64.
+    atol = 5e-5 if pytensor.config.floatX == "float32" else 2e-8
+    xr.testing.assert_allclose(trace.log_likelihood.y, expected.y, rtol=2e-8, atol=atol)
+
+
+def _short_sampler(*, burn=0, **sample_kwargs):
     return RhimeSampler(
         nuts_sampler="pymc",
         draws=4,
+        burn=burn,
         tune=4,
         chains=1,
         sample_kwargs={
@@ -484,16 +528,27 @@ def test_configured_linked_fixed_ou_sample_uses_cached_state_step(tmp_path, capt
 
 
 @pytest.mark.usefixtures("double_precision")
-def test_prepared_input_linked_runner_samples_mixed_unit_fixed_ou_with_cached_state_step(captured_steps):
+def test_prepared_input_linked_runner_samples_mixed_unit_fixed_ou_with_cached_state_step(
+    captured_steps, direct_log_likelihood,
+):
     prepared = _per_meg_prepared()
     trace = run_rhime_co2_o2_from_prepared_inputs(
         prepared_inputs=prepared,
         independent_error_sd=_independent_error(prepared),
         tau_hours=LINKED_TAU,
         fixed_site_amplitudes=LINKED_AMPLITUDES,
-        sampler=_short_sampler(nuts={"target_accept": 0.95, "max_treedepth": 4}),
+        offset_prior={"co2": {"pdf": "halfnormal", "sigma": 0.1}},
+        sampler=_short_sampler(
+            burn=1,
+            nuts={"target_accept": 0.95, "max_treedepth": 4},
+            idata_kwargs={"log_likelihood": ["y"]},
+        ),
     )
     _assert_state_only_trace(trace, captured_steps, target_accept=0.95)
+    model = captured_steps[0]["model"]
+    assert model.rvs_to_transforms[model["co2_offset_latent"]] is not None
+    _assert_replayed_log_likelihood(trace, model, direct_log_likelihood)
+    np.testing.assert_array_equal(trace.log_likelihood.draw, np.arange(3))
     assert captured_steps[0]["step"].methods[0].max_treedepth == 4
     assert trace.attrs["rhime_recipe"] == "co2_o2"
     amplitude = trace.constant_data.ou_site_amplitude
@@ -504,21 +559,24 @@ def test_prepared_input_linked_runner_samples_mixed_unit_fixed_ou_with_cached_st
     assert trace.constant_data.error.attrs["units"] == "mixed; see observation_units coordinate"
 
 
-def test_named_linked_cached_runner_accepts_fixed_amplitudes(captured_steps):
+def test_named_linked_cached_runner_accepts_fixed_amplitudes(captured_steps, direct_log_likelihood):
     prepared = _prepared()
     trace = run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         prepared_inputs=prepared,
         independent_error_sd=_independent_error(prepared),
         tau_hours=6.0,
         fixed_site_amplitudes=0.5,
-        sampler=_short_sampler(),
+        sampler=_short_sampler(idata_kwargs={"log_likelihood": False}),
         state_target_accept=0.85,
     )
     _assert_state_only_trace(trace, captured_steps, target_accept=0.85)
     assert trace.attrs["rhime_recipe"] == "co2_o2_cached_sigma_fixed_ou"
+    assert "log_likelihood" not in trace.children
 
 
-def test_co2_fixed_ou_inference_records_cached_state_step_and_constant_amplitudes(captured_steps):
+def test_co2_fixed_ou_inference_records_cached_state_step_and_constant_amplitudes(
+    captured_steps, direct_log_likelihood,
+):
     from test_co2_affine_output import _prepared as co2_prepared
 
     prepared, _ = co2_prepared()
@@ -545,6 +603,7 @@ def test_co2_fixed_ou_inference_records_cached_state_step_and_constant_amplitude
     )
     assert actual == json.loads(trace.attrs["rhime_actual_inference"])
     _assert_state_only_trace(trace, captured_steps, target_accept=0.9)
+    _assert_replayed_log_likelihood(trace, captured_steps[0]["model"], direct_log_likelihood)
     amplitude = trace.constant_data.ou_site_amplitude
     np.testing.assert_allclose(amplitude, 0.3)
     assert amplitude.attrs["units"] == prepared.inv_inputs.mf.attrs["units"]

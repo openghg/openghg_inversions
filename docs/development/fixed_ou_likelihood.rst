@@ -46,7 +46,19 @@ units. Times and fixed positive :math:`\tau_s` use hours internally.
 Site rows may be interleaved. Preparation requires unique times within a
 site and a positive-definite OU correlation template.
 
-For each site, the generalized eigensystem gives :math:`V_s` satisfying
+For the cached linked sampler with fixed OU amplitudes and paired model errors,
+gather the rows at each physical site into one block. Its base
+covariance includes both tracers' OU terms and the off-diagonal model-error
+covariance at each matched time. If the Cholesky factor of the base is
+:math:`L_s`, triangular solves with :math:`L_s` whiten the residual, design
+matrix and aggregation factor for that site. The base log determinant is
+:math:`2\sum_s\sum_i\log (L_s)_{ii}`. The global update then uses only the
+aggregation factor columns and the same cached state quadratic described below.
+If a site block fails the condition check after scaling to unit diagonal, the
+solver uses the exact pair-factor representation described in :doc:`../usage/co2_models`.
+
+For unpaired or inferred-amplitude OU models, the per-site generalized
+eigensystem gives :math:`V_s` satisfying
 
 .. math::
 

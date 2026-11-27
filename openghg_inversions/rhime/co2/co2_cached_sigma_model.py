@@ -40,6 +40,7 @@ from openghg_inversions.models.coords import add_coords, registered_model
 from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.fixed_ou import (
     FixedOuLowRank,
+    _FixedPairedOu,
     prepare_fixed_ou_low_rank,
 )
 from openghg_inversions.models.fixed_ou import (
@@ -200,9 +201,10 @@ def _fixed_amplitude_cache(
     if not np.isfinite(values).all() or np.any(values < 0.0):
         raise ValueError("fixed_site_amplitudes must contain finite, non-negative values.")
     prepared = target.prepared
-    mode_variance = prepared.mode_eigenvalues + np.square(values)[prepared.mode_site_index]
-    if not np.isfinite(mode_variance).all() or np.any(mode_variance <= 0.0):
-        raise ValueError(_FIXED_AMPLITUDE_COVARIANCE_MESSAGE)
+    if isinstance(prepared, FixedOuLowRank):
+        mode_variance = prepared.mode_eigenvalues + np.square(values)[prepared.mode_site_index]
+        if not np.isfinite(mode_variance).all() or np.any(mode_variance <= 0.0):
+            raise ValueError(_FIXED_AMPLITUDE_COVARIANCE_MESSAGE)
     try:
         return target.refresh(values)
     except (ValueError, np.linalg.LinAlgError) as exc:
@@ -212,7 +214,7 @@ def _fixed_amplitude_cache(
 def _add_cached_likelihood(
     terms: tuple[AffineConcentrationTerm, ...],
     *,
-    covariance: FixedOuLowRank,
+    covariance: FixedOuLowRank | _FixedPairedOu,
     modelled_mean: TensorVariable,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -344,7 +346,7 @@ def _finish_cached_likelihood(
     terms: tuple[AffineConcentrationTerm, ...],
     *,
     target: FixedOuCachedSigmaTarget,
-    covariance: FixedOuLowRank,
+    covariance: FixedOuLowRank | _FixedPairedOu,
     modelled_mean: TensorVariable,
     observations: xr.DataArray,
     observation_error: xr.DataArray,

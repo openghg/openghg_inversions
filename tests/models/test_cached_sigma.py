@@ -4,7 +4,12 @@ from scipy.stats import multivariate_normal
 
 from openghg_inversions.models import cached_sigma
 from openghg_inversions.models.cached_sigma import FixedOuCachedSigmaTarget, _sum_squares_gram
-from openghg_inversions.models.fixed_ou import FixedOuLowRank, prepare_fixed_ou_low_rank
+from openghg_inversions.models.fixed_ou import (
+    FixedOuLowRank,
+    _prepare_ou_likelihood,
+    prepare_fixed_ou_low_rank,
+)
+from openghg_inversions.models.paired_error import PairedErrorCorrelation
 
 
 def _target(*, full_width: bool = False) -> tuple[FixedOuCachedSigmaTarget, np.ndarray, np.ndarray]:
@@ -340,3 +345,30 @@ def test_cached_target_avoids_cancellation_for_dominant_low_rank_factor() -> Non
     expected = prepared.evaluate(observations, np.ones(2)).log_likelihood
 
     assert cache.log_likelihood([0.0]) == pytest.approx(expected, rel=1.0e-12)
+
+
+def test_fixed_paired_ou_keeps_small_covariance_direction():
+    """A nearly singular paired block uses the split and retains its small direction."""
+    rho = np.nextafter(1.0, 0.0)
+    variance = 1.0 - rho
+    prepared = _prepare_ou_likelihood(
+        np.zeros(2),
+        None,
+        np.zeros(2),
+        np.arange(2),
+        1.0,
+        site_labels=("co2:A", "o2:A"),
+        fixed_amplitudes=np.zeros(2),
+        fixed_model_mismatch=np.ones(2),
+        paired_error_correlation=PairedErrorCorrelation([0], [1], [rho]),
+    )
+    assert isinstance(prepared, FixedOuLowRank)
+    assert prepared.rank == 1
+    target = FixedOuCachedSigmaTarget(
+        prepared=prepared,
+        observations=np.sqrt(variance) * np.array([1.0, -1.0]),
+        fixed_contribution=np.zeros(2),
+        design=np.empty((2, 0)),
+    )
+    expected = -0.5 * (2 * np.log(2 * np.pi) + np.log(variance * (1.0 + rho)) + 2)
+    np.testing.assert_allclose(target.refresh(np.zeros(2)).constant, expected, rtol=1e-12)

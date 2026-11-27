@@ -177,6 +177,7 @@ def _sample_linked_cached(
         roles["baseline_concentration"] = "baseline_concentration"
     built = RhimeModelBuildResult(
         model=cached.model,
+        fixed_log_likelihood=("y", cached.cached_state_logp) if fixed else None,
         output_contract=OutputContract(
             variable_roles=roles,
             metadata=metadata,

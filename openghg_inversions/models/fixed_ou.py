@@ -20,6 +20,7 @@ from pytensor.graph.op import Op, OutputStorageType
 from pytensor.tensor.variable import TensorVariable
 from scipy.linalg import cho_solve, eigh, solve_triangular
 from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import connected_components
 
 from openghg_inversions._labelled_matrices import matrix_column_dim, square_matrix
 from openghg_inversions._linalg import cholesky_logdet, conditioned_cholesky
@@ -142,13 +143,118 @@ def _evaluate_whitened_fallback(
     return quadratic, logdet, cast(FloatArray, solved_residual), precision_diagonal
 
 
+def _evaluate_whitened(
+    whitened_factor: FloatArray,
+    whitened_residual: FloatArray,
+    logdet: float,
+    *,
+    amplitude_gradient: bool = True,
+) -> tuple[float, float, FloatArray, FloatArray | None]:
+    """Evaluate the low-rank update and optionally its precision diagonal."""
+    precision_diagonal = None
+    rank = whitened_factor.shape[1]
+    if rank:
+        tolerance = np.sqrt(np.finfo(np.float64).eps)
+        roundoff = (rank + 1) * np.finfo(np.float64).eps
+        roundoff /= 1.0 - roundoff
+        with np.errstate(over="ignore", invalid="ignore"):
+            core = np.eye(rank, dtype=np.float64) + (
+                whitened_factor.T @ whitened_factor
+            )
+            core = (core + core.T) * 0.5
+        conditioned = conditioned_cholesky(core, tolerance)
+        use_cholesky = conditioned is not None
+        if conditioned is not None:
+            cholesky = conditioned
+            projected = whitened_factor.T @ whitened_residual
+            latent_mode = cho_solve((cholesky, True), projected, check_finite=False)
+            solved_residual = whitened_residual - whitened_factor @ latent_mode
+            # A well-conditioned scalar core can still lose the residual
+            # in subtraction. Budget that rounding relative to the solve,
+            # whose accuracy is needed by both gradients, not just logp.
+            with np.errstate(over="ignore", invalid="ignore"):
+                residual_roundoff = roundoff * (
+                    np.linalg.norm(whitened_residual)
+                    + np.linalg.norm(whitened_factor) * np.linalg.norm(latent_mode)
+                )
+            use_cholesky = bool(
+                np.isfinite(residual_roundoff)
+                and residual_roundoff <= tolerance * np.linalg.norm(solved_residual)
+            )
+        if use_cholesky and amplitude_gradient:
+            transformed = solve_triangular(
+                cholesky, whitened_factor.T, lower=True, check_finite=False
+            )
+            leverage = np.square(transformed).sum(axis=0)
+            precision_diagonal = 1.0 - leverage
+            # Independently protect the precision diagonal even when the
+            # residual is zero. These screens address known cancellation;
+            # neither the condition estimate nor the normwise residual
+            # budget certifies every individual gradient component.
+            use_cholesky = bool(
+                np.all(precision_diagonal > 0.0)
+                and np.all(roundoff * (1.0 + leverage) <= tolerance * precision_diagonal)
+            )
+        if use_cholesky:
+            quadratic = float(solved_residual @ solved_residual + latent_mode @ latent_mode)
+            logdet += cholesky_logdet(cholesky)
+        else:
+            quadratic, logdet, solved_residual, precision_diagonal = _evaluate_whitened_fallback(
+                whitened_factor, whitened_residual, logdet
+            )
+    else:
+        quadratic = float(whitened_residual @ whitened_residual)
+        solved_residual = whitened_residual
+        precision_diagonal = np.ones(whitened_residual.size, dtype=np.float64)
+
+    return quadratic, logdet, solved_residual, precision_diagonal
+
+
+def _solve_whitened(
+    whitened_factor: FloatArray,
+    whitened_rhs: FloatArray,
+    logdet: float,
+) -> tuple[FloatArray, float]:
+    """Solve in whitened coordinates with the guarded Cholesky and QR/SVD routes."""
+    rank = whitened_factor.shape[1]
+    if rank:
+        dense_solution = (
+            _solve_full_width_factor(whitened_factor, whitened_rhs)
+            if rank >= whitened_factor.shape[0]
+            else None
+        )
+        if dense_solution is not None:
+            whitened_solution, logdet_update = dense_solution
+            logdet += logdet_update
+        else:
+            basis, _ = np.linalg.qr(
+                np.column_stack((whitened_factor, whitened_rhs)),
+                mode="reduced",
+            )
+            factor_coordinates = basis.T @ whitened_factor
+            rhs_coordinates = basis.T @ whitened_rhs
+            left_vectors, singular_values, _ = np.linalg.svd(
+                factor_coordinates,
+                full_matrices=True,
+            )
+            rotated_rhs = left_vectors.T @ rhs_coordinates
+            rotated_rhs[: singular_values.size] /= (
+                1.0 + np.square(singular_values)
+            )[:, None]
+            whitened_solution = basis @ (left_vectors @ rotated_rhs)
+            logdet += float(np.log1p(np.square(singular_values)).sum())
+    else:
+        whitened_solution = whitened_rhs
+    return whitened_solution, logdet
+
+
 class _FixedOuLogpOp(Op):
     """Instance-local PyTensor bridge to one prepared NumPy/SciPy target."""
 
     # Keep the prepared arrays out of Numba's object-mode callbacks.
     holds_numpy_target = True
 
-    def __init__(self, target: FixedOuLowRank) -> None:
+    def __init__(self, target: FixedOuLowRank | _FixedPairedOu) -> None:
         self.target = target
 
     def make_node(self, *inputs: Any) -> Apply:
@@ -253,7 +359,8 @@ class FixedOuLowRank:
         """Return the normalized Gaussian log density as a differentiable Op."""
         residual = pt.cast(value - mean, "float64")
         amplitude = pt.cast(pt.atleast_1d(site_amplitude), "float64")
-        return cast(TensorVariable, self._logp_op(residual, amplitude)[0])
+        outputs = cast(list[Variable], self._logp_op(residual, amplitude, return_list=True))
+        return cast(TensorVariable, outputs[0])
 
     def evaluate(
         self,
@@ -339,60 +446,12 @@ class FixedOuLowRank:
         whitened_residual = transformed_residual * square_root_weights
         logdet = self.base_logdet + float(np.log(mode_variance).sum())
 
-        if self.rank:
-            whitened_factor = self.transformed_factor * square_root_weights[:, None]
-            tolerance = np.sqrt(np.finfo(np.float64).eps)
-            roundoff = (self.rank + 1) * np.finfo(np.float64).eps
-            roundoff /= 1.0 - roundoff
-            with np.errstate(over="ignore", invalid="ignore"):
-                core = np.eye(self.rank, dtype=np.float64) + (
-                    whitened_factor.T @ whitened_factor
-                )
-                core = (core + core.T) * 0.5
-            conditioned = conditioned_cholesky(core, tolerance)
-            use_cholesky = conditioned is not None
-            if conditioned is not None:
-                cholesky = conditioned
-                projected = whitened_factor.T @ whitened_residual
-                latent_mode = cho_solve((cholesky, True), projected, check_finite=False)
-                solved_residual = whitened_residual - whitened_factor @ latent_mode
-                # A well-conditioned scalar core can still lose the residual
-                # in subtraction. Budget that rounding relative to the solve,
-                # whose accuracy is needed by both gradients, not just logp.
-                with np.errstate(over="ignore", invalid="ignore"):
-                    residual_roundoff = roundoff * (
-                        np.linalg.norm(whitened_residual)
-                        + np.linalg.norm(whitened_factor) * np.linalg.norm(latent_mode)
-                    )
-                use_cholesky = bool(
-                    np.isfinite(residual_roundoff)
-                    and residual_roundoff <= tolerance * np.linalg.norm(solved_residual)
-                )
-            if use_cholesky:
-                transformed = solve_triangular(
-                    cholesky, whitened_factor.T, lower=True, check_finite=False
-                )
-                leverage = np.square(transformed).sum(axis=0)
-                precision_diagonal = 1.0 - leverage
-                # Independently protect the precision diagonal even when the
-                # residual is zero. These screens address known cancellation;
-                # neither the condition estimate nor the normwise residual
-                # budget certifies every individual gradient component.
-                use_cholesky = bool(
-                    np.all(precision_diagonal > 0.0)
-                    and np.all(roundoff * (1.0 + leverage) <= tolerance * precision_diagonal)
-                )
-            if use_cholesky:
-                quadratic = float(solved_residual @ solved_residual + latent_mode @ latent_mode)
-                logdet += cholesky_logdet(cholesky)
-            else:
-                quadratic, logdet, solved_residual, precision_diagonal = _evaluate_whitened_fallback(
-                    whitened_factor, whitened_residual, logdet
-                )
-        else:
-            quadratic = float(whitened_residual @ whitened_residual)
-            solved_residual = whitened_residual
-            precision_diagonal = np.ones(self.n_observation, dtype=np.float64)
+        quadratic, logdet, solved_residual, precision_diagonal = _evaluate_whitened(
+            self.transformed_factor * square_root_weights[:, None],
+            whitened_residual,
+            logdet,
+        )
+        assert precision_diagonal is not None
 
         log_likelihood = -0.5 * (
             self.n_observation * math.log(2.0 * math.pi) + logdet + quadratic
@@ -455,35 +514,9 @@ class FixedOuLowRank:
         rhs_2d = rhs[:, None] if rhs.ndim == 1 else rhs
         square_root_weights = np.sqrt(weights)
         whitened_rhs = square_root_weights[:, None] * rhs_2d
-        if self.rank:
-            whitened_factor = self.transformed_factor * square_root_weights[:, None]
-            dense_solution = (
-                _solve_full_width_factor(whitened_factor, whitened_rhs)
-                if self.rank >= self.n_observation
-                else None
-            )
-            if dense_solution is not None:
-                whitened_solution, logdet_update = dense_solution
-                logdet += logdet_update
-            else:
-                basis, _ = np.linalg.qr(
-                    np.column_stack((whitened_factor, whitened_rhs)),
-                    mode="reduced",
-                )
-                factor_coordinates = basis.T @ whitened_factor
-                rhs_coordinates = basis.T @ whitened_rhs
-                left_vectors, singular_values, _ = np.linalg.svd(
-                    factor_coordinates,
-                    full_matrices=True,
-                )
-                rotated_rhs = left_vectors.T @ rhs_coordinates
-                rotated_rhs[: singular_values.size] /= (
-                    1.0 + np.square(singular_values)
-                )[:, None]
-                whitened_solution = basis @ (left_vectors @ rotated_rhs)
-                logdet += float(np.log1p(np.square(singular_values)).sum())
-        else:
-            whitened_solution = whitened_rhs
+        whitened_solution, logdet = _solve_whitened(
+            self.transformed_factor * square_root_weights[:, None], whitened_rhs, logdet
+        )
         solved = square_root_weights[:, None] * whitened_solution
         return FixedOuCovarianceSolve(
             solution=cast(FloatArray, solved[:, 0] if rhs.ndim == 1 else solved),
@@ -924,6 +957,300 @@ def fixed_ou_base(
         factor = np.concatenate([factor, paired_factor], axis=1)
         diagonal = diagonal - reduction
     return factor, diagonal
+
+
+@dataclass(frozen=True)
+class _PairedOuBlock:
+    """Cholesky factor in the original row order of a connected site block."""
+
+    indices: IntArray
+    cholesky: FloatArray
+
+
+@dataclass(frozen=True)
+class _FixedPairedOu:
+    """Exact Gaussian covariance with fixed OU amplitudes and local model-error pairs."""
+
+    factor: FloatArray
+    variance: FloatArray
+    site_amplitudes: FloatArray
+    tau_hours_by_site: FloatArray
+    blocks: tuple[_PairedOuBlock, ...]
+    base_logdet: float
+    transformed_factor: FloatArray = field(init=False, repr=False)
+    _logp_op: _FixedOuLogpOp = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        """Prepare the aggregation factor in the same coordinates as residuals."""
+        object.__setattr__(self, "transformed_factor", self._whiten(self.factor))
+        object.__setattr__(self, "_logp_op", _FixedOuLogpOp(self))
+
+    @property
+    def n_observation(self) -> int:
+        """Number of observation rows."""
+        return int(self.variance.size)
+
+    @property
+    def n_site(self) -> int:
+        """Number of distinct OU amplitude groups."""
+        return int(self.site_amplitudes.size)
+
+    @property
+    def rank(self) -> int:
+        """Width of the coherent aggregation factor."""
+        return int(self.factor.shape[1])
+
+    def _check_amplitude(self, value: ArrayLike | float) -> None:
+        """Require the amplitudes used to build the blocks, including backend rounding."""
+        supplied = _site_values(value, self.n_site, "site_amplitude", positive=False)
+        if not (
+            np.array_equal(supplied, self.site_amplitudes)
+            or np.array_equal(supplied, floatX(self.site_amplitudes))
+        ):
+            raise ValueError("Fixed paired OU covariance requires its supplied fixed site amplitudes.")
+
+    def _whiten(self, values: FloatArray, *, transpose: bool = False) -> FloatArray:
+        """Apply each block's triangular whitening operator.
+
+        Args:
+            values: Vector or matrix in original observation row order.
+            transpose: Apply the transpose to a solution in whitened coordinates.
+
+        Returns:
+            Transformed rows in original observation order.
+        """
+        result = np.empty_like(values)
+        if values.size:
+            for block in self.blocks:
+                result[block.indices] = solve_triangular(
+                    block.cholesky,
+                    values[block.indices],
+                    lower=True,
+                    trans="T" if transpose else "N",
+                    check_finite=False,
+                )
+        return result
+
+    def logp(
+        self, value: TensorVariable, mean: TensorVariable, site_amplitude: TensorVariable,
+    ) -> TensorVariable:
+        """Return the normalized log density with a gradient in the observation mean."""
+        residual = pt.cast(value - mean, "float64")
+        amplitude = pt.cast(pt.atleast_1d(site_amplitude), "float64")
+        outputs = cast(list[Variable], self._logp_op(residual, amplitude, return_list=True))
+        return cast(TensorVariable, outputs[0])
+
+    def evaluate(
+        self, residual: ArrayLike, site_amplitude: ArrayLike | float,
+    ) -> FixedOuLikelihoodEvaluation:
+        """Evaluate the normalized fixed covariance density in residual coordinates.
+
+        Args:
+            residual: One observation-minus-mean value per row.
+            site_amplitude: Site amplitudes supplied when building the blocks.
+
+        Returns:
+            The log density and residual gradient. The amplitudes are fixed,
+            so their gradient is zero.
+        """
+        self._check_amplitude(site_amplitude)
+        values = np.asarray(residual, dtype=np.float64)
+        if values.shape != (self.n_observation,):
+            raise ValueError(f"residual must have shape {(self.n_observation,)}, got {values.shape}.")
+        amplitude_gradient = np.zeros(self.n_site)
+        if not np.isfinite(values).all():
+            gradient = np.where(np.isinf(values), -np.sign(values), 0.0)
+            return FixedOuLikelihoodEvaluation(-np.inf, gradient, amplitude_gradient)
+        quadratic, logdet, solved, _ = _evaluate_whitened(
+            self.transformed_factor, self._whiten(values), self.base_logdet, amplitude_gradient=False,
+        )
+        log_likelihood = -0.5 * (self.n_observation * math.log(2.0 * math.pi) + logdet + quadratic)
+        return FixedOuLikelihoodEvaluation(
+            log_likelihood, -self._whiten(solved, transpose=True), amplitude_gradient,
+        )
+
+    def marginal_variance(self, site_amplitude: TensorVariable) -> TensorVariable:
+        """Return the diagonal of the frozen observation covariance."""
+        return pt.as_tensor_variable(floatX(self.variance + np.square(self.factor).sum(axis=1)))
+
+    def random(
+        self,
+        mean: np.ndarray,
+        site_amplitude: np.ndarray,
+        rng: np.random.Generator | None = None,
+        size: int | Sequence[int] | None = None,
+    ) -> np.ndarray:
+        """Draw jointly in the base blocks and add the coherent aggregation draw.
+
+        Args:
+            mean: Observation-aligned mean.
+            site_amplitude: Site amplitudes supplied when building the blocks.
+            rng: Random number generator from PyMC or the calling sampler.
+            size: Leading sample dimensions, or None for a single draw.
+
+        Returns:
+            Samples with observations along the final axis.
+        """
+        self._check_amplitude(site_amplitude)
+        rng = np.random.default_rng() if rng is None else rng
+        sample_shape = () if size is None else (size,) if isinstance(size, int) else tuple(size)
+        result = np.broadcast_to(np.asarray(mean), (*sample_shape, self.n_observation)).copy()
+        if self.rank:
+            factor_noise = rng.normal(size=(*sample_shape, self.rank))
+            result += np.einsum("...r,nr->...n", factor_noise, self.factor)
+        for block in self.blocks:
+            block_noise = rng.normal(size=(*sample_shape, block.indices.size))
+            result[..., block.indices] += block_noise @ block.cholesky.T
+        return result
+
+
+def _factor_paired_ou_blocks(
+    diagonal: FloatArray,
+    observation_times: ArrayLike,
+    site_index: IntArray,
+    tau: FloatArray,
+    labels: tuple[str, ...],
+    amplitude: FloatArray,
+    pairs: PairedErrorCorrelation,
+    model_sd: FloatArray,
+) -> tuple[_PairedOuBlock, ...] | None:
+    """Factor the fixed OU and paired base over independent observation blocks.
+
+    Args:
+        diagonal: Observation and aggregation diagonal variance before model error.
+        observation_times: Observation-aligned datetime values or numeric hours.
+        site_index: Observation-aligned OU group positions.
+        tau: Positive OU time scales in group order.
+        labels: Group labels used in validation errors.
+        amplitude: Fixed non-negative OU amplitudes in group order.
+        pairs: Observation row pairs with correlated model errors.
+        model_sd: Model error standard deviations in observation row order.
+
+    Returns:
+        Cholesky factors with their observation row positions, or None if a
+        block cannot be factorized with reliable conditioning.
+
+    Raises:
+        ValueError: If observation times or pair row positions are invalid.
+    """
+    row_position = np.empty_like(pairs.partner(diagonal.size))
+    keep = pairs.correlated()
+    first, second = pairs.first[keep], pairs.second[keep]
+    rho = pairs.correlation[keep]
+    cross = rho * model_sd[first] * model_sd[second]
+    # Pair edges connect the channel-specific OU groups within each physical site.
+    edges = csr_matrix(
+        (np.ones(first.size), (site_index[first], site_index[second])),
+        shape=(len(labels), len(labels)),
+    )
+    n_block, group_block = connected_components(edges, directed=False)
+    observation_block = group_block[site_index]
+    time_hours = _time_hours(observation_times)
+    if time_hours.shape != site_index.shape:
+        raise ValueError("observation_times must have one value per observation.")
+    blocks = []
+    for block in range(n_block):
+        rows = np.flatnonzero(observation_block == block)
+        row_position[rows] = np.arange(rows.size)
+        cov = np.diag(diagonal[rows] + np.square(model_sd[rows]))
+        for site in np.flatnonzero(group_block == block):
+            local = np.flatnonzero(site_index[rows] == site)
+            times = time_hours[rows[local]]
+            if np.unique(times).size != times.size:
+                raise ValueError(f"Observation times must be unique within site {labels[site]!r}.")
+            lag = np.abs(times[:, None] - times[None, :])
+            correlation = np.exp(-lag / tau[site])
+            cov[np.ix_(local, local)] += np.square(amplitude[site]) * correlation
+        pair_in_block = observation_block[first] == block
+        left = row_position[first[pair_in_block]]
+        right = row_position[second[pair_in_block]]
+        cov[left, right] += cross[pair_in_block]
+        cov[right, left] += cross[pair_in_block]
+        scale = np.sqrt(cov.diagonal())
+        if not np.isfinite(scale).all() or np.any(scale <= 0.0):
+            return None
+        # Equilibrate first so differences in channel units do not trigger the QR route.
+        cov /= scale[:, None]
+        cov /= scale[None, :]
+        root = conditioned_cholesky(cov, np.sqrt(np.finfo(np.float64).eps))
+        if root is None:
+            return None
+        root *= scale[:, None]
+        blocks.append(_PairedOuBlock(rows, root))
+    return tuple(blocks)
+
+
+def _prepare_ou_likelihood(
+    observation_error: ArrayLike,
+    aggregation_error: AggregationError | None,
+    observation_times: ArrayLike,
+    site_index: ArrayLike,
+    tau_hours: ArrayLike | float | Mapping[str, float],
+    *,
+    site_labels: Sequence[str],
+    fixed_amplitudes: FloatArray | None = None,
+    fixed_model_mismatch: ArrayLike | None = None,
+    paired_error_correlation: PairedErrorCorrelation | None = None,
+) -> FixedOuLowRank | _FixedPairedOu:
+    """Prepare the linked cached likelihood covariance at the numerical boundary.
+
+    Args:
+        observation_error: Independent observation standard deviations.
+        aggregation_error: Optional coherent aggregation covariance.
+        observation_times: Observation-aligned datetime values or numeric hours.
+        site_index: Contiguous integer OU group positions for observation rows.
+        tau_hours: Positive OU time scales, scalar or specified by group.
+        site_labels: OU group labels in index order.
+        fixed_amplitudes: Already resolved OU amplitudes, or None when inferred.
+        fixed_model_mismatch: Optional known model-error standard deviations.
+        paired_error_correlation: Optional model-error correlation by row pair.
+
+    Returns:
+        Paired block factors for a well-conditioned fixed base with nonzero
+        rho, or the generalized OU preparation with any pair terms split.
+    """
+    require_model_error_for_pairs(
+        paired_error_correlation, fixed_model_mismatch, owner="Fixed-OU likelihood",
+    )
+    if (
+        fixed_amplitudes is not None
+        and paired_error_correlation is not None
+        and paired_error_correlation.correlated().size
+    ):
+        assert fixed_model_mismatch is not None
+        factor, diagonal = fixed_ou_base(observation_error, aggregation_error)
+        group = _group_index(site_index, diagonal.size)
+        labels = _site_labels(site_labels, int(group.max()) + 1)
+        tau = _tau_values(tau_hours, labels)
+        model_sd = _vector(fixed_model_mismatch, FIXED_MODEL_MISMATCH)
+        if model_sd.shape != diagonal.shape:
+            raise ValueError(f"{FIXED_MODEL_MISMATCH!r} must have one value per observation.")
+        blocks = _factor_paired_ou_blocks(
+            diagonal, observation_times, group, tau, labels, fixed_amplitudes,
+            paired_error_correlation, model_sd,
+        )
+        # The exact split avoids forming a base covariance that lost a small direction.
+        if blocks is not None:
+            factor = _matrix(factor, "factor")
+            if factor.shape[0] != diagonal.size:
+                raise ValueError("factor must have one row per observation.")
+            return _FixedPairedOu(
+                factor,
+                diagonal + np.square(model_sd) + np.square(fixed_amplitudes[group]),
+                fixed_amplitudes.copy(),
+                tau,
+                blocks,
+                sum(cholesky_logdet(block.cholesky) for block in blocks),
+            )
+    factor, diagonal = fixed_ou_base(
+        observation_error,
+        aggregation_error,
+        fixed_model_mismatch=fixed_model_mismatch,
+        paired_error_correlation=paired_error_correlation,
+    )
+    return prepare_fixed_ou_low_rank(
+        factor, diagonal, observation_times, site_index, tau_hours, site_labels=site_labels,
+    )
 
 
 def add_fixed_ou_gaussian_likelihood(

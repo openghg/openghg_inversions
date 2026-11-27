@@ -29,7 +29,7 @@ from openghg_inversions.models.components import (
     likelihood_representation,
     prepare_active_correlated_prior,
 )
-from openghg_inversions.models.fixed_ou import fixed_ou_base, prepare_fixed_ou_low_rank
+from openghg_inversions.models.fixed_ou import _prepare_ou_likelihood
 from openghg_inversions.models.paired_error import add_paired_error_data
 from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.priors import PriorArgs
@@ -262,19 +262,16 @@ def _build_co2_o2_cached_sigma_model(
         model_error_sd=model_error_sd,
         cross_species_error_correlation=cross_species_error_correlation,
     )
-    factor, diagonal = fixed_ou_base(
+    covariance = _prepare_ou_likelihood(
         np.asarray(independent_error_sd.values, dtype=np.float64),
         aggregation_error,
-        fixed_model_mismatch=None if model_error is None else model_error.values,
-        paired_error_correlation=paired_error,
-    )
-    covariance = prepare_fixed_ou_low_rank(
-        factor,
-        diagonal,
         observations.time.values,
         site_index.values,
         tau_hours,
         site_labels=tuple(str(label) for label in site_coord.values),
+        fixed_amplitudes=fixed_amplitudes,
+        fixed_model_mismatch=None if model_error is None else model_error.values,
+        paired_error_correlation=paired_error,
     )
     with registered_model():
         if model_error is not None:

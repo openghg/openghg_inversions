@@ -47,6 +47,7 @@ from openghg_inversions.models.cached_sigma import (
     FixedOuCachedSigmaTarget,
     MarginalQuadraticCache,
 )
+from openghg_inversions.models.fixed_ou import _FixedPairedOu
 
 
 FloatArray = NDArray[np.float64]
@@ -172,8 +173,10 @@ class _PytensorSigmaLikelihoodOp(Op):
             raise ValueError(f"residual has shape {value.shape}, expected {(self.target.n_obs,)}.")
         # Preserve nonfinite rejection without transforming invalid observations.
         if np.isfinite(value).all():
+            prepared = self.target.prepared
+            assert not isinstance(prepared, _FixedPairedOu)
             with np.errstate(over="ignore", invalid="ignore"):
-                value = self.target.prepared.mode_transform @ value
+                value = prepared.mode_transform @ value
         self.residual.set_value(value)
 
 

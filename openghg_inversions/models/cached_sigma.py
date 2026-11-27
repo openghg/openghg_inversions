@@ -14,8 +14,10 @@ from openghg_inversions._linalg import cholesky_logdet, conditioned_cholesky
 from openghg_inversions.models.fixed_ou import (
     FixedOuLikelihoodEvaluation,
     FixedOuLowRank,
+    _FixedPairedOu,
     _matrix,
     _site_values,
+    _solve_whitened,
     _vector,
 )
 
@@ -99,8 +101,8 @@ class MarginalQuadraticCache:
 class FixedOuCachedSigmaTarget:
     """Build state quadratics from the OGI fixed-OU covariance preparation.
 
-    Construction transforms the fixed residual and design into prepared mode
-    coordinates once.
+    Construction transforms the fixed residual and design into the prepared
+    base covariance coordinates once.
     ``refresh`` forms their joint Gram matrix for the supplied site amplitudes,
     using a screened sum of squares for low-rank factors and the fixed-OU
     covariance solver otherwise. State evaluations on the returned cache are
@@ -110,7 +112,7 @@ class FixedOuCachedSigmaTarget:
     def __init__(
         self,
         *,
-        prepared: FixedOuLowRank,
+        prepared: FixedOuLowRank | _FixedPairedOu,
         observations: ArrayLike,
         fixed_contribution: ArrayLike,
         design: ArrayLike,
@@ -134,9 +136,11 @@ class FixedOuCachedSigmaTarget:
         self._residual_at_zero = _vector(
             self.observations - self.fixed_contribution, "zero-state residual"
         )
-        self._transformed_rhs = cast(
-            FloatArray,
-            prepared.mode_transform @ np.column_stack((self._residual_at_zero, self.design)),
+        joint_rhs = np.column_stack((self._residual_at_zero, self.design))
+        self._transformed_rhs = (
+            prepared._whiten(joint_rhs)
+            if isinstance(prepared, _FixedPairedOu)
+            else cast(FloatArray, prepared.mode_transform @ joint_rhs)
         )
 
     @property
@@ -151,7 +155,7 @@ class FixedOuCachedSigmaTarget:
 
     @property
     def n_group(self) -> int:
-        """Number of independently inferred site amplitudes."""
+        """Number of independent OU amplitude groups."""
         return self.prepared.n_site
 
     def refresh(self, sigma: ArrayLike | float) -> MarginalQuadraticCache:
@@ -163,20 +167,31 @@ class FixedOuCachedSigmaTarget:
             raise ValueError(
                 f"sigma must be scalar or have shape {(self.n_group,)}, got {sigma_value.shape}."
             )
+        prepared = self.prepared
         gram_result = None
-        if 0 < self.prepared.rank < self.n_obs:
-            amplitude = _site_values(sigma_value, self.n_group, "site_amplitude", positive=False)
-            weights, logdet = self.prepared._mode_weights_and_logdet(amplitude)
-            scale = np.sqrt(weights)[:, None]
-            gram_result = _sum_squares_gram(
-                scale * self.prepared.transformed_factor,
-                scale * self._transformed_rhs,
-            )
-        if gram_result is None:
-            covariance_solve = self.prepared._solve_transformed(self._transformed_rhs, sigma_value)
-            quadratic = self._transformed_rhs.T @ covariance_solve.solution
-            logdet = covariance_solve.logdet
+        if isinstance(prepared, _FixedPairedOu):
+            prepared._check_amplitude(sigma_value)
+            logdet = prepared.base_logdet
+            if 0 < prepared.rank < self.n_obs:
+                gram_result = _sum_squares_gram(prepared.transformed_factor, self._transformed_rhs)
+            if gram_result is None:
+                solved, logdet = _solve_whitened(
+                    prepared.transformed_factor, self._transformed_rhs, logdet,
+                )
+                quadratic = self._transformed_rhs.T @ solved
         else:
+            if 0 < prepared.rank < self.n_obs:
+                amplitude = _site_values(sigma_value, self.n_group, "site_amplitude", positive=False)
+                weights, logdet = prepared._mode_weights_and_logdet(amplitude)
+                scale = np.sqrt(weights)[:, None]
+                gram_result = _sum_squares_gram(
+                    scale * prepared.transformed_factor, scale * self._transformed_rhs,
+                )
+            if gram_result is None:
+                covariance_solve = prepared._solve_transformed(self._transformed_rhs, sigma_value)
+                quadratic = self._transformed_rhs.T @ covariance_solve.solution
+                logdet = covariance_solve.logdet
+        if gram_result is not None:
             quadratic, logdet_update = gram_result
             logdet += logdet_update
         precision = quadratic[1:, 1:]
@@ -208,7 +223,9 @@ class FixedOuCachedSigmaTarget:
         sigma: ArrayLike | float,
     ) -> tuple[float, FloatArray]:
         """Evaluate only the amplitude conditional from an installed mode residual."""
-        log_likelihood, _, gradient_amplitude = self.prepared._evaluate(
+        prepared = self.prepared
+        assert not isinstance(prepared, _FixedPairedOu)
+        log_likelihood, _, gradient_amplitude = prepared._evaluate(
             transformed_residual, sigma, amplitude_only=True,
         )
         return log_likelihood, gradient_amplitude

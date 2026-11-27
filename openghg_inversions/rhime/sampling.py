@@ -51,8 +51,13 @@ def _sample_rhime_model(
     sample = sampler.sample
 
     timing_start = timer_start()
-    if defer_deterministics and getattr(sample, "__func__", None) is RhimeSampler.sample:
-        idata = RhimeSampler._sample(sampler, model, variable_roles=roles, defer_deterministics=True)
+    fixed_log_likelihood = model_build_result.fixed_log_likelihood
+    uses_builtin_sampler = getattr(sample, "__func__", None) is RhimeSampler.sample
+    if uses_builtin_sampler and (defer_deterministics or fixed_log_likelihood is not None):
+        idata = RhimeSampler._sample(
+            sampler, model, variable_roles=roles, defer_deterministics=defer_deterministics,
+            fixed_log_likelihood=fixed_log_likelihood,
+        )
     else:
         idata = sample(model, variable_roles=roles)
 

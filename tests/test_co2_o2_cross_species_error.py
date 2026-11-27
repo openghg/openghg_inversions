@@ -361,17 +361,32 @@ def test_cached_fixed_ou_with_rho_matches_plain_model_and_dense_oracle():
     cached = build_co2_o2_cached_sigma_model(**bound_linked_model_arguments(options))
     plain = build_co2_o2_model(**bound_linked_model_arguments(options))
     assert cached.fixed_amplitudes
-    # Two correlated pairs add two rank-one columns to the fixed base.
+    # Correlated pairs are represented within the base blocks.
     from openghg_inversions.observation_error import aggregation_error_as_low_rank
 
     aggregation_rank = aggregation_error_as_low_rank(kwargs["aggregation_error"])[0].shape[1]
-    assert cached.target.prepared.rank == aggregation_rank + 2
+    assert cached.target.prepared.rank == aggregation_rank
     np.testing.assert_array_equal(cached.model["paired_error_partner"].get_value(), [2, 4, 0, -1, 1])
     np.testing.assert_allclose(cached.model["fixed_model_mismatch"].get_value(), _model_sd(kwargs))
     covariance = (
         _dense(kwargs, np.array([0.4, 6.0, 3.0]), tau)
         + np.diag(_model_sd(kwargs) ** 2)
         + _cross(kwargs, {"A": RHO})
+    )
+
+    np.testing.assert_allclose(cached.model["epsilon"].eval() ** 2, np.diag(covariance))
+    draws = cached.target.random_from_mean(
+        np.zeros(covariance.shape[0]),
+        np.array([0.4, 6.0, 3.0]),
+        rng=np.random.default_rng(1104),
+        size=(4, 5000),
+    )
+    assert draws.shape == (4, 5000, covariance.shape[0])
+    standard_deviation = np.sqrt(np.diag(covariance))
+    np.testing.assert_allclose(
+        np.cov((draws / standard_deviation).reshape(-1, covariance.shape[0]), rowvar=False),
+        covariance / np.outer(standard_deviation, standard_deviation),
+        atol=0.03,
     )
 
     def dense_logp(mean):

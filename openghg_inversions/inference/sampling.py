@@ -22,9 +22,14 @@ from typing import Any, ClassVar, Literal, cast
 import numpy as np
 import pymc as pm
 import xarray as xr
+from pymc.backends.arviz import (  # type: ignore[import-untyped]
+    apply_function_over_dataset,
+    coords_and_dims_for_inferencedata,
+)
 from pymc.util import get_random_generator  # type: ignore[import-untyped]
 from pytensor.compile.mode import Mode
 from pytensor.graph.traversal import ancestors
+from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
@@ -287,8 +292,44 @@ def _extend_log_likelihood(
     *,
     compile_kwargs: dict[str, Any],
     progressbar: bool = False,
+    fixed_log_likelihood: tuple[str, TensorVariable] | None = None,
 ) -> xr.DataTree:
-    """Attach posterior log likelihood with the selected model compiler."""
+    """Attach posterior log likelihood with the selected model compiler.
+
+    Args:
+        trace: Trace with posterior draws of the model's physical free states.
+        model: Fitted model that defines the observed distribution.
+        selection: All observed variables or an explicit list of names.
+        compile_kwargs: PyMC compiler options.
+        progressbar: Whether to display the replay progress.
+        fixed_log_likelihood: Observed variable name and its exact scalar log
+            density, built for the fitted data and physical states.
+
+    Returns:
+        Trace with the selected joint or pointwise log likelihood.
+    """
+    if fixed_log_likelihood is not None:
+        name, expression = fixed_log_likelihood
+        observed_names = [rv.name for rv in model.observed_RVs]
+        selected_names = observed_names if selection is True else list(selection)
+        if selected_names == [name] and name in observed_names:
+            posterior = trace["posterior"].to_dataset()
+            inputs = posterior[[rv.name for rv in model.free_RVs]].astype(
+                {rv.name: rv.dtype for rv in model.free_RVs}, copy=False,
+            )
+            fn = model.compile_fn(
+                inputs=model.free_RVs,
+                outs=[expression],
+                on_unused_input="ignore",
+                **compile_kwargs,
+            )
+            coords, dims = coords_and_dims_for_inferencedata(model)
+            likelihood = apply_function_over_dataset(
+                fn, inputs, output_var_names=[name], coords=coords, dims=dims, progressbar=progressbar,
+            )
+            trace["log_likelihood"] = likelihood.assign_coords(chain=posterior.chain, draw=posterior.draw)
+            return trace
+
     with model:
         return cast(
             xr.DataTree,
@@ -578,6 +619,7 @@ class RhimeSampler:
         *,
         variable_roles: Mapping[str, str] | None = None,
         defer_deterministics: bool,
+        fixed_log_likelihood: tuple[str, TensorVariable] | None = None,
     ) -> xr.DataTree:
         """Sample with deferred recording when the recipe and backend support it.
 
@@ -587,6 +629,8 @@ class RhimeSampler:
             defer_deterministics: Whether the recipe supports recording free
                 variables first and evaluating deterministics for the retained
                 posterior and saved warmup after sampling.
+            fixed_log_likelihood: Optional observed variable name and exact
+                scalar replay expression at fixed model data.
 
         Returns:
             Sampled trace with deterministics and requested predictions.
@@ -596,6 +640,8 @@ class RhimeSampler:
         sample_kwargs.pop("return_inferencedata", None)
         idata_kwargs = dict(sample_kwargs.pop("idata_kwargs", {}))
         idata_kwargs.setdefault("log_likelihood", True)
+        if idata_kwargs.get("model", model) is not model:
+            fixed_log_likelihood = None
 
         compile_kwargs = _numpy_callback_compile_kwargs(model) if self.nuts_sampler == "pymc" else {}
         if compile_kwargs:
@@ -619,7 +665,7 @@ class RhimeSampler:
             # Compute likelihood using only retained posterior states.
             deferred_log_likelihood = idata_kwargs["log_likelihood"]
             idata_kwargs["log_likelihood"] = False
-        elif compile_kwargs:
+        elif compile_kwargs or fixed_log_likelihood is not None:
             # PyMC's automatic log-likelihood calculation ignores compile options.
             deferred_log_likelihood = idata_kwargs.pop("log_likelihood")
 
@@ -667,9 +713,11 @@ class RhimeSampler:
                 ),
             )
 
-        if deferred_log_likelihood and not compact:
+        replay_after_burn = compact or (fixed_log_likelihood is not None and self.burn < self.draws)
+        if deferred_log_likelihood and not replay_after_burn:
             raw_trace = _extend_log_likelihood(
                 raw_trace, model, deferred_log_likelihood, compile_kwargs=compile_kwargs,
+                fixed_log_likelihood=fixed_log_likelihood,
             )
 
         log_timing(
@@ -687,16 +735,17 @@ class RhimeSampler:
         trace = _burn_retained_draws(trace, burn=self.burn)
         log_timing("rhime.sampler.burn_slicing", timer_seconds(timing_start), burn=self.burn)
 
-        if compact:
-            evaluation_compile_kwargs = compile_kwargs or sample_kwargs.get("compile_kwargs") or {}
-            if deferred_log_likelihood:
-                timing_start = timer_start()
-                trace = _extend_log_likelihood(
-                    trace, model, deferred_log_likelihood, compile_kwargs=evaluation_compile_kwargs,
-                    progressbar=self.progressbar,
-                )
-                log_timing("rhime.sampler.log_likelihood", timer_seconds(timing_start))
+        evaluation_compile_kwargs = compile_kwargs or sample_kwargs.get("compile_kwargs") or {}
+        if replay_after_burn and deferred_log_likelihood:
+            timing_start = timer_start()
+            trace = _extend_log_likelihood(
+                trace, model, deferred_log_likelihood, compile_kwargs=evaluation_compile_kwargs,
+                progressbar=self.progressbar,
+                fixed_log_likelihood=fixed_log_likelihood,
+            )
+            log_timing("rhime.sampler.log_likelihood", timer_seconds(timing_start))
 
+        if compact:
             timing_start = timer_start()
             for group_name in ("posterior", "warmup_posterior"):
                 if group_name in trace.children:

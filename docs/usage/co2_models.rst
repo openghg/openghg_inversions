@@ -1601,21 +1601,32 @@ Cost
 ~~~~
 
 Pairs with :math:`\rho=0` leave the likelihood on its unpaired numerical path.
-Correlated pairs stay exact and cheap: without aggregation error or with
-low-rank aggregation error, each pair is a 2×2 block of the diagonal term, so
-the cost is linear in the number of pairs and the low-rank width is unchanged;
-dense aggregation error gains the cross terms in place. Fixed OU splits each
-correlated model-error block exactly as
+For a likelihood without an OU term, each correlated pair is an exact 2×2
+block. With independent or low-rank aggregation error, handling the pairs
+takes time linear in their number and preserves the aggregation rank. Dense
+aggregation error gains the cross terms in place.
+
+In the cached sampler with fixed OU amplitudes, each site's block includes both
+tracers' temporal OU terms, the paired model errors, measurement variance and
+the diagonal aggregation remainder. A Cholesky factorisation of each block
+whitens the observations, design matrix and aggregation factor. For well-conditioned site blocks, only the
+aggregation columns enter the global low-rank solve. The cached state sampler
+uses the resulting quadratic for NUTS and for the joint log likelihood saved
+with each retained draw.
+
+The solver uses the following exact representation for inferred amplitudes,
+for the ordinary observation likelihood, and as a fallback when a fixed
+site block is poorly conditioned:
 
 .. math::
 
    (1-|\rho|)\,\mathrm{diag}(m_c^2, m_o^2) + |\rho|\, v v^\top,
-   \qquad v = (m_c, \operatorname{sign}(\rho)\, m_o),
+   \qquad v = (m_c, \operatorname{sign}(\rho)\, m_o).
 
-a smaller diagonal plus one rank-one column of the fixed base per correlated
-pair. With fixed amplitudes the cached sampler factorises that base once, so
-the extra columns cost one larger preparation and nothing per state step; with
-inferred amplitudes every amplitude refresh pays for the wider base.
+Each nonzero pair therefore contributes one rank-one column to the fixed
+base. Both the amplitude likelihood and each cache refresh use this wider
+factor.
+
 Correlations that round to ±1 at the working precision (for example
 ``0.99999999`` under ``floatX="float32"``) are rejected. Traces save
 ``fixed_model_mismatch``, ``paired_error_correlation`` and

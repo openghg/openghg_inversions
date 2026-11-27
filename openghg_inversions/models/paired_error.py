@@ -15,15 +15,17 @@ model error has a known standard deviation ``m`` per row (the
      [rho * m_a * m_b, m_b**2         ]]
 
 The cross term ``rho * m_a * m_b`` is in the product of the two rows' units, so
-pairs may mix units (for example ppm and per meg). Fixed-OU likelihoods use
-the exact split::
+pairs may mix units (for example ppm and per meg). The generalized fixed-OU
+likelihood uses the exact split::
 
     block = (1 - |rho|) * diag(m_a**2, m_b**2) + |rho| * v v^T,
     v = (m_a, sign(rho) * m_b)
 
-a positive diagonal plus one rank-one column per correlated pair. Generic
-Gaussian likelihoods keep each correlated pair as an exact 2x2 block: the
-second row is regressed on the first (see
+a positive diagonal plus one rank-one column per correlated pair. The
+linked cached likelihood with fixed amplitudes can include the cross terms
+directly in its site covariance blocks. Generic Gaussian likelihoods keep
+each correlated pair as an exact 2x2 block: the second row is regressed on
+the first (see
 :meth:`RegisteredPairedError.conditional`), so independent and low-rank
 likelihoods stay O(n) in the pairs and dense likelihoods add the cross terms
 in place. Pairs with ``rho = 0`` take no part in either form, so they leave
