@@ -1,4 +1,4 @@
-"""Fixed within-site OU covariance under a diagonal-plus-low-rank base."""
+"""Fixed within-site OU covariance with a fixed observation covariance."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from scipy.linalg import cho_solve, eigh, solve_triangular
 from scipy.sparse import csr_matrix
 
 from openghg_inversions._labelled_matrices import matrix_column_dim, square_matrix
-from openghg_inversions._linalg import cholesky_logdet, conditioned_cholesky
+from openghg_inversions._linalg import check_symmetric, cholesky_logdet, conditioned_cholesky
 from openghg_inversions.array_ops import expand_mapping, materialize_together
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.models.components import add_model_data
@@ -199,11 +199,11 @@ class _FixedOuLogpOp(Op):
 
 @dataclass(frozen=True)
 class FixedOuLowRank:
-    """Exact fixed-OU target with a diagonal-plus-low-rank fixed covariance.
+    """Exact fixed-OU target with a generalized eigenbasis per site.
 
-    The eager constructor precomputes one generalized eigenbasis per site.
-    :meth:`logp` then evaluates changing site amplitudes through an ``r x r``
-    Woodbury system, where ``r`` is the aggregation-covariance rank.
+    :meth:`logp` evaluates any covariance factor outside the eigenbasis
+    through a Woodbury update. With one site, a dense fixed covariance can
+    be included in the eigenbasis, leaving only diagonal mode weights.
     """
 
     factor: FloatArray
@@ -215,7 +215,7 @@ class FixedOuLowRank:
     mode_eigenvalues: FloatArray
     mode_site_index: IntArray
     transformed_factor: FloatArray
-    mode_transform: csr_matrix
+    mode_transform: csr_matrix | FloatArray
     base_logdet: float
     _logp_op: _FixedOuLogpOp = field(init=False, repr=False, compare=False)
 
@@ -234,8 +234,8 @@ class FixedOuLowRank:
 
     @property
     def rank(self) -> int:
-        """Rank of the fixed coherent covariance factor."""
-        return int(self.factor.shape[1])
+        """Number of covariance factor columns outside the eigenbasis."""
+        return int(self.transformed_factor.shape[1])
 
     def logp(
         self,
@@ -517,8 +517,8 @@ class FixedOuLowRank:
         sample_shape = () if size is None else (size,) if isinstance(size, int) else tuple(size)
         amplitude = _site_values(site_amplitude, self.n_site, "site_amplitude", positive=False)
         result = np.broadcast_to(np.asarray(mean), (*sample_shape, self.n_observation)).copy()
-        if self.rank:
-            factor_noise = rng.normal(size=(*sample_shape, self.rank))
+        if self.factor.shape[1]:
+            factor_noise = rng.normal(size=(*sample_shape, self.factor.shape[1]))
             result += np.einsum("...r,nr->...n", factor_noise, self.factor)
         result += rng.normal(size=result.shape) * np.sqrt(self.diagonal_variance)
         for block in self.site_blocks:
@@ -626,6 +626,79 @@ def prepare_fixed_ou_low_rank(
             shape=(n_observation, n_observation),
         ),
         base_logdet=base_logdet,
+    )
+
+
+def _prepare_fixed_ou_covariance(
+    aggregation: ObservationCovariance | None,
+    observation_variance: FloatArray,
+    times: np.ndarray,
+    site_index: IntArray,
+    tau_hours: ArrayLike | float | Mapping[str, float],
+    *,
+    site_labels: Sequence[str],
+) -> FixedOuLowRank:
+    """Include dense aggregation error in the eigenbasis for one amplitude."""
+    if aggregation is not None and aggregation.mode == "dense" and len(site_labels) == 1:
+        assert aggregation.covariance is not None
+        variance = _vector(observation_variance, "observation_variance")
+        if variance.size == 0 or np.any(variance < 0.0):
+            raise ValueError("Fixed OU requires observations with non-negative observation variance.")
+        fixed_covariance = _matrix(aggregation.covariance.values, "aggregation covariance")
+        n_observation = variance.size
+        if fixed_covariance.shape != (n_observation, n_observation):
+            raise ValueError("The fixed-OU aggregation covariance must match the observations.")
+        check_symmetric(fixed_covariance, owner="Fixed-OU aggregation covariance")
+        fixed_covariance.flat[:: n_observation + 1] += variance
+        return _prepare_single_amplitude_ou(fixed_covariance, times, site_index, tau_hours, site_labels)
+
+    if aggregation is None:
+        factor, diagonal = np.empty((observation_variance.size, 0)), np.zeros_like(observation_variance)
+    else:
+        factor, diagonal = aggregation_error_as_low_rank(aggregation)
+    return prepare_fixed_ou_low_rank(
+        factor, observation_variance + diagonal, times, site_index, tau_hours, site_labels=site_labels,
+    )
+
+
+def _prepare_single_amplitude_ou(
+    fixed_covariance: FloatArray,
+    times: np.ndarray,
+    site_index: IntArray,
+    tau_hours: ArrayLike | float | Mapping[str, float],
+    site_labels: Sequence[str],
+) -> FixedOuLowRank:
+    """Diagonalize the complete fixed covariance relative to the single OU block."""
+    labels = _site_labels(site_labels, 1)
+    tau_by_site = _tau_values(tau_hours, labels)
+    n_observation = fixed_covariance.shape[0]
+    indices = np.arange(n_observation, dtype=np.int64)
+    group_index = _group_index(site_index, n_observation)
+    if np.any(group_index):
+        raise ValueError("A single fixed-OU amplitude requires one observation group.")
+    ((_, _, correlation),) = _ou_correlation_blocks(times, group_index, tau_by_site, labels)
+    try:
+        correlation_cholesky = np.linalg.cholesky(correlation)
+    except np.linalg.LinAlgError as error:
+        raise ValueError(f"OU correlation template for site {labels[0]!r} must be positive definite.") from error
+    values, vectors = eigh(fixed_covariance, correlation, check_finite=False)
+    if values[0] < -1e-10 * max(1.0, float(np.max(np.abs(values)))):
+        raise ValueError("The fixed-OU base covariance must be positive semidefinite.")
+    values = np.maximum(values, 0.0)
+    # V.T K V = I, so K V sqrt(lambda) is a square root of the fixed covariance.
+    factor = (correlation @ vectors) * np.sqrt(values)
+    return FixedOuLowRank(
+        factor=factor,
+        diagonal_variance=np.zeros(n_observation),
+        site_index=group_index,
+        site_labels=labels,
+        tau_hours_by_site=tau_by_site,
+        site_blocks=(FixedOuSiteBlock(site=0, observation_indices=indices, correlation_cholesky=correlation_cholesky),),
+        mode_eigenvalues=values,
+        mode_site_index=group_index,
+        transformed_factor=np.empty((n_observation, 0)),
+        mode_transform=vectors.T,
+        base_logdet=cholesky_logdet(correlation_cholesky),
     )
 
 
@@ -926,17 +999,12 @@ def add_fixed_ou_gaussian_likelihood(
     site_coord = alignment.site_labels.rename({"nsigma_site": "ou_site"}).rename("ou_site")
     site_labels = tuple(str(label) for label in site_coord.values)
     observation_variance = np.square(np.asarray(observation_error.values, dtype=np.float64))
-    if aggregation_error is None:
-        factor = np.empty((observations.sizes[output_dim], 0), dtype=np.float64)
-        aggregation_diagonal = np.zeros(observations.sizes[output_dim], dtype=np.float64)
-    else:
-        factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
     resolved_tau = _site_values(
         tau_hours, alignment.nsite, "tau_hours", positive=True, coordinate=site_coord
     )
-    prepared = prepare_fixed_ou_low_rank(
-        factor,
-        observation_variance + aggregation_diagonal,
+    prepared = _prepare_fixed_ou_covariance(
+        aggregation_error,
+        observation_variance,
         np.asarray(time.values),
         np.asarray(site_index.values, dtype=np.int64),
         resolved_tau,
