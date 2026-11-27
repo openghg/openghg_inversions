@@ -17,6 +17,7 @@ import tomllib
 from openghg_inversions.basis.options import FluxBasisOptions
 from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
 from openghg_inversions.inversion_data import SiteOptions, check_surface_request
+from openghg_inversions.inversion_data._site_options import is_satellite_platform
 from openghg_inversions.models.boundary import (
     AdditiveChoice, AnomalyScalingChoice, Choice, MultiplicativeChoice, boundary_preparation,
 )
@@ -74,10 +75,10 @@ _DATA_OPTION_NAMES = frozenset({
 _SITE_OPTION_NAMES = frozenset(field.name for field in fields(SiteOptions))
 _ACQUISITION_STRING_NAMES = frozenset({
     "bc_store", "obs_store", "footprint_store", "flux_store", "flux_domain", "fp_model", "fp_species",
-    "calibration_scale", "bc_input", "flux_non_finite_check", "boundary_reference_units",
+    "calibration_scale", "bc_input", "flux_non_finite_check",
 })
 _ACQUISITION_OPTION_NAMES = _SITE_OPTION_NAMES | _ACQUISITION_STRING_NAMES | {
-    "surface_transport", "boundary_reference", "boundary_mass_tolerance",
+    "surface_transport", "boundary_reference", "boundary_reference_units", "boundary_mass_tolerance",
 }
 _BASIS_FILE_FIELDS = {"path": "basis_path", "partition_path": "basis_partition_path"}
 _BASIS_OPTION_NAMES = frozenset({
@@ -322,10 +323,11 @@ class Co2NativePrior:
     """Native Gaussian prior on dimensionless flux scaling, before reduction.
 
     The prior has a constant mean and a separable exponential covariance over
-    the native latitude/longitude grid, with lengths in degrees.
+    the native latitude/longitude grid, with lengths in degrees. A standard
+    deviation per source selects independent source-native scaling fields.
     """
 
-    stdev: float
+    stdev: float | dict[str, float]
     mean: float = 1.0
     correlation_length: float = 1.5
     latitude_correlation_length: float | None = None
@@ -348,7 +350,15 @@ class Co2NativePrior:
         """
         options = _table(value, "data.preparation.native_prior")
         path = "data.preparation.native_prior"
-        result: dict[str, Any] = {"stdev": _number(_take(options, "stdev", path), f"{path}.stdev", positive=True)}
+        stdev = _take(options, "stdev", path)
+        if isinstance(stdev, Mapping):
+            stdev = {
+                source: _number(sd, f"{path}.stdev.{source}", positive=True)
+                for source, sd in _table(stdev, f"{path}.stdev").items()
+            }
+        else:
+            stdev = _number(stdev, f"{path}.stdev", positive=True)
+        result: dict[str, Any] = {"stdev": stdev}
         if "mean" in options:
             result["mean"] = _number(options.pop("mean"), f"{path}.mean")
         for name in ("correlation_length", "latitude_correlation_length", "longitude_correlation_length"):
@@ -360,7 +370,7 @@ class Co2NativePrior:
 
 @dataclass(frozen=True)
 class Co2NativePreparationConfig:
-    """Scientific choices for reducing merged surface CO2 data to model inputs.
+    """Scientific choices for reducing merged CO2 data to model inputs.
 
     Attributes:
         filters: Observation filters applied before deriving errors.
@@ -445,7 +455,10 @@ class Co2NativePreparationConfig:
         return tuple(Path(path).resolve() for path in paths if path is not None)
 
 
-def _acquisition(value: object, *, flux_sources: tuple[str, ...], use_bc: bool) -> dict[str, Any]:
+def _acquisition(
+    value: object, *, flux_sources: tuple[str, ...], use_bc: bool,
+    representation: BoundaryRepresentation, split_by_sectors: bool,
+) -> dict[str, Any]:
     """Resolve the settings used only by fresh CO2 acquisition."""
     path = "data.acquisition"
     options = _table(value, path)
@@ -455,13 +468,28 @@ def _acquisition(value: object, *, flux_sources: tuple[str, ...], use_bc: bool) 
             raise ValueError(f"Missing required option {path}.{name}.")
     if isinstance(sites["sites"], str):
         sites["sites"] = [sites["sites"]]
-    result: dict[str, Any] = {"site_options": SiteOptions.from_inputs(**sites), "use_bc": use_bc}
+    site_options = SiteOptions.from_inputs(**sites)
+    result: dict[str, Any] = {"site_options": site_options, "use_bc": use_bc}
+    if split_by_sectors:
+        result["split_by_sectors"] = True
+    for name in sorted(_ACQUISITION_STRING_NAMES & options.keys()):
+        result[name] = _string(options.pop(name), f"{path}.{name}")
+    if any(map(is_satellite_platform, site_options.platform)):
+        if not all(map(is_satellite_platform, site_options.platform)):
+            raise ValueError("Configured CO2 satellite acquisition requires satellite platforms for every site.")
+        if representation != "ordinary":
+            raise ValueError("Configured CO2 satellite acquisition requires ordinary boundary sensitivities.")
+        _reject_unknown(options, path)
+        return result
+
     transport = _table(_take(options, "surface_transport", path), f"{path}.surface_transport")
     result["surface_transport"] = {
         source: _string(mode, f"{path}.surface_transport.{source}") for source, mode in transport.items()
     }
-    for name in sorted(_ACQUISITION_STRING_NAMES & set(options)):
-        result[name] = _string(options.pop(name), f"{path}.{name}")
+    if "boundary_reference_units" in options:
+        result["boundary_reference_units"] = _string(
+            options.pop("boundary_reference_units"), f"{path}.boundary_reference_units",
+        )
     if "boundary_reference" in options:
         result["boundary_reference"] = _number(options.pop("boundary_reference"), f"{path}.boundary_reference")
     if "boundary_mass_tolerance" in options:
@@ -493,7 +521,7 @@ class Co2PreparationConfig:
     """Resolved data request for the configured CO2 entry points.
 
     ``[data]`` either names a saved artifact with ``path`` or describes a
-    new preparation from merged surface data. ``flux_sources`` supplies the
+    new preparation from merged data. ``flux_sources`` supplies the
     ordered inventory names to both steps. ``acquisition`` has the retrieval
     arguments, and ``native`` has the scientific preparation choices. Paths
     resolve from the invocation directory.
@@ -564,13 +592,18 @@ class Co2PreparationConfig:
             flux_sources = tuple(_string(item, "data.flux_sources item") for item in sources)
             use_bc = _bool(preparation.pop("use_bc", True), "data.preparation.use_bc")
             result["flux_sources"] = flux_sources
-            if "acquisition" in data:
-                result["acquisition"] = _frozen(
-                    _acquisition(data.pop("acquisition"), flux_sources=flux_sources, use_bc=use_bc),
-                )
-            result["native"] = Co2NativePreparationConfig.from_params(
+            native_config = Co2NativePreparationConfig.from_params(
                 preparation, domain=result["domain"], use_bc=use_bc,
             )
+            result["native"] = native_config
+            stdev = native_config.native_prior.stdev
+            if isinstance(stdev, dict) and set(stdev) != set(flux_sources):
+                raise ValueError("data.preparation.native_prior.stdev must specify exactly one value per flux source.")
+            if "acquisition" in data:
+                result["acquisition"] = _frozen(_acquisition(
+                    data.pop("acquisition"), flux_sources=flux_sources, use_bc=use_bc,
+                    representation=needs.representation, split_by_sectors=isinstance(stdev, dict),
+                ))
             weights = result["native"].bc_centering_weights_path
             if needs.centering_weights and weights is None:
                 raise ValueError("The weighted additive boundary requires data.preparation.bc_centering_weights_path.")

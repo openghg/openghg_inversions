@@ -1119,6 +1119,9 @@ def prepare_co2_inputs(
             "require the exact dense A: prepare with aggregation_error_rank=None."
         )
     target_representation_dim = "nmeasure_cov" if rank_rule is None else "agg_rank"
+    if "H" not in inputs and "fp_x_flux_sectoral" in inputs:
+        # Release the native axes before the retained state reuses "source" as a MultiIndex level.
+        inputs = inputs.drop_dims(("lat", "lon", "source"))
     mapped = _without_aggregation_payload(
         inputs,
         target_dim=target_representation_dim,
