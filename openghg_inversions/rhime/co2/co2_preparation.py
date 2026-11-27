@@ -1142,16 +1142,20 @@ def prepare_co2_inputs(
         ),
         "nmeasure",
     )
-    mapped["alpha_prior_mean"] = _renamed(
-        reduced_mean,
-        {reduced_state_dim: state_dim},
-        name="alpha_prior_mean",
+    # H has already installed the validated retained-state axis. Reuse it
+    # so xarray does not try to replace individual levels of its MultiIndex.
+    mapped["alpha_prior_mean"] = _borrow_without_axis_coordinates(
+        _renamed(reduced_mean, {reduced_state_dim: state_dim}, name="alpha_prior_mean"),
+        state_dim,
     )
     state_covariance_dim = f"{state_dim}_cov"
-    mapped["alpha_prior_covariance"] = _renamed(
-        retained_covariance,
-        {reduced_state_dim: state_dim, reduced_covariance_dim: state_covariance_dim},
-        name="alpha_prior_covariance",
+    mapped["alpha_prior_covariance"] = _borrow_without_axis_coordinates(
+        _renamed(
+            retained_covariance,
+            {reduced_state_dim: state_dim, reduced_covariance_dim: state_covariance_dim},
+            name="alpha_prior_covariance",
+        ),
+        state_dim,
     )
     mapped["fixed_prior_contribution"] = _borrow_without_axis_coordinates(
         _renamed(
