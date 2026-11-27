@@ -37,6 +37,7 @@ openghg\_inversions
    openghg_inversions.native_covariance
    openghg_inversions.native_flux
    openghg_inversions.observation_error
+   openghg_inversions.posterior_response
    openghg_inversions.serialization
    openghg_inversions.sigma
    openghg_inversions.source_covariance
