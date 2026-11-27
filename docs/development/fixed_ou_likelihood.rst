@@ -317,3 +317,33 @@ experiments conditioned the flux update on that latent variable and mixed
 poorly. The narrower proposal has not been tested. Its chronology and target
 preservation caveats remain in the archived follow-up note linked by the
 index; none of these ideas defines supported behavior.
+
+Experimental paired OU innovations
+----------------------------------
+
+``openghg_inversions.models.paired_ou_innovations.prepare_paired_ou_innovations``
+prepares a Gaussian likelihood for inferred tracer-specific OU amplitudes.
+It filters each connected site in time order, including unpaired observations
+and observations on irregular time grids. The filter applies the same
+innovations transform to the residual and the coherent aggregation factor.
+It combines the transformed terms using a Woodbury solve.
+
+Pass the existing ``PairedErrorCorrelation`` and model-error standard
+deviations for same-time model-error covariance. The observation diagonal
+must already include those standard deviations squared. For persistent
+cross-tracer covariance, supply a separate mapping of group pairs to
+stationary correlations and use the same OU decay time for both groups in
+each pair. For amplitudes :math:`a_i, a_j` and time lag :math:`\\Delta t`, this
+adds :math:`\\rho a_i a_j \\exp(-|\\Delta t|/\\tau)` to the cross-tracer OU covariance.
+Both terms can be active at the same site.
+
+``likelihood`` returns the normalized density and its derivative in physical
+amplitude coordinates. A conditional NUTS integration needs the derivative
+of the amplitude transform as well as the prior terms. ``state_cache`` returns
+the same quadratic representation used by the existing conditional state
+sampler. The Python experiment is run explicitly and RHIME continues to
+select its existing likelihoods. The amplitude-gradient path requires a
+well-conditioned Woodbury core and raises an error if that check fails.
+
+Run the comparison with a dense Gaussian oracle using
+``uv run pytest tests/models/test_paired_ou_innovations.py``.
