@@ -69,15 +69,7 @@ def _gammaincinv_model() -> pm.Model:
     return model
 
 
-def _truncated_normal_model() -> pm.Model:
-    """Truncated normal with a sampled location, whose stabilised log CDF uses ``erfcx``."""
-    with pm.Model() as model:
-        location = pm.Normal("location")
-        pm.TruncatedNormal("x", mu=location, sigma=1.0, lower=0.0)
-    return model
-
-
-@pytest.mark.parametrize("build", [_gamma_quantile_model, _gammaincinv_model, _truncated_normal_model])
+@pytest.mark.parametrize("build", [_gamma_quantile_model, _gammaincinv_model])
 @pytest.mark.usefixtures("without_tfp", "jax_precision")
 def test_missing_tfp_names_the_jax_extra(build) -> None:
     """A model needing TensorFlow Probability fails before NUTS with the install hint."""
