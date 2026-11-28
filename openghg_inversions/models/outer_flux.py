@@ -134,14 +134,28 @@ class OuterFluxChoice:
                 mode, a held state has nonzero prior covariance with any other
                 state.
         """
-        mean = flux_prior.mean
+        return self.resolve_state_moments(flux_prior.mean, flux_prior.arithmetic_covariance)
 
+    def resolve_state_moments(self, mean: xr.DataArray, covariance: xr.DataArray) -> OuterStates:
+        """Select held states using the aligned arithmetic moments of the sampled prior.
+
+        Args:
+            mean: Prior mean carrying state labels and selector coordinates.
+            covariance: Prior covariance with both axes in the same order as the mean.
+
+        Returns:
+            The held outer selector and the prior mean.
+
+        Raises:
+            ValueError: If selector coordinates or requested labels are missing,
+                or a fixed outer state has nonzero covariance with a sampled state.
+        """
         fixed = self._select_states(mean)
 
-        covariance = flux_prior.arithmetic_covariance.to_numpy()
+        covariance_values = covariance.to_numpy()
         fixed_positions = np.flatnonzero(fixed.to_numpy())
         other_positions = np.flatnonzero(~fixed.to_numpy())
-        cross = covariance[np.ix_(fixed_positions, other_positions)]
+        cross = covariance_values[np.ix_(fixed_positions, other_positions)]
         correlated = bool(np.any(cross != 0))
         # Holding F at its prior mean while sampling the marginal prior of the
         # other states is exact only when F is uncorrelated with them.
@@ -150,15 +164,15 @@ class OuterFluxChoice:
 
         prior_factor = regression = None
         if self.mode == "marginalise":
-            conditional = covariance[np.ix_(fixed_positions, fixed_positions)]
+            conditional = covariance_values[np.ix_(fixed_positions, fixed_positions)]
             if correlated:
-                regression = _regression(covariance[np.ix_(other_positions, other_positions)], cross)
+                regression = _regression(covariance_values[np.ix_(other_positions, other_positions)], cross)
                 conditional = conditional - regression @ cross.T
             prior_factor = _psd_factor(conditional)
 
         return OuterStates(
             choice=self,
-            state_dim=flux_prior.state_dim,
+            state_dim=str(mean.dims[0]),
             fixed=fixed.rename("fixed_outer"),
             prior_mean=mean,
             prior_factor=prior_factor,

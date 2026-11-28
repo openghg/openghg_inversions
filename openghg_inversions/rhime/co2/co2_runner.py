@@ -53,7 +53,7 @@ from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.sigma import SigmaAlignment
 
 from openghg_inversions.postprocessing.boundary_outputs import BOUNDARY_FORMAT_VERSION, restore_absolute_predictives
-from .co2_model import _build_co2_model, _check_outer_flux_likelihood, _normalise_offset_args
+from .co2_model import GaussianStatePrior, _build_co2_model, _check_outer_flux_likelihood, _normalise_offset_args
 from .co2_preparation import ALPHA_PRIOR_MARGINAL, Co2PreparedInputs, retained_prior_options
 
 _CO2_SCIENTIFIC_INPUT_NAMES = (
@@ -477,6 +477,7 @@ def build_co2_from_materialized(
     no_model_error: bool = False,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
+    gaussian_prior: GaussianStatePrior | None = None,
 ) -> RhimeModelBuildResult:
     """Construct the CO2 model from explicitly materialized scientific inputs.
 
@@ -499,6 +500,9 @@ def build_co2_from_materialized(
         boundary: Jointly materialized bound boundary, or None when disabled.
         outer_flux: Optional outer-flux choice, which the model builder
             resolves on the retained flux prior.
+        gaussian_prior: Optional Gaussian retained-state prior replacing the
+            retained flux prior in the graph, for the Gaussian estimator. Its
+            arithmetic moments are used to select any held outer states.
 
     Returns:
         Constructed PyMC model with component-declared scientific roles, units
@@ -544,13 +548,18 @@ def build_co2_from_materialized(
         observation_error=model_inputs["mf_error"],
         aggregation_error=aggregation_error,
     )
-    prior_covariance = model_inputs["alpha_prior_covariance"]
-    retained_prior = CorrelatedPrior(
-        model_inputs["alpha_prior_mean"],
-        prior_covariance,
-        **retained_prior_options(model_inputs),
-        covariance_dim=str(prior_covariance.dims[-1]),
-    )
+    retained_prior = None
+    if gaussian_prior is None:
+        prior_covariance = model_inputs["alpha_prior_covariance"]
+        retained_prior = CorrelatedPrior(
+            model_inputs["alpha_prior_mean"],
+            prior_covariance,
+            **retained_prior_options(model_inputs),
+            covariance_dim=str(prior_covariance.dims[-1]),
+        )
+        prior_metadata = retained_prior.metadata()
+    else:
+        prior_metadata = {"prior": gaussian_prior.description}
     model = _build_co2_model(
         model_inputs["H"],
         retained_prior=retained_prior,
@@ -568,6 +577,7 @@ def build_co2_from_materialized(
         outer_flux=outer_flux,
         offset_prior=priors["offset_latent"] if offset_prior is not None else None,
         offset_args=offset_args,
+        gaussian_prior=gaussian_prior,
     )
     variable_roles = {
         "observation": "y",
@@ -606,7 +616,7 @@ def build_co2_from_materialized(
             metadata={
                 "recipe": "co2",
                 "kind": "builtin",
-                **retained_prior.metadata(),
+                **prior_metadata,
                 "no_model_error": no_model_error,
                 "use_bc": boundary is not None,
                 **(boundary_outputs.metadata if boundary_outputs is not None else {"boundary_formulation": None}),

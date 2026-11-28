@@ -8,6 +8,7 @@ boundary and offset terms, and finally constructs the observation likelihood.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -27,6 +28,7 @@ from openghg_inversions.models.boundary.centered import CenteredBoundary
 from openghg_inversions.models.components import (
     ConcentrationTerm,
     add_coherent_affine_component,
+    add_correlated_gaussian_state_with_activity,
     add_correlated_state_with_activity,
     add_offset_component,
     apply_linear_sensitivity,
@@ -48,6 +50,24 @@ from openghg_inversions.rhime._model_building import _call_custom_likelihood
 from openghg_inversions.rhime.builders import RhimeLikelihoodBuilder
 from openghg_inversions.sigma import SigmaAlignment
 from openghg_inversions.postprocessing.contracts import _MARGINALISED_OUTER_FLUX_MASK
+
+
+@dataclass(frozen=True)
+class GaussianStatePrior:
+    """Gaussian retained-state prior used by the fixed-noise Gaussian estimator.
+
+    Attributes:
+        mean: Labelled arithmetic mean on the retained state dimension.
+        covariance: Labelled arithmetic covariance on the retained state axes.
+        factor: Labelled ``(state_dim, mode_dim)`` factor of the prior
+            covariance, as returned by a PSD factorisation.
+        description: Prior family recorded in the model metadata.
+    """
+
+    mean: xr.DataArray
+    covariance: xr.DataArray
+    factor: xr.DataArray
+    description: str = "correlated arithmetic-moment gaussian"
 
 
 def _fixed_mismatch_array(
@@ -300,7 +320,7 @@ def build_co2_model(
 def _build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
+    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior | None,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -315,14 +335,24 @@ def _build_co2_model(
     outer_flux: OuterFluxChoice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
+    gaussian_prior: GaussianStatePrior | None = None,
 ) -> pm.Model:
     """Validate choices and construct the CO2 graph from eager inputs.
 
     Materialization belongs to the caller: :func:`build_co2_model` computes
     its arguments together, and the CO2 runner calls this after its own joint
     materialization so already-eager arrays are not handled twice. Arguments
-    and errors are those of :func:`build_co2_model`.
+    and errors are those of :func:`build_co2_model`, except that
+    ``gaussian_prior`` replaces ``retained_prior`` with a whitened correlated
+    Gaussian state. That graph is linear-Gaussian when
+    every other prior is Normal and the likelihood has fixed error; the
+    Gaussian estimator solves it exactly instead of sampling it.
+
+    With ``gaussian_prior``, ``outer_flux`` uses the supplied arithmetic
+    covariance, preserving exact zeros for the cross-covariance check.
     """
+    if (gaussian_prior is None) == (retained_prior is None):
+        raise ValueError("Pass exactly one of retained_prior or gaussian_prior.")
     _check_co2_model_options(
         boundary=boundary,
         likelihood_builder=likelihood_builder,
@@ -337,7 +367,13 @@ def _build_co2_model(
         offset_prior = dict(offset_prior)
     offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
-    outer_states = outer_flux.resolve_states(retained_prior) if outer_flux is not None else None
+    outer_states = None
+    if outer_flux is not None:
+        if gaussian_prior is not None:
+            outer_states = outer_flux.resolve_state_moments(gaussian_prior.mean, gaussian_prior.covariance)
+        else:
+            assert retained_prior is not None
+            outer_states = outer_flux.resolve_states(retained_prior)
     if outer_states is not None:
         flux_sensitivity, fixed_prior_contribution = outer_states.condition_sensitivity(
             flux_sensitivity, fixed_prior_contribution, output_dim="nmeasure",
@@ -350,11 +386,13 @@ def _build_co2_model(
     with registered_model() as model:
         if outer_states is not None and outer_states.choice.mode == "marginalise":
             add_model_data(outer_states.fixed, _MARGINALISED_OUTER_FLUX_MASK)
-        flux_scaling = add_correlated_state_with_activity(
-            activity,
-            retained_prior,
-            var_name="flux_scaling",
-        ).state
+        if gaussian_prior is not None:
+            flux_scaling = add_correlated_gaussian_state_with_activity(
+                activity, gaussian_prior.mean, gaussian_prior.factor, var_name="flux_scaling",
+            ).state
+        else:
+            assert retained_prior is not None
+            flux_scaling = add_correlated_state_with_activity(activity, retained_prior, var_name="flux_scaling").state
         scaled_flux_contribution = apply_linear_sensitivity(
             prepared_flux,
             flux_scaling,
@@ -423,4 +461,4 @@ def _build_co2_model(
     return model
 
 
-__all__ = ["build_co2_model"]
+__all__ = ["GaussianStatePrior", "build_co2_model"]

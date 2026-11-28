@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal
 
 import xarray as xr
 
@@ -123,6 +123,9 @@ def describe_co2_inference(recorded: object) -> dict[str, Any]:
         record["algorithm"] = recorded["algorithm"]
     if recorded.get("target_accept_source") == "pm.sample_default":
         record["target_accept_source"] = "pm.sample_default"
+    seed = recorded.get("seed")
+    if isinstance(seed, int) and not isinstance(seed, bool) and seed >= 0:
+        record["seed"] = seed
     for name in ("target_accept", "sigma_target_accept", "state_target_accept"):
         value = recorded.get(name)
         if isinstance(value, int | float) and not isinstance(value, bool) and 0 < value < 1:
@@ -133,14 +136,33 @@ def describe_co2_inference(recorded: object) -> dict[str, Any]:
 def sample_co2_inference(
     prepared: Co2PreparedInputs, model: Mapping[str, Any], sampler: RhimeSampler, *,
     sigma_target_accept: float | None = None, state_target_accept: float | None = None,
+    method: Literal["nuts", "gaussian"] = "nuts",
+    substitute_marginals: bool = False,
 ) -> tuple[xr.DataTree, dict[str, Any]]:
     """Build the selected graph, sample its matched steps and record their settings.
+
+    ``method="gaussian"`` instead solves the exact fixed-noise Gaussian
+    posterior with :func:`~openghg_inversions.rhime.co2.co2_gaussian.sample_co2_gaussian`
+    and returns independent draws in the same trace layout;
+    ``substitute_marginals`` lets it replace Weibull and gamma flux marginals
+    by their moment-matched Normal instead of refusing them.
 
     Inferred OU amplitudes default to 0.8 (amplitude step) and 0.9 (state
     step). Fixed OU amplitudes have only the state step: ``sigma_target_accept``
     is rejected, and the state target is ``state_target_accept``, else
     ``sampler.sample_kwargs['target_accept']``, else 0.8.
     """
+    if method == "gaussian":
+        from .co2_gaussian import sample_co2_gaussian
+
+        return sample_co2_gaussian(prepared, model, sampler, substitute_marginals=substitute_marginals)
+    if method != "nuts":
+        raise ValueError(f"Unknown CO2 inference method {method!r}; use 'nuts' or 'gaussian'.")
+    if substitute_marginals:
+        raise ValueError("substitute_marginals applies only to method = 'gaussian'.")
+    from .co2_gaussian import check_co2_nuts_mismatch
+
+    check_co2_nuts_mismatch(model)
     validate_co2_inference(model, sampler)
     if uses_fixed_ou_amplitudes(model):
         # Reject meaningless amplitude-step controls before loading inputs.
