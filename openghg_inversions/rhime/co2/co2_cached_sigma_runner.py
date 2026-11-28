@@ -38,7 +38,7 @@ from .co2_cached_sigma_model import (
     _build_co2_cached_sigma_model,
 )
 from .co2_model import _normalise_offset_args
-from .co2_preparation import ALPHA_PRIOR_MARGINAL, Co2PreparedInputs
+from .co2_preparation import ALPHA_PRIOR_MARGINAL, Co2PreparedInputs, retained_prior_options
 from .co2_runner import (
     _bind_co2_boundary,
     _materialize_co2_inputs,
@@ -374,9 +374,7 @@ def build_rhime_co2_cached_sigma(
     retained_prior = CorrelatedPrior(
         model_inputs["alpha_prior_mean"],
         prior_covariance,
-        marginal=(
-            model_inputs[ALPHA_PRIOR_MARGINAL] if ALPHA_PRIOR_MARGINAL in model_inputs else "lognormal"
-        ),
+        **retained_prior_options(model_inputs),
         covariance_dim=str(prior_covariance.dims[-1]),
     )
     cached_model = _build_co2_cached_sigma_model(

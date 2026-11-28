@@ -65,8 +65,47 @@ correlation. For the remaining Weibull and gamma pairs, the solver matches the
 covariance using a 60-term Hermite approximation. It checks that the series
 reproduces each affected marginal variance to within :math:`10^{-6}` relative.
 A pair covariance no latent correlation can reach (for example strong negative
-correlation between very skewed states), or a latent correlation that is not
-positive definite, fails clearly without repair.
+correlation between very skewed states) fails clearly.
+
+.. _latent-correlation-repair:
+
+Latent-correlation repair
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Each latent correlation is solved pair by pair, so the whole matrix need not be
+positive definite even when the arithmetic covariance is. This happens with
+some wide, strongly correlated priors. The repository's rounded fixture of
+15 retained GPP/TER states from the OPE-188 July 2021 ORCHIDEE prior has a
+latent minimum eigenvalue of :math:`-6.5\times10^{-5}` with Weibull marginals.
+Such priors fail by default. ``latent_correlation_floor`` (a
+:class:`~openghg_inversions.correlated_state.CorrelatedPrior` argument, or a ``latent_correlation_floor`` attribute on the
+``prior_marginal`` given to ``prepare_co2_inputs``)
+opts in to repair. Within each independent block, eigenvalues below the floor
+are raised to it and the block is rescaled to a unit diagonal. Each state
+keeps its arithmetic mean and variance. Pair covariances may change.
+The repair is refused if any implied state correlation changes by more than
+0.01. For example, five Weibull states with CV 1.5 and equal arithmetic
+correlation -0.24 have positive-definite arithmetic covariance but a latent
+minimum eigenvalue of about -0.9. The repair would shift the correlations by
+about 0.1, so the prior is refused.
+
+On the ORCHIDEE fixture, a floor of ``1e-6`` raises one eigenvalue. It changes
+the latent correlations by at most :math:`3.8\times10^{-5}` and implied
+arithmetic correlations by at most :math:`5.6\times10^{-5}`. The fixture is
+in ``tests/data/copula/orchidee_weibull_block.json``.
+
+:attr:`~openghg_inversions.correlated_state.CorrelatedPrior.latent_correlation_repair`
+records the floor, whether it was applied, the minimum eigenvalue before the
+repair, the number of eigenvalues raised, and the largest changes in the latent
+correlation and in the implied state covariance and correlation. The CO2
+runners write it, the marginal family counts and the prior description into
+the trace's ``rhime_model_metadata`` as ``prior_latent_correlation_repair``,
+``prior_marginals`` and ``prior``. After repair, the built prior's
+``arithmetic_covariance`` is the implied covariance of the repaired copula.
+Saved preparations retain the requested covariance and floor. Partial
+activity uses the corresponding submatrix of the full repaired prior,
+including its implied covariance. All-lognormal priors require a positive-
+definite latent covariance and use their existing construction.
 
 Pass ``prior_marginal`` to the Python function
 :func:`~openghg_inversions.rhime.co2.prepare_co2_inputs` as a labelled array

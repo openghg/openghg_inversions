@@ -1,5 +1,8 @@
 """Per-state marginals on the correlated flux prior: a Gaussian copula matched to arithmetic moments."""
 
+import json
+from pathlib import Path
+
 import numpy as np
 import pytest
 import pytensor
@@ -355,3 +358,131 @@ def test_copula_states_need_positive_variance():
     mean = xr.DataArray([1.0, 1.0], dims="state", coords={"state": ["a", "b"]})
     with pytest.raises(ValueError, match="positive arithmetic variance"):
         CorrelatedPrior(mean, np.diag([0.0, 0.1]), marginal=mean.copy(data=np.array(["weibull", "normal"], dtype=object)))
+
+
+# ---------------------------------------------------------------------------
+# Opt-in latent-correlation repair
+# ---------------------------------------------------------------------------
+
+
+def orchidee_weibull_moments():
+    """Requested arithmetic moments for the 15-state ORCHIDEE fixture."""
+    data = json.loads((Path(__file__).parent / "data" / "copula" / "orchidee_weibull_block.json").read_text())
+    mean = xr.DataArray(data["mean"], dims="state", coords={"state": data["labels"]})
+    sd = np.asarray(data["sd"])
+    return mean, np.asarray(data["correlation"]) * np.outer(sd, sd)
+
+
+def orchidee_weibull_block(*, latent_correlation_floor=None):
+    """Build the ORCHIDEE Weibull copula, whose latent correlation needs repair."""
+    mean, covariance = orchidee_weibull_moments()
+    return CorrelatedPrior(mean, covariance, marginal="weibull", latent_correlation_floor=latent_correlation_floor)
+
+
+def test_orchidee_weibull_block_is_refused_by_default_with_the_repair_named():
+    with pytest.raises(ValueError, match="not positive definite.*latent_correlation_floor"):
+        orchidee_weibull_block()
+
+
+def test_latent_floor_repairs_the_orchidee_weibull_block_and_records_the_change():
+    prior = orchidee_weibull_block(latent_correlation_floor=1e-6)
+    correlation = prior.latent_correlation.to_numpy()
+    np.testing.assert_array_equal(np.diag(correlation), 1.0)
+    assert np.linalg.eigvalsh(correlation).min() > 0
+    record = prior.latent_correlation_repair
+    assert record["method"] == "eigenvalue_floor" and record["floor"] == 1e-6 and record["applied"]
+    assert record["minimum_eigenvalue"] < 0 and record["eigenvalues_raised"] >= 1
+    assert 0 < record["max_abs_latent_correlation_change"] < 1e-3
+    assert 0 < record["max_abs_state_correlation_change"] < 1e-3
+    json.dumps(record)
+
+
+def test_recorded_covariance_change_is_the_repaired_prior_moment_error():
+    prior = orchidee_weibull_block(latent_correlation_floor=1e-6)
+    _, covariance = quadrature_moments(prior, nodes=120)
+    _, target = orchidee_weibull_moments()
+    effective = prior.arithmetic_covariance.to_numpy()
+    np.testing.assert_array_equal(np.diag(effective), np.diag(target))
+    np.testing.assert_allclose(effective, covariance, rtol=3e-5, atol=1e-10)
+    change = np.abs(effective - target).max()
+    assert change > 0
+    assert change == prior.latent_correlation_repair["max_abs_state_covariance_change"]
+
+
+def test_latent_floor_preserves_independent_interleaved_states():
+    """An independent held block keeps exactly zero covariance after repair."""
+    from openghg_inversions.models.outer_flux import OuterFluxChoice
+
+    means, target = orchidee_weibull_moments()
+    held = np.zeros(means.size + 2, dtype=bool)
+    held[[1, 7]] = True
+    values = np.ones(held.size)
+    values[~held] = means.values
+    mean = xr.DataArray(values, dims="state", coords={
+        "state": np.arange(held.size),
+        "basis_group": ("state", np.where(held, "outer", "inner")),
+    })
+    covariance = np.zeros((held.size, held.size))
+    covariance[np.ix_(~held, ~held)] = target
+    covariance[np.ix_(held, held)] = [[1.0, 0.4], [0.4, 1.0]]
+    families = mean.copy(data=np.where(held, "normal", "weibull"))
+    prior = CorrelatedPrior(mean, covariance, marginal=families, latent_correlation_floor=1e-6)
+    assert prior.latent_correlation_repair["applied"]
+    np.testing.assert_array_equal(prior.latent_correlation.values[np.ix_(held, ~held)], 0.0)
+    np.testing.assert_array_equal(prior.arithmetic_covariance.values[np.ix_(held, ~held)], 0.0)
+    np.testing.assert_array_equal(OuterFluxChoice("fixed", ("outer",)).resolve_states(prior).fixed, held)
+
+
+def test_latent_floor_leaves_a_positive_definite_copula_unchanged():
+    families = ["weibull", "gamma", "normal", "lognormal", "lognormal"]
+    plain = wide_prior(families)
+    floored = CorrelatedPrior(
+        plain.mean, plain.arithmetic_covariance.to_numpy(), marginal=plain.marginal, latent_correlation_floor=1e-8
+    )
+    np.testing.assert_array_equal(floored.latent_correlation.to_numpy(), plain.latent_correlation.to_numpy())
+    xr.testing.assert_identical(floored.arithmetic_covariance, plain.arithmetic_covariance)
+    assert floored.latent_correlation_repair["applied"] is False
+    assert plain.latent_correlation_repair is None
+
+
+def test_latent_floor_refuses_a_repair_that_changes_state_correlations_materially():
+    correlation = np.full((5, 5), -0.24) + 1.24 * np.eye(5)
+    mean = xr.DataArray(np.ones(5), dims="state", coords={"state": LABELS})
+    with pytest.raises(ValueError, match=r"would change implied state correlations by up to 0\.09"):
+        CorrelatedPrior(mean, correlation * 2.25, marginal="weibull", latent_correlation_floor=1e-6)
+
+
+@pytest.mark.parametrize("floor", [0.0, -1e-6, 0.2])
+def test_latent_floor_must_be_small_and_positive(floor):
+    with pytest.raises(ValueError, match=r"latent_correlation_floor must be in \(0, 0.1\]"):
+        orchidee_weibull_block(latent_correlation_floor=floor)
+
+
+def test_active_prior_is_the_block_of_the_repaired_correlation():
+    prior = orchidee_weibull_block(latent_correlation_floor=1e-6)
+    active = np.ones(prior.mean.size, dtype=bool)
+    active[[0, 5, 9]] = False
+    activity = resolve_state_activity(
+        xr.zeros_like(prior.mean, dtype=bool), StateActivity(active=active, fixed_value=1.0)
+    )
+    active_prior = prepare_active_correlated_prior(activity, prior, var_name="flux_scaling")
+    np.testing.assert_array_equal(
+        active_prior.latent_correlation.to_numpy(), prior.latent_correlation.to_numpy()[np.ix_(active, active)]
+    )
+    np.testing.assert_array_equal(
+        active_prior.arithmetic_covariance.to_numpy(), prior.arithmetic_covariance.to_numpy()[np.ix_(active, active)]
+    )
+    assert active_prior.latent_correlation_repair == prior.latent_correlation_repair
+
+
+def test_prior_metadata_names_the_marginals_and_the_repair():
+    repaired = orchidee_weibull_block(latent_correlation_floor=1e-6).metadata()
+    assert repaired["prior"] == "correlated arithmetic-moment Gaussian copula"
+    assert repaired["prior_marginals"] == {"weibull": 15}
+    assert repaired["prior_latent_correlation_repair"]["applied"] is True
+    lognormal = CorrelatedPrior(correlated_prior().mean, correlated_prior().arithmetic_covariance).metadata()
+    assert lognormal == {
+        "prior": "correlated arithmetic-moment lognormal",
+        "prior_marginals": {"lognormal": 5},
+        "prior_latent_correlation_repair": None,
+    }
