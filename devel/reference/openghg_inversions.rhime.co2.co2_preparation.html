@@ -854,6 +854,7 @@ materializing numerical payloads.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">reference_covariance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_centering_weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">provenance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prior_marginal</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs" title="Link to this definition">#</a></dt>
@@ -921,6 +922,11 @@ normalizes them to sum to one. Omit to retain existing weights.</p></li>
 <li><p><strong>provenance</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional JSON-serializable project or preparation
 provenance. The reduction strategy and LRPD diagnostics are added
 by this boundary.</p></li>
+<li><p><strong>prior_marginal</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional marginal family name per retained state, on
+the reduction’s retained-state labels. It is stored as
+<code class="docutils literal notranslate"><span class="pre">alpha_prior_marginal</span></code> and selects each state’s marginal in the
+runners’ <a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">CorrelatedPrior</span></code></a>.
+Omit it for the lognormal prior.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>

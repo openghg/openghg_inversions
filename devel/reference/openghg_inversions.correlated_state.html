@@ -613,8 +613,8 @@ as LogNormal and the unresolved contribution as Gaussian is a moment-matched
 closure, not exact marginalization of a LogNormal state. Fixing a state at a
 known value is instead handled by <code class="docutils literal notranslate"><span class="pre">models.StateActivity</span></code>.</p>
 <p>Model builders take a <code class="docutils literal notranslate"><span class="pre">CorrelatedPrior</span></code>: arithmetic moments with a marginal
-family per state, joined by a Gaussian copula. Its only marginal is lognormal,
-built by <code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior</span></code>. That class’s constructor eagerly
+family per state, joined by a Gaussian copula. All-lognormal priors use
+<code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior</span></code>. That class’s constructor eagerly
 computes xarray inputs and owns independent copies; <code class="docutils literal notranslate"><span class="pre">to_dataset</span></code> and
 <code class="docutils literal notranslate"><span class="pre">from_dataset</span></code> provide persistence boundaries. Construction warns before
 dense covariance materialization when the reduced state exceeds 1,000
@@ -758,8 +758,17 @@ as an alternative construction path.</p>
 
 <dl class="py data">
 <dt class="sig sig-object py" id="openghg_inversions.correlated_state.STATE_MARGINALS">
-<span class="sig-name descname"><span class="pre">STATE_MARGINALS</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">('lognormal',)</span></span><a class="headerlink" href="#openghg_inversions.correlated_state.STATE_MARGINALS" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">STATE_MARGINALS</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">('lognormal',</span> <span class="pre">'normal',</span> <span class="pre">'weibull',</span> <span class="pre">'gamma')</span></span><a class="headerlink" href="#openghg_inversions.correlated_state.STATE_MARGINALS" title="Link to this definition">#</a></dt>
 <dd><p>Marginal families a <a class="reference internal" href="#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">CorrelatedPrior</span></code></a> state may use.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="openghg_inversions.correlated_state.GAMMA_LATENT_CAP">
+<span class="sig-name descname"><span class="pre">GAMMA_LATENT_CAP</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">8.0</span></span><a class="headerlink" href="#openghg_inversions.correlated_state.GAMMA_LATENT_CAP" title="Link to this definition">#</a></dt>
+<dd><p>Gamma states are held at their quantile for latent <code class="docutils literal notranslate"><span class="pre">u</span> <span class="pre">=</span> <span class="pre">8</span></code> above it.</p>
+<p>TensorFlow Probability’s JAX inverse incomplete gamma overflows for upper-tail
+probabilities below about 1e-22 (<code class="docutils literal notranslate"><span class="pre">u</span></code> near 10). <code class="docutils literal notranslate"><span class="pre">Phi(-8)</span></code> is 6e-16, so the
+cap changes the moments negligibly and keeps every backend identical.</p>
 </dd></dl>
 
 <dl class="py class">
@@ -777,17 +786,32 @@ as an alternative construction path.</p>
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedPrior" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Correlated state prior given by arithmetic moments and per-state marginals.</p>
-<p>The prior is a Gaussian copula. One correlated latent normal vector is
-mapped through each state’s marginal, with the latent correlations chosen
-so that the arithmetic mean and covariance are matched exactly. Changing a
-marginal changes only the shape of that state’s distribution.</p>
-<p>Only the <code class="docutils literal notranslate"><span class="pre">&quot;lognormal&quot;</span></code> marginal is available. With it on every state, the
-copula is the <a class="reference internal" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior</span></code></a> construction, available as
-<code class="docutils literal notranslate"><span class="pre">lognormal</span></code>.</p>
+<p>The prior is a Gaussian copula. A whitened standard-normal vector <code class="docutils literal notranslate"><span class="pre">z</span></code> is
+correlated as <code class="docutils literal notranslate"><span class="pre">u</span> <span class="pre">=</span> <span class="pre">L</span> <span class="pre">z</span></code> and each state is <code class="docutils literal notranslate"><span class="pre">x_i</span> <span class="pre">=</span> <span class="pre">F_i^-1(Phi(u_i))</span></code>,
+where <code class="docutils literal notranslate"><span class="pre">F_i</span></code> is the state’s marginal with its arithmetic mean and SD. The
+latent correlations <code class="docutils literal notranslate"><span class="pre">L</span> <span class="pre">L^T</span></code> are chosen pair by pair to reproduce the
+arithmetic covariance (the NORTA construction). Changing a marginal
+preserves its declared arithmetic mean and variance.</p>
+<p>Marginals (<a class="reference internal" href="#openghg_inversions.correlated_state.STATE_MARGINALS" title="openghg_inversions.correlated_state.STATE_MARGINALS"><code class="xref py py-data docutils literal notranslate"><span class="pre">STATE_MARGINALS</span></code></a>):</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;lognormal&quot;</span></code> (default). With it on every state, the copula is the
+<a class="reference internal" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior</span></code></a> construction, available as
+<code class="docutils literal notranslate"><span class="pre">lognormal</span></code>, and models are built exactly as before.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;normal&quot;</span></code>: a Gaussian state, which may be negative.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;weibull&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;gamma&quot;</span></code>: positive and less right-skewed than the
+lognormal at the same mean and SD, so a posterior constrained only in
+a sum of states is pulled less towards small values.</p></li>
+</ul>
+<p>Pairs with a normal state, and lognormal pairs, have closed-form latent
+correlations. Remaining pairs involving Weibull or Gamma use a truncated
+Hermite series for covariance matching. A pair whose covariance no latent
+correlation can reach, or a latent correlation that is not positive
+definite, is rejected.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>lognormal</strong> (<a class="reference internal" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><em>openghg_inversions.correlated_state.CorrelatedLognormalPrior</em></a>) – Validated lognormal copula for these arithmetic moments.</p></li>
+<li><p><strong>lognormal</strong> (<a class="reference internal" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><em>openghg_inversions.correlated_state.CorrelatedLognormalPrior</em></a><em> | </em><em>None</em>) – Validated lognormal copula when every marginal is
+lognormal, otherwise <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
 <li><p><strong>marginal</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Marginal family name on the state dimension, in mean-label
 order. Treat it as read-only.</p></li>
 </ul>
@@ -842,6 +866,101 @@ order. Treat it as read-only.</p></li>
 <dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedPrior.covariance_dim">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">covariance_dim</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedPrior.covariance_dim" title="Link to this definition">#</a></dt>
 <dd><p>Return the name of the same-order covariance column dimension.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedPrior.is_lognormal">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">is_lognormal</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><span class="pre">bool</span></a></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedPrior.is_lognormal" title="Link to this definition">#</a></dt>
+<dd><p>Whether every state has the lognormal marginal.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedPrior.metadata">
+<span class="sig-name descname"><span class="pre">metadata</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedPrior.metadata" title="Link to this definition">#</a></dt>
+<dd><p>Describe this prior for saved model outputs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>JSON-safe prior description and state counts per marginal family.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedPrior.latent_correlation">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">latent_correlation</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedPrior.latent_correlation" title="Link to this definition">#</a></dt>
+<dd><p>Return the copula’s latent correlation <code class="docutils literal notranslate"><span class="pre">L</span> <span class="pre">L^T</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A dense labelled copy on <code class="docutils literal notranslate"><span class="pre">(state_dim,</span> <span class="pre">covariance_dim)</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedPrior.latent_correlation_cholesky">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">latent_correlation_cholesky</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedPrior.latent_correlation_cholesky" title="Link to this definition">#</a></dt>
+<dd><p>Return the lower Cholesky factor <code class="docutils literal notranslate"><span class="pre">L</span></code> of the latent correlation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A dense labelled copy on <code class="docutils literal notranslate"><span class="pre">(state_dim,</span> <span class="pre">covariance_dim)</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedPrior.marginal_shape">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">marginal_shape</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedPrior.marginal_shape" title="Link to this definition">#</a></dt>
+<dd><p>Return each state’s marginal shape.</p>
+<p>Lognormal: SD of the log state. Weibull and gamma: the shape <code class="docutils literal notranslate"><span class="pre">k</span></code>.
+Normal: NaN.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedPrior.marginal_scale">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">marginal_scale</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedPrior.marginal_scale" title="Link to this definition">#</a></dt>
+<dd><p>Return each state’s marginal scale, in the mean’s units.</p>
+<p>Lognormal: the median. Normal: the SD. Weibull and gamma: the scale.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedPrior.transform_latent">
+<span class="sig-name descname"><span class="pre">transform_latent</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">latent</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedPrior.transform_latent" title="Link to this definition">#</a></dt>
+<dd><p>Map correlated standard-normal values <code class="docutils literal notranslate"><span class="pre">u</span></code> to states <code class="docutils literal notranslate"><span class="pre">F^-1(Phi(u))</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>latent</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>) – Array whose last axis is the state, in mean-label order,
+holding <code class="docutils literal notranslate"><span class="pre">u</span> <span class="pre">=</span> <span class="pre">L</span> <span class="pre">z</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The states, with the shape of <code class="docutils literal notranslate"><span class="pre">latent</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedPrior.sample">
+<span class="sig-name descname"><span class="pre">sample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">size</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedPrior.sample" title="Link to this definition">#</a></dt>
+<dd><p>Draw states from the prior with NumPy and SciPy.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>size</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a>) – Number of draws.</p></li>
+<li><p><strong>rng</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/random/generator.html#numpy.random.Generator" title="(in NumPy v2.5)"><em>Generator</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><em>None</em>) – Generator or seed.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Draws with shape <code class="docutils literal notranslate"><span class="pre">(size,</span> <span class="pre">n_state)</span></code>, in mean-label order.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a></p>
+</dd>
+</dl>
 </dd></dl>
 
 </dd></dl>
@@ -906,12 +1025,21 @@ order. Treat it as read-only.</p></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.STATE_MARGINALS"><code class="docutils literal notranslate"><span class="pre">STATE_MARGINALS</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.GAMMA_LATENT_CAP"><code class="docutils literal notranslate"><span class="pre">GAMMA_LATENT_CAP</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedPrior"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedPrior.from_lognormal"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.from_lognormal()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedPrior.mean"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.mean</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedPrior.arithmetic_covariance"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.arithmetic_covariance</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedPrior.state_dim"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.state_dim</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedPrior.covariance_dim"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.covariance_dim</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedPrior.is_lognormal"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.is_lognormal</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedPrior.metadata"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.metadata()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedPrior.latent_correlation"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.latent_correlation</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedPrior.latent_correlation_cholesky"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.latent_correlation_cholesky</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedPrior.marginal_shape"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.marginal_shape</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedPrior.marginal_scale"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.marginal_scale</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedPrior.transform_latent"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.transform_latent()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedPrior.sample"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.sample()</span></code></a></li>
 </ul>
 </li>
 </ul>

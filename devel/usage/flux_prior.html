@@ -485,19 +485,65 @@ The CO₂ runners build the prior from the prepared mean and covariance. The
 linked runners use the lognormal prior from their prepared inputs.</p>
 <section id="sampled-marginals">
 <span id="id1"></span><h2>Sampled marginals<a class="headerlink" href="#sampled-marginals" title="Link to this heading">#</a></h2>
-<p>The states are joined by a Gaussian copula that reproduces the arithmetic
-moments. Lognormal is the only marginal available, built by
-<a class="reference internal" href="../reference/openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior</span></code></a>:</p>
+<p>The model samples a
+<a class="reference internal" href="../reference/openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">CorrelatedPrior</span></code></a>: arithmetic
+moments joined by a Gaussian copula, with a marginal family per state. A whitened
+<span class="math notranslate nohighlight">\(z\sim N(0,I)\)</span> is correlated as <span class="math notranslate nohighlight">\(u=Lz\)</span> and each state is
+<span class="math notranslate nohighlight">\(x_i=F_i^{-1}(\Phi(u_i))\)</span>, where <span class="math notranslate nohighlight">\(F_i\)</span> has the state’s arithmetic
+mean and SD. The latent correlations <span class="math notranslate nohighlight">\(LL^T\)</span> are chosen pair by pair to
+reproduce the arithmetic covariance.</p>
+<p><code class="docutils literal notranslate"><span class="pre">&quot;lognormal&quot;</span></code> is the default. With it on every state the prior is
+<a class="reference internal" href="../reference/openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior</span></code></a> and the
+model is built exactly as before:</p>
 <div class="math notranslate nohighlight">
 \[\begin{split}S_{ij}&amp;=\log(1+B_{ij}/(m_i m_j)),\\
 a_i&amp;=\log(m_i)-S_{ii}/2,\\
 x&amp;=\exp(a+Lz),\qquad LL^T=S,\quad z\sim N(0,I).\end{split}\]</div>
 <p>The logarithm arguments and positive definiteness of <span class="math notranslate nohighlight">\(S\)</span> must be valid.
 Positive-definite arithmetic covariance alone does not guarantee valid
-multivariate lognormal moments; incompatible moments fail clearly. The
-arithmetic mean and covariance are preserved exactly, but a linear functional
-such as net flux keeps only its mean and variance, not all of its higher
-moments.</p>
+multivariate lognormal moments. Incompatible requests fail clearly. Arithmetic
+mean/covariance are preserved exactly, but preserving net mean and variance
+does not preserve all its higher moments.</p>
+<p>The other marginals have the same mean and SD with less right skew:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;normal&quot;</span></code>: <span class="math notranslate nohighlight">\(x_i=m_i+s_i u_i\)</span>. Symmetric, so a posterior constrained
+only in a sum of states (net flux) is not pulled towards small gross terms,
+but scalings can be negative (about 6% probability at CV 0.63). Mainly a
+test and comparison family.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;weibull&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;gamma&quot;</span></code>: positive with nonzero prior variance. The
+Weibull moment solver accepts shape parameters from 0.02 to 1000, so
+a coefficient of variation below about 0.00128 is too small. A mean-one
+lognormal at CV 0.63 has median 0.85; the Weibull 0.89 and gamma 0.87. In
+OPE-188 July 2021 fits, Weibull GPP/TER marginals removed about two thirds
+of the lognormal’s gross shrinkage relative to a Gaussian in CO2-only fits
+and about half in linked fits; gamma removed a fifth to a quarter. Gamma
+states use the quantile at latent <span class="math notranslate nohighlight">\(u=8\)</span> for larger values
+(standard-normal probability about <span class="math notranslate nohighlight">\(6\times 10^{-16}\)</span>). The cap
+applies in NumPy, PyMC and NumPyro. Very small probabilities in the lower
+tail can underflow at the sampler’s working precision. Gamma shapes above
+1000 (CV below about 0.032) require float64 for accurate sampling gradients.
+Set <code class="docutils literal notranslate"><span class="pre">PYTENSOR_FLAGS=floatX=float64</span></code> before starting Python.</p></li>
+</ul>
+<p>A pair with a normal state, or two lognormal states, has a closed-form latent
+correlation. For the remaining Weibull and gamma pairs, the solver matches the
+covariance using a 60-term Hermite approximation. It checks that the series
+reproduces each affected marginal variance to within <span class="math notranslate nohighlight">\(10^{-6}\)</span> relative.
+A pair covariance no latent correlation can reach (for example strong negative
+correlation between very skewed states), or a latent correlation that is not
+positive definite, fails clearly without repair.</p>
+<p>Pass <code class="docutils literal notranslate"><span class="pre">prior_marginal</span></code> to the Python function
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_co2_inputs()</span></code></a> as a labelled array
+of family names on the retained state axis. The preparation saves it as
+<code class="docutils literal notranslate"><span class="pre">alpha_prior_marginal</span></code>. Ordinary and cached CO₂ runners use it and record
+the prior and family counts in the output metadata. Preparations without
+it use the lognormal prior. Gamma uses TensorFlow Probability for the
+central quantile in NumPyro and a survival-probability solve in the upper
+tail. TensorFlow Probability is not installed by default; install the optional
+<code class="docutils literal notranslate"><span class="pre">jax</span></code> extra (<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">'openghg-inversions[jax]'</span></code>) to sample gamma
+marginals with <code class="docutils literal notranslate"><span class="pre">nuts_sampler=&quot;numpyro&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;blackjax&quot;</span></code>. Without it, those
+runs stop with an <code class="docutils literal notranslate"><span class="pre">ImportError</span></code> before sampling; the PyMC sampler does not
+need it. Known gamma numerical limits are tracked in
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/1144">#1144</a>.</p>
 </section>
 <section id="activity">
 <h2>Activity<a class="headerlink" href="#activity" title="Link to this heading">#</a></h2>

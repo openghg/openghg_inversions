@@ -617,6 +617,7 @@
 <dd><em class="sig-param"><span class="n"><span class="pre">boundary_outputs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">fixed_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">outer_flux_outputs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prior_metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel" title="Link to this definition">#</a></dt>
@@ -631,7 +632,8 @@ resolves them separately for construction and each sampling chain.
 rather than a sampled variable; <code class="docutils literal notranslate"><span class="pre">initial_cache</span></code> is then the exact state
 quadratic for the whole run and the sampler has no amplitude step.
 <code class="docutils literal notranslate"><span class="pre">boundary_outputs</span></code> and <code class="docutils literal notranslate"><span class="pre">outer_flux_outputs</span></code> declare the bound
-boundary’s and outer-flux option’s roles, units and metadata.</p>
+boundary’s and outer-flux option’s roles, units and metadata.
+<code class="docutils literal notranslate"><span class="pre">prior_metadata</span></code> describes the actual retained prior when available.</p>
 <dl class="field-list simple">
 </dl>
 </dd></dl>

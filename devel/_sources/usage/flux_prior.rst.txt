@@ -16,9 +16,17 @@ linked runners use the lognormal prior from their prepared inputs.
 Sampled marginals
 -----------------
 
-The states are joined by a Gaussian copula that reproduces the arithmetic
-moments. Lognormal is the only marginal available, built by
-:class:`~openghg_inversions.correlated_state.CorrelatedLognormalPrior`:
+The model samples a
+:class:`~openghg_inversions.correlated_state.CorrelatedPrior`: arithmetic
+moments joined by a Gaussian copula, with a marginal family per state. A whitened
+:math:`z\sim N(0,I)` is correlated as :math:`u=Lz` and each state is
+:math:`x_i=F_i^{-1}(\Phi(u_i))`, where :math:`F_i` has the state's arithmetic
+mean and SD. The latent correlations :math:`LL^T` are chosen pair by pair to
+reproduce the arithmetic covariance.
+
+``"lognormal"`` is the default. With it on every state the prior is
+:class:`~openghg_inversions.correlated_state.CorrelatedLognormalPrior` and the
+model is built exactly as before:
 
 .. math::
 
@@ -28,10 +36,51 @@ moments. Lognormal is the only marginal available, built by
 
 The logarithm arguments and positive definiteness of :math:`S` must be valid.
 Positive-definite arithmetic covariance alone does not guarantee valid
-multivariate lognormal moments; incompatible moments fail clearly. The
-arithmetic mean and covariance are preserved exactly, but a linear functional
-such as net flux keeps only its mean and variance, not all of its higher
-moments.
+multivariate lognormal moments. Incompatible requests fail clearly. Arithmetic
+mean/covariance are preserved exactly, but preserving net mean and variance
+does not preserve all its higher moments.
+
+The other marginals have the same mean and SD with less right skew:
+
+- ``"normal"``: :math:`x_i=m_i+s_i u_i`. Symmetric, so a posterior constrained
+  only in a sum of states (net flux) is not pulled towards small gross terms,
+  but scalings can be negative (about 6% probability at CV 0.63). Mainly a
+  test and comparison family.
+- ``"weibull"`` and ``"gamma"``: positive with nonzero prior variance. The
+  Weibull moment solver accepts shape parameters from 0.02 to 1000, so
+  a coefficient of variation below about 0.00128 is too small. A mean-one
+  lognormal at CV 0.63 has median 0.85; the Weibull 0.89 and gamma 0.87. In
+  OPE-188 July 2021 fits, Weibull GPP/TER marginals removed about two thirds
+  of the lognormal's gross shrinkage relative to a Gaussian in CO2-only fits
+  and about half in linked fits; gamma removed a fifth to a quarter. Gamma
+  states use the quantile at latent :math:`u=8` for larger values
+  (standard-normal probability about :math:`6\times 10^{-16}`). The cap
+  applies in NumPy, PyMC and NumPyro. Very small probabilities in the lower
+  tail can underflow at the sampler's working precision. Gamma shapes above
+  1000 (CV below about 0.032) require float64 for accurate sampling gradients.
+  Set ``PYTENSOR_FLAGS=floatX=float64`` before starting Python.
+
+A pair with a normal state, or two lognormal states, has a closed-form latent
+correlation. For the remaining Weibull and gamma pairs, the solver matches the
+covariance using a 60-term Hermite approximation. It checks that the series
+reproduces each affected marginal variance to within :math:`10^{-6}` relative.
+A pair covariance no latent correlation can reach (for example strong negative
+correlation between very skewed states), or a latent correlation that is not
+positive definite, fails clearly without repair.
+
+Pass ``prior_marginal`` to the Python function
+:func:`~openghg_inversions.rhime.co2.prepare_co2_inputs` as a labelled array
+of family names on the retained state axis. The preparation saves it as
+``alpha_prior_marginal``. Ordinary and cached CO₂ runners use it and record
+the prior and family counts in the output metadata. Preparations without
+it use the lognormal prior. Gamma uses TensorFlow Probability for the
+central quantile in NumPyro and a survival-probability solve in the upper
+tail. TensorFlow Probability is not installed by default; install the optional
+``jax`` extra (``pip install 'openghg-inversions[jax]'``) to sample gamma
+marginals with ``nuts_sampler="numpyro"`` or ``"blackjax"``. Without it, those
+runs stop with an ``ImportError`` before sampling; the PyMC sampler does not
+need it. Known gamma numerical limits are tracked in
+`#1144 <https://github.com/openghg/openghg_inversions/issues/1144>`_.
 
 Activity
 --------
