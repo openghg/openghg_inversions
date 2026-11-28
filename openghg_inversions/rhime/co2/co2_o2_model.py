@@ -13,7 +13,7 @@ import pytensor.tensor as pt
 import xarray as xr
 
 from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array, to_dense_tree
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models import (
     StateActivity,
     add_correlated_state_with_activity,
@@ -81,7 +81,7 @@ def evaluate_co2_o2_prior_forward_mean(
     fixed_prior_contribution: xr.DataArray,
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: CorrelatedPrior,
     state_activity: StateActivity | None = None,
     output_dim: str = "observation",
 ) -> xr.DataArray:
@@ -285,7 +285,7 @@ def build_co2_o2_model(
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
     aggregation_error: ObservationCovariance,
-    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
+    retained_prior: CorrelatedPrior,
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,
@@ -417,7 +417,7 @@ def _build_co2_o2_model(
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
     aggregation_error: ObservationCovariance,
-    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
+    retained_prior: CorrelatedPrior,
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     boundary: Mapping[str, Bound] | None = None,

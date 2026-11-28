@@ -25,7 +25,7 @@ from scipy.stats import multivariate_normal
 
 from boundary_test_utils import bound_linked_model_arguments
 from examples.co2_o2_handoffs import synthetic_inputs
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inference.cached_sigma import (
     PymcCachedSigmaNutsStep,
     PytensorMarginalQuadraticCache,
@@ -447,7 +447,7 @@ def test_configured_linked_fixed_ou_sample_uses_cached_state_step(tmp_path, capt
     prepared = synthetic_inputs()
     prior = prepared.retained_prior
     mean = prior.mean.assign_coords(basis_group=("state", ["inner", "inner", "inner", "outer", "outer"]))
-    prepared = replace(prepared, retained_prior=CorrelatedLognormalPrior(mean, prior.arithmetic_covariance))
+    prepared = replace(prepared, retained_prior=CorrelatedPrior(mean, prior.arithmetic_covariance))
     manifest = co2_o2_handoffs.save_preparation(prepared, output_dir=tmp_path / "prepare")
     model = {
         "channels": {"co2": {"units": "ppm"}, "o2": {"units": "ppm"}},

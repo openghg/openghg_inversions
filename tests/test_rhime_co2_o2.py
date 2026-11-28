@@ -11,7 +11,7 @@ import pymc as pm
 import pytest
 import xarray as xr
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models import (
     StateActivity,
     get_coord_registry,
@@ -116,7 +116,7 @@ def _inputs(*, gathered_state: bool = False) -> dict[str, object]:
             dims=("o2_measure", "o2_measure_cov"),
             coords={"o2_measure": o2["o2_measure"], "o2_measure_cov": ["o1", "o2", "o3"]},
         ),
-        "retained_prior": CorrelatedLognormalPrior(mean, covariance),
+        "retained_prior": CorrelatedPrior(mean, covariance),
         "co2_units": "ppm",
         "o2_units": "per meg",
         "provenance": {"verification_games_issue": "OPE-77", "fixture": "co2_o2"},
@@ -142,7 +142,7 @@ def _build(prepared, *, state_activity: StateActivity | None = None):
         co2_sensitivity=prepared.co2_sensitivity,
         o2_sensitivity=prepared.o2_sensitivity,
         aggregation_error=prepared.aggregation_error,
-        retained_prior=CorrelatedPrior.from_lognormal(prepared.retained_prior),
+        retained_prior=prepared.retained_prior,
         independent_error_sd=_independent_error(prepared),
         state_activity=state_activity,
     )
@@ -181,7 +181,7 @@ def test_rejects_a_shared_ocean_state() -> None:
     inputs = _inputs()
     prior = inputs["retained_prior"]
     mean = prior.mean.assign_coords(tracer_scope=("state", ["shared", "shared", "shared", "shared", "o2"]))
-    inputs["retained_prior"] = CorrelatedLognormalPrior(mean, prior.arithmetic_covariance)
+    inputs["retained_prior"] = CorrelatedPrior(mean, prior.arithmetic_covariance)
     with pytest.raises(ValueError, match="tracer-specific"):
         prepare_co2_o2_inputs(**inputs)
 
@@ -194,9 +194,7 @@ def test_metadata_tracks_unavailable_native_ratio_values() -> None:
     )
 
     prepared = prepare_co2_o2_inputs(**inputs)
-    ratio = _co2_o2_metadata(
-        prepared, observations=prepared.observations, flux_prior=CorrelatedPrior.from_lognormal(prepared.retained_prior)
-    )["o2_sensitivity_ratio"]
+    ratio = _co2_o2_metadata(prepared, observations=prepared.observations)["o2_sensitivity_ratio"]
 
     assert ratio["status"] == "unavailable"
     assert ratio["unavailable_reason"].startswith("Native paired O2 flux")
@@ -237,7 +235,7 @@ def test_shared_state_sensitivity_removes_only_joint_zero_columns(
         fixed_prior_contribution=prepared.fixed_prior_contribution,
         co2_sensitivity=prepared.co2_sensitivity,
         o2_sensitivity=prepared.o2_sensitivity,
-        retained_prior=CorrelatedPrior.from_lognormal(prepared.retained_prior),
+        retained_prior=prepared.retained_prior,
     )
     expected_contribution = np.concatenate(
         (
@@ -385,7 +383,7 @@ def test_fixed_state_changes_prior_closure_and_is_not_sampled() -> None:
             fixed_prior_contribution=prepared.fixed_prior_contribution,
             co2_sensitivity=prepared.co2_sensitivity,
             o2_sensitivity=prepared.o2_sensitivity,
-            retained_prior=CorrelatedPrior.from_lognormal(prepared.retained_prior),
+            retained_prior=prepared.retained_prior,
             state_activity=activity,
         ),
         expected_prior.rename("prior_forward_concentration"),

@@ -16,7 +16,7 @@ from pymc.pytensorf import floatX
 from pytensor.graph.traversal import graph_inputs
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inference.cached_sigma import PytensorMarginalQuadraticCache
 from openghg_inversions.array_ops import to_dense_tree
 from openghg_inversions.models.boundary import Bound, Outputs
@@ -425,7 +425,7 @@ def _finish_cached_likelihood(
 def build_co2_cached_sigma_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
+    retained_prior: CorrelatedPrior,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -556,7 +556,7 @@ def build_co2_cached_sigma_model(
 def _build_co2_cached_sigma_model(
     flux_sensitivity: xr.DataArray,
     *,
-    retained_prior: CorrelatedLognormalPrior | CorrelatedPrior,
+    retained_prior: CorrelatedPrior,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -735,7 +735,7 @@ def _build_co2_cached_sigma_model(
             cached,
             boundary_outputs=None if boundary is None else boundary.outputs(),
             outer_flux_outputs=None if outer_flux is None else outer_flux.outputs(),
-            prior_metadata=retained_prior.metadata() if isinstance(retained_prior, CorrelatedPrior) else None,
+            prior_metadata=retained_prior.metadata(),
         )
 
 

@@ -107,7 +107,7 @@ group active infers those entries with the same correlated LogNormal state as
 the inner entries. Exact-zero sensitivity pruning composes with either policy.
 
 The builder accepts one prepared
-:class:`~openghg_inversions.correlated_state.CorrelatedLognormalPrior` over the
+:class:`~openghg_inversions.correlated_state.CorrelatedPrior` over the
 complete ordered state. Group-specific arithmetic moments must be aligned and
 assembled before graph construction. A full prior may contain inner/outer
 cross-covariance; it remains part of that one prior and is not also added to

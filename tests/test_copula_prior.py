@@ -97,7 +97,7 @@ def quadrature_moments(prior, nodes=160):
 @pytest.mark.parametrize("family", SHAPED)
 def test_copula_reproduces_the_arithmetic_mean_and_covariance_exactly(family):
     prior = wide_prior([family, family, family, "lognormal", "lognormal"])
-    assert prior.lognormal is None
+    assert not prior.is_lognormal
     mean, covariance = quadrature_moments(prior)
     np.testing.assert_allclose(mean, prior.mean.to_numpy(), rtol=1e-10)
     np.testing.assert_allclose(covariance, prior.arithmetic_covariance.to_numpy(), rtol=1e-9, atol=1e-12)
@@ -129,13 +129,14 @@ def test_all_lognormal_marginals_build_the_lognormal_prior():
     explicit = CorrelatedPrior(
         baseline.mean, baseline.arithmetic_covariance, marginal=biosphere_marginal(baseline, "lognormal")
     )
-    assert explicit.lognormal is not None
-    np.testing.assert_array_equal(explicit.lognormal.latent_cholesky, baseline.lognormal.latent_cholesky)
-    latent_sd = np.sqrt(np.diag(baseline.lognormal.latent_covariance.to_numpy()))
+    assert explicit.is_lognormal
+    lognormal = explicit._lognormal
+    np.testing.assert_array_equal(lognormal.latent_cholesky, baseline._lognormal.latent_cholesky)
+    latent_sd = np.sqrt(np.diag(lognormal.latent_covariance.to_numpy()))
     z = np.array([0.3, -0.2, 0.4, 0.1, -0.5])
     np.testing.assert_allclose(
         baseline.transform_latent(baseline.latent_correlation_cholesky.to_numpy() @ z),
-        np.exp(baseline.lognormal.latent_mean.to_numpy() + baseline.lognormal.latent_cholesky.to_numpy() @ z),
+        np.exp(lognormal.latent_mean.to_numpy() + lognormal.latent_cholesky.to_numpy() @ z),
         rtol=1e-13,
     )
     np.testing.assert_allclose(baseline.marginal_shape, latent_sd)

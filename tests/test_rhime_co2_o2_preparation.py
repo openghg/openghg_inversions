@@ -14,7 +14,7 @@ import pytest
 import sparse
 import xarray as xr
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.rhime.co2 import Co2O2PreparedInputs, prepare_co2_o2_inputs
 from openghg_inversions.rhime.co2 import co2_o2_preparation
 from openghg_inversions.rhime.co2.co2_o2_preparation import _stack
@@ -128,7 +128,7 @@ def _inputs(
             dims=("o2_measure", "o2_measure_cov"),
             coords={"o2_measure": o2_labels, "o2_measure_cov": o2_labels},
         ),
-        "retained_prior": CorrelatedLognormalPrior(mean, np.eye(5) * 0.01),
+        "retained_prior": CorrelatedPrior(mean, np.eye(5) * 0.01),
         "co2_units": "ppm",
         "o2_units": "per meg",
     }
@@ -210,7 +210,7 @@ def test_canonicalizes_sensitivity_state_metadata_without_mutating_inputs() -> N
 
     prepared = prepare_co2_o2_inputs(**inputs)
     prior = inputs["retained_prior"]
-    assert isinstance(prior, CorrelatedLognormalPrior)
+    assert isinstance(prior, CorrelatedPrior)
     for name, prepared_sensitivity in (
         ("co2_sensitivity", prepared.co2_sensitivity),
         ("o2_sensitivity", prepared.o2_sensitivity),
@@ -227,7 +227,7 @@ def test_source_spelling_is_consistent_across_retained_states(gpp_sources) -> No
     sources = [*gpp_sources, "TER", "FF", "ocean", "ocean"]
     prior = inputs["retained_prior"]
     mean = prior.mean.isel(state=[0, 0, 1, 2, 3, 4]).assign_coords(state=state, source=("state", sources))
-    inputs["retained_prior"] = CorrelatedLognormalPrior(mean, np.eye(6) * 0.01)
+    inputs["retained_prior"] = CorrelatedPrior(mean, np.eye(6) * 0.01)
     for name in ("co2_sensitivity", "o2_sensitivity"):
         inputs[name] = inputs[name].isel(state=[0, 0, 1, 2, 3, 4]).assign_coords(state=state)
     inputs["o2_co2_flux_ratio"] = (
@@ -269,8 +269,8 @@ def test_rejects_sensitivity_with_stale_gathered_state_level_names() -> None:
         names=("source", "tracer_scope", "region_in_source"),
     )
     prior = inputs["retained_prior"]
-    assert isinstance(prior, CorrelatedLognormalPrior)
-    inputs["retained_prior"] = CorrelatedLognormalPrior(
+    assert isinstance(prior, CorrelatedPrior)
+    inputs["retained_prior"] = CorrelatedPrior(
         _with_state_index(prior.mean, state_index),
         np.eye(5) * 0.01,
     )
@@ -614,7 +614,7 @@ def _durable_inputs(*, ratio_available: bool = True) -> dict[str, object]:
     mean = _with_state_index(inputs["retained_prior"].mean, state_index).copy(
         data=np.array([0.8, 1.2, 0.9, 1.1, 0.7])
     )
-    inputs["retained_prior"] = CorrelatedLognormalPrior(mean, np.eye(5) * 0.01 + 0.002)
+    inputs["retained_prior"] = CorrelatedPrior(mean, np.eye(5) * 0.01 + 0.002)
     for name in ("co2_sensitivity", "o2_sensitivity"):
         inputs[name] = _with_state_index(inputs[name], state_index)
     if ratio_available:

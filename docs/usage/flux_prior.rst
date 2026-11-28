@@ -6,10 +6,10 @@ The CO₂ and linked CO₂/O₂ recipes sample one retained flux-scaling state
 :class:`~openghg_inversions.correlated_state.CorrelatedPrior`: the retained
 arithmetic mean :math:`m` and covariance :math:`B` from preparation, with a
 marginal family per state. The ordinary and cached CO₂ builders and the linked
-CO₂/O₂ builders take one ``retained_prior`` value. They also accept a validated
-:class:`~openghg_inversions.correlated_state.CorrelatedLognormalPrior` directly.
-The runners build the prior from the prepared mean and covariance, the stored
-marginal families and the optional latent-correlation floor.
+CO₂/O₂ builders take one ``retained_prior`` value. The CO₂ runners build the
+prior from the prepared mean and covariance, the stored marginal families and
+the optional latent-correlation floor. Linked CO₂/O₂ preparation takes the
+prior itself and the runners sample it as prepared.
 
 .. _sampled-marginals:
 
@@ -24,9 +24,8 @@ moments joined by a Gaussian copula, with a marginal family per state. A whitene
 mean and SD. The latent correlations :math:`LL^T` are chosen pair by pair to
 reproduce the arithmetic covariance.
 
-``"lognormal"`` is the default. With it on every state the prior is
-:class:`~openghg_inversions.correlated_state.CorrelatedLognormalPrior` and the
-model is built exactly as before:
+``"lognormal"`` is the default. With it on every state the prior is the
+closed-form multivariate lognormal and the model samples it directly:
 
 .. math::
 
@@ -78,9 +77,9 @@ some wide, strongly correlated priors. The repository's rounded fixture of
 15 retained GPP/TER states from the OPE-188 July 2021 ORCHIDEE prior has a
 latent minimum eigenvalue of :math:`-6.5\times10^{-5}` with Weibull marginals.
 Such priors fail by default. Set ``latent_correlation_floor`` to opt in to
-repair. Pass it to :class:`~openghg_inversions.correlated_state.CorrelatedPrior`
-or ``prepare_co2_o2_inputs``. For ``prepare_co2_inputs``, set it as an
-attribute on the ``prior_marginal`` array. Within each independent block, eigenvalues below the floor
+repair. Pass it to :class:`~openghg_inversions.correlated_state.CorrelatedPrior`,
+including the prior given to ``prepare_co2_o2_inputs``, or to
+``prepare_co2_inputs`` with ``prior_marginal``. Within each independent block, eigenvalues below the floor
 are raised to it and the block is rescaled to a unit diagonal. Each state
 keeps its arithmetic mean and variance. Pair covariances may change.
 The repair is refused if any implied state correlation changes by more than
@@ -102,22 +101,23 @@ linked CO₂/O₂ runners write it, the marginal family counts and the prior des
 the trace's ``rhime_model_metadata`` as ``prior_latent_correlation_repair``,
 ``prior_marginals`` and ``prior``. After repair, the built prior's
 ``arithmetic_covariance`` is the implied covariance of the repaired copula.
-Saved preparations retain the requested covariance and floor. Partial
+Saved CO₂ preparations retain the requested covariance and floor. Linked
+CO₂/O₂ preparations keep the prior as built, including the implied covariance,
+the solved latent correlation and the repair record, so loading does not solve
+the copula again. Partial
 activity uses the corresponding submatrix of the full repaired prior,
 including its implied covariance. All-lognormal priors require a positive-
 definite latent covariance and use their existing construction.
 
 Pass ``prior_marginal`` to
-:func:`~openghg_inversions.rhime.co2.prepare_co2_inputs` or
-:func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs` as a labelled
-array of family names on the retained state axis. CO₂ preparations store it as
-``alpha_prior_marginal``. Linked CO₂/O₂ preparations store it as
-``retained_prior_marginal`` and take the optional floor as a separate
-``latent_correlation_floor`` argument. Linked preparation requires retained
-moments in a validated ``CorrelatedLognormalPrior``, so the input moments must
-also define a valid multivariate lognormal distribution when other marginals
-are requested. Preparations without a marginal choice use the lognormal
-prior. Gamma uses TensorFlow Probability for the
+:func:`~openghg_inversions.rhime.co2.prepare_co2_inputs` as a labelled array
+of family names on the retained state axis, and the optional floor as
+``latent_correlation_floor``. CO₂ preparations store them as
+``alpha_prior_marginal`` and its ``latent_correlation_floor`` attribute. For
+:func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs`, pass the
+marginals and floor to the ``retained_prior``
+:class:`~openghg_inversions.correlated_state.CorrelatedPrior`. Preparations
+without a marginal choice use the lognormal prior. Gamma uses TensorFlow Probability for the
 central quantile in NumPyro and a survival-probability solve in the upper
 tail. TensorFlow Probability is not installed by default; install the optional
 ``jax`` extra (``pip install 'openghg-inversions[jax]'``) to sample gamma

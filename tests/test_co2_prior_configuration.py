@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import pytensor
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models.boundary import AnomalyScalingChoice, RawCenteredSensitivity
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.outer_flux import OuterFluxChoice
@@ -123,7 +123,7 @@ def test_linked_config_independent_species_corrections_and_one_flux_state(monkey
         prepared, boundary_operands={channel: _operands(_native(prepared, channel)) for channel in ("co2", "o2")},
     )
     kwargs = _kwargs(prepared)
-    prior = CorrelatedPrior.from_lognormal(prepared.retained_prior)
+    prior = prepared.retained_prior
     expected_boundary, channels = {}, {}
     for channel, sd in (("co2", 0.2), ("o2", 0.003)):
         mean_shift_prior = {"pdf": "normal", "mu": 0.0, "sigma": sd}
@@ -224,7 +224,7 @@ def test_linked_configured_outer_flux_matches_python_option(monkeypatch, cached)
     prepared = replace(
         prepared,
         boundary_operands={channel: _operands(_native(prepared, channel)) for channel in ("co2", "o2")},
-        retained_prior=CorrelatedLognormalPrior(
+        retained_prior=CorrelatedPrior(
             prepared.retained_prior.mean.assign_coords(
                 basis_group=(prepared.retained_prior.state_dim, ["inner", "inner", "outer", "outer", "outer"]),
             ),
@@ -318,12 +318,12 @@ def test_outer_flux_selectors_survive_linked_preparation_and_saving():
     inputs = _inputs()
     prior = inputs["retained_prior"]
     groups = ["inner", "inner", "outer", "outer", "outer"]
-    inputs["retained_prior"] = CorrelatedLognormalPrior(
+    inputs["retained_prior"] = CorrelatedPrior(
         prior.mean.assign_coords(basis_group=(prior.state_dim, groups)), prior.arithmetic_covariance,
     )
     prepared = Co2O2PreparedInputs.from_datatree(prepare_co2_o2_inputs(**inputs).to_datatree())
     states = OuterFluxChoice("fixed", ("outer",), ("ocean",)).resolve_states(
-        CorrelatedPrior.from_lognormal(prepared.retained_prior)
+        prepared.retained_prior
     )
     ocean = np.char.lower(prepared.retained_prior.mean["source"].values.astype(str)) == "ocean"
     outer = np.array(groups) == "outer"

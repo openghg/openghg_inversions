@@ -20,7 +20,7 @@ from pymc.initial_point import make_initial_point_fn
 from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
 import xarray as xr
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
@@ -280,7 +280,7 @@ def test_named_cached_co2_model_owns_one_observed_likelihood_and_sampler_inputs(
 def test_active_prior_is_prepared_once_for_graph_and_sampler(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    graph_prior: dict[str, CorrelatedLognormalPrior] = {}
+    graph_prior: dict[str, CorrelatedPrior] = {}
     original_add_state = (
         co2_cached_sigma_model._add_prepared_correlated_lognormal_state_with_activity
     )

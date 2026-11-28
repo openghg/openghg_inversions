@@ -39,14 +39,13 @@ Supported numerical envelopes
      - 6
      - Linked channels with absolute or independently labelled centered
        transport, optional unstacked curtain/period averaging weights, and
-       optional retained-prior marginal families and latent-correlation floor.
-   * - ``openghg_inversions.co2_o2_prepared_inputs``
-     - 5 (read only)
-     - Linked channels with the default all-lognormal retained prior.
+       an optional copula retained prior stored with its marginal families,
+       solved latent correlation and latent-correlation repair record.
 
-Internal artifacts outside this map require preparation and sampling again.
-The envelopes have independent histories and version numbers.
-Coherent-reduction covariance remains part of the CO₂ scientific contract.
+Only the current CO₂ and linked envelopes are accepted; older internal artifacts
+require preparation and sampling again. The envelopes have independent histories. Their versions do not
+follow the generic version number. Coherent-reduction covariance remains part of
+the CO₂ scientific contract.
 
 Supported stage manifests
 -------------------------

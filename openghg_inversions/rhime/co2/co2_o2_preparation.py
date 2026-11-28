@@ -29,7 +29,7 @@ import xarray as xr
 
 from openghg_inversions._serialization_codecs import _copy_json_mapping, _decode_json_mapping
 from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array, to_dense
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inversion_data.o2n2 import (
     MOLE_FRACTION, O2_OBSERVABLE_ATTR, O2_OBSERVABLE_PROVENANCE_KEY, DeltaO2N2Declaration,
 )
@@ -52,7 +52,6 @@ from openghg_inversions.serialization import (
 
 CO2_O2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_o2_prepared_inputs"
 CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 6
-_READABLE_PREPARED_INPUTS_SCHEMA_VERSIONS = (5, CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION)
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -92,10 +91,10 @@ class Co2O2PreparedInputs:
             rows use ``observation`` and columns use ``observation_cov`` in
             block order ``[[CO2, CO2/O2], [CO2/O2.T, O2]]``; per-axis unit
             coordinates describe mixed-unit entries.
-        retained_prior: Arithmetic moments of the correlated prior over shared
-            GPP/TER/FF and separate CO2- and O2-ocean retained states. A
-            validated lognormal prior supplies the moments for every marginal
-            choice.
+        retained_prior: Correlated prior over shared GPP/TER/FF and separate
+            CO2- and O2-ocean retained states. It owns the arithmetic moments,
+            each state's marginal family, any latent-correlation floor and the
+            solved latent correlation, which the linked runners reuse.
         provenance: JSON-serializable preparation and data provenance.
         boundary_sensitivity: Optional mapping keyed by co2 and o2, containing
             native-channel H_bc arrays (observation, boundary state).
@@ -107,13 +106,6 @@ class Co2O2PreparedInputs:
         independent_error_sd: Optional positive independent-error standard
             deviations on the joint observation axis, with matching row units.
             The borrowed payload may remain lazy.
-        retained_prior_marginal: Optional marginal family name
-            (:data:`~openghg_inversions.correlated_state.STATE_MARGINALS`) per
-            retained state, on the retained prior's state labels. ``None``
-            means the lognormal prior on every state.
-        latent_correlation_floor: Optional opt-in latent-correlation
-            eigenvalue floor in ``(0, 0.1]`` for a copula prior; requires
-            ``retained_prior_marginal``.
     """
 
     observations: xr.DataArray
@@ -123,13 +115,11 @@ class Co2O2PreparedInputs:
     o2_co2_flux_ratio: xr.DataArray | None
     o2_co2_flux_ratio_unavailable_reason: str | None
     aggregation_error: ObservationCovariance
-    retained_prior: CorrelatedLognormalPrior
+    retained_prior: CorrelatedPrior
     provenance: Mapping[str, Any] = field(default_factory=dict)
     boundary_sensitivity: Mapping[str, xr.DataArray] = field(default_factory=dict)
     independent_error_sd: xr.DataArray | None = None
     boundary_operands: Mapping[str, RawCenteredSensitivity] = field(default_factory=dict)
-    retained_prior_marginal: xr.DataArray | None = None
-    latent_correlation_floor: float | None = None
 
     def to_datatree(self) -> xr.DataTree:
         """Build a versioned tree without writing or materializing payloads.
@@ -166,8 +156,9 @@ class Co2O2PreparedInputs:
                 "arithmetic_covariance": self.retained_prior.arithmetic_covariance,
             },
         }
-        if self.retained_prior_marginal is not None:
-            arrays["retained_prior"]["marginal"] = self.retained_prior_marginal
+        if not self.retained_prior.is_lognormal:
+            arrays["retained_prior"]["marginal"] = self.retained_prior.marginal
+            arrays["retained_prior"]["latent_correlation"] = self.retained_prior.latent_correlation
         if self.o2_co2_flux_ratio is not None:
             arrays["flux_ratio"] = {"o2_co2_flux_ratio": self.o2_co2_flux_ratio}
         if self.independent_error_sd is not None:
@@ -193,8 +184,10 @@ class Co2O2PreparedInputs:
         datasets["retained_prior"].attrs.update(
             state_dim=self.retained_prior.state_dim, covariance_dim=self.retained_prior.covariance_dim
         )
-        if self.latent_correlation_floor is not None:
-            datasets["retained_prior"].attrs["latent_correlation_floor"] = float(self.latent_correlation_floor)
+        if not self.retained_prior.is_lognormal:
+            datasets["retained_prior"].attrs["latent_correlation_repair_json"] = json.dumps(
+                self.retained_prior.latent_correlation_repair, sort_keys=True, allow_nan=False
+            )
         tree = xr.DataTree.from_dict(datasets)
         tree.attrs = {
             "schema": CO2_O2_PREPARED_INPUTS_SCHEMA,
@@ -209,9 +202,9 @@ class Co2O2PreparedInputs:
         """Restore versioned inputs and their saved intercept.
 
         Args:
-            tree: Tree using the dedicated CO2/O2 prepared-input schema.
-                Version 5 trees use the default lognormal marginal on every
-                retained state. Version 6 may include copula marginal choices.
+            tree: Tree using the dedicated CO2/O2 prepared-input schema. A
+                copula retained prior includes its marginals, solved latent
+                correlation and repair record.
 
         Returns:
             Validated scientific inputs. Observations, fixed intercept, dense
@@ -229,10 +222,10 @@ class Co2O2PreparedInputs:
         if (
             isinstance(version, bool)
             or not isinstance(version, Integral)
-            or version not in _READABLE_PREPARED_INPUTS_SCHEMA_VERSIONS
+            or version != CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION
         ):
             raise ValueError(
-                f"Expected Co2O2PreparedInputs schema_version in {_READABLE_PREPARED_INPUTS_SCHEMA_VERSIONS}; "
+                f"Expected Co2O2PreparedInputs schema_version {CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION}; "
                 f"got {version!r}; prepare again."
             )
         unexpected_boundaries = {
@@ -258,19 +251,7 @@ class Co2O2PreparedInputs:
                 raise ValueError(f"Declared MultiIndexes do not match CF coordinates in node {name!r}.")
             datasets[name] = decode_cf_multiindexes(dataset, indexes) if indexes else dataset
         provenance = _decode_json_mapping(tree.attrs.get("provenance_json"), "Serialized CO2/O2 provenance")
-        prior_data = datasets["retained_prior"]
-        floor = prior_data.attrs.get("latent_correlation_floor")
-        if version == 5 and ("marginal" in prior_data or "latent_correlation_floor" in prior_data.attrs):
-            raise ValueError("Serialized retained-prior marginals and floors require schema version 6.")
-        prior = CorrelatedLognormalPrior(
-            _stored_array(prior_data, "arithmetic_mean"),
-            _stored_array(prior_data, "arithmetic_covariance"),
-            covariance_dim=prior_data.attrs["covariance_dim"],
-        )
-        if prior.state_dim != prior_data.attrs["state_dim"]:
-            raise ValueError("Serialized retained-prior state_dim does not match its arithmetic mean.")
-        if floor is not None and (isinstance(floor, bool) or not isinstance(floor, (int, float, np.number))):
-            raise ValueError(f"Serialized latent_correlation_floor must be a number; got {floor!r}.")
+        prior = _stored_retained_prior(datasets["retained_prior"])
         joint = datasets["joint"]
         aggregation_error = resolve_aggregation_error(
             joint, "dense", output_dim="observation", covariance_dim="observation_cov"
@@ -313,12 +294,6 @@ class Co2O2PreparedInputs:
                 if "independent_error" in datasets
                 else None
             ),
-            retained_prior_marginal=(
-                _retained_marginal(prior, _stored_array(prior_data, "marginal"))
-                if "marginal" in prior_data
-                else None
-            ),
-            latent_correlation_floor=None if floor is None else float(floor),
         )
         _validate_prepared_inputs(prepared)
         return prepared
@@ -578,52 +553,50 @@ def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
         if boundary.dims[1] not in boundary.indexes or not boundary.indexes[boundary.dims[1]].is_unique:
             raise ValueError(f"{channel} boundary states require unique labels.")
     _validate_independent_error(observations, prepared.independent_error_sd, materialize=True)
-    if prepared.retained_prior_marginal is not None or prepared.latent_correlation_floor is not None:
-        _correlated_prior(prepared.retained_prior, prepared.retained_prior_marginal, prepared.latent_correlation_floor)
 
 
-def _retained_marginal(prior: CorrelatedLognormalPrior, marginal: xr.DataArray) -> xr.DataArray:
-    """Canonicalize marginal family names on the retained prior's state axis.
+def _stored_retained_prior(prior_data: xr.Dataset) -> CorrelatedPrior:
+    """Rebuild the saved retained prior without solving its copula again.
+
+    All-lognormal priors are rebuilt from their arithmetic moments. Copula
+    priors reuse their saved latent correlation, which must reproduce the
+    saved covariance through the saved marginals.
 
     Args:
-        prior: Validated moments with the retained state's index.
-        marginal: Borrowed array of family names to materialize and validate.
+        prior_data: Decoded ``retained_prior`` node.
 
     Returns:
-        String family names on the retained state's coordinates.
+        The validated retained prior.
 
     Raises:
-        ValueError: If the names are not on the retained-state dimension with
-            the prior's labels, in order.
+        ValueError: If the node's metadata or contents are invalid, or a
+            copula prior was saved without its latent correlation.
     """
-    state_dim = prior.state_dim
-    if (
-        marginal.dims != (state_dim,)
-        or state_dim not in marginal.indexes
-        or not _same_index(marginal.indexes[state_dim], prior.mean.indexes[state_dim])
-    ):
-        raise ValueError("retained_prior_marginal must use the retained prior's state labels in the same order.")
-    names = np.asarray(marginal.values, dtype=object).astype(str)
-    return prior.mean.copy(data=names).rename("retained_prior_marginal").drop_attrs(deep=False)
-
-
-def _correlated_prior(
-    prior: CorrelatedLognormalPrior,
-    marginal: xr.DataArray | None,
-    latent_correlation_floor: float | None,
-) -> CorrelatedPrior:
-    """Build the retained states' copula prior from moments, marginals and floor."""
-    if marginal is None:
-        if latent_correlation_floor is not None:
-            raise ValueError("latent_correlation_floor applies only to copula priors; set retained_prior_marginal too.")
-        return CorrelatedPrior.from_lognormal(prior)
-    return CorrelatedPrior(
-        prior.mean,
-        prior.arithmetic_covariance,
-        marginal=marginal,
-        covariance_dim=prior.covariance_dim,
-        latent_correlation_floor=latent_correlation_floor,
-    )
+    mean = _stored_array(prior_data, "arithmetic_mean")
+    covariance = _stored_array(prior_data, "arithmetic_covariance")
+    covariance_dim = prior_data.attrs["covariance_dim"]
+    if "marginal" not in prior_data:
+        prior = CorrelatedPrior(mean, covariance, covariance_dim=covariance_dim)
+    elif "latent_correlation" not in prior_data or "latent_correlation_repair_json" not in prior_data.attrs:
+        raise ValueError("Serialized copula retained prior lacks its latent correlation; prepare again.")
+    else:
+        try:
+            repair = json.loads(prior_data.attrs["latent_correlation_repair_json"])
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("Invalid serialized latent-correlation repair record.") from exc
+        if repair is not None and not isinstance(repair, dict):
+            raise ValueError("Invalid serialized latent-correlation repair record.")
+        prior = CorrelatedPrior._from_latent_correlation(
+            mean,
+            covariance,
+            marginal=_stored_array(prior_data, "marginal"),
+            covariance_dim=covariance_dim,
+            latent_correlation=_stored_array(prior_data, "latent_correlation"),
+            latent_correlation_repair=repair,
+        )
+    if prior.state_dim != prior_data.attrs["state_dim"]:
+        raise ValueError("Serialized retained-prior state_dim does not match its arithmetic mean.")
+    return prior
 
 
 def _ratio_record(
@@ -649,7 +622,7 @@ def _ratio_record(
     return record
 
 
-def _state(prior: CorrelatedLognormalPrior) -> xr.DataArray:
+def _state(prior: CorrelatedPrior) -> xr.DataArray:
     mean = prior.mean
     if any(name not in mean.coords for name in ("source", "tracer_scope")):
         raise ValueError("Retained states require source and tracer_scope coordinates.")
@@ -922,7 +895,7 @@ def prepare_co2_o2_inputs(
     co2_aggregation_covariance: xr.DataArray,
     co2_o2_aggregation_covariance: xr.DataArray,
     o2_aggregation_covariance: xr.DataArray,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: CorrelatedPrior,
     co2_units: str,
     o2_units: str,
     provenance: Mapping[str, Any] | None = None,
@@ -930,8 +903,6 @@ def prepare_co2_o2_inputs(
     boundary_operands: Mapping[str, xr.Dataset] | None = None,
     bc_centering_weights: Mapping[str, xr.DataArray] | None = None,
     independent_error_sd: xr.DataArray | None = None,
-    prior_marginal: xr.DataArray | None = None,
-    latent_correlation_floor: float | None = None,
 ) -> Co2O2PreparedInputs:
     """Validate coherent-reduction channel products and form one joint likelihood.
 
@@ -975,11 +946,12 @@ def prepare_co2_o2_inputs(
             observation dimension; its distinct column dimension carries the
             same O2 labels in the same order. Entries have squared O2
             observation units.
-        retained_prior: Validated correlated lognormal prior supplying the
-            arithmetic moments for all marginal choices. Its indexed state
-            axis has ``source`` and ``tracer_scope`` coordinates for shared GPP/TER/FF,
-            CO2 ocean, and O2 ocean states. Repeated source labels must use
-            one consistent spelling, including case.
+        retained_prior: Correlated prior with the retained arithmetic
+            moments, each state's marginal family and any latent-correlation
+            floor; the prepared inputs keep it as constructed. Its indexed
+            state axis has ``source`` and ``tracer_scope`` coordinates for
+            shared GPP/TER/FF, CO2 ocean, and O2 ocean states. Repeated source
+            labels must use one consistent spelling, including case.
         co2_units: Non-empty units label for CO2 observations and sensitivity rows.
         o2_units: Non-empty units label for O2 observations and sensitivity rows.
         provenance: Optional JSON-serializable preparation provenance. A
@@ -1005,17 +977,6 @@ def prepare_co2_o2_inputs(
             and observation_units. Eager values are checked here; lazy payloads
             and unit coordinates are checked at the loading or model
             boundary. This borrowed array is retained for replay.
-        prior_marginal: Optional marginal family name per retained state
-            (:data:`~openghg_inversions.correlated_state.STATE_MARGINALS`), on
-            ``retained_prior``'s state labels. It is stored as
-            ``retained_prior_marginal`` and selects each state's marginal in
-            the linked runners' :class:`~openghg_inversions.correlated_state.CorrelatedPrior`.
-            Omit it for the lognormal prior.
-        latent_correlation_floor: Optional opt-in eigenvalue floor in
-            ``(0, 0.1]`` that repairs a copula prior's latent correlation when
-            it is not positive definite. Requires ``prior_marginal`` and applies
-            to mixed or non-lognormal marginals. The preparation retains the
-            requested arithmetic covariance.
 
     Returns:
         Labelled, backend-neutral joint inputs. Observation vectors, affine
@@ -1030,8 +991,7 @@ def prepare_co2_o2_inputs(
             ratio exactly-one, direction, sign, provenance, or numerical-value
             contract fails; cross-tracer ocean loadings are nonzero; or the
             assembled dense covariance is non-finite, asymmetric, or not
-            positive semidefinite; or the marginals or floor cannot give a
-            copula prior with the retained arithmetic moments.
+            positive semidefinite.
     """
     if not co2_units.strip() or not o2_units.strip():
         raise ValueError("CO2 and O2 channel units must be non-empty.")
@@ -1077,11 +1037,6 @@ def prepare_co2_o2_inputs(
     _same_axis(co2_observations, co2_prior_forward_mean, "CO2 prior forward mean")
     _same_axis(o2_observations, o2_prior_forward_mean, "O2 prior forward mean")
     state_mean = _state(retained_prior)
-    if prior_marginal is not None:
-        prior_marginal = _retained_marginal(retained_prior, prior_marginal)
-    floor = None if latent_correlation_floor is None else float(latent_correlation_floor)
-    if prior_marginal is not None or floor is not None:
-        _correlated_prior(retained_prior, prior_marginal, floor)
     _sensitivity(co2_sensitivity, co2_observations, state_mean, "CO2")
     _sensitivity(o2_sensitivity, o2_observations, state_mean, "O2")
     o2_co2_flux_ratio_unavailable_reason = str(o2_co2_flux_ratio_unavailable_reason or "").strip() or None
@@ -1211,8 +1166,6 @@ def prepare_co2_o2_inputs(
         boundary_sensitivity=boundary_sensitivity,
         boundary_operands=raw_operands,
         independent_error_sd=independent_error_sd,
-        retained_prior_marginal=prior_marginal,
-        latent_correlation_floor=floor,
     )
 
 

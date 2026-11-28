@@ -29,10 +29,10 @@ def _joint_fixture(
     inputs = _inputs()
     inputs["o2_units"] = o2_units
     if tracer_scopes is not None:
-        from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+        from openghg_inversions.correlated_state import CorrelatedPrior
 
         prior = inputs["retained_prior"]
-        inputs["retained_prior"] = CorrelatedLognormalPrior(
+        inputs["retained_prior"] = CorrelatedPrior(
             prior.mean.assign_coords(tracer_scope=("state", tracer_scopes)),
             prior.arithmetic_covariance.values,
         )
@@ -40,10 +40,10 @@ def _joint_fixture(
         for name in ("co2_sensitivity", "o2_sensitivity"):
             inputs[name] = inputs[name] * xr.DataArray([1, 1, 1, 0, 0], dims="state")
     if numeric_state:
-        from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+        from openghg_inversions.correlated_state import CorrelatedPrior
 
         prior = inputs["retained_prior"]
-        inputs["retained_prior"] = CorrelatedLognormalPrior(
+        inputs["retained_prior"] = CorrelatedPrior(
             prior.mean.assign_coords(state=np.arange(5)), prior.arithmetic_covariance.values
         )
         for name in ("co2_sensitivity", "o2_sensitivity", "o2_co2_flux_ratio"):

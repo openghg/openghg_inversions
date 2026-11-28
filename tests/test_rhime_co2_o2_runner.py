@@ -15,7 +15,7 @@ import pymc as pm
 import pytest
 import xarray as xr
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.postprocessing.contracts import OutputContract
 
 from openghg_inversions.models.priors import parse_prior
@@ -118,15 +118,13 @@ def _prepared_stub(array: xr.DataArray) -> SimpleNamespace:
         co2_sensitivity=array,
         o2_sensitivity=array,
         aggregation_error=None,
-        # The graph builder is intercepted; the runner only wraps this prior.
-        retained_prior=CorrelatedLognormalPrior(
+        # The graph builder is intercepted; the runner only passes this prior on.
+        retained_prior=CorrelatedPrior(
             xr.DataArray([1.0], dims="state", coords={"state": ["a"]}), np.eye(1) * 0.01,
         ),
         provenance={},
         independent_error_sd=None,
         boundary_operands={},
-        retained_prior_marginal=None,
-        latent_correlation_floor=None,
     )
 
 

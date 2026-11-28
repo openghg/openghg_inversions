@@ -20,7 +20,7 @@ from openghg_inversions.basis.basis_functions import (
     BasisFunctions,
 )
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inversion_data import MergedData, PreparedInputs, SiteOptions
 from openghg_inversions.rhime.params import DataConfig, RhimeConfig
 from openghg_inversions.inversion_data import acquisition
@@ -255,7 +255,7 @@ def test_prepared_inputs_normalizes_gathered_state_covariance_to_basis_source_or
         prepared.inv_inputs["native_retained_cross_covariance"],
         cross_covariance[:, state_order],
     )
-    CorrelatedLognormalPrior(
+    CorrelatedPrior(
         prepared.inv_inputs["alpha_prior_mean"],
         prepared.inv_inputs["alpha_prior_covariance"],
         covariance_dim="region_cov",

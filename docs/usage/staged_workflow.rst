@@ -492,10 +492,9 @@ CO2-family internal handoffs
 ----------------------------
 
 CO2 and linked CO2/O2 preparation and sample manifests use version 2. Their
-prepared scientific artifacts use schema versions 3 and 6 respectively.
-Linked schema version 5 remains readable with its lognormal retained prior.
-Prepare and sample again when an artifact is outside the supported formats.
-Preserve original manifest versions. Editing a version number does not
-migrate scientific facts. Boundary averaging weights
+prepared scientific artifacts use schema versions 3 and 6 respectively. Only
+these current internal formats are accepted: prepare and sample again when
+an older artifact is rejected. Preserve original manifest versions; editing a
+version number does not migrate scientific facts. Boundary averaging weights
 are stored unstacked on curtain and interval-start period labels, while saved
 samples retain their fitted boundary facts for graph-free reconstruction.
