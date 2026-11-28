@@ -16,12 +16,14 @@ openghg\_inversions.rhime.co2
    openghg_inversions.rhime.co2.co2_cached_sigma_runner
    openghg_inversions.rhime.co2.co2_model
    openghg_inversions.rhime.co2.prepare_from_merged_data
+   openghg_inversions.rhime.co2.co2_native_preparation
    openghg_inversions.rhime.co2.co2_o2_cached_sigma_model
    openghg_inversions.rhime.co2.co2_o2_cached_sigma_runner
    openghg_inversions.rhime.co2.co2_o2_configuration
    openghg_inversions.rhime.co2.co2_o2_fixed_ou
    openghg_inversions.rhime.co2.co2_o2_handoffs
    openghg_inversions.rhime.co2.co2_o2_model
+   openghg_inversions.rhime.co2.co2_o2_native_preparation
    openghg_inversions.rhime.co2.co2_o2_outputs
    openghg_inversions.rhime.co2.co2_o2_preparation
    openghg_inversions.rhime.co2.co2_o2_runner
