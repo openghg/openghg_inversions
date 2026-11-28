@@ -6,9 +6,70 @@ import pymc as pm
 import pytensor
 import pytensor.tensor as pt
 import pytest
+import xarray as xr
 from scipy.stats import multivariate_normal
 
-from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
+from openghg_inversions.models.fixed_ou import _prepare_fixed_ou_covariance, prepare_fixed_ou_low_rank
+from openghg_inversions.observation_error import ObservationCovariance
+
+
+def test_single_amplitude_ou_absorbs_dense_aggregation_covariance() -> None:
+    aggregation = np.array([[0.5, 0.2, -0.1], [0.2, 0.4, 0.15], [-0.1, 0.15, 0.8]])
+    reported_variance = np.array([0.3, 0.15, 0.2])
+    times = np.array([0.0, 6.0, 2.0])
+    tau, sigma = 5.0, 0.7
+    base = aggregation + np.diag(reported_variance)
+    correlation = np.exp(-np.abs(times[:, None] - times) / tau)
+    covariance = base + sigma**2 * correlation
+    prepared = _prepare_fixed_ou_covariance(
+        ObservationCovariance("dense", np.diag(aggregation), covariance=xr.DataArray(aggregation)),
+        reported_variance, times, np.zeros(3, dtype=np.int64), tau, site_labels=("OCO2",),
+    )
+    residual = np.array([0.3, -0.8, 0.6])
+    expected_solve = np.linalg.solve(covariance, residual)
+    evaluated = prepared.evaluate(residual, sigma)
+    assert prepared.rank == 0
+    np.testing.assert_allclose(prepared.solve(residual, sigma).solution, expected_solve)
+    np.testing.assert_allclose(evaluated.log_likelihood, multivariate_normal.logpdf(residual, cov=covariance))
+    np.testing.assert_allclose(evaluated.gradient_residual, -expected_solve)
+    np.testing.assert_allclose(
+        evaluated.gradient_site_amplitude,
+        sigma * (expected_solve @ correlation @ expected_solve - np.trace(np.linalg.solve(covariance, correlation))),
+    )
+    np.testing.assert_allclose(prepared.factor @ prepared.factor.T, base)
+    np.testing.assert_allclose(prepared.marginal_variance(pt.as_tensor_variable([sigma])).eval(), covariance.diagonal())
+    draws = prepared.random(np.zeros(3), np.array([sigma]), np.random.default_rng(12), size=30_000)
+    np.testing.assert_allclose(np.cov(draws.T), covariance, atol=0.035)
+
+
+@pytest.mark.parametrize(
+    ("aggregation", "reported_variance"),
+    [
+        (np.array([[1.0, 1.0 + 5e-11], [1.0 + 5e-11, 1.0]]), np.full(2, 1e-11)),
+        (np.array([[1.0, 2.0], [2.0, 4.0]]), np.zeros(2)),
+    ],
+    ids=["negative-roundoff", "structural-null-mode"],
+)
+def test_single_amplitude_ou_defers_unresolved_dense_modes(
+    aggregation: np.ndarray, reported_variance: np.ndarray,
+) -> None:
+    """Retain the established solve when OU whitening cannot resolve a mode."""
+    prepared = _prepare_fixed_ou_covariance(
+        ObservationCovariance("dense", np.diag(aggregation), covariance=xr.DataArray(aggregation)),
+        reported_variance,
+        np.array([0.0, 1.0]),
+        np.zeros(2, dtype=np.int64),
+        24.0,
+        site_labels=("OCO2",),
+    )
+    assert prepared.rank == 1
+    amplitude = 0.7
+    correlation = np.exp(-np.array([[0.0, 1.0], [1.0, 0.0]]) / 24.0)
+    covariance = aggregation + np.diag(reported_variance) + amplitude**2 * correlation
+    residual = np.array([0.3, -0.8])
+    np.testing.assert_allclose(prepared.solve(residual, amplitude).solution, np.linalg.solve(covariance, residual))
+    if not reported_variance.any():
+        assert prepared.evaluate(np.zeros(2), 0.0).log_likelihood == -np.inf
 
 
 def _prepared(*, rank: int = 2):

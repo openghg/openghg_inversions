@@ -40,7 +40,7 @@ from openghg_inversions.models.coords import add_coords, registered_model
 from openghg_inversions.models.outer_flux import OuterFluxChoice
 from openghg_inversions.models.fixed_ou import (
     FixedOuLowRank,
-    prepare_fixed_ou_low_rank,
+    _prepare_fixed_ou_covariance,
 )
 from openghg_inversions.models.fixed_ou import (
     _site_values as fixed_ou_site_values,
@@ -55,7 +55,6 @@ from openghg_inversions.models.state_activity import (
 )
 from openghg_inversions.observation_error import (
     ObservationCovariance,
-    aggregation_error_as_low_rank,
     validate_observation_error_arrays,
 )
 from openghg_inversions.sigma import SigmaAlignment
@@ -633,16 +632,14 @@ def _build_co2_cached_sigma_model(
         else None
     )
     fixed_covariance = aggregation_error.with_added_factor(outer_flux_factor)
-    factor, aggregation_diagonal = aggregation_error_as_low_rank(fixed_covariance)
-    covariance = prepare_fixed_ou_low_rank(
-        factor,
+    covariance = _prepare_fixed_ou_covariance(
+        fixed_covariance,
         np.square(
             np.asarray(
                 observation_error.transpose(output_dim).compute().values,
                 dtype=np.float64,
             )
-        )
-        + aggregation_diagonal,
+        ),
         np.asarray(observations.coords["time"].compute().values),
         np.asarray(site_index.values, dtype=np.int64),
         fixed_ou_site_values(

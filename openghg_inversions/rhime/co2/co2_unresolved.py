@@ -33,10 +33,9 @@ from scipy.linalg import cho_factor, cho_solve
 import xarray as xr
 
 from openghg_inversions.coherent_reduction import NativeFunctionalProducts
-from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
+from openghg_inversions.models.fixed_ou import _prepare_fixed_ou_covariance
 from openghg_inversions.observation_error import (
     ObservationCovariance,
-    aggregation_error_as_low_rank,
     resolve_aggregation_error,
 )
 from openghg_inversions.postprocessing.co2_flux_outputs import (
@@ -233,10 +232,9 @@ def _fixed_ou_solve(
         raise ValueError(f"Recorded {OU_TAU_HOURS!r} must have dimensions ({OU_SITE_DIM!r},).")
     labels = [str(label) for label in tau[OU_SITE_DIM].values]
     tau_hours = _hours(tau)
-    factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation)
-    covariance = prepare_fixed_ou_low_rank(
-        factor,
-        np.square(np.asarray(error.values, dtype=np.float64)) + aggregation_diagonal,
+    covariance = _prepare_fixed_ou_covariance(
+        aggregation,
+        np.square(np.asarray(error.values, dtype=np.float64)),
         np.asarray(observations["time"].values),
         np.asarray(site_index.values, dtype=np.int64),
         tau_hours,
