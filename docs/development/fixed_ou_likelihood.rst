@@ -60,10 +60,11 @@ stores :math:`TF`, the mode eigenvalues, mode-to-site indices and
 but its within-site blocks are dense.
 
 For one site with dense aggregation covariance, the generalized eigensystem
-includes the complete fixed covariance in place of :math:`\operatorname{diag}(d_s)`.
+can include the complete fixed covariance in place of :math:`\operatorname{diag}(d_s)`.
 This leaves an empty :math:`TF`, so amplitude evaluations and state-cache
 refreshes use only diagonal mode weights. The same exact solve is available
-for complete country totals.
+for complete country totals. If the generalized spectrum has modes at or
+below the roundoff threshold, preparation uses the factor-plus-diagonal route.
 
 At supplied amplitudes define
 

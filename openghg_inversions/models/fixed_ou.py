@@ -22,7 +22,7 @@ from scipy.linalg import cho_solve, eigh, solve_triangular
 from scipy.sparse import csr_matrix
 
 from openghg_inversions._labelled_matrices import matrix_column_dim, square_matrix
-from openghg_inversions._linalg import check_symmetric, cholesky_logdet, conditioned_cholesky
+from openghg_inversions._linalg import check_symmetric, cholesky_logdet, conditioned_cholesky, roundoff_tolerance
 from openghg_inversions.array_ops import expand_mapping, materialize_together
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.models.components import add_model_data
@@ -638,7 +638,20 @@ def _prepare_fixed_ou_covariance(
     *,
     site_labels: Sequence[str],
 ) -> FixedOuLowRank:
-    """Include dense aggregation error in the eigenbasis for one amplitude."""
+    """Prepare fixed-OU modes for reported and aggregation covariance.
+
+    Args:
+        aggregation: Validated fixed aggregation covariance, if supplied.
+        observation_variance: Reported variance for each observation.
+        times: One time per observation, in datetime or numeric hours.
+        site_index: Observation group indices in site-label order.
+        tau_hours: Fixed OU time scales in hours.
+        site_labels: Labels of the observation groups.
+
+    Returns:
+        Prepared covariance, using diagonal modes for a resolved single-site
+        dense spectrum and a factor-plus-diagonal representation otherwise.
+    """
     if aggregation is not None and aggregation.mode == "dense" and len(site_labels) == 1:
         assert aggregation.covariance is not None
         variance = _vector(observation_variance, "observation_variance")
@@ -650,7 +663,9 @@ def _prepare_fixed_ou_covariance(
             raise ValueError("The fixed-OU aggregation covariance must match the observations.")
         check_symmetric(fixed_covariance, owner="Fixed-OU aggregation covariance")
         fixed_covariance.flat[:: n_observation + 1] += variance
-        return _prepare_single_amplitude_ou(fixed_covariance, times, site_index, tau_hours, site_labels)
+        prepared = _prepare_single_amplitude_ou(fixed_covariance, times, site_index, tau_hours, site_labels)
+        if prepared is not None:
+            return prepared
 
     if aggregation is None:
         factor, diagonal = np.empty((observation_variance.size, 0)), np.zeros_like(observation_variance)
@@ -667,8 +682,22 @@ def _prepare_single_amplitude_ou(
     site_index: IntArray,
     tau_hours: ArrayLike | float | Mapping[str, float],
     site_labels: Sequence[str],
-) -> FixedOuLowRank:
-    """Diagonalize the complete fixed covariance relative to the single OU block."""
+) -> FixedOuLowRank | None:
+    """Diagonalize the fixed covariance, or defer when its modes are unresolved.
+
+    Args:
+        fixed_covariance: Dense aggregation covariance plus reported observation variance.
+        times: One time per observation, in datetime or numeric hours.
+        site_index: Observation group indices, all zero for the single site.
+        tau_hours: Fixed OU time scale in hours.
+        site_labels: Label of the single observation group.
+
+    Returns:
+        Prepared diagonal modes if the spectrum is reliably positive, otherwise None.
+
+    Raises:
+        ValueError: If the observation groups, times, time scale or OU template are invalid.
+    """
     labels = _site_labels(site_labels, 1)
     tau_by_site = _tau_values(tau_hours, labels)
     n_observation = fixed_covariance.shape[0]
@@ -682,9 +711,9 @@ def _prepare_single_amplitude_ou(
     except np.linalg.LinAlgError as error:
         raise ValueError(f"OU correlation template for site {labels[0]!r} must be positive definite.") from error
     values, vectors = eigh(fixed_covariance, correlation, check_finite=False)
-    if values[0] < -1e-10 * max(1.0, float(np.max(np.abs(values)))):
-        raise ValueError("The fixed-OU base covariance must be positive semidefinite.")
-    values = np.maximum(values, 0.0)
+    # OU whitening can amplify negative roundoff or leave a spurious positive null mode.
+    if not np.isfinite(values).all() or values[0] <= roundoff_tolerance(values):
+        return None
     # V.T K V = I, so K V sqrt(lambda) is a square root of the fixed covariance.
     factor = (correlation @ vectors) * np.sqrt(values)
     return FixedOuLowRank(

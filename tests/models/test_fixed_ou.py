@@ -42,6 +42,36 @@ def test_single_amplitude_ou_absorbs_dense_aggregation_covariance() -> None:
     np.testing.assert_allclose(np.cov(draws.T), covariance, atol=0.035)
 
 
+@pytest.mark.parametrize(
+    ("aggregation", "reported_variance"),
+    [
+        (np.array([[1.0, 1.0 + 5e-11], [1.0 + 5e-11, 1.0]]), np.full(2, 1e-11)),
+        (np.array([[1.0, 2.0], [2.0, 4.0]]), np.zeros(2)),
+    ],
+    ids=["negative-roundoff", "structural-null-mode"],
+)
+def test_single_amplitude_ou_defers_unresolved_dense_modes(
+    aggregation: np.ndarray, reported_variance: np.ndarray,
+) -> None:
+    """Retain the established solve when OU whitening cannot resolve a mode."""
+    prepared = _prepare_fixed_ou_covariance(
+        ObservationCovariance("dense", np.diag(aggregation), covariance=xr.DataArray(aggregation)),
+        reported_variance,
+        np.array([0.0, 1.0]),
+        np.zeros(2, dtype=np.int64),
+        24.0,
+        site_labels=("OCO2",),
+    )
+    assert prepared.rank == 1
+    amplitude = 0.7
+    correlation = np.exp(-np.array([[0.0, 1.0], [1.0, 0.0]]) / 24.0)
+    covariance = aggregation + np.diag(reported_variance) + amplitude**2 * correlation
+    residual = np.array([0.3, -0.8])
+    np.testing.assert_allclose(prepared.solve(residual, amplitude).solution, np.linalg.solve(covariance, residual))
+    if not reported_variance.any():
+        assert prepared.evaluate(np.zeros(2), 0.0).log_likelihood == -np.inf
+
+
 def _prepared(*, rank: int = 2):
     factor = np.array(
         [
