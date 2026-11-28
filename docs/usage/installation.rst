@@ -26,6 +26,15 @@ Create and activate a virtual environment, then install the package from PyPI:
    python -m pip install --upgrade pip
    python -m pip install openghg-inversions
 
+The NumPyro and BlackJAX samplers need TensorFlow Probability for some
+operations, including gamma copula marginals and truncated-normal priors with
+sampled parameters. Install it with the optional
+``jax`` extra when you use those samplers:
+
+.. code-block:: bash
+
+   python -m pip install 'openghg-inversions[jax]'
+
 Confirm that the installed package imports and report its version:
 
 .. code-block:: bash
