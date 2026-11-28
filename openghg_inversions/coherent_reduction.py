@@ -127,6 +127,10 @@ class CoherentGaussianReduction:
     """One exact, labelled native-to-retained Gaussian reduction.
 
     Attributes:
+        restriction: Dimensionless ``Pi`` defining the retained state
+            ``alpha = Pi x``, with dimensions ``(state_dim, *native_dims)``.
+            A sparse payload stays sparse; its attributes record the
+            projection provenance.
         retained_mean: Dimensionless ``Pi m`` on the retained-state axis.
         retained_covariance: Positive-definite ``C_alpha`` on distinct
             retained-state row and column axes.
@@ -145,6 +149,7 @@ class CoherentGaussianReduction:
             or ``None`` when none were requested.
     """
 
+    restriction: xr.DataArray
     retained_mean: xr.DataArray
     retained_covariance: xr.DataArray
     effective_observation_operator: xr.DataArray
@@ -242,6 +247,10 @@ def native_reduction_identity(
 
     Returns:
         ``"sha256:<hex digest>"``.
+
+    Raises:
+        ValueError: If ``products`` lack ``U_*``, as products loaded from an
+            artifact saved without it do.
     """
     if type(covariance) is SeparableExponentialCovariance or (
         type(covariance) is IndependentSourceCovariance
@@ -256,16 +265,27 @@ def native_reduction_identity(
     digest.update(json.dumps(description.attrs, sort_keys=True, default=str).encode())
     for name in sorted(map(str, description.variables)):
         _update_digest(digest, f"B.{name}", description[name])
+    prolongation = _require_prolongation(products)
     native_dims = tuple(covariance.native_dims)
     observation_dim = next(str(dim) for dim in native_sensitivity.dims if dim not in native_dims)
     for name, array in (
         ("H", native_sensitivity.transpose(observation_dim, *native_dims)),
         ("Pi", products.restriction),
         ("m", native_mean.transpose(*native_dims)),
-        ("U_star", products.prolongation),
+        ("U_star", prolongation),
     ):
         _update_digest(digest, name, array)
     return f"sha256:{digest.hexdigest()}"
+
+
+def _require_prolongation(products: NativeCovarianceProducts) -> xr.DataArray:
+    """Return ``U_*``, refusing products loaded from an artifact saved without it."""
+    if products.prolongation is None:
+        raise ValueError(
+            "These covariance products have no U_*; rebuild it with "
+            "covariance_artifacts.with_prolongation or basis.covariance_natural_prolongation"
+        )
+    return products.prolongation
 
 
 def _update_digest(digest, name: str, array: xr.DataArray) -> None:
@@ -456,7 +476,7 @@ def project_native_functionals(
 
     Raises:
         ValueError: If labels or dimensions do not match, the products are
-            not dense-view, or ``Q`` holds non-finite values.
+            not dense-view or lack ``U_*``, or ``Q`` holds non-finite values.
     """
     native_dims = tuple(covariance.native_dims)
     if batch_size <= 0:
@@ -478,7 +498,7 @@ def project_native_functionals(
 
     functional_mean = to_dense(sparse_xr_dot(functional, mean, dim=list(native_dims)))
     functional_mean = functional_mean.transpose(functional_dim)
-    response = to_dense(sparse_xr_dot(functional, products.prolongation, dim=list(native_dims)))
+    response = to_dense(sparse_xr_dot(functional, _require_prolongation(products), dim=list(native_dims)))
     response = response.transpose(functional_dim, state_dim)
 
     # Q B Q.T and H B Q.T, one block of B Q.T at a time.
@@ -706,6 +726,7 @@ def _reduce_native_covariance_products(
     )
 
     return CoherentGaussianReduction(
+        restriction=restriction,
         retained_mean=retained_mean,
         retained_covariance=state_covariance.rename("retained_covariance"),
         effective_observation_operator=effective_operator,

@@ -81,7 +81,13 @@ def synthetic_inputs(destination: Path) -> tuple:
             mean, row_dim="observation", column_dim="observation_cov")},
         attrs={"units": "ppm**2"},
     )
+    # Pi: the unweighted mean scaling of each region's two cells.
+    restriction = xr.DataArray(
+        (labels.values[None] == np.asarray(state)[:, None, None]) / 2.0,
+        dims=("state", "lat", "lon"), coords={"state": state, **grid}, attrs={"units": "1"},
+    )
     reduction = CoherentGaussianReduction(
+        restriction=restriction,
         retained_mean=xr.DataArray([1.1, .9], dims="state", coords={"state": state}, attrs={"units": "1"}),
         retained_covariance=xr.DataArray(
             [[.2, .03], [.03, .15]], dims=("state", "state_cov"),
