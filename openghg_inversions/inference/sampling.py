@@ -12,6 +12,7 @@ from openghg_inversions._pymc_config import configure_pytensor
 
 configure_pytensor()
 
+import importlib.util
 import json
 import logging
 import os
@@ -36,6 +37,14 @@ NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
 _JAX_NUTS_SAMPLERS = frozenset({"numpyro", "blackjax"})
 
 logger = logging.getLogger(__name__)
+
+_TFP_INSTALL_HINT = (
+    "This model needs TensorFlow Probability to compile for the {sampler!r} NUTS sampler: "
+    "PyTensor's JAX implementation of some operations, such as gamma copula marginals and "
+    "truncated-normal priors, comes from it. Install the optional 'jax' extra with "
+    "`pip install 'openghg-inversions[jax]'` (or `uv sync --extra jax` in a checkout), "
+    "or sample with nuts_sampler='pymc'."
+)
 
 
 def _jax_sampling_precision(model: pm.Model, nuts_sampler: NutsSampler) -> dict[str, bool | str]:
@@ -77,6 +86,22 @@ def _jax_sampling_precision(model: pm.Model, nuts_sampler: NutsSampler) -> dict[
         )
 
     return {"floatX": floatx, "jax_enable_x64": x64}
+
+
+def _tensorflow_probability_missing(error: Exception) -> bool:
+    """Return whether a JAX compilation error comes from absent TensorFlow Probability.
+
+    PyTensor's JAX dispatch raises ``NotImplementedError`` naming
+    ``tfp-nightly``; the gamma quantile Op raises ``ModuleNotFoundError``.
+    """
+    try:
+        if importlib.util.find_spec("tensorflow_probability") is not None:
+            return False
+    except (ImportError, ValueError):
+        pass  # A blocked or broken installation is not usable either.
+    if isinstance(error, ModuleNotFoundError):
+        return (error.name or "").partition(".")[0] == "tensorflow_probability"
+    return "tfp-nightly" in str(error)
 
 
 def describe_recorded_sampler(recorded: object) -> dict[str, int | str]:
@@ -569,6 +594,10 @@ class RhimeSampler:
         Raises:
             ValueError: If the sampler or predictive options are invalid, or
                 the JAX runtime is incompatible with the model's precision.
+            ImportError: If a NumPyro or BlackJAX run needs TensorFlow
+                Probability (for example for gamma copula marginals or
+                truncated-normal priors) and the optional ``jax`` extra is
+                not installed.
         """
         return RhimeSampler._sample(self, model, variable_roles=variable_roles, defer_deterministics=False)
 
@@ -653,19 +682,25 @@ class RhimeSampler:
         precision = _jax_sampling_precision(model, self.nuts_sampler)
 
         timing_start = timer_start()
-        with model:
-            raw_trace = cast(
-                xr.DataTree,
-                pm.sample(
-                    draws=self.draws,
-                    tune=self.tune,
-                    chains=self.chains,
-                    return_inferencedata=True,
-                    idata_kwargs=idata_kwargs,
-                    nuts_sampler=self.nuts_sampler,
-                    **sample_kwargs,
-                ),
-            )
+        try:
+            with model:
+                raw_trace = cast(
+                    xr.DataTree,
+                    pm.sample(
+                        draws=self.draws,
+                        tune=self.tune,
+                        chains=self.chains,
+                        return_inferencedata=True,
+                        idata_kwargs=idata_kwargs,
+                        nuts_sampler=self.nuts_sampler,
+                        **sample_kwargs,
+                    ),
+                )
+        except (ModuleNotFoundError, NotImplementedError) as error:
+            # JAX compilation fails before NUTS runs, so this does not discard draws.
+            if self.nuts_sampler in _JAX_NUTS_SAMPLERS and _tensorflow_probability_missing(error):
+                raise ImportError(_TFP_INSTALL_HINT.format(sampler=self.nuts_sampler)) from error
+            raise
 
         if deferred_log_likelihood and not compact:
             raw_trace = _extend_log_likelihood(

@@ -218,6 +218,10 @@ def test_saved_copula_prior_records_the_marginals_actually_used(tmp_path, likeli
     """Both ordinary and cached fits preserve the fitted prior in replay metadata."""
     from openghg_inversions.rhime.co2 import handoffs, prepare_co2_inputs
 
+    if likelihood_kind == "additive_sigma":
+        # Additive sigma samples with NumPyro, where gamma needs the 'jax' extra.
+        pytest.importorskip("tensorflow_probability", reason="gamma under JAX needs the 'jax' extra")
+
     canonical, reduction, _, _, countries = synthetic_inputs(tmp_path)
     marginal = reduction.retained_mean.copy(data=np.array(["weibull", "gamma"], dtype=np.dtypes.StringDType()))
     prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=1, prior_marginal=marginal)
