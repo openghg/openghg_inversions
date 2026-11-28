@@ -842,3 +842,33 @@ def test_legacy_country_fraction_preserves_cells_with_coordinate_roundoff(europe
     np.testing.assert_array_equal(actual.country_fraction, expected.country_fraction)
     assert actual.sizes["latitude"] == expected.sizes["latitude"]
     assert actual.sizes["longitude"] == expected.sizes["longitude"]
+
+
+@pytest.mark.parametrize("template_version", ["legacy", "latest"])
+def test_basis_state_labels_do_not_change_paris_products(europe_country_file: Path, template_version: str) -> None:
+    """State labels from a fixed-outer basis do not reach either PARIS product."""
+    from dataclasses import replace
+
+    plain = _single_sector_paris_inv_out(europe_country_file)
+    labels = {"basis_group": ("region", ["outer"]), "basis_partition": ("region", ["fixed_outer"]),
+              "region_in_partition": ("region", [0])}
+    basis = plain.basis_functions
+    labelled_basis = BasisFunctions.from_flat_basis(
+        basis_flat=basis.flat_basis(), flux=basis.flux,
+        operator_kwargs={"state_dim": "region", "state_metadata": xr.Dataset(labels)},
+    )
+    trace = plain.trace.copy()
+    for group in ("prior", "posterior"):
+        trace[group] = plain.trace_group(group).assign_coords(labels)
+    labelled = replace(
+        plain, basis_functions=labelled_basis, inv_inputs=plain.inv_inputs.assign_coords(labels), trace=trace,
+    )
+    assert "basis_group" in labelled.basis_functions.operator.basis_matrix.coords
+
+    options = {"country_file": europe_country_file, "template_version": template_version, "flux_frequency": "monthly"}
+    products = make_paris_outputs.make_paris_outputs(plain, **options)
+    labelled_products = make_paris_outputs.make_paris_outputs(labelled, **options)
+    for expected, actual in zip(products, labelled_products, strict=True):
+        # Only the processing timestamp may differ.
+        del expected.attrs["history"], actual.attrs["history"]
+        xr.testing.assert_identical(actual, expected)

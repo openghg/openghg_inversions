@@ -605,6 +605,29 @@ def test_retained_state_multiindex_survives_the_eager_boundary() -> None:
     assert list(products.state_covariance.indexes["state_cov"]) == list(state_index)
 
 
+def test_bucket_restriction_keeps_basis_state_labels() -> None:
+    """Basis group labels on U label Pi_U, so they reach the retained prior mean."""
+    covariance, basis_operator, h, _ = _problem()
+    labelled = BucketBasisOperator(
+        basis_operator.basis_flat,
+        state_dim="state",
+        state_metadata=xr.Dataset(
+            {
+                "basis_group": ("basis_label", ["inner", "outer"]),
+                "basis_partition": ("basis_label", ["inner", "fixed_outer"]),
+                "region_in_partition": ("basis_label", [1, 0]),
+            },
+            coords={"basis_label": [1, 2]},
+        ),
+    )
+
+    products = _project(covariance, labelled, h)
+
+    for product in (products.restriction, products.prolongation, products.state_covariance):
+        assert product.basis_group.dims == ("state",)
+        assert product.basis_group.values.tolist() == ["inner", "outer"]
+
+
 def test_product_kernel_avoids_throwaway_covariance_application(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

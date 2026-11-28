@@ -16,9 +16,10 @@ from .basis_functions import (
 )
 from ._functions import (
     basis_from_weights,
+    _fit_fixed_outer_regions,
+    _fixed_outer_layout,
     _validate_basis_algorithm,
     basis_weights_from_data,
-    fixed_outer_regions_basis_from_data,
 )
 
 
@@ -77,7 +78,9 @@ def prepare_basis(
             this counts inner regions only.
         basis_algorithm: Generation algorithm: ``"quadtree"``, ``"weighted"``
             or ``"region_constrained"``. Required only without a saved input.
-        fix_outer_regions: Fit only the inner region of ``outer_regions``.
+        fix_outer_regions: Fit only the inner region of ``outer_regions``. The
+            retained states then carry ``basis_group`` labels ``"outer"`` and
+            ``"inner"`` (see :func:`~openghg_inversions.basis.fixed_outer_regions_basis_from_data`).
         basis_path: Exact retained .nc or .zarr artifact to load. Mutually
             exclusive with ``basis_partition``; either bypasses generation.
         basis_partition: Labelled partition, or source-keyed partitions, to
@@ -142,7 +145,7 @@ def prepare_basis(
         if outer_regions is None:
             raise ValueError("outer_regions must be resolved before fixed-outer basis construction.")
         print("Using fixed outer regions for basis functions.")
-        basis_data_array = fixed_outer_regions_basis_from_data(
+        fixed_labels, inner_labels, _ = _fit_fixed_outer_regions(
             site_data,
             weighting_flux,
             start_date,
@@ -165,12 +168,15 @@ def prepare_basis(
             allow_empty_inner_region=allow_empty_inner_region,
             seed=seed,
         )
+        layout = _fixed_outer_layout(fixed_labels, inner_labels, start_date)
         print(f"Using InTEM regions with {basis_algorithm} to derive basis functions for inner region.")
         print("Using generated in-memory basis artifact.")
+        # The layout's inner/outer groups label the retained states.
         basis_functions_object = basis_functions_from_flat_basis(
             flux=runtime_flux,
-            basis_flat=basis_data_array,
+            basis_flat=layout.basis_flat,
             metadata={BASIS_ARTIFACT_SOURCE_ATTR: "generated"},
+            state_metadata=layout.state_metadata,
         )
 
     else:

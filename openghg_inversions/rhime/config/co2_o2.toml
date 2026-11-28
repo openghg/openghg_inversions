@@ -60,7 +60,7 @@ output_format = "basic"
 # "fixed" holds them at their prior means with zero uncertainty.
 # "marginalise" adds their uncertainty to the joint error covariance.
 # For "marginalise", set output_format = "none" and use the saved predictions.
-# Preparation preserves the supplied basis_group labels (issue #1094).
+# Supply basis_group labels in the retained prior. Preparation preserves them.
 # See docs/usage/atmospheric_baseline.rst.
 # [outer_flux]
 # mode = "marginalise"

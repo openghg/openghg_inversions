@@ -92,12 +92,13 @@ states by the ``basis_group`` coordinate of the prepared retained prior;
 coordinate and leaves the other outer states sampled. Model construction
 rejects the option when the prepared state lacks those coordinates.
 
-Preparation and saved preparations keep these coordinates but do not create
-them. For ordinary CO2 they come from the retained-state labels of the
-coherent reduction's restriction; for linked CO2/O2, from the retained prior
-passed to :func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs`, which
-always carries ``source``. Configured CO2 preparation does not yet label
-inner and outer states with ``basis_group``
-(`#1094 <https://github.com/openghg/openghg_inversions/issues/1094>`_). Run
+Preparation and saved preparations keep these coordinates. For ordinary CO2
+they come from the retained-state labels of the coherent reduction's
+restriction: a configured basis built with ``fix_outer_regions`` labels its
+states ``"outer"`` and ``"inner"`` (see :doc:`grouped_basis_layout`), and
+per-source native priors label each state's ``source``. For linked CO2/O2 they
+come from the retained prior passed to
+:func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs`, which always
+carries ``source``; preparation does not add ``basis_group`` there. Run
 metadata records the outer-flux mode and selectors beside the boundary
 metadata.

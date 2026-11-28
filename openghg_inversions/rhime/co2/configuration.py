@@ -748,11 +748,6 @@ class Co2NativePreparationConfig:
                     f"{path}.basis.path cannot serve per-source native priors; use partition_path "
                     "(optionally with a source dimension) or a basis algorithm."
                 )
-            if basis.basis_partition_path is None and basis.fix_basis_outer_regions:
-                raise ValueError(
-                    f"{path}.basis.fix_outer_regions cannot serve per-source native priors. "
-                    "Save the fixed-outer partition and pass it as partition_path instead."
-                )
         if "filters" in preparation:
             filters = preparation.pop("filters")
             if isinstance(filters, Mapping):

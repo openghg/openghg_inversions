@@ -18,6 +18,7 @@ from openghg_inversions.basis import (
     fixed_outer_regions_basis_from_data,
     make_basis_functions,
     load_basis_functions,
+    prepare_basis,
 )
 from openghg_inversions.inversion_data import MergedData
 from openghg_inversions.inversion_data import SiteOptions
@@ -1193,6 +1194,7 @@ def test_fixed_outer_regions_keeps_empty_inner_region_fixed_when_allowed(tmp_pat
         flux_sources=["total"],
     )
     assert isinstance(retained, BasisFunctions)
+    assert retained.operator.basis_matrix.basis_group.values.tolist() == ["outer", "outer", "inner"]
 
 
 def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, tmp_path):
@@ -1229,7 +1231,7 @@ def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, 
 
     monkeypatch.setattr(basis_module, "quadtree_basis_from_weights", fake_quadtree_basis)
 
-    result = fixed_outer_regions_basis_from_data(
+    options = dict(
         site_data=sites,
         weighting_flux=fluxes["total"].flux,
         start_date="2020-01-01",
@@ -1237,6 +1239,7 @@ def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, 
         domain="TEST",
         outer_regions=load_intem_outer_regions("TEST", outer_regions_path=outer_path),
     )
+    result = fixed_outer_regions_basis_from_data(**options)
 
     assert seen["weights"].shape == (2, 2)
     labels = result.squeeze("time", drop=True)
@@ -1244,7 +1247,14 @@ def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, 
     fixed_outer_labels = set(np.unique(labels.values[outer_values != 1]))
     assert inner_labels == {4, 5}
     assert fixed_outer_labels == {1, 3}
-    assert inner_labels.isdisjoint(fixed_outer_labels)
+
+    prepared = prepare_basis(
+        **options, runtime_flux=fluxes["total"].flux, fix_outer_regions=True, nbasis=2
+    )
+    metadata = prepared.operator.basis_matrix
+    assert metadata.region.values.tolist() == [0, 1, 2, 3]
+    assert metadata.basis_group.values.tolist() == ["outer", "outer", "inner", "inner"]
+    assert metadata.region_in_partition.values.tolist() == [1, 3, 1, 2]
 
 
 def test_packaged_euhrob_map_marks_the_6km_inner_rectangle():

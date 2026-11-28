@@ -121,7 +121,7 @@ def test_fixed_outer_missing_resolved_map_fails_before_numerical_work(monkeypatc
     from openghg_inversions.basis import _wrapper
 
     monkeypatch.setattr(
-        _wrapper, "fixed_outer_regions_basis_from_data",
+        _wrapper, "_fit_fixed_outer_regions",
         lambda *args, **kwargs: pytest.fail("constructed basis before validating the outer map"),
     )
     with pytest.raises(ValueError, match="outer_regions must be resolved"):
