@@ -6,7 +6,7 @@ import pytest
 import pytensor
 import xarray as xr
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models.components import (
     add_state_vector,
     prepare_active_correlated_lognormal_prior,
@@ -97,7 +97,7 @@ def test_independent_and_correlated_active_coordinates_keep_existing_names():
     expected = registry.original_coords["state_x_active"]
     assert expected.names == ["source_x_active", "region_in_source_x_active"]
     mean = xr.DataArray([1., 1., 1.], dims="state", coords=coords)
-    prior = CorrelatedLognormalPrior(mean, np.eye(3) * .04)
+    prior = CorrelatedPrior(mean, np.eye(3) * .04)
     # Prior preparation remains usable without an active PyMC model.
     active_prior = prepare_active_correlated_lognormal_prior(activity, prior, var_name="x")
     assert active_prior is not None

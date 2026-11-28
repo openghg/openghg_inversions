@@ -146,7 +146,7 @@ def _co2_o2_metadata(
     ratio_provenance = json.loads(prepared.o2_sensitivity.attrs["oxidation_ratio_provenance"])
     return {
         "recipe": "co2_o2",
-        "prior": "correlated arithmetic-moment lognormal",
+        **prepared.retained_prior.metadata(),
         "likelihood": "joint Gaussian with fixed independent channel error",
         "independent_error": "fixed labelled standard deviation resolved from prepared or explicit inputs",
         "o2_sensitivity_ratio": {

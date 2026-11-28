@@ -300,7 +300,6 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.StateActivity
    openghg_inversions.models.PreparedLinearSensitivity
    openghg_inversions.models.prepare_linear_sensitivity
-   openghg_inversions.models.CorrelatedLognormalPrior
    openghg_inversions.models.CorrelatedPrior
    openghg_inversions.models.parse_prior
    openghg_inversions.models.add_model_data

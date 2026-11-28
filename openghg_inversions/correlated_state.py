@@ -22,11 +22,10 @@ closure, not exact marginalization of a LogNormal state. Fixing a state at a
 known value is instead handled by ``models.StateActivity``.
 
 Model builders take a ``CorrelatedPrior``: arithmetic moments with a marginal
-family per state, joined by a Gaussian copula. All-lognormal priors use
-``CorrelatedLognormalPrior``. That class's constructor eagerly
-computes xarray inputs and owns independent copies; ``to_dataset`` and
-``from_dataset`` provide persistence boundaries. Construction warns before
-dense covariance materialization when the reduced state exceeds 1,000
+family per state, joined by a Gaussian copula. Its constructor eagerly computes
+xarray inputs and owns independent copies. All-lognormal priors keep the
+closed-form multivariate LogNormal construction internally. Construction warns
+before dense covariance materialization when the reduced state exceeds 1,000
 components.
 """
 
@@ -265,7 +264,7 @@ def _warn_large_dense_state(state_size: int, *, stacklevel: int = 3) -> None:
     """
     if state_size > _DENSE_STATE_WARNING_THRESHOLD:
         warnings.warn(
-            "CorrelatedLognormalPrior expects an already-reduced dense covariance; "
+            "CorrelatedPrior expects an already-reduced dense covariance; "
             f"state size {state_size} exceeds the operational threshold of "
             f"{_DENSE_STATE_WARNING_THRESHOLD} (not a mathematical limit). This "
             "representation is unsuitable for a native-grid covariance.",
@@ -287,7 +286,7 @@ def _validate_arithmetic_moments(
         mean: One-dimensional arithmetic mean with a unique labelled state
             coordinate.
         arithmetic_covariance: Dense covariance, as accepted by
-            :class:`CorrelatedLognormalPrior`.
+            :class:`CorrelatedPrior`.
         covariance_dim: Optional covariance column dimension name.
         stacklevel: Warning stack level for the dense-state warning.
 
@@ -354,8 +353,10 @@ def _validate_arithmetic_moments(
     return state_dim, covariance_dim, mean_values, covariance
 
 
-class CorrelatedLognormalPrior:
-    """Validated labelled moments for one correlated positive state vector.
+class _CorrelatedLognormalPrior:
+    """Validated labelled moments for one correlated multivariate LogNormal state.
+
+    This is the all-lognormal implementation behind :class:`CorrelatedPrior`.
 
     The arithmetic covariance is an already-reduced dense matrix. It uses a
     distinct second dimension whose entries follow the primary state coordinate
@@ -484,7 +485,7 @@ class CorrelatedLognormalPrior:
             does not take a matrix logarithm.
         """
         state_dim, covariance_dim, mean_values, covariance = _validate_arithmetic_moments(
-            mean, arithmetic_covariance, covariance_dim=covariance_dim
+            mean, arithmetic_covariance, covariance_dim=covariance_dim, stacklevel=5
         )
         covariance_values = np.asarray(covariance.values, dtype=np.float64)
 
@@ -557,115 +558,6 @@ class CorrelatedLognormalPrior:
         ).copy(deep=True)
         self.state_dim = state_dim
         self.covariance_dim = covariance_dim
-
-    def to_dataset(self) -> xr.Dataset:
-        """Serialize the validated arithmetic and latent moments.
-
-        Returns:
-            A new labelled dataset containing deep copies of both moment
-            parameterizations and the correlated-state schema metadata.
-        """
-        return xr.Dataset(
-            {
-                self._mean.name: self._mean.copy(deep=True),
-                self._arithmetic_covariance.name: self._arithmetic_covariance.copy(deep=True),
-                self._latent_mean.name: self._latent_mean.copy(deep=True),
-                self._latent_covariance.name: self._latent_covariance.copy(deep=True),
-                self._latent_cholesky.name: self._latent_cholesky.copy(deep=True),
-            },
-            attrs={
-                "correlated_state_schema": "openghg_inversions.correlated_lognormal_prior/v1",
-                "state_dim": self.state_dim,
-                "covariance_dim": self.covariance_dim,
-                "moment_parameterization": "arithmetic_mean_and_covariance",
-                "latent_parameterization": "whitened_gaussian",
-            },
-        )
-
-    @classmethod
-    def from_dataset(cls, dataset: xr.Dataset) -> CorrelatedLognormalPrior:
-        """Reload and revalidate a serialized correlated-state contract.
-
-        Args:
-            dataset: Dataset produced by :meth:`to_dataset`.
-
-        Returns:
-            A newly validated prior derived from the stored arithmetic moments.
-
-        Raises:
-            ValueError: If schema metadata, variables, dimensions, labels, or
-                cached latent moments are missing or inconsistent.
-
-        Warns:
-            UserWarning: If the stored reduced state contains more than 1000
-                components. This is an operational threshold, not a
-                mathematical limit.
-
-        Notes:
-            Stored latent values are checked against moments recomputed from
-            the eagerly materialized arithmetic inputs; they are never trusted
-            as an alternative construction path.
-        """
-        expected_schema = "openghg_inversions.correlated_lognormal_prior/v1"
-        if dataset.attrs.get("correlated_state_schema") != expected_schema:
-            raise ValueError("Correlated-state dataset has an unsupported or missing schema declaration.")
-        state_dim = dataset.attrs.get("state_dim")
-        covariance_dim = dataset.attrs.get("covariance_dim")
-        if not isinstance(state_dim, str) or not isinstance(covariance_dim, str):
-            raise ValueError("Correlated-state dataset dimension metadata must contain strings.")
-        missing = [
-            name
-            for name in (
-                "arithmetic_mean",
-                "arithmetic_covariance",
-                "latent_mean",
-                "latent_covariance",
-                "latent_cholesky",
-            )
-            if name not in dataset
-        ]
-        if missing:
-            raise ValueError(f"Correlated-state dataset is missing variable(s): {missing!r}.")
-        if dataset["arithmetic_mean"].dims != (state_dim,):
-            raise ValueError("Stored arithmetic mean dimensions do not match the schema metadata.")
-
-        expected_dims = {
-            "latent_mean": (state_dim,),
-            "latent_covariance": (state_dim, covariance_dim),
-            "latent_cholesky": (state_dim, covariance_dim),
-        }
-        arithmetic_index = _require_state_index(
-            dataset["arithmetic_mean"],
-            state_dim,
-            name="Stored arithmetic mean",
-        )
-        for name, dims in expected_dims.items():
-            if dataset[name].dims != dims:
-                raise ValueError(f"Stored {name!r} dimensions must be {dims!r}; got {dataset[name].dims!r}.")
-            derived_index = _require_state_index(
-                dataset[name],
-                state_dim,
-                name=f"Stored {name}",
-            )
-            if not derived_index.equals(arithmetic_index):
-                raise ValueError(f"Stored {name!r} state labels must match the arithmetic mean labels.")
-
-        prior = cls(
-            dataset["arithmetic_mean"],
-            dataset["arithmetic_covariance"],
-            covariance_dim=covariance_dim,
-        )
-        for name in ("latent_mean", "latent_covariance", "latent_cholesky"):
-            stored = np.asarray(dataset[name].values)
-            recomputed = np.asarray(getattr(prior, name).values)
-            if stored.shape != recomputed.shape or not np.allclose(
-                stored,
-                recomputed,
-                rtol=1e-12,
-                atol=1e-12,
-            ):
-                raise ValueError(f"Stored {name!r} is inconsistent with the declared arithmetic moments.")
-        return prior
 
 
 STATE_MARGINALS = ("lognormal", "normal", "weibull", "gamma")
@@ -961,6 +853,21 @@ def _floor_latent_correlation(correlation: np.ndarray, floor: float) -> tuple[np
     return repaired, eigenvalues
 
 
+def _checked_latent_correlation_floor(floor: object) -> float | None:
+    """Return an opt-in latent-correlation floor as a float after checking it is in ``(0, 0.1]``.
+
+    Raises:
+        ValueError: If ``floor`` is not ``None`` or a real number in ``(0, 0.1]``.
+    """
+    if floor is None:
+        return None
+    if isinstance(floor, bool) or not isinstance(floor, (int, float, np.integer, np.floating)):
+        raise ValueError(f"latent_correlation_floor must be a number in (0, 0.1]; got {floor!r}.")
+    if not 0.0 < float(floor) <= 0.1:
+        raise ValueError(f"latent_correlation_floor must be in (0, 0.1]; got {floor!r}.")
+    return float(floor)
+
+
 class CorrelatedPrior:
     """Correlated state prior given by arithmetic moments and per-state marginals.
 
@@ -974,8 +881,8 @@ class CorrelatedPrior:
     Marginals (:data:`STATE_MARGINALS`):
 
     - ``"lognormal"`` (default). With it on every state, the copula is the
-      :class:`CorrelatedLognormalPrior` construction, available as
-      ``lognormal``, and models are built exactly as before.
+      closed-form multivariate LogNormal with the arithmetic moments, and
+      models build the multivariate LogNormal graph.
     - ``"normal"``: a Gaussian state, which may be negative.
     - ``"weibull"`` and ``"gamma"``: positive and less right-skewed than the
       lognormal at the same mean and SD, so a posterior constrained only in
@@ -990,13 +897,13 @@ class CorrelatedPrior:
     arithmetic correlation changes. See :attr:`latent_correlation_repair`.
 
     Attributes:
-        lognormal: Validated lognormal copula when every marginal is
-            lognormal, otherwise ``None``.
         marginal: Marginal family name on the state dimension, in mean-label
             order. Treat it as read-only.
     """
 
-    lognormal: CorrelatedLognormalPrior | None
+    _lognormal: _CorrelatedLognormalPrior | None
+    _state_dim: str
+    _covariance_dim: str
     marginal: xr.DataArray
 
     def __init__(
@@ -1013,11 +920,15 @@ class CorrelatedPrior:
         Args:
             mean: Positive one-dimensional arithmetic mean with a unique
                 labelled state coordinate.
-            arithmetic_covariance: Dense arithmetic covariance, as accepted by
-                :class:`CorrelatedLognormalPrior`.
+            arithmetic_covariance: Already-reduced dense arithmetic
+                covariance with shape ``(p, p)`` for a length-``p`` mean.
+                Xarray input must use the state dimension for rows and
+                ``covariance_dim`` for columns, with matching label order;
+                NumPy input is interpreted positionally in mean-label order.
             marginal: One family name for every state, or names on the state
                 dimension with the mean's labels.
             covariance_dim: Optional name for the covariance column dimension.
+                Defaults to ``"{state_dim}_covariance"``.
             latent_correlation_floor: Opt-in eigenvalue floor for the
                 latent correlation, in ``(0, 0.1]``. Eigenvalues below the
                 floor are raised and the unit diagonal is restored. A repair
@@ -1028,28 +939,38 @@ class CorrelatedPrior:
 
         Raises:
             TypeError: If ``mean`` is not an xarray ``DataArray``.
-            ValueError: If a marginal is not in :data:`STATE_MARGINALS`, its
-                labels differ from the mean's, a state has zero variance
-                under a non-lognormal marginal, a pair covariance is out of
-                reach of its marginals, the latent correlation is not
-                positive definite and no floor is given, the floor's repair
-                would move an implied state correlation by more than 0.01,
-                or the floor is outside ``(0, 0.1]``.
+            ValueError: If the arithmetic moments are invalid (see
+                :class:`CorrelatedPrior`), a marginal is not in
+                :data:`STATE_MARGINALS`, its labels differ from the mean's, a
+                state has zero variance under a non-lognormal marginal, a pair
+                covariance is out of reach of its marginals, the latent
+                correlation is not positive definite and no floor is given,
+                the floor's repair would move an implied state correlation by
+                more than 0.01, or the floor is outside ``(0, 0.1]``.
+
+        Warns:
+            UserWarning: If the reduced state contains more than 1000
+                components. This is an operational threshold, not a
+                mathematical limit.
+
+        Notes:
+            Inputs are eagerly computed, canonicalized, and copied. Mean and
+            covariance units must be consistent (covariance has squared mean
+            units); unit metadata is retained where possible but is neither
+            converted nor validated.
         """
-        if latent_correlation_floor is not None and not 0.0 < float(latent_correlation_floor) <= 0.1:
-            raise ValueError(f"latent_correlation_floor must be in (0, 0.1]; got {latent_correlation_floor!r}.")
+        latent_correlation_floor = _checked_latent_correlation_floor(latent_correlation_floor)
         names = marginal if isinstance(marginal, str) else np.asarray(marginal.values, dtype=object).astype(str)
         if np.all(np.asarray(names) == "lognormal"):
-            self._set(CorrelatedLognormalPrior(mean, arithmetic_covariance, covariance_dim=covariance_dim), marginal)
+            self._set(
+                _CorrelatedLognormalPrior(mean, arithmetic_covariance, covariance_dim=covariance_dim),
+                marginal,
+            )
             return
         mean_values, covariance = self._set_copula_moments(mean, arithmetic_covariance, covariance_dim, marginal)
-        family = np.asarray(self.marginal.values).astype(str)
-        covariance_values = np.asarray(covariance.values, dtype=np.float64)
-        sd = np.sqrt(np.clip(np.diag(covariance_values), 0.0, None))
-        if (sd <= 0).any():
-            raise ValueError("Every state of a copula prior must have positive arithmetic variance.")
-        shape, scale = _marginal_parameters(family, mean_values, sd)
-        coefficients = _hermite_coefficients(family, mean_values, sd, shape, scale)
+        family, covariance_values, sd, shape, scale, coefficients = self._copula_marginals(
+            mean_values, covariance
+        )
         correlation = _solve_latent_correlation(
             family, mean_values, shape, coefficients, covariance_values,
             list(self._mean.indexes[self._state_dim]),
@@ -1098,6 +1019,92 @@ class CorrelatedPrior:
         self._shape, self._scale = shape, scale
         self._latent_correlation, self._latent_correlation_cholesky = correlation, cholesky
 
+    def _copula_marginals(
+        self, mean_values: np.ndarray, covariance: xr.DataArray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Return each state's family, the covariance values, SDs, marginal parameters and Hermite terms.
+
+        Raises:
+            ValueError: If a state has zero variance or a Weibull or gamma
+                state cannot be represented.
+        """
+        family = np.asarray(self.marginal.values).astype(str)
+        covariance_values = np.asarray(covariance.values, dtype=np.float64)
+        sd = np.sqrt(np.clip(np.diag(covariance_values), 0.0, None))
+        if (sd <= 0).any():
+            raise ValueError("Every state of a copula prior must have positive arithmetic variance.")
+        shape, scale = _marginal_parameters(family, mean_values, sd)
+        coefficients = _hermite_coefficients(family, mean_values, sd, shape, scale)
+        return family, covariance_values, sd, shape, scale, coefficients
+
+    @classmethod
+    def _from_latent_correlation(
+        cls,
+        mean: xr.DataArray,
+        arithmetic_covariance: xr.DataArray | np.ndarray,
+        *,
+        marginal: xr.DataArray,
+        covariance_dim: str | None,
+        latent_correlation: xr.DataArray,
+        latent_correlation_repair: dict[str, Any] | None,
+    ) -> CorrelatedPrior:
+        """Rebuild a saved copula prior from its solved latent correlation.
+
+        The latent correlation is not solved again. Instead, the arithmetic
+        covariance it implies through the marginals must match the saved
+        covariance, which already includes any applied repair.
+
+        Args:
+            mean: Saved arithmetic mean.
+            arithmetic_covariance: Saved arithmetic covariance, as returned by
+                :attr:`arithmetic_covariance`.
+            marginal: Saved marginal names; at least one is not lognormal.
+            covariance_dim: Covariance column dimension name.
+            latent_correlation: Saved :attr:`latent_correlation`.
+            latent_correlation_repair: Saved :attr:`latent_correlation_repair`.
+
+        Returns:
+            The copula prior with the saved latent correlation.
+
+        Raises:
+            ValueError: If the inputs do not describe a copula prior, or the
+                latent correlation is not a positive-definite correlation
+                matrix reproducing the saved covariance.
+        """
+        result = cls.__new__(cls)
+        mean_values, covariance = result._set_copula_moments(
+            mean, arithmetic_covariance, covariance_dim, marginal
+        )
+        if np.all(np.asarray(result.marginal.values).astype(str) == "lognormal"):
+            raise ValueError(
+                "An all-lognormal prior is rebuilt from its arithmetic moments, not a latent correlation."
+            )
+        family, covariance_values, sd, shape, scale, coefficients = result._copula_marginals(
+            mean_values, covariance
+        )
+        correlation = _materialize_numeric(latent_correlation, name="Latent correlation")
+        if (
+            correlation.shape != covariance_values.shape
+            or not np.array_equal(correlation, correlation.T)
+            or not np.array_equal(np.diag(correlation), np.ones(len(correlation)))
+        ):
+            raise ValueError(
+                "Latent correlation must be a symmetric unit-diagonal matrix on the prior's states."
+            )
+        implied = _implied_covariance(family, mean_values, shape, coefficients, sd, correlation)
+        if not np.allclose(implied, covariance_values, rtol=1e-8, atol=_matrix_tolerance(covariance_values)):
+            raise ValueError(
+                "Latent correlation does not reproduce the arithmetic covariance with these marginals."
+            )
+        try:
+            cholesky = np.linalg.cholesky(correlation)
+        except np.linalg.LinAlgError as exc:
+            raise ValueError("Latent correlation must be positive definite.") from exc
+        result._shape, result._scale = shape, scale
+        result._latent_correlation, result._latent_correlation_cholesky = correlation, cholesky
+        result._latent_repair = None if latent_correlation_repair is None else dict(latent_correlation_repair)
+        return result
+
     def _set_copula_moments(
         self,
         mean: xr.DataArray,
@@ -1130,7 +1137,7 @@ class CorrelatedPrior:
             mean,
             state_dim=state_dim,
         )
-        self.lognormal = None
+        self._lognormal = None
         self._mean = canonical_mean
         self._arithmetic_covariance = covariance
         self._state_dim = state_dim
@@ -1155,8 +1162,8 @@ class CorrelatedPrior:
         Raises:
             ValueError: If the prior uses the all-lognormal construction.
         """
-        if self.lognormal is not None:
-            raise ValueError("Restrict an all-lognormal prior through its CorrelatedLognormalPrior.")
+        if self._lognormal is not None:
+            raise ValueError("Restrict an all-lognormal prior by constructing it from the active moments.")
         block = np.ix_(indices, indices)
         result = CorrelatedPrior.__new__(CorrelatedPrior)
         result._set_copula_moments(mean, np.asarray(self._arithmetic_covariance.values)[block], None, marginal)
@@ -1166,23 +1173,9 @@ class CorrelatedPrior:
         result._latent_repair = None if self._latent_repair is None else dict(self._latent_repair)
         return result
 
-    @classmethod
-    def from_lognormal(cls, prior: CorrelatedLognormalPrior) -> CorrelatedPrior:
-        """Use an already validated lognormal prior on every state.
-
-        Args:
-            prior: Correlated lognormal moments, reused without recomputation.
-
-        Returns:
-            The same moments with the lognormal marginal on every state.
-        """
-        result = cls.__new__(cls)
-        result._set(prior, "lognormal")
-        return result
-
-    def _set(self, lognormal: CorrelatedLognormalPrior, marginal: str | xr.DataArray) -> None:
+    def _set(self, lognormal: _CorrelatedLognormalPrior, marginal: str | xr.DataArray) -> None:
         """Store an all-lognormal copula and its marginal names after checking them."""
-        self.lognormal = lognormal
+        self._lognormal = lognormal
         self._mean = lognormal._mean
         self._arithmetic_covariance = lognormal._arithmetic_covariance
         self._state_dim = lognormal.state_dim
@@ -1245,7 +1238,7 @@ class CorrelatedPrior:
     @property
     def is_lognormal(self) -> bool:
         """Whether every state has the lognormal marginal."""
-        return self.lognormal is not None
+        return self._lognormal is not None
 
     def metadata(self) -> dict[str, Any]:
         """Describe this prior for saved model outputs.

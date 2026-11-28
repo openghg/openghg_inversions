@@ -29,7 +29,7 @@ import xarray as xr
 
 from openghg_inversions._serialization_codecs import _copy_json_mapping, _decode_json_mapping
 from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array, to_dense
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.inversion_data.o2n2 import (
     MOLE_FRACTION, O2_OBSERVABLE_ATTR, O2_OBSERVABLE_PROVENANCE_KEY, DeltaO2N2Declaration,
 )
@@ -51,7 +51,7 @@ from openghg_inversions.serialization import (
 
 
 CO2_O2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_o2_prepared_inputs"
-CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 5
+CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 6
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -92,7 +92,9 @@ class Co2O2PreparedInputs:
             block order ``[[CO2, CO2/O2], [CO2/O2.T, O2]]``; per-axis unit
             coordinates describe mixed-unit entries.
         retained_prior: Correlated prior over shared GPP/TER/FF and separate
-            CO2- and O2-ocean retained states.
+            CO2- and O2-ocean retained states. It owns the arithmetic moments,
+            each state's marginal family, any latent-correlation floor and the
+            solved latent correlation, which the linked runners reuse.
         provenance: JSON-serializable preparation and data provenance.
         boundary_sensitivity: Optional mapping keyed by co2 and o2, containing
             native-channel H_bc arrays (observation, boundary state).
@@ -113,7 +115,7 @@ class Co2O2PreparedInputs:
     o2_co2_flux_ratio: xr.DataArray | None
     o2_co2_flux_ratio_unavailable_reason: str | None
     aggregation_error: ObservationCovariance
-    retained_prior: CorrelatedLognormalPrior
+    retained_prior: CorrelatedPrior
     provenance: Mapping[str, Any] = field(default_factory=dict)
     boundary_sensitivity: Mapping[str, xr.DataArray] = field(default_factory=dict)
     independent_error_sd: xr.DataArray | None = None
@@ -154,6 +156,9 @@ class Co2O2PreparedInputs:
                 "arithmetic_covariance": self.retained_prior.arithmetic_covariance,
             },
         }
+        if not self.retained_prior.is_lognormal:
+            arrays["retained_prior"]["marginal"] = self.retained_prior.marginal
+            arrays["retained_prior"]["latent_correlation"] = self.retained_prior.latent_correlation
         if self.o2_co2_flux_ratio is not None:
             arrays["flux_ratio"] = {"o2_co2_flux_ratio": self.o2_co2_flux_ratio}
         if self.independent_error_sd is not None:
@@ -179,6 +184,10 @@ class Co2O2PreparedInputs:
         datasets["retained_prior"].attrs.update(
             state_dim=self.retained_prior.state_dim, covariance_dim=self.retained_prior.covariance_dim
         )
+        if not self.retained_prior.is_lognormal:
+            datasets["retained_prior"].attrs["latent_correlation_repair_json"] = json.dumps(
+                self.retained_prior.latent_correlation_repair, sort_keys=True, allow_nan=False
+            )
         tree = xr.DataTree.from_dict(datasets)
         tree.attrs = {
             "schema": CO2_O2_PREPARED_INPUTS_SCHEMA,
@@ -193,14 +202,15 @@ class Co2O2PreparedInputs:
         """Restore versioned inputs and their saved intercept.
 
         Args:
-            tree: Tree using the dedicated CO2/O2 prepared-input schema.
-                Only the current format is accepted; prepare older inputs again.
+            tree: Tree using the dedicated CO2/O2 prepared-input schema. A
+                copula retained prior includes its marginals, solved latent
+                correlation and repair record.
 
         Returns:
             Validated scientific inputs. Observations, fixed intercept, dense
-            covariance, prior moments, ocean-loading slices, available ratio
-            values, and independent error are materialized for validation;
-            sensitivity payloads may otherwise remain lazy.
+            covariance, prior moments and marginals, ocean-loading slices,
+            available ratio values, and independent error are materialized for
+            validation. Sensitivity payloads may otherwise remain lazy.
 
         Raises:
             KeyError: If a required node or scientific variable is absent.
@@ -209,7 +219,11 @@ class Co2O2PreparedInputs:
         if tree.attrs.get("schema") != CO2_O2_PREPARED_INPUTS_SCHEMA:
             raise ValueError(f"Expected Co2O2PreparedInputs schema {CO2_O2_PREPARED_INPUTS_SCHEMA!r}.")
         version = tree.attrs.get("schema_version")
-        if isinstance(version, bool) or not isinstance(version, Integral) or version != CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION:
+        if (
+            isinstance(version, bool)
+            or not isinstance(version, Integral)
+            or version != CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION
+        ):
             raise ValueError(
                 f"Expected Co2O2PreparedInputs schema_version {CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION}; "
                 f"got {version!r}; prepare again."
@@ -237,14 +251,7 @@ class Co2O2PreparedInputs:
                 raise ValueError(f"Declared MultiIndexes do not match CF coordinates in node {name!r}.")
             datasets[name] = decode_cf_multiindexes(dataset, indexes) if indexes else dataset
         provenance = _decode_json_mapping(tree.attrs.get("provenance_json"), "Serialized CO2/O2 provenance")
-        prior_data = datasets["retained_prior"]
-        prior = CorrelatedLognormalPrior(
-            _stored_array(prior_data, "arithmetic_mean"),
-            _stored_array(prior_data, "arithmetic_covariance"),
-            covariance_dim=prior_data.attrs["covariance_dim"],
-        )
-        if prior.state_dim != prior_data.attrs["state_dim"]:
-            raise ValueError("Serialized retained-prior state_dim does not match its arithmetic mean.")
+        prior = _stored_retained_prior(datasets["retained_prior"])
         joint = datasets["joint"]
         aggregation_error = resolve_aggregation_error(
             joint, "dense", output_dim="observation", covariance_dim="observation_cov"
@@ -548,6 +555,50 @@ def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
     _validate_independent_error(observations, prepared.independent_error_sd, materialize=True)
 
 
+def _stored_retained_prior(prior_data: xr.Dataset) -> CorrelatedPrior:
+    """Rebuild the saved retained prior without solving its copula again.
+
+    All-lognormal priors are rebuilt from their arithmetic moments. Copula
+    priors reuse their saved latent correlation, which must reproduce the
+    saved covariance through the saved marginals.
+
+    Args:
+        prior_data: Decoded ``retained_prior`` node.
+
+    Returns:
+        The validated retained prior.
+
+    Raises:
+        ValueError: If the node's metadata or contents are invalid, or a
+            copula prior was saved without its latent correlation.
+    """
+    mean = _stored_array(prior_data, "arithmetic_mean")
+    covariance = _stored_array(prior_data, "arithmetic_covariance")
+    covariance_dim = prior_data.attrs["covariance_dim"]
+    if "marginal" not in prior_data:
+        prior = CorrelatedPrior(mean, covariance, covariance_dim=covariance_dim)
+    elif "latent_correlation" not in prior_data or "latent_correlation_repair_json" not in prior_data.attrs:
+        raise ValueError("Serialized copula retained prior lacks its latent correlation; prepare again.")
+    else:
+        try:
+            repair = json.loads(prior_data.attrs["latent_correlation_repair_json"])
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("Invalid serialized latent-correlation repair record.") from exc
+        if repair is not None and not isinstance(repair, dict):
+            raise ValueError("Invalid serialized latent-correlation repair record.")
+        prior = CorrelatedPrior._from_latent_correlation(
+            mean,
+            covariance,
+            marginal=_stored_array(prior_data, "marginal"),
+            covariance_dim=covariance_dim,
+            latent_correlation=_stored_array(prior_data, "latent_correlation"),
+            latent_correlation_repair=repair,
+        )
+    if prior.state_dim != prior_data.attrs["state_dim"]:
+        raise ValueError("Serialized retained-prior state_dim does not match its arithmetic mean.")
+    return prior
+
+
 def _ratio_record(
     ratio: xr.DataArray | None,
     unavailable_reason: str | None,
@@ -571,7 +622,7 @@ def _ratio_record(
     return record
 
 
-def _state(prior: CorrelatedLognormalPrior) -> xr.DataArray:
+def _state(prior: CorrelatedPrior) -> xr.DataArray:
     mean = prior.mean
     if any(name not in mean.coords for name in ("source", "tracer_scope")):
         raise ValueError("Retained states require source and tracer_scope coordinates.")
@@ -844,7 +895,7 @@ def prepare_co2_o2_inputs(
     co2_aggregation_covariance: xr.DataArray,
     co2_o2_aggregation_covariance: xr.DataArray,
     o2_aggregation_covariance: xr.DataArray,
-    retained_prior: CorrelatedLognormalPrior,
+    retained_prior: CorrelatedPrior,
     co2_units: str,
     o2_units: str,
     provenance: Mapping[str, Any] | None = None,
@@ -895,10 +946,12 @@ def prepare_co2_o2_inputs(
             observation dimension; its distinct column dimension carries the
             same O2 labels in the same order. Entries have squared O2
             observation units.
-        retained_prior: Retained correlated prior whose indexed state axis has
-            ``source`` and ``tracer_scope`` coordinates for shared GPP/TER/FF,
-            CO2 ocean, and O2 ocean states. Repeated source labels must use
-            one consistent spelling, including case.
+        retained_prior: Correlated prior with the retained arithmetic
+            moments, each state's marginal family and any latent-correlation
+            floor; the prepared inputs keep it as constructed. Its indexed
+            state axis has ``source`` and ``tracer_scope`` coordinates for
+            shared GPP/TER/FF, CO2 ocean, and O2 ocean states. Repeated source
+            labels must use one consistent spelling, including case.
         co2_units: Non-empty units label for CO2 observations and sensitivity rows.
         o2_units: Non-empty units label for O2 observations and sensitivity rows.
         provenance: Optional JSON-serializable preparation provenance. A

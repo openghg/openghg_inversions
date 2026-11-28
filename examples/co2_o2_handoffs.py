@@ -13,7 +13,7 @@ import sys
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.rhime.co2 import Co2O2PreparedInputs, prepare_co2_o2_inputs
 
 
@@ -60,7 +60,7 @@ def synthetic_inputs() -> Co2O2PreparedInputs:
         o2_aggregation_covariance=xr.DataArray(np.diag([2., 2.5, 3.]),
             dims=("o2_measure", "o2_measure_cov"),
             coords={"o2_measure": o2.o2_measure, "o2_measure_cov": o2.o2_measure.values}),
-        retained_prior=CorrelatedLognormalPrior(mean, np.diag([.01, .02, .03, .04, .05])),
+        retained_prior=CorrelatedPrior(mean, np.diag([.01, .02, .03, .04, .05])),
         co2_units="ppm", o2_units="ppm", provenance={**FACTS, "example": "synthetic linked inputs"},
     )
     errors = xr.ones_like(prepared.observations).rename("fixed_independent_error_sd")

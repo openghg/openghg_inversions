@@ -246,6 +246,25 @@ def test_saved_copula_prior_records_the_marginals_actually_used(tmp_path, likeli
         assert metadata["prior_marginals"] == {"gamma": 1, "weibull": 1}
 
 
+def test_co2_preparation_takes_the_latent_correlation_floor_explicitly(tmp_path):
+    """The floor is an argument with the copula prior's range check, stored beside the marginals."""
+    from openghg_inversions.rhime.co2 import prepare_co2_inputs
+    from openghg_inversions.rhime.co2.co2_preparation import retained_prior_options
+
+    canonical, reduction, _, _, _ = synthetic_inputs(tmp_path)
+    marginal = reduction.retained_mean.copy(data=np.array(["weibull", "gamma"], dtype=object))
+    prepared = prepare_co2_inputs(
+        canonical, reduction, aggregation_error_rank=1, prior_marginal=marginal, latent_correlation_floor=1e-6
+    )
+    assert retained_prior_options(prepared.inv_inputs)["latent_correlation_floor"] == 1e-6
+    with pytest.raises(ValueError, match="latent_correlation_floor requires prior_marginal"):
+        prepare_co2_inputs(canonical, reduction, aggregation_error_rank=1, latent_correlation_floor=1e-6)
+    with pytest.raises(ValueError, match=r"latent_correlation_floor must be in \(0, 0.1\]"):
+        prepare_co2_inputs(
+            canonical, reduction, aggregation_error_rank=1, prior_marginal=marginal, latent_correlation_floor=0.2
+        )
+
+
 @pytest.mark.parametrize("likelihood_kind", ["additive_sigma", "fixed_ou"])
 def test_shared_inference_preserves_coherent_equations_and_products(
     tmp_path, monkeypatch, likelihood_kind,

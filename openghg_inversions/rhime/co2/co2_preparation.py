@@ -36,6 +36,7 @@ from openghg_inversions.coherent_reduction import (
     NativeFunctionalProducts,
     reduction_identity,
 )
+from openghg_inversions.correlated_state import STATE_MARGINALS, _checked_latent_correlation_floor
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.boundary_sensitivity import BoundaryRepresentation
@@ -262,8 +263,6 @@ def _validate_co2_dataset(inputs: xr.Dataset) -> None:
         raise ValueError("CO2 alpha_prior_mean must use the H retained-state dimension.")
     _require_same_axis(mean, state_dim, state_index, name="CO2 alpha_prior_mean")
     if ALPHA_PRIOR_MARGINAL in inputs:
-        from openghg_inversions.correlated_state import STATE_MARGINALS
-
         marginal = inputs[ALPHA_PRIOR_MARGINAL]
         if marginal.dims != (state_dim,):
             raise ValueError(f"CO2 {ALPHA_PRIOR_MARGINAL} must use the H retained-state dimension.")
@@ -271,16 +270,7 @@ def _validate_co2_dataset(inputs: xr.Dataset) -> None:
         unknown = sorted(set(map(str, np.asarray(marginal.values).ravel())) - set(STATE_MARGINALS))
         if unknown:
             raise ValueError(f"CO2 {ALPHA_PRIOR_MARGINAL} has unsupported marginal(s) {unknown!r}.")
-        if LATENT_CORRELATION_FLOOR in marginal.attrs:
-            floor = marginal.attrs[LATENT_CORRELATION_FLOOR]
-            if (
-                isinstance(floor, bool) or not isinstance(floor, (int, float, np.number))
-                or not 0.0 < float(floor) <= 0.1
-            ):
-                raise ValueError(
-                    f"CO2 {ALPHA_PRIOR_MARGINAL} attribute {LATENT_CORRELATION_FLOOR!r} must be a number in "
-                    f"(0, 0.1]; got {floor!r}."
-                )
+        _checked_latent_correlation_floor(marginal.attrs.get(LATENT_CORRELATION_FLOOR))
     covariance_dim = f"{state_dim}_cov"
     covariance = inputs["alpha_prior_covariance"]
     validate_covariance_coordinates(
@@ -959,6 +949,7 @@ def prepare_co2_inputs(
     bc_centering_weights: xr.DataArray | None = None,
     provenance: Mapping[str, Any] | None = None,
     prior_marginal: xr.DataArray | None = None,
+    latent_correlation_floor: float | None = None,
 ) -> Co2PreparedInputs:
     """Map one coherent Gaussian reduction into the CO2 replay contract.
 
@@ -1030,8 +1021,12 @@ def prepare_co2_inputs(
             the reduction's retained-state labels. It is stored as
             ``alpha_prior_marginal`` and selects each state's marginal in the
             runners' :class:`~openghg_inversions.correlated_state.CorrelatedPrior`.
-            Its ``latent_correlation_floor`` attribute, if any, is kept and
-            passed to that prior. Omit it for the lognormal prior.
+            Omit it for the lognormal prior.
+        latent_correlation_floor: Optional opt-in eigenvalue floor in
+            ``(0, 0.1]`` passed to that prior; see
+            :class:`~openghg_inversions.correlated_state.CorrelatedPrior`.
+            Requires ``prior_marginal``, and is stored as its
+            ``latent_correlation_floor`` attribute.
 
     When ``reduction.functional_products`` is present, it is persisted as the
     artifact's :attr:`Co2PreparedInputs.country_functionals` so staged outputs
@@ -1202,12 +1197,17 @@ def prepare_co2_inputs(
         name="alpha_prior_covariance",
     )
     mapped = mapped.drop_vars(ALPHA_PRIOR_MARGINAL, errors="ignore")
+    floor = _checked_latent_correlation_floor(latent_correlation_floor)
+    if floor is not None and prior_marginal is None:
+        raise ValueError("latent_correlation_floor requires prior_marginal.")
     if prior_marginal is not None:
         if prior_marginal.dims != (reduced_state_dim,):
             raise ValueError("prior_marginal must use the reduction's retained-state dimension.")
         _require_same_axis(prior_marginal, reduced_state_dim, state_index, name="prior_marginal")
         marginal = _renamed(prior_marginal, {reduced_state_dim: state_dim}, name=ALPHA_PRIOR_MARGINAL)
-        mapped[ALPHA_PRIOR_MARGINAL] = marginal.copy(data=np.asarray(marginal.values, dtype=object).astype(str))
+        marginal = marginal.copy(data=np.asarray(marginal.values, dtype=object).astype(str))
+        marginal.attrs = {} if floor is None else {LATENT_CORRELATION_FLOOR: floor}
+        mapped[ALPHA_PRIOR_MARGINAL] = marginal
     mapped["fixed_prior_contribution"] = _borrow_without_axis_coordinates(
         _renamed(
             intercept,

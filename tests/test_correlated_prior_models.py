@@ -114,10 +114,9 @@ def test_full_and_enhancement_ordinary_cached_prediction_and_density(full):
     np.testing.assert_allclose(x, physical_state(prior, point["flux_scaling_latent"]), rtol=1e-14)
 
 
-@pytest.mark.parametrize("wrap_prior", [False, True], ids=["lognormal", "wrapped"])
-def test_linked_species_share_one_state_and_density(wrap_prior):
+def test_linked_species_share_one_state_and_density():
     prepared = _prepared()
-    prior = CorrelatedPrior.from_lognormal(prepared.retained_prior) if wrap_prior else prepared.retained_prior
+    prior = prepared.retained_prior
     kwargs = {**_kwargs(prepared), "retained_prior": prior}
     likelihood = dict(tau_hours=5, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75})
     ordinary = build_co2_o2_model(**kwargs, **likelihood)
@@ -221,7 +220,7 @@ def test_partial_activity_samples_the_exact_active_lognormal_marginal():
 
 def physical_state(prior, z):
     """Independent NumPy arithmetic-moment map, with no model/cache expressions."""
-    if getattr(prior, "lognormal", True) is None:
+    if not prior.is_lognormal:
         # Copula marginals: SciPy quantiles of the correlated latent normal.
         return prior.transform_latent(prior.latent_correlation_cholesky.to_numpy() @ z)
     m = prior.mean.to_numpy()

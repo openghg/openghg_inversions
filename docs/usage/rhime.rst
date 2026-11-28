@@ -775,9 +775,10 @@ workflows; the historical HBMCMC wrapper is removed.
 Correlated Positive Reduced States
 ----------------------------------
 
-``CorrelatedLognormalPrior`` is the low-level contract for one labelled joint
-positive state. It accepts an arithmetic mean vector ``m`` and covariance
-``C`` and constructs the latent Gaussian moments
+``CorrelatedPrior`` is the contract for one labelled joint state. It accepts an
+arithmetic mean vector ``m`` and covariance ``C``. With the default lognormal
+marginal on every state (see :ref:`sampled-marginals` for other families), it
+constructs the latent Gaussian moments
 
 .. math::
 
@@ -799,7 +800,7 @@ public state ``<name>``.
    import xarray as xr
 
    from openghg_inversions.models import (
-       CorrelatedLognormalPrior,
+       CorrelatedPrior,
        add_correlated_lognormal_state,
        registered_model,
    )
@@ -809,7 +810,7 @@ public state ``<name>``.
        dims="state",
        coords={"state": ["region-a", "region-b"]},
    )
-   prior = CorrelatedLognormalPrior(
+   prior = CorrelatedPrior(
        mean,
        np.array([[0.16, 0.03], [0.03, 0.09]]),
    )

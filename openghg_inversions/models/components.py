@@ -38,7 +38,7 @@ import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.correlated_state import GAMMA_LATENT_CAP, CorrelatedLognormalPrior, CorrelatedPrior
+from openghg_inversions.correlated_state import GAMMA_LATENT_CAP, CorrelatedPrior, _CorrelatedLognormalPrior
 from openghg_inversions.array_ops import select_gathered_data_array
 from openghg_inversions.inversion_inputs import make_freq_indicator, make_site_indicator
 from openghg_inversions.models._gamma_quantile import _GammaStandardQuantile
@@ -109,7 +109,7 @@ class CorrelatedStateResult:
 
     latent: TensorVariable
     state: TensorVariable
-    prior: CorrelatedLognormalPrior | CorrelatedPrior
+    prior: CorrelatedPrior
 
 
 def get_model_latent(variable: TensorVariable, base_name: str) -> TensorVariable:
@@ -658,7 +658,7 @@ def _add_multisource_state_vector(
 
 
 def add_correlated_lognormal_state(
-    prior: CorrelatedLognormalPrior,
+    prior: CorrelatedPrior,
     /,
     *,
     var_name: str,
@@ -666,7 +666,8 @@ def add_correlated_lognormal_state(
     """Add a whitened correlated LogNormal state to the active PyMC model.
 
     Args:
-        prior: Validated labelled arithmetic and latent moment contract.
+        prior: Validated labelled arithmetic moments with the lognormal
+            marginal on every state.
         var_name: Name of the positive user-facing state. The whitened standard
             normal is named ``{var_name}_latent``.
 
@@ -674,9 +675,10 @@ def add_correlated_lognormal_state(
         The whitened latent, positive state, and supplied prior contract.
 
     Raises:
-        ValueError: If the arithmetic mean, latent moments, Cholesky diagonal,
-            or exponentiated central state is not finite and positive where
-            required in PyMC's configured floating-point dtype.
+        ValueError: If a state's marginal is not lognormal, or the arithmetic
+            mean, latent moments, Cholesky diagonal, or exponentiated central
+            state is not finite and positive where required in PyMC's
+            configured floating-point dtype.
 
     Notes:
         This function must run in an active ``pm.Model`` context. After backend
@@ -693,12 +695,15 @@ def add_correlated_lognormal_state(
         exact LogNormal marginalization. Known-exact state fixing is handled
         separately by ``StateActivity`` in the state-linear component builders.
     """
+    lognormal = _as_lognormal_prior(prior)
+    if lognormal is None:
+        raise ValueError("add_correlated_lognormal_state requires the lognormal marginal on every state.")
     state_dim = prior.state_dim
     mean = prior.mean
     with np.errstate(over="ignore", under="ignore", invalid="ignore"):
         backend_mean = np.asarray(floatX(np.asarray(mean.values)))
-        backend_latent_mean = np.asarray(floatX(np.asarray(prior.latent_mean.values)))
-        backend_cholesky = np.asarray(floatX(np.asarray(prior.latent_cholesky.values)))
+        backend_latent_mean = np.asarray(floatX(np.asarray(lognormal.latent_mean.values)))
+        backend_cholesky = np.asarray(floatX(np.asarray(lognormal.latent_cholesky.values)))
     if not np.isfinite(backend_mean).all() or (backend_mean <= 0).any():
         raise ValueError(
             "Correlated LogNormal arithmetic means must remain finite and positive in the model float dtype."
@@ -734,7 +739,7 @@ def add_correlated_lognormal_state(
 
 def add_correlated_lognormal_state_with_activity(
     activity: ResolvedStateActivity,
-    prior: CorrelatedLognormalPrior,
+    prior: CorrelatedPrior,
     /,
     *,
     var_name: str,
@@ -748,8 +753,8 @@ def add_correlated_lognormal_state_with_activity(
 
     Args:
         activity: Resolved activity in canonical full-state order.
-        prior: Validated labelled arithmetic-moment LogNormal prior for the
-            full state.
+        prior: Validated labelled arithmetic-moment prior for the full
+            state, with the lognormal marginal on every state.
         var_name: Name of the full user-facing state vector.
 
     Returns:
@@ -769,7 +774,7 @@ def add_correlated_lognormal_state_with_activity(
 
 def _add_prepared_correlated_lognormal_state_with_activity(
     activity: ResolvedStateActivity,
-    active_prior: CorrelatedLognormalPrior | CorrelatedPrior | None,
+    active_prior: CorrelatedPrior | None,
     /,
     *,
     var_name: str,
@@ -777,20 +782,16 @@ def _add_prepared_correlated_lognormal_state_with_activity(
     """Construct a state from the package-prepared active prior.
 
     ``active_prior`` comes from :func:`prepare_active_correlated_prior` or
-    :func:`prepare_active_correlated_lognormal_prior`. A lognormal prior, or a
-    :class:`CorrelatedPrior` whose marginals are all lognormal, builds the
-    lognormal graph unchanged; other marginals use
+    :func:`prepare_active_correlated_lognormal_prior`. An all-lognormal prior
+    builds the multivariate LogNormal graph; other marginals use
     :func:`add_correlated_copula_state`.
     """
-    if isinstance(active_prior, CorrelatedPrior):
-        if active_prior.lognormal is None:
-            return _add_prepared_state_with_activity(
-                activity, active_prior, var_name=var_name, add_state=add_correlated_copula_state,
-            )
-        active_prior = active_prior.lognormal
-    return _add_prepared_state_with_activity(
-        activity, active_prior, var_name=var_name, add_state=add_correlated_lognormal_state,
+    add_state = (
+        add_correlated_lognormal_state
+        if active_prior is None or active_prior.is_lognormal
+        else add_correlated_copula_state
     )
+    return _add_prepared_state_with_activity(activity, active_prior, var_name=var_name, add_state=add_state)
 
 
 def _add_prepared_state_with_activity(
@@ -881,17 +882,24 @@ def _active_state_array(
 
 def prepare_active_correlated_lognormal_prior(
     activity: ResolvedStateActivity,
-    prior: CorrelatedLognormalPrior,
+    prior: CorrelatedPrior,
     /,
     *,
     var_name: str,
-) -> CorrelatedLognormalPrior | None:
+) -> CorrelatedPrior | None:
     """Align and subset one correlated prior for active-state construction.
 
     This eager graph-construction boundary materializes the prior and activity
     coordinate datasets together before comparing auxiliary labels. Borrowed
-    inputs remain unchanged and shared Dask coordinate tasks run once.
+    inputs remain unchanged and shared Dask coordinate tasks run once. The
+    active prior is rebuilt from the active arithmetic moments.
+
+    Raises:
+        ValueError: If a state's marginal is not lognormal or the prior and
+            activity labels differ.
     """
+    if not prior.is_lognormal:
+        raise ValueError("prepare_active_correlated_lognormal_prior requires the lognormal marginal on every state.")
     mean = prior.mean
     _check_active_prior_labels(activity, mean, prior.state_dim, label="Correlated LogNormal")
     if activity.n_active == 0:
@@ -904,15 +912,12 @@ def prepare_active_correlated_lognormal_prior(
     active_covariance = prior.arithmetic_covariance.isel(
         {activity.state_dim: active_indices, prior.covariance_dim: active_indices}
     ).values
-    return CorrelatedLognormalPrior(active_mean, active_covariance)
+    return CorrelatedPrior(active_mean, active_covariance)
 
 
-def _as_lognormal_prior(prior: CorrelatedLognormalPrior | CorrelatedPrior) -> CorrelatedLognormalPrior | None:
-    """Return the validated lognormal prior, given directly or carried by an all-lognormal wrapper.
-
-    ``None`` when a :class:`CorrelatedPrior` has a non-lognormal marginal.
-    """
-    return prior.lognormal if isinstance(prior, CorrelatedPrior) else prior
+def _as_lognormal_prior(prior: CorrelatedPrior) -> _CorrelatedLognormalPrior | None:
+    """Return the closed-form LogNormal moments of an all-lognormal prior, otherwise ``None``."""
+    return prior._lognormal
 
 
 def _log_negative_log_normal_sf(u: TensorVariable) -> TensorVariable:
@@ -1044,18 +1049,16 @@ def add_correlated_copula_state(
 
 def add_correlated_state_with_activity(
     activity: ResolvedStateActivity,
-    prior: CorrelatedLognormalPrior | CorrelatedPrior,
+    prior: CorrelatedPrior,
     /,
     *,
     var_name: str,
 ) -> StateVectorResult:
     """Construct a correlated state with each state's marginal and exact fixed values.
 
-    A validated lognormal prior, given directly or as an all-lognormal
-    :class:`CorrelatedPrior`, uses
-    :func:`add_correlated_lognormal_state_with_activity`, so the graph is
-    unchanged. Otherwise the active states use
-    :func:`add_correlated_copula_state`.
+    An all-lognormal prior uses
+    :func:`add_correlated_lognormal_state_with_activity`. Otherwise the active
+    states use :func:`add_correlated_copula_state`.
 
     Args:
         activity: Resolved activity in canonical full-state order.
@@ -1065,20 +1068,19 @@ def add_correlated_state_with_activity(
     Returns:
         Effective whitened latent, full state vector, and supplied activity.
     """
-    lognormal = _as_lognormal_prior(prior)
-    if lognormal is not None:
-        return add_correlated_lognormal_state_with_activity(activity, lognormal, var_name=var_name)
+    if prior.is_lognormal:
+        return add_correlated_lognormal_state_with_activity(activity, prior, var_name=var_name)
     active_prior = prepare_active_correlated_prior(activity, prior, var_name=var_name)
     return _add_prepared_correlated_lognormal_state_with_activity(activity, active_prior, var_name=var_name)
 
 
 def prepare_active_correlated_prior(
     activity: ResolvedStateActivity,
-    prior: CorrelatedLognormalPrior | CorrelatedPrior,
+    prior: CorrelatedPrior,
     /,
     *,
     var_name: str,
-) -> CorrelatedLognormalPrior | CorrelatedPrior | None:
+) -> CorrelatedPrior | None:
     """Subset a correlated prior to its active states before graph construction.
 
     The active prior keeps each active state's marginal and the corresponding
@@ -1096,10 +1098,8 @@ def prepare_active_correlated_prior(
     Raises:
         ValueError: If the prior and activity labels differ.
     """
-    lognormal = _as_lognormal_prior(prior)
-    if lognormal is not None:
-        return prepare_active_correlated_lognormal_prior(activity, lognormal, var_name=var_name)
-    assert isinstance(prior, CorrelatedPrior)
+    if prior.is_lognormal:
+        return prepare_active_correlated_lognormal_prior(activity, prior, var_name=var_name)
     mean = prior.mean
     _check_active_prior_labels(activity, mean, prior.state_dim, label="Correlated")
     if activity.n_active == 0:

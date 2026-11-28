@@ -54,7 +54,7 @@ from openghg_inversions.models.scalar_sigma import (
     save_scalar_sigma_eigenbasis,
 )
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
-from openghg_inversions.correlated_state import CorrelatedLognormalPrior, CorrelatedPrior
+from openghg_inversions.correlated_state import CorrelatedPrior
 from openghg_inversions.models.state_activity import (
     PreparedLinearSensitivity,
     ResolvedStateActivity,
@@ -68,7 +68,6 @@ from openghg_inversions.observation_error import AggregationErrorMode
 
 __all__ = [
     "CoordRegistry",
-    "CorrelatedLognormalPrior",
     "CorrelatedPrior",
     "CorrelatedStateResult",
     "LinearComponentResult",
