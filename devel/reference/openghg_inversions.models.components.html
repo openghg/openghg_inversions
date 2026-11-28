@@ -1213,10 +1213,9 @@ unchanged. Otherwise the active states use
 <dt class="sig sig-object py" id="openghg_inversions.models.components.prepare_active_correlated_prior">
 <span class="sig-name descname"><span class="pre">prepare_active_correlated_prior</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">activity</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior</span></span></em>, <em class="sig-param"><span class="positional-only-separator o"><abbr title="Positional-only parameter separator (PEP 570)"><span class="pre">/</span></abbr></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">var_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.prepare_active_correlated_prior" title="Link to this definition">#</a></dt>
 <dd><p>Subset a correlated prior to its active states before graph construction.</p>
-<p>The active prior keeps each active state’s marginal. Its latent
-correlation is the active block of the full one, because the copula
-matches covariances pair by pair. Pass the result to
-<code class="docutils literal notranslate"><span class="pre">_add_prepared_correlated_lognormal_state_with_activity</span></code>.</p>
+<p>The active prior keeps each active state’s marginal and the corresponding
+block of the full prior’s latent correlation, including any applied repair.
+Pass the result to <code class="docutils literal notranslate"><span class="pre">_add_prepared_correlated_lognormal_state_with_activity</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

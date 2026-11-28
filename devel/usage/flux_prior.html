@@ -529,8 +529,41 @@ correlation. For the remaining Weibull and gamma pairs, the solver matches the
 covariance using a 60-term Hermite approximation. It checks that the series
 reproduces each affected marginal variance to within <span class="math notranslate nohighlight">\(10^{-6}\)</span> relative.
 A pair covariance no latent correlation can reach (for example strong negative
-correlation between very skewed states), or a latent correlation that is not
-positive definite, fails clearly without repair.</p>
+correlation between very skewed states) fails clearly.</p>
+<section id="latent-correlation-repair">
+<span id="id2"></span><h3>Latent-correlation repair<a class="headerlink" href="#latent-correlation-repair" title="Link to this heading">#</a></h3>
+<p>Each latent correlation is solved pair by pair, so the whole matrix need not be
+positive definite even when the arithmetic covariance is. This happens with
+some wide, strongly correlated priors. The repository’s rounded fixture of
+15 retained GPP/TER states from the OPE-188 July 2021 ORCHIDEE prior has a
+latent minimum eigenvalue of <span class="math notranslate nohighlight">\(-6.5\times10^{-5}\)</span> with Weibull marginals.
+Such priors fail by default. <code class="docutils literal notranslate"><span class="pre">latent_correlation_floor</span></code> (a
+<a class="reference internal" href="../reference/openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">CorrelatedPrior</span></code></a> argument, or a <code class="docutils literal notranslate"><span class="pre">latent_correlation_floor</span></code> attribute on the
+<code class="docutils literal notranslate"><span class="pre">prior_marginal</span></code> given to <code class="docutils literal notranslate"><span class="pre">prepare_co2_inputs</span></code>)
+opts in to repair. Within each independent block, eigenvalues below the floor
+are raised to it and the block is rescaled to a unit diagonal. Each state
+keeps its arithmetic mean and variance. Pair covariances may change.
+The repair is refused if any implied state correlation changes by more than
+0.01. For example, five Weibull states with CV 1.5 and equal arithmetic
+correlation -0.24 have positive-definite arithmetic covariance but a latent
+minimum eigenvalue of about -0.9. The repair would shift the correlations by
+about 0.1, so the prior is refused.</p>
+<p>On the ORCHIDEE fixture, a floor of <code class="docutils literal notranslate"><span class="pre">1e-6</span></code> raises one eigenvalue. It changes
+the latent correlations by at most <span class="math notranslate nohighlight">\(3.8\times10^{-5}\)</span> and implied
+arithmetic correlations by at most <span class="math notranslate nohighlight">\(5.6\times10^{-5}\)</span>. The fixture is
+in <code class="docutils literal notranslate"><span class="pre">tests/data/copula/orchidee_weibull_block.json</span></code>.</p>
+<p><a class="reference internal" href="../reference/openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior.latent_correlation_repair" title="openghg_inversions.correlated_state.CorrelatedPrior.latent_correlation_repair"><code class="xref py py-attr docutils literal notranslate"><span class="pre">latent_correlation_repair</span></code></a>
+records the floor, whether it was applied, the minimum eigenvalue before the
+repair, the number of eigenvalues raised, and the largest changes in the latent
+correlation and in the implied state covariance and correlation. The CO2
+runners write it, the marginal family counts and the prior description into
+the trace’s <code class="docutils literal notranslate"><span class="pre">rhime_model_metadata</span></code> as <code class="docutils literal notranslate"><span class="pre">prior_latent_correlation_repair</span></code>,
+<code class="docutils literal notranslate"><span class="pre">prior_marginals</span></code> and <code class="docutils literal notranslate"><span class="pre">prior</span></code>. After repair, the built prior’s
+<code class="docutils literal notranslate"><span class="pre">arithmetic_covariance</span></code> is the implied covariance of the repaired copula.
+Saved preparations retain the requested covariance and floor. Partial
+activity uses the corresponding submatrix of the full repaired prior,
+including its implied covariance. All-lognormal priors require a positive-
+definite latent covariance and use their existing construction.</p>
 <p>Pass <code class="docutils literal notranslate"><span class="pre">prior_marginal</span></code> to the Python function
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_co2_inputs()</span></code></a> as a labelled array
 of family names on the retained state axis. The preparation saves it as
@@ -544,6 +577,7 @@ marginals with <code class="docutils literal notranslate"><span class="pre">nuts
 runs stop with an <code class="docutils literal notranslate"><span class="pre">ImportError</span></code> before sampling; the PyMC sampler does not
 need it. Known gamma numerical limits are tracked in
 <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/1144">#1144</a>.</p>
+</section>
 </section>
 <section id="activity">
 <h2>Activity<a class="headerlink" href="#activity" title="Link to this heading">#</a></h2>
@@ -600,7 +634,10 @@ no latent draw.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#sampled-marginals">Sampled marginals</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#sampled-marginals">Sampled marginals</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#latent-correlation-repair">Latent-correlation repair</a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#activity">Activity</a></li>
 </ul>
   </nav></div>

@@ -926,7 +926,8 @@ by this boundary.</p></li>
 the reduction’s retained-state labels. It is stored as
 <code class="docutils literal notranslate"><span class="pre">alpha_prior_marginal</span></code> and selects each state’s marginal in the
 runners’ <a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedPrior" title="openghg_inversions.correlated_state.CorrelatedPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">CorrelatedPrior</span></code></a>.
-Omit it for the lognormal prior.</p></li>
+Its <code class="docutils literal notranslate"><span class="pre">latent_correlation_floor</span></code> attribute, if any, is kept and
+passed to that prior. Omit it for the lognormal prior.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>

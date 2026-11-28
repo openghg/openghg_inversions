@@ -798,6 +798,7 @@ as an alternative construction path.</p>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">marginal</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'lognormal'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">covariance_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">latent_correlation_floor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.CorrelatedPrior" title="Link to this definition">#</a></dt>
@@ -822,8 +823,10 @@ a sum of states is pulled less towards small values.</p></li>
 <p>Pairs with a normal state, and lognormal pairs, have closed-form latent
 correlations. Remaining pairs involving Weibull or Gamma use a truncated
 Hermite series for covariance matching. A pair whose covariance no latent
-correlation can reach, or a latent correlation that is not positive
-definite, is rejected.</p>
+correlation can reach is rejected. A latent correlation that is not
+positive definite is rejected by default. An explicit
+<code class="docutils literal notranslate"><span class="pre">latent_correlation_floor</span></code> permits repair subject to the 0.01 bound on
+arithmetic correlation changes. See <a class="reference internal" href="#openghg_inversions.models.CorrelatedPrior.latent_correlation_repair" title="openghg_inversions.models.CorrelatedPrior.latent_correlation_repair"><code class="xref py py-attr docutils literal notranslate"><span class="pre">latent_correlation_repair</span></code></a>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -865,7 +868,9 @@ order. Treat it as read-only.</p></li>
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.models.CorrelatedPrior.arithmetic_covariance">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">arithmetic_covariance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.models.CorrelatedPrior.arithmetic_covariance" title="Link to this definition">#</a></dt>
-<dd><p>Return the arithmetic covariance.</p>
+<dd><p>Return the arithmetic covariance of this copula.</p>
+<p>After an applied repair, the covariance is implied by the repaired
+latent correlation and the selected marginals.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>An independent deep copy of the dense labelled covariance.</p>
@@ -897,7 +902,9 @@ order. Treat it as read-only.</p></li>
 <dd><p>Describe this prior for saved model outputs.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p>JSON-safe prior description and state counts per marginal family.</p>
+<dd class="field-odd"><p>JSON-safe prior description, state counts per marginal family
+and the repair diagnostics. The repair field is <code class="docutils literal notranslate"><span class="pre">None</span></code> when no
+repair was requested.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>
@@ -925,6 +932,19 @@ order. Treat it as read-only.</p></li>
 <dd class="field-odd"><p>A dense labelled copy on <code class="docutils literal notranslate"><span class="pre">(state_dim,</span> <span class="pre">covariance_dim)</span></code>.</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.models.CorrelatedPrior.latent_correlation_repair">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">latent_correlation_repair</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.15)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.models.CorrelatedPrior.latent_correlation_repair" title="Link to this definition">#</a></dt>
+<dd><p>Return the record of an opt-in latent-correlation repair.</p>
+<p><code class="docutils literal notranslate"><span class="pre">None</span></code> when no <code class="docutils literal notranslate"><span class="pre">latent_correlation_floor</span></code> was given. Otherwise a
+JSON-safe dictionary: <code class="docutils literal notranslate"><span class="pre">method</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;eigenvalue_floor&quot;</span></code>), <code class="docutils literal notranslate"><span class="pre">floor</span></code>,
+<code class="docutils literal notranslate"><span class="pre">applied</span></code>, <code class="docutils literal notranslate"><span class="pre">minimum_eigenvalue</span></code> before the repair and the number
+of <code class="docutils literal notranslate"><span class="pre">eigenvalues_raised</span></code>. When applied it also holds
+<code class="docutils literal notranslate"><span class="pre">max_abs_latent_correlation_change</span></code> and the resulting change in the
+implied arithmetic covariance, <code class="docutils literal notranslate"><span class="pre">max_abs_state_covariance_change</span></code> (in
+squared mean units) and <code class="docutils literal notranslate"><span class="pre">max_abs_state_correlation_change</span></code>.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -2825,6 +2845,7 @@ before calling this function.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.CorrelatedPrior.metadata"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.metadata()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.CorrelatedPrior.latent_correlation"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.latent_correlation</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.CorrelatedPrior.latent_correlation_cholesky"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.latent_correlation_cholesky</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.CorrelatedPrior.latent_correlation_repair"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.latent_correlation_repair</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.CorrelatedPrior.marginal_shape"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.marginal_shape</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.CorrelatedPrior.marginal_scale"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.marginal_scale</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.CorrelatedPrior.transform_latent"><code class="docutils literal notranslate"><span class="pre">CorrelatedPrior.transform_latent()</span></code></a></li>
