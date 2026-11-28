@@ -3,11 +3,19 @@ Native Covariance Projection
 
 The native covariance projection API prepares labelled covariance and
 observation product blocks for reducing a gridded scaling state. It keeps basis
-geometry, native covariance, and retained-state semantics separate, and never
-constructs a dense native-grid covariance matrix. This low-level operation is
-not connected to RHIME input preparation or likelihoods, and
-its product blocks are inputs to the separate :doc:`coherent_reduction`
-operation rather than a complete coherent-reduction result by themselves.
+geometry, native covariance, and retained-state semantics separate. Covariance
+actions apply :math:`B` and solve with it. Separable kernels and source
+combinations, including correlated sources, form no dense native-grid
+covariance matrix. Each dense geodesic class, however, holds an
+:math:`n \times n` block for its :math:`n` cells; when one class covers the
+grid, that block spans the whole native grid (see
+:ref:`geodesic-class-blocks`). The product blocks are inputs to the separate
+:doc:`coherent_reduction` operation rather than a complete coherent-reduction
+result by themselves. Configured CO2 preparation
+(:ref:`co2-configured-preparation`) uses the covariance actions and product
+blocks to reduce its native prior; with per-source priors it reduces every
+source jointly, with a configured GPP/TER correlation, through
+:class:`~openghg_inversions.correlated_source_covariance.CorrelatedSourceCovariance`.
 
 Component overview
 ------------------
@@ -37,12 +45,23 @@ The classes have the following distinct roles.
      - Concrete latitude/longitude covariance action. Optional class labels
        set cross-class covariance to zero; this alone does not assert
        probabilistic independence outside a joint Gaussian model.
+   * - ``ClassMixedExponentialCovariance``
+     - Class-blocked covariance with a kernel chosen per class: classes named
+       in ``class_kernels`` use a dense ``GeodesicExponentialKernel``, the
+       others the separable kernel. See :ref:`geodesic-class-blocks`.
    * - ``IndependentSourceCovariance``
      - Composes ordered, source-specific spatial covariances into a
-       block-diagonal native covariance. Its blocks currently must be
-       ``SeparableExponentialCovariance`` instances. Covariance application
+       block-diagonal native covariance. Its blocks must be
+       ``SeparableExponentialCovariance`` or
+       ``ClassMixedExponentialCovariance`` instances. Covariance application
        and solves use the common action interface; only multisource basis
        expansion needs a separate source-aware path.
+   * - ``CorrelatedSourceCovariance``
+     - Multisource covariance that adds cross-source blocks
+       :math:`\rho\,\sigma_s\sigma_t K` for sources sharing one unit kernel
+       :math:`K`, such as GPP and TER; other sources stay independent. Apply
+       and solve use one operation per source and form no dense cross-source
+       matrix. Configured CO2 per-source preparation uses it for every source.
    * - ``RetainedProjectionStrategy``
      - Pi-first policy interface that chooses the authoritative labelled
        restriction :math:`\Pi`. Each strategy owns the inputs that define
@@ -277,6 +296,75 @@ persisted as though they were already the complete result. Arbitrary
 reporting-function products :math:`Q`, low-rank-plus-diagonal numerical views,
 and likelihood integration are also outside this API.
 
+.. _geodesic-class-blocks:
+
+Dense geodesic class blocks
+---------------------------
+
+``SeparableExponentialCovariance`` uses
+:math:`\exp(-|\Delta\phi|/\ell_\phi - |\Delta\lambda|/\ell_\lambda)` in
+degrees. That distance is an L1 distance, so diagonal correlations decay
+faster than north-south or east-west ones, and a longitude length fixed in
+degrees means a shorter east-west length in km at high latitude.
+``ClassMixedExponentialCovariance`` replaces the kernel of chosen classes by
+
+.. math::
+
+   K_c(i, j) = \exp\!\left(-\frac{d_{\mathrm{gc}}(i, j)}{\ell_c}\right),
+
+with :math:`d_{\mathrm{gc}}` the haversine great-circle distance between cell
+centres on a sphere of radius ``earth_radius_km`` (by default
+:math:`111 \cdot 180/\pi` km, so one degree of arc is 111 km, matching the
+km-to-degree conversion of separable lengths). This kernel is positive definite
+on the sphere for every :math:`\ell_c > 0`, isotropic in local km, and
+non-separable. Other classes keep the separable kernel, and cells in different
+classes stay uncorrelated:
+
+.. math::
+
+   B = \sigma^2 \sum_c M_c K_c M_c .
+
+.. code-block:: python
+
+   from openghg_inversions.native_covariance import (
+       ClassMixedExponentialCovariance,
+       GeodesicExponentialKernel,
+   )
+
+   gpp = ClassMixedExponentialCovariance(
+       lat, lon,
+       class_labels=basis_class,            # e.g. 1 inner land, 2 sea, 4xx outer land
+       class_kernels={1: GeodesicExponentialKernel(500.0)},
+       sigma=0.5,
+       latitude_correlation_length=500 / 111,
+       longitude_correlation_length=500 / (111 * np.cos(np.deg2rad(50))),
+   )
+   ff = gpp.with_sigma(0.6)  # same kernel, shared dense factor
+
+Per-source covariances compose through ``IndependentSourceCovariance`` or,
+with a GPP/TER correlation, ``CorrelatedSourceCovariance``; either may mix
+separable and class-mixed sources with their own lengths.
+
+Each dense class of :math:`n` cells is built once and stored as one
+Fortran-ordered :math:`n \times n` float64 array, :math:`8n^2` bytes (1.1 GB
+for 11,832 cells), that holds :math:`K_c` in its upper triangle and the unit
+lower-triangular Cholesky factor in its lower triangle, so no second dense copy
+is kept. Construction runs the Cholesky factorization and a LAPACK reciprocal
+condition estimate, and raises ``numpy.linalg.LinAlgError`` if the block
+is not numerically positive definite; ``geodesic_diagnostics`` reports the
+estimate and ``minimum_eigenvalues()`` the smallest eigenvalue by Lanczos
+iterations on the cached factor. Apply costs :math:`2n^2` flops per right-hand
+side (``dsymm``); solve uses two triangular solves for dense classes and the
+matrix-free conjugate gradients of the class-blocked separable action,
+restricted to the separable classes. ``with_sigma`` changes the amplitude
+without rebuilding the block. ``to_dataset`` records the separable
+configuration, class labels and class kernels, keyed by the class labels found
+in the grid and ordered by class. ``same_unit_kernel`` (also a method) tells
+whether two actions have the same unit-variance kernel, ignoring ``sigma`` and
+class-label metadata. ``IndependentSourceCovariance`` writes schema version 2
+when any source is class-mixed (version 1, unchanged, otherwise), and on
+restore sources with the same unit kernel share one dense factor.
+
 Units and persistence
 ---------------------
 
@@ -330,6 +418,76 @@ Dense batches still fill a preallocated complete quadratic observation
 covariance. Changing the batch size changes execution only, not the scientific
 inputs or requested numerical form.
 
+Calibrating native amplitudes
+-----------------------------
+
+:func:`openghg_inversions.native_b_calibration.calibrate_native_b_amplitudes`
+chooses the native grid-cell standard deviation of each source, and optionally
+of each class, so that the prior SD of declared total-flux functionals matches
+requested relative or absolute targets. For source :math:`s` and functional
+weights :math:`w_r` (for example a country mask times cell area) the native
+weights are :math:`q_{sr} = F_s w_r`, and
+
+.. math::
+
+   \operatorname{SD}_{sr} = \sqrt{q_{sr}^\mathsf{T} B_s q_{sr}}
+   = a_s \sqrt{q_{sr}^\mathsf{T} K_L q_{sr}},
+
+where :math:`K_L` is the unit separable exponential kernel with correlation
+length :math:`L`, blocked by class when labels are given. The unit variances
+are evaluated through the covariance action, so dense :math:`B` is never
+formed. Relative targets refer to the cancellation-stabilized scale
+:math:`\max(|\sum q|, f \sum |q|)` with floor fraction :math:`f`
+(``cancellation_floor``, 0.1 by default), so a mixed-sign total that nearly
+cancels is flagged ``cancellation`` rather than given a near-zero SD target.
+
+One amplitude per source uses either the least-squares fit in log SD, the
+closed form :math:`\log a_s = \operatorname{mean}_r \log(t_{sr} /
+\operatorname{SD}^{\mathrm{unit}}_{sr})` (``statistic="geometric-mean"``, the
+default), or ``statistic="median"``, which makes the median achieved-to-target
+ratio one and matches the median rules of ``calibrate_basis_prior_stdev`` and
+the verification-games prototype. Both are exact for one target. Per-class
+amplitudes use a bounded least-squares fit and require the targets to identify
+every class. Each target is reported ``met`` or ``unmet`` against
+``target_rtol``, or ``at_bound`` when it depends on a class that the targets
+drove towards zero. With one amplitude and several regions most regions are
+individually ``unmet``, so each source fit is also judged by the RMS of its log
+residuals (``fit_status``); ``strict=True`` raises when a fit is ``unmet`` or
+``at_bound``.
+
+Every combination of the flux's other dimensions, such as ``time``, is
+calibrated independently, so per-month calibration is the default, and
+``calibrated_source_covariances`` builds one
+:class:`~openghg_inversions.source_covariance.IndependentSourceCovariance` per
+month (``calibrated_source_covariance`` builds one for a single slice). Each
+covariance records the slice it was calibrated for, and native preparation must
+obtain it through ``require_calibrated_slice(calibrated, {"time": month})``,
+which refuses another month. A frozen policy, such as the verification-games
+production setting of a January-only calibration scaled by 1.7 for every month,
+is expressed by passing ``allow_broadcast=True`` to that check or to
+``evaluate_native_b_amplitudes``; without it, applying one slice's amplitudes
+to another slice, to several slices, or to a flux without the slice label is
+refused. The amplitudes depend on :math:`L`: with a fixed target, a
+longer correlation raises the unit SD of a same-signed total and lowers the
+amplitude.
+
+This is the native counterpart of
+``basis.prior_uncertainty.calibrate_basis_prior_stdev``, which calibrates
+independent retained basis-state widths instead. Native amplitudes fix
+:math:`B` before coherent reduction, so the reduced prior they induce is
+already calibrated; do not also apply a retained-prior recalibration to the
+same sources, or their uncertainty is calibrated twice.
+
+The calibration is marginal: each source's amplitude is fitted from that
+source's own :math:`B_s`, as in ``IndependentSourceCovariance``, so
+cross-source terms do not enter the fit and targets on totals across sources,
+such as net biosphere, are not supported. A GPP/TER correlation added
+afterwards with ``CorrelatedSourceCovariance`` leaves each source's own block
+:math:`B_s`, and so its calibrated targets, unchanged, but changes the SD of
+any total across sources. Configured CO2 preparation calibrates sources without
+``sigma`` this way and then reduces all sources jointly with the configured
+correlation.
+
 Correspondence with ``verification-games``
 -------------------------------------------
 
@@ -373,16 +531,47 @@ strategy.
        unresolved observation covariance for separable and class-blocked
        covariance. The compatibility-oriented ``PreserveBucketProlongation``
        remains available for bucket bases.
-   * - Cross-source covariance, arbitrary reporting functionals :math:`Q`,
-       :math:`B_\perp` products, coherent likelihood reduction, reconstruction,
-       and covariance approximation
+   * - Native ``B`` amplitude calibration to regional targets
+       (``direct-europe-sector`` mode of
+       ``calibrate_regional_land_b_amplitudes``)
+     - Faithful port for per-source targets
+     - ``calibrate_native_b_amplitudes`` with one target per source reproduces
+       the prototype amplitudes. Its net-biosphere and net-land targets with a
+       GPP/TER cross-correlation, and the robust regularised fit, are not
+       ported: calibration stays marginal per source even when a GPP/TER
+       correlation is configured.
+   * - GPP/TER cross-source covariance
+     - Ported for a shared kernel
+     - ``CorrelatedSourceCovariance`` correlates sources that share one unit
+       kernel; sources with different kernels cannot be correlated. Configured
+       CO2 preparation (:ref:`co2-configured-preparation`) reduces it jointly,
+       so the cross blocks enter :math:`C_\alpha`, :math:`HB\Pi^\mathsf{T}`
+       and the unresolved observation covariance.
+   * - Coherent likelihood reduction, native flux reconstruction from
+       :math:`\alpha`, and the low-rank-plus-diagonal approximation of the
+       aggregation-error covariance in the model-data mismatch
+     - Ported outside this API
+     - :func:`~openghg_inversions.coherent_reduction.reduce_native_gaussian`
+       uses these product blocks to form :math:`C_\alpha`, :math:`HU_*` and
+       :math:`A = HB_\perp H^\mathsf{T}`. Configured CO2 preparation
+       (:ref:`co2-configured-preparation`) stores :math:`A` exactly or as a
+       low-rank-plus-diagonal approximation (``aggregation_error_rank``), and
+       its affine companion maps :math:`\alpha` back to native flux. With a
+       supplied restriction, that map is the conditional mean
+       :math:`m + U_*(\alpha - \Pi m)`.
+   * - Reporting functionals :math:`Q` with their :math:`B_\perp` blocks, and
+       observation-conditioned reconstruction of the unresolved native part
      - Not ported
-     - These remain prototype or downstream work and must not be inferred from
-       the presence of covariance product blocks.
+     - Nothing forms :math:`QB_\perp Q^\mathsf{T}` or
+       :math:`QB_\perp H^\mathsf{T}`, so reported totals omit the unresolved
+       native uncertainty. The product blocks are only inputs to a reduction;
+       their presence does not imply either capability.
 
 API reference
 -------------
 
 See :mod:`openghg_inversions.native_covariance`,
-:mod:`openghg_inversions.source_covariance`, and
+:mod:`openghg_inversions.source_covariance`,
+:mod:`openghg_inversions.correlated_source_covariance`,
+:mod:`openghg_inversions.native_b_calibration`, and
 :mod:`openghg_inversions.basis.covariance_products` for the public interfaces.
