@@ -29,6 +29,7 @@ openghg\_inversions
    openghg_inversions.cli
    openghg_inversions.coherent_reduction
    openghg_inversions.convert
+   openghg_inversions.correlated_source_covariance
    openghg_inversions.correlated_state
    openghg_inversions.filters
    openghg_inversions.flux_sanitization
