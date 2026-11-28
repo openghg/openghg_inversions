@@ -36,9 +36,6 @@ dependencies = [
     "pytensor>=3.3.5",
     "arviz>=1.1,<2",
     "numpyro[cpu]",
-    # JAX implementations of PyTensor ops such as gammaincinv (gamma copula
-    # marginals) under numpyro. Releases up to 0.25 do not import with JAX >= 0.5.
-    "tfp-nightly>=0.26.0.dev20261101",
     "xarray>=2025.08.0",
     "pandas<3.0",
     "matplotlib",
@@ -54,6 +51,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# TensorFlow Probability supplies JAX implementations of PyTensor ops used by
+# NumPyro/BlackJAX sampling of gamma copula marginals and truncated-normal
+# priors. Only the nightly works with JAX >= 0.5, so it is not a core dependency.
+jax = [
+  "tfp-nightly>=0.26.0.dev20261101",
+]
 jupyter = [
   "ipykernel",
   "jupyterlab",
@@ -86,7 +89,7 @@ test = [
   "pytest-xdist",
 ]
 uv_dev = [
-  "openghg_inversions[jupyter,dev]",
+  "openghg_inversions[jupyter,dev,jax]",
   "sphinx>=4",
   "pydata-sphinx-theme",
   "jupyter-sphinx>=0.5.3",
@@ -137,7 +140,7 @@ openghg_inversions = { path = ".", editable = true }
 
 [tool.pixi.environments]
 default = { features = [], solve-group = "default" }
-dev = { features = ["dev", "jupyter"], solve-group = "default" }
+dev = { features = ["dev", "jupyter", "jax"], solve-group = "default" }
 
 [tool.pixi.feature.dev.tasks]
 test = "pytest"

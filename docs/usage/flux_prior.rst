@@ -75,7 +75,12 @@ of family names on the retained state axis. The preparation saves it as
 the prior and family counts in the output metadata. Preparations without
 it use the lognormal prior. Gamma uses TensorFlow Probability for the
 central quantile in NumPyro and a survival-probability solve in the upper
-tail.
+tail. TensorFlow Probability is not installed by default; install the optional
+``jax`` extra (``pip install 'openghg-inversions[jax]'``) to sample gamma
+marginals with ``nuts_sampler="numpyro"`` or ``"blackjax"``. Without it, those
+runs stop with an ``ImportError`` before sampling; the PyMC sampler does not
+need it. Known gamma numerical limits are tracked in
+`#1144 <https://github.com/openghg/openghg_inversions/issues/1144>`_.
 
 Activity
 --------

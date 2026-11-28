@@ -1005,7 +1005,9 @@ def add_correlated_copula_state(
 
         Every marginal compiles for PyMC's sampler and for JAX samplers.
         Under JAX, gamma states use TensorFlow Probability's inverse
-        regularized incomplete gamma (the ``tfp-nightly`` dependency).
+        regularized incomplete gamma, from the optional ``jax`` extra
+        (``tfp-nightly``). Without it, NumPyro and BlackJAX sampling raises
+        ``ImportError`` before NUTS runs.
     """
     state_dim = prior.state_dim
     family = np.asarray(prior.marginal.values).astype(str)

@@ -201,6 +201,8 @@ def test_narrow_gamma_requires_float64_before_graph_construction():
 
 @pytest.mark.parametrize("family", STATE_MARGINALS)
 def test_copula_map_compiles_for_jax_samplers(family, jax_backend):
+    if family == "gamma":
+        pytest.importorskip("tensorflow_probability", reason="gamma under JAX needs the 'jax' extra")
     jax_backend.config.update("jax_enable_x64", True)
     prior = wide_prior([family, "weibull", "normal", "lognormal", family], correlation=np.eye(5))
     activity = resolve_state_activity(xr.zeros_like(prior.mean, dtype=bool), StateActivity(active=True))
@@ -222,6 +224,9 @@ def test_copula_map_compiles_for_jax_samplers(family, jax_backend):
 def test_positive_marginals_preserve_values_and_gradients_in_jax(family, float_x, jax_backend):
     """Check the sampler's native JAX gradient and PyTensor's own gradient."""
     from pymc.sampling.jax import get_jaxified_graph
+
+    if family == "gamma":
+        pytest.importorskip("tensorflow_probability", reason="gamma under JAX needs the 'jax' extra")
 
     jax_backend.config.update("jax_enable_x64", float_x == "float64")
     cv = (0.05, 0.1, 0.14, 0.3, 2.0) if family == "gamma" else (0.0013, 0.05, 0.14, 0.3, 2.0)
